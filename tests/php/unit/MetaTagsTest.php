@@ -242,4 +242,27 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'og:image', $og );
 		$this->assertArrayNotHasKey( 'product:price:amount', $og );
 	}
+
+	public function test_noindex_true_for_hidden_product(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'hidden' );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		$this->assertTrue( $this->meta->should_noindex() );
+	}
+
+	public function test_noindex_false_for_visible_product(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		$this->assertFalse( $this->meta->should_noindex() );
+	}
+
+	public function test_noindex_true_for_search(): void {
+		Functions\when( 'is_search' )->justReturn( true );
+		$this->assertTrue( $this->meta->should_noindex() );
+	}
 }

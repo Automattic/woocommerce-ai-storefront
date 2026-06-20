@@ -293,4 +293,34 @@ class WC_AI_Storefront_Meta_Tags {
 		/** This filter is documented in build_og_tags(). */
 		return (array) apply_filters( 'wc_ai_storefront_og_tags', $og, null );
 	}
+
+	/**
+	 * Whether the current commerce page should carry robots noindex.
+	 *
+	 * Opinionated, zero-config: a product the merchant set to "Hidden" in
+	 * WooCommerce (still reachable by URL) and internal shop search results
+	 * (thin/duplicate content) are noindexed. Everything else is indexable.
+	 */
+	public function should_noindex(): bool {
+		$noindex = false;
+
+		if ( function_exists( 'is_product' ) && is_product()
+			&& function_exists( 'wc_get_product' ) ) {
+			$product = wc_get_product( get_queried_object_id() );
+			if ( $product && 'hidden' === $product->get_catalog_visibility() ) {
+				$noindex = true;
+			}
+		}
+
+		if ( function_exists( 'is_search' ) && is_search() ) {
+			$noindex = true;
+		}
+
+		/**
+		 * Filter the robots noindex decision for the current request.
+		 *
+		 * @param bool $noindex Whether to emit robots noindex.
+		 */
+		return (bool) apply_filters( 'wc_ai_storefront_robots_noindex', $noindex );
+	}
 }
