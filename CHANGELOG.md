@@ -2,6 +2,14 @@
 
 ---
 
+## [0.23.7] – 2026-06-20
+
+### Fixes
+
+- **The homepage/shop product list now includes each product's star rating (`aggregateRating`) when the product has reviews (#510).** Google's Rich Results flagged the root-domain list with a non-critical "no aggregateRating / review" merchant-listing recommendation, because the lightweight list entries omitted ratings even when the product pages carry them. Each entry now mirrors the product page: `aggregateRating` (rating value + review count) is emitted only when the product actually has reviews and reviews are enabled (matching WooCommerce core's own gate). Ratings are never fabricated, and individual review objects are intentionally not listed — the summary list carries the aggregate only. (Products without reviews are unaffected; the recommendation persists, on the product pages too, until products have real reviews.)
+
+---
+
 ## [0.23.6] – 2026-06-20
 
 ### Fixes
