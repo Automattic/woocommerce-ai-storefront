@@ -77,4 +77,25 @@ class SchemaConflictNoticeTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		$this->assertFalse( $this->notice->should_show() );
 	}
+
+	public function test_handle_dismiss_persists_for_capable_user(): void {
+		Functions\when( 'check_ajax_referer' )->justReturn( true );
+		Functions\when( 'current_user_can' )->justReturn( true );
+		Functions\when( 'get_current_user_id' )->justReturn( 7 );
+		Functions\when( 'wp_send_json_success' )->justReturn( null );
+		Functions\expect( 'update_user_meta' )
+			->once()
+			->with( 7, WC_AI_Storefront_Schema_Conflict_Notice::DISMISS_META, 1 );
+		$this->notice->handle_dismiss();
+		$this->addToAssertionCount( 1 ); // Brain Monkey expectation counted at tearDown.
+	}
+
+	public function test_handle_dismiss_rejects_incapable_user(): void {
+		Functions\when( 'check_ajax_referer' )->justReturn( true );
+		Functions\when( 'current_user_can' )->justReturn( false );
+		Functions\when( 'wp_send_json_error' )->justReturn( null );
+		Functions\expect( 'update_user_meta' )->never();
+		$this->notice->handle_dismiss();
+		$this->addToAssertionCount( 1 ); // Brain Monkey expectation counted at tearDown.
+	}
 }
