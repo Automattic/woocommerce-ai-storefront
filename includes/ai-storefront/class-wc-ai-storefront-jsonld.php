@@ -3566,6 +3566,23 @@ class WC_AI_Storefront_JsonLd {
 				);
 			}
 
+			// aggregateRating mirrors the product page (WC_Structured_Data):
+			// only when the product has ratings AND reviews are enabled. We
+			// never fabricate a rating, so a review-less product (or a store
+			// with reviews disabled) emits nothing. Individual review objects
+			// are intentionally omitted from the summary list (#510).
+			if (
+				$product->get_rating_count() > 0
+				&& function_exists( 'wc_review_ratings_enabled' )
+				&& wc_review_ratings_enabled()
+			) {
+				$product_stub['aggregateRating'] = array(
+					'@type'       => 'AggregateRating',
+					'ratingValue' => (string) $product->get_average_rating(),
+					'reviewCount' => (int) $product->get_review_count(),
+				);
+			}
+
 			if ( '' !== $image_url ) {
 				$product_stub['image'] = $image_url;
 			}

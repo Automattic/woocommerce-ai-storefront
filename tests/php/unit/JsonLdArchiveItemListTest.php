@@ -48,6 +48,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// Default: products carry no brand term (#507). The brand test
 		// overrides this to return a WP_Term-shaped object.
 		Functions\when( 'get_the_terms' )->justReturn( false );
+		// Reviews enabled by default (#510); the disabled-reviews test
+		// overrides to false. Products default to 0 ratings, so no
+		// aggregateRating emits unless a test sets a rating count.
+		Functions\when( 'wc_review_ratings_enabled' )->justReturn( true );
 
 		// Default: none of the archive conditionals fire.
 		Functions\when( 'is_shop' )->justReturn( false );
@@ -222,7 +226,15 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	// Happy path: correct ItemList structure on each page type.
 	// -------------------------------------------------------------------------
 
-	private function make_product( int $id, string $name, string $price, bool $in_stock ): object {
+	private function make_product(
+		int $id,
+		string $name,
+		string $price,
+		bool $in_stock,
+		int $rating_count = 0,
+		string $average_rating = '0',
+		int $review_count = 0
+	): object {
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $id );
 		$product->shouldReceive( 'get_name' )->andReturn( $name );
@@ -230,6 +242,11 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'is_in_stock' )->andReturn( $in_stock );
 		$product->shouldReceive( 'get_image_id' )->andReturn( 0 ); // no image
 		$product->shouldReceive( 'get_sku' )->andReturn( '' ); // no SKU
+		// Ratings (#510): default 0 → no aggregateRating; the rating test
+		// passes a non-zero count + average + review count.
+		$product->shouldReceive( 'get_rating_count' )->andReturn( $rating_count );
+		$product->shouldReceive( 'get_average_rating' )->andReturn( $average_rating );
+		$product->shouldReceive( 'get_review_count' )->andReturn( $review_count );
 		return $product;
 	}
 
@@ -237,13 +254,23 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	 * A real WC_Product subclass exposing get_global_unique_id() (absent on
 	 * older WooCommerce releases), so `method_exists()` resolves true —
 	 * Mockery's `shouldReceive` does not make `method_exists()` true. Mirrors
-	 * StoreApiExtensionTest's approach.
+	 * StoreApiExtensionTest's approach. Rating getters return zero so the
+	 * stub loop's aggregateRating gate (#510) is satisfied without emitting.
 	 */
 	private function make_gtin_product( string $gtin ): \WC_Product {
 		$product            = new class() extends \WC_Product {
 			public string $test_gtin = '';
 			public function get_global_unique_id() {
 				return $this->test_gtin;
+			}
+			public function get_rating_count(): int {
+				return 0;
+			}
+			public function get_average_rating(): string {
+				return '0';
+			}
+			public function get_review_count(): int {
+				return 0;
 			}
 		};
 		$product->test_gtin = $gtin;
@@ -387,6 +414,39 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
 
 		$this->assertArrayNotHasKey( 'gtin', $stub );
+	}
+
+	// -------------------------------------------------------------------------
+	// aggregateRating enrichment (#510) — mirrors the product page only when
+	// the product has real reviews. Never fabricated.
+	// -------------------------------------------------------------------------
+
+	public function test_stub_includes_aggregate_rating_when_product_has_reviews(): void {
+		$this->enable_shop_page();
+		// rating_count 12, average 4.50, review_count 8.
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true, 12, '4.50', 8 ) ] );
+
+		$this->assertSame( 'AggregateRating', $stub['aggregateRating']['@type'] );
+		$this->assertSame( '4.50', $stub['aggregateRating']['ratingValue'] );
+		$this->assertSame( 8, $stub['aggregateRating']['reviewCount'] );
+	}
+
+	public function test_stub_omits_aggregate_rating_when_no_reviews(): void {
+		$this->enable_shop_page();
+		// make_product default: rating_count 0 → no aggregateRating.
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertArrayNotHasKey( 'aggregateRating', $stub );
+	}
+
+	public function test_stub_omits_aggregate_rating_when_reviews_disabled(): void {
+		$this->enable_shop_page();
+		// Ratings exist, but the store has product reviews turned off — match
+		// WC core and emit nothing.
+		Functions\when( 'wc_review_ratings_enabled' )->justReturn( false );
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true, 12, '4.50', 8 ) ] );
+
+		$this->assertArrayNotHasKey( 'aggregateRating', $stub );
 	}
 
 	public function test_itemlist_emitted_on_category_page(): void {
@@ -623,6 +683,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 				$p->shouldReceive( 'is_in_stock' )->andReturn( true );
 				$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
 				$p->shouldReceive( 'get_sku' )->andReturn( '' );
+				$p->shouldReceive( 'get_rating_count' )->andReturn( 0 );
+				$p->shouldReceive( 'get_average_rating' )->andReturn( '0' );
+				$p->shouldReceive( 'get_review_count' )->andReturn( 0 );
 				return [ $p ];
 			}
 		);
@@ -688,6 +751,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'is_in_stock' )->andReturn( true );
 		$product->shouldReceive( 'get_image_id' )->andReturn( 77 );
 		$product->shouldReceive( 'get_sku' )->andReturn( 'TEE-001' );
+		$product->shouldReceive( 'get_rating_count' )->andReturn( 0 );
+		$product->shouldReceive( 'get_average_rating' )->andReturn( '0' );
+		$product->shouldReceive( 'get_review_count' )->andReturn( 0 );
 
 		Functions\when( 'wp_get_attachment_url' )->justReturn( 'https://example.com/tee.jpg' );
 		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
