@@ -265,4 +265,81 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_search' )->justReturn( true );
 		$this->assertTrue( $this->meta->should_noindex() );
 	}
+
+	private function stub_escapers(): void {
+		Functions\when( 'esc_attr' )->returnArg();
+		Functions\when( 'esc_url' )->returnArg();
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		// wp_strip_all_tags is a real function defined in tests/php/stubs.php
+		// (before Patchwork), so it cannot be redefined via Brain Monkey.
+		// The real stub already behaves as identity for plain-text inputs.
+	}
+
+	public function test_render_noop_when_should_not_emit(): void {
+		// Non-commerce page (all conditionals false in setUp).
+		ob_start();
+		$this->meta->render_head_tags();
+		$this->assertSame( '', ob_get_clean() );
+	}
+
+	public function test_render_emits_description_og_and_twitter_for_product(): void {
+		$this->stub_escapers();
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/belt/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( 'https://shop.test/i.jpg' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$product = $this->og_product();
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( '<meta name="description" content="A belt."', $html );
+		$this->assertStringContainsString( '<meta property="og:title" content="Canvas Belt"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:card" content="summary_large_image"', $html );
+		$this->assertStringNotContainsString( 'noindex', $html );
+	}
+
+	public function test_render_emits_noindex_for_hidden_product(): void {
+		$this->stub_escapers();
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/belt/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$product = $this->og_product();
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'hidden' );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( '<meta name="robots" content="noindex,follow"', $html );
+	}
+
+	public function test_render_emits_archive_metadata_for_category(): void {
+		$this->stub_escapers();
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'Leather belts.' )
+		);
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
+		Functions\when( 'get_term_meta' )->justReturn( 0 );
+
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+
+		$this->assertStringContainsString( '<meta name="description" content="Leather belts."', $html );
+		$this->assertStringContainsString( '<meta property="og:type" content="website"', $html );
+		$this->assertStringContainsString( '<meta property="og:title" content="Belts"', $html );
+		$this->assertStringNotContainsString( 'product:price:amount', $html );
+	}
 }

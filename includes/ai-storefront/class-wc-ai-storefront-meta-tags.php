@@ -295,6 +295,88 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * Register hooks.
+	 */
+	public function init(): void {
+		// Late priority so our product-title enrichment wins over an active
+		// SEO plugin (single <title>, never duplicated).
+		add_filter( 'document_title_parts', array( $this, 'filter_title_parts' ), 99 );
+		// Early in <head> so the description/OG/robots sit near the top.
+		add_action( 'wp_head', array( $this, 'render_head_tags' ), 5 );
+	}
+
+	/**
+	 * Echo the <head> metadata for the current commerce page.
+	 */
+	public function render_head_tags(): void {
+		if ( ! $this->should_emit() ) {
+			return;
+		}
+
+		if ( $this->should_noindex() ) {
+			$this->print_meta( 'name', 'robots', 'noindex,follow' );
+		}
+
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			$product = function_exists( 'wc_get_product' ) ? wc_get_product( get_queried_object_id() ) : null;
+			if ( ! $product ) {
+				return;
+			}
+			$description = $this->build_description( $product );
+			$og          = $this->build_og_tags( $product );
+		} else {
+			// Category or shop archive (should_emit() guarantees one of these).
+			$description = $this->build_archive_description();
+			$og          = $this->build_archive_og_tags();
+		}
+
+		if ( '' !== $description ) {
+			$this->print_meta( 'name', 'description', $description );
+		}
+		$this->print_og_and_twitter( $og );
+	}
+
+	/**
+	 * Print an Open Graph map followed by its derived Twitter cards.
+	 *
+	 * @param array<string,string> $og Open Graph map.
+	 */
+	private function print_og_and_twitter( array $og ): void {
+		foreach ( $og as $property => $content ) {
+			$this->print_meta( 'property', $property, $content, 'url' === $this->attr_kind( $property ) );
+		}
+		foreach ( $this->build_twitter_tags( $og ) as $name => $content ) {
+			$this->print_meta( 'name', $name, $content, 'twitter:image' === $name );
+		}
+	}
+
+	/**
+	 * Whether an OG property carries a URL value (so it is esc_url'd).
+	 */
+	private function attr_kind( string $property ): string {
+		return in_array( $property, array( 'og:url', 'og:image' ), true ) ? 'url' : 'text';
+	}
+
+	/**
+	 * Print a single escaped <meta> tag.
+	 *
+	 * @param string $attr    'name' or 'property'.
+	 * @param string $key     The attribute key (e.g. 'og:title').
+	 * @param string $content The content value.
+	 * @param bool   $is_url  Escape content as a URL instead of an attribute.
+	 */
+	private function print_meta( string $attr, string $key, string $content, bool $is_url = false ): void {
+		$value = $is_url ? esc_url( $content ) : esc_attr( $content );
+		printf(
+			'<meta %1$s="%2$s" content="%3$s" />' . "\n",
+			esc_attr( $attr ),
+			esc_attr( $key ),
+			// $value is already escaped by esc_url()/esc_attr() above.
+			$value // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+		);
+	}
+
+	/**
 	 * Whether the current commerce page should carry robots noindex.
 	 *
 	 * Opinionated, zero-config: a product the merchant set to "Hidden" in
