@@ -268,6 +268,138 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
+	 * Saved value of $_GET['currency'] before seed_request_currency_from_body()
+	 * overwrote it, so it can be restored at request end. `false` means the key
+	 * was absent (distinct from `null` or `''`).
+	 *
+	 * @var string|false|null  null = not yet seeded; false = key was absent; string = prior value.
+	 */
+	private static $prior_get_currency = null;
+
+	/**
+	 * Mechanism-A spike (issue #517, spec: docs/superpowers/specs/2026-06-21-multicurrency-catalog-conversion-design.md).
+	 *
+	 * Seeds $_GET['currency'] (and $_REQUEST['currency']) from `context.currency`
+	 * in the raw POST body so WCPay's `init`-time currency switcher
+	 * (MultiCurrency::update_selected_currency_by_url(), hooked on `init:10`)
+	 * runs its normal `?currency=XXX` path and registers its price-conversion
+	 * filters for the remainder of the request.
+	 *
+	 * MUST be called on a hook that fires BEFORE WCPay's `init:10` switcher —
+	 * the caller registers this on `init:1`.  The caller also gates on REQUEST_URI
+	 * so the body-read only happens for UCP catalog/checkout-sessions POST paths.
+	 *
+	 * php://input is re-readable (the stream is not a one-shot pipe for PHP CLI-
+	 * or CGI-mode requests; FastCGI and Apache mod_php both allow multiple reads).
+	 * WordPress's own JSON-body parse happens later, inside WP_REST_Server::dispatch()
+	 * at rest_api_init time — well after `init` — so this read does not consume
+	 * the stream before WP gets to it.
+	 *
+	 * Idempotent: calling twice with the same body is a no-op after the first call.
+	 * State restore: the caller should invoke restore_request_currency() at request
+	 * end (registered via `shutdown` hook by this method) to reset $_GET so a
+	 * subsequent request in the same PHP process is unaffected.
+	 *
+	 * No-ops on: empty body, JSON parse failure, missing context.currency, or a
+	 * value that fails ISO-4217 validation (exactly 3 uppercase ASCII letters).
+	 * Deliberately does NOT check accepted_currencies here — WCPay performs its own
+	 * accepted-currency gate inside update_selected_currency_by_url(), exactly as
+	 * on the proven `?currency=` path; keeping this seed dumb avoids divergence.
+	 *
+	 * @since 0.25.0
+	 *
+	 * @param string|null $raw_body  Raw request body. Default null reads php://input.
+	 *                               Injectable for unit tests; production always uses default.
+	 * @return void
+	 */
+	public static function seed_request_currency_from_body( ?string $raw_body = null ): void {
+		// Already seeded this request — idempotent.
+		if ( null !== self::$prior_get_currency ) {
+			return;
+		}
+
+		$body = null !== $raw_body ? $raw_body : (string) file_get_contents( 'php://input' );
+
+		if ( '' === $body ) {
+			return;
+		}
+
+		$decoded = json_decode( $body, true );
+		if ( ! is_array( $decoded ) ) {
+			return;
+		}
+
+		$context = $decoded['context'] ?? null;
+		if ( ! is_array( $context ) ) {
+			return;
+		}
+
+		$currency = $context['currency'] ?? null;
+		if ( ! is_string( $currency ) ) {
+			return;
+		}
+
+		$normalized = strtoupper( trim( $currency ) );
+		if ( ! preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return;
+		}
+
+		// Capture prior state before overwriting (false = key was absent).
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		self::$prior_get_currency = array_key_exists( 'currency', $_GET )
+			? (string) $_GET['currency']
+			: false;
+
+		$_GET['currency']     = $normalized;
+		$_REQUEST['currency'] = $normalized;
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		// Restore at request end so a subsequent request in the same PHP
+		// process (e.g. WP-CLI, unit-test run) is unaffected.
+		register_shutdown_function( array( static::class, 'restore_request_currency' ) );
+	}
+
+	/**
+	 * Restore $_GET['currency'] and $_REQUEST['currency'] to their values
+	 * before seed_request_currency_from_body() ran.
+	 *
+	 * Called automatically via register_shutdown_function() after seeding,
+	 * and exposed as public so unit tests can trigger the restore inline
+	 * (shutdown functions don't fire during PHPUnit runs).
+	 *
+	 * No-ops when seed_request_currency_from_body() was never called.
+	 *
+	 * @since 0.25.0
+	 * @return void
+	 */
+	public static function restore_request_currency(): void {
+		if ( null === self::$prior_get_currency ) {
+			return;
+		}
+
+		// phpcs:disable WordPress.Security.NonceVerification.Recommended
+		if ( false === self::$prior_get_currency ) {
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+		} else {
+			$_GET['currency']     = self::$prior_get_currency;
+			$_REQUEST['currency'] = self::$prior_get_currency;
+		}
+		// phpcs:enable WordPress.Security.NonceVerification.Recommended
+
+		self::$prior_get_currency = null;
+	}
+
+	/**
+	 * Reset the seed state for tests. Never call from production code.
+	 *
+	 * @since 0.25.0
+	 * @return void
+	 */
+	public static function reset_seed_state(): void {
+		self::$prior_get_currency = null;
+	}
+
+	/**
 	 * Convert a minor-units amount from one currency to another using
 	 * WooPayments' exchange rates.
 	 *

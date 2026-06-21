@@ -129,6 +129,25 @@ class WC_AI_Storefront {
 	 * Constructor.
 	 */
 	private function __construct() {
+		// Mechanism-A spike for issue #517 (spec: docs/superpowers/specs/2026-06-21-multicurrency-catalog-conversion-design.md).
+		// Register the $_GET currency seed on init:1, which fires BEFORE WCPay's
+		// MultiCurrency::update_selected_currency_by_url() at init:10, so WCPay's
+		// normal `?currency=XXX` path runs and registers its price-conversion filters.
+		// Gate cheaply on REQUEST_URI to avoid reading php://input on non-UCP requests.
+		add_action(
+			'init',
+			static function () {
+				$uri = $_SERVER['REQUEST_URI'] ?? ''; // @phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized
+				if (
+					false !== strpos( $uri, '/wc/ucp/v1/catalog' ) ||
+					false !== strpos( $uri, '/wc/ucp/v1/checkout-sessions' )
+				) {
+					WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body();
+				}
+			},
+			1
+		);
+
 		// Rewrite rules, query vars, and cache invalidation register
 		// unconditionally so they exist before syndication is enabled.
 		// The serve callbacks check the enabled setting and return 404 if off.

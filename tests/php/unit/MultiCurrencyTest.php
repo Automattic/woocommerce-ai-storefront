@@ -22,6 +22,7 @@ namespace {
 			parent::setUp();
 			Monkey\setUp();
 			WC_AI_Storefront_Multi_Currency::reset_cache();
+			WC_AI_Storefront_Multi_Currency::reset_seed_state();
 			$GLOBALS['_mc_test_double']     = null;
 			$GLOBALS['_mc_throw']           = false;
 			$GLOBALS['_mc_feature_enabled'] = true;
@@ -58,6 +59,10 @@ namespace {
 			$GLOBALS['_mc_throw']           = false;
 			$GLOBALS['_mc_feature_enabled'] = true;
 			unset( $GLOBALS['_mc_test_filters'] );
+			// Ensure any seeded request state is cleaned up even if a test forgets tearDownSeedState().
+			WC_AI_Storefront_Multi_Currency::restore_request_currency();
+			WC_AI_Storefront_Multi_Currency::reset_seed_state();
+			unset( $_GET['currency'], $_REQUEST['currency'] );
 			Monkey\tearDown();
 			parent::tearDown();
 		}
@@ -524,6 +529,110 @@ namespace {
 		public function test_convert_amount_throws_for_negative_input(): void {
 			$this->expectException( \InvalidArgumentException::class );
 			WC_AI_Storefront_Multi_Currency::convert_amount( -1, 'EUR', 'USD' );
+		}
+
+		// ------------------------------------------------------------------
+		// seed_request_currency_from_body — Mechanism-A spike (#517)
+		// ------------------------------------------------------------------
+
+		protected function tearDownSeedState(): void {
+			WC_AI_Storefront_Multi_Currency::restore_request_currency();
+			WC_AI_Storefront_Multi_Currency::reset_seed_state();
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+		}
+
+		public function test_seed_request_currency_from_body_sets_get_currency_for_valid_code(): void {
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+
+			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
+				json_encode( array( 'context' => array( 'currency' => 'CAD' ) ) )
+			);
+
+			$this->assertSame( 'CAD', $_GET['currency'] );
+			$this->assertSame( 'CAD', $_REQUEST['currency'] );
+
+			$this->tearDownSeedState();
+		}
+
+		public function test_seed_request_currency_from_body_normalizes_lowercase_to_uppercase(): void {
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+
+			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
+				json_encode( array( 'context' => array( 'currency' => 'cad' ) ) )
+			);
+
+			$this->assertSame( 'CAD', $_GET['currency'] );
+
+			$this->tearDownSeedState();
+		}
+
+		public function test_seed_request_currency_from_body_missing_context_currency_does_not_set_get(): void {
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+
+			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
+				json_encode( array( 'some_key' => 'some_value' ) )
+			);
+
+			$this->assertArrayNotHasKey( 'currency', $_GET );
+
+			$this->tearDownSeedState();
+		}
+
+		public function test_seed_request_currency_from_body_non_iso_code_does_not_set_get(): void {
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+
+			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
+				json_encode( array( 'context' => array( 'currency' => 'gibberish' ) ) )
+			);
+
+			$this->assertArrayNotHasKey( 'currency', $_GET );
+
+			$this->tearDownSeedState();
+		}
+
+		public function test_seed_request_currency_from_body_empty_body_does_not_set_get(): void {
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+
+			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body( '' );
+
+			$this->assertArrayNotHasKey( 'currency', $_GET );
+
+			$this->tearDownSeedState();
+		}
+
+		public function test_seed_request_currency_from_body_restores_prior_get_currency_after_restore(): void {
+			$_GET['currency']     = 'USD';
+			$_REQUEST['currency'] = 'USD';
+
+			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
+				json_encode( array( 'context' => array( 'currency' => 'CAD' ) ) )
+			);
+
+			$this->assertSame( 'CAD', $_GET['currency'], 'Should be overwritten to CAD' );
+
+			WC_AI_Storefront_Multi_Currency::restore_request_currency();
+
+			$this->assertSame( 'USD', $_GET['currency'], 'Should be restored to prior USD' );
+			$this->assertSame( 'USD', $_REQUEST['currency'], 'Should be restored to prior USD' );
+
+			$this->tearDownSeedState();
+		}
+
+		public function test_seed_request_currency_from_body_restores_absent_key_when_no_prior_currency(): void {
+			unset( $_GET['currency'], $_REQUEST['currency'] );
+
+			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
+				json_encode( array( 'context' => array( 'currency' => 'CAD' ) ) )
+			);
+
+			$this->assertSame( 'CAD', $_GET['currency'] );
+
+			WC_AI_Storefront_Multi_Currency::restore_request_currency();
+
+			$this->assertArrayNotHasKey( 'currency', $_GET, 'Key should be absent after restore' );
+			$this->assertArrayNotHasKey( 'currency', $_REQUEST, 'Key should be absent after restore' );
+
+			$this->tearDownSeedState();
 		}
 
 	}
