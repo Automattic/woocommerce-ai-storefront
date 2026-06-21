@@ -628,38 +628,35 @@ class WC_AI_Storefront_Llms_Txt {
 				// final_sale does not require a country — "no returns" is a
 				// globally meaningful claim (mirrors the JSON-LD emitter).
 				$shipping_lines[] = '- **Returns**: final sale, no returns accepted';
-			} elseif ( 'returns_accepted' === $return_category ) {
+			} elseif ( 'returns_accepted' === $return_category && '' !== $ship_country ) {
 				// details+returns_accepted requires a non-empty base country
 				// (mirrors build_return_policy_block(): a return-window claim
 				// without a target region is not useful to validators or agents).
-				// When country is empty, omit the Returns line entirely.
-				if ( '' === $ship_country ) {
-					// Fall through — emit nothing, matching the JSON-LD null return.
-				} else {
-					$return_parts = [];
-					$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
-					if ( $days > 0 ) {
-						$return_parts[] = sprintf( '%d days', $days );
-					}
-					$fees_map = [
-						'FreeReturn'                       => 'free return shipping',
-						'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
-						'OriginalShippingFees'             => 'original shipping non-refundable',
-						'RestockingFees'                   => 'restocking fee applies',
-					];
-					$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
-					if ( isset( $fees_map[ $fees ] ) ) {
-						$return_parts[] = $fees_map[ $fees ];
-					}
-					// Country is sourced from wc_get_base_location() (the store
-					// base country) like the JSON-LD emitter, not from the
-					// policy object — the sanitized shape never carried a
-					// `country` field, so the old `$return_policy['country']`
-					// read was already dead.
-					$return_parts[] = 'applies to ' . self::sanitize_markdown_inline( $this->resolve_country_name( $ship_country ) );
-					if ( ! empty( $return_parts ) ) {
-						$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
-					}
+				// When country is empty the condition above is false, so no
+				// Returns line is emitted — matching the JSON-LD null return.
+				$return_parts = [];
+				$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
+				if ( $days > 0 ) {
+					$return_parts[] = sprintf( '%d days', $days );
+				}
+				$fees_map = [
+					'FreeReturn'                       => 'free return shipping',
+					'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
+					'OriginalShippingFees'             => 'original shipping non-refundable',
+					'RestockingFees'                   => 'restocking fee applies',
+				];
+				$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
+				if ( isset( $fees_map[ $fees ] ) ) {
+					$return_parts[] = $fees_map[ $fees ];
+				}
+				// Country is sourced from wc_get_base_location() (the store
+				// base country) like the JSON-LD emitter, not from the
+				// policy object — the sanitized shape never carried a
+				// `country` field, so the old `$return_policy['country']`
+				// read was already dead.
+				$return_parts[] = 'applies to ' . self::sanitize_markdown_inline( $this->resolve_country_name( $ship_country ) );
+				if ( ! empty( $return_parts ) ) {
+					$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
 				}
 			}
 		}

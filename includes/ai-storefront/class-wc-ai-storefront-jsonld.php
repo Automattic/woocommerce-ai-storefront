@@ -2267,14 +2267,15 @@ class WC_AI_Storefront_JsonLd {
 		// already handles `null` correctly (skips the
 		// `is_final_sale()` override branch). The shared builder
 		// returns `null` when policy `mode` is `unconfigured` OR when
-		// `mode: returns_accepted` is paired with an empty country
-		// (a return-window declaration without a target region is
-		// useless to validators). For `mode: final_sale` the builder
-		// emits a `MerchantReturnNotPermitted` block regardless of
-		// country — "no returns" is a globally meaningful claim. All
-		// of those outcomes are funneled through the
-		// `null !== $org_policy_block` check below — the gate emits
-		// when the builder produced a block, suppresses when it didn't.
+		// `mode='details'` with `category='returns_accepted'` is paired
+		// with an empty country (a return-window declaration without a
+		// target region is useless to validators). For `mode='details'`
+		// with `category='final_sale'` the builder emits a
+		// `MerchantReturnNotPermitted` block regardless of country —
+		// "no returns" is a globally meaningful claim. All of those
+		// outcomes are funneled through the `null !== $org_policy_block`
+		// check below — the gate emits when the builder produced a
+		// block, suppresses when it didn't.
 		//
 		// Phase 2 (making per-Offer emission conditional on the
 		// per-product final-sale override only) is deferred to a
@@ -3002,8 +3003,9 @@ class WC_AI_Storefront_JsonLd {
 	 * Implements the Option A / Option B separation from Google's return-policy
 	 * spec:
 	 *   - mode='link'    → Option B: `merchantReturnLink` only, no category.
-	 *   - mode='details' → Option A: inline `returnPolicyCategory` + country
-	 *                      (+ days/fees/methods for returns_accepted).
+	 *   - mode='details' → Option A: inline `returnPolicyCategory` + country;
+	 *                      sub-choice: category='returns_accepted' (+ days/fees/methods)
+	 *                      or category='final_sale' (no-return claim).
 	 *   - mode='unconfigured' → null (emit nothing).
 	 *
 	 * Per-product final-sale override runs first. If the product is flagged and

@@ -87,10 +87,12 @@ class WC_AI_Storefront {
 			'products_json_enabled'    => 'yes',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
-			// `unconfigured` mode emits NO policy block — until a
-			// merchant opts into one of the explicit modes
-			// (`returns_accepted` / `final_sale`) we never publish
-			// a structurally invalid claim. See
+			// `unconfigured` mode emits NO policy block — merchants
+			// choose mode='link' (Option B: policy-page URL) or
+			// mode='details' (Option A: inline claim) with sub-choice
+			// category='returns_accepted' or category='final_sale'.
+			// Until a mode is explicitly chosen we never publish a
+			// structurally invalid claim. See
 			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
 			// for the per-mode emission logic.
 			'return_policy'            => array( 'mode' => 'unconfigured' ),
