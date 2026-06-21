@@ -605,11 +605,17 @@ class WC_AI_Storefront_Llms_Txt {
 
 		if ( 'link' === $return_mode ) {
 			// Option B: a single resolved policy-page permalink. Gate on a
-			// positive id + `publish` status, mirroring the `## Policies`
-			// section's page-backed links and the JSON-LD emitter's
-			// re-check (the page can be unpublished after save).
+			// positive id + `publish` status + `page` post type, mirroring
+			// resolve_merchant_return_link() in the JSON-LD emitter. All
+			// three conditions are enforced at save-time by the sanitizer
+			// but re-checked here to handle post-save drift (page trashed,
+			// page type changed via direct DB write, etc.).
 			$return_page_id = isset( $return_policy['page_id'] ) ? (int) $return_policy['page_id'] : 0;
-			if ( $return_page_id > 0 && 'publish' === get_post_status( $return_page_id ) ) {
+			if (
+				$return_page_id > 0
+				&& 'publish' === get_post_status( $return_page_id )
+				&& 'page' === get_post_type( $return_page_id )
+			) {
 				$return_url = get_permalink( $return_page_id );
 				if ( is_string( $return_url ) && '' !== $return_url ) {
 					$shipping_lines[] = '- **Returns**: ' . esc_url_raw( $return_url );
@@ -619,33 +625,41 @@ class WC_AI_Storefront_Llms_Txt {
 			$return_category = isset( $return_policy['category'] ) ? (string) $return_policy['category'] : '';
 
 			if ( 'final_sale' === $return_category ) {
+				// final_sale does not require a country — "no returns" is a
+				// globally meaningful claim (mirrors the JSON-LD emitter).
 				$shipping_lines[] = '- **Returns**: final sale, no returns accepted';
 			} elseif ( 'returns_accepted' === $return_category ) {
-				$return_parts = [];
-				$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
-				if ( $days > 0 ) {
-					$return_parts[] = sprintf( '%d days', $days );
-				}
-				$fees_map = [
-					'FreeReturn'                       => 'free return shipping',
-					'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
-					'OriginalShippingFees'             => 'original shipping non-refundable',
-					'RestockingFees'                   => 'restocking fee applies',
-				];
-				$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
-				if ( isset( $fees_map[ $fees ] ) ) {
-					$return_parts[] = $fees_map[ $fees ];
-				}
-				// Country is sourced from wc_get_base_location() (the store
-				// base country) like the JSON-LD emitter, not from the
-				// policy object — the sanitized shape never carried a
-				// `country` field, so the old `$return_policy['country']`
-				// read was already dead.
-				if ( '' !== $ship_country ) {
+				// details+returns_accepted requires a non-empty base country
+				// (mirrors build_return_policy_block(): a return-window claim
+				// without a target region is not useful to validators or agents).
+				// When country is empty, omit the Returns line entirely.
+				if ( '' === $ship_country ) {
+					// Fall through — emit nothing, matching the JSON-LD null return.
+				} else {
+					$return_parts = [];
+					$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
+					if ( $days > 0 ) {
+						$return_parts[] = sprintf( '%d days', $days );
+					}
+					$fees_map = [
+						'FreeReturn'                       => 'free return shipping',
+						'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
+						'OriginalShippingFees'             => 'original shipping non-refundable',
+						'RestockingFees'                   => 'restocking fee applies',
+					];
+					$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
+					if ( isset( $fees_map[ $fees ] ) ) {
+						$return_parts[] = $fees_map[ $fees ];
+					}
+					// Country is sourced from wc_get_base_location() (the store
+					// base country) like the JSON-LD emitter, not from the
+					// policy object — the sanitized shape never carried a
+					// `country` field, so the old `$return_policy['country']`
+					// read was already dead.
 					$return_parts[] = 'applies to ' . self::sanitize_markdown_inline( $this->resolve_country_name( $ship_country ) );
-				}
-				if ( ! empty( $return_parts ) ) {
-					$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
+					if ( ! empty( $return_parts ) ) {
+						$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
+					}
 				}
 			}
 		}

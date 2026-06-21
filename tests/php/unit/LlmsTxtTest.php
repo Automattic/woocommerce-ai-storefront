@@ -190,6 +190,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// its line; the trashed/deleted-page tests override this to
 		// `'trash'` / `false`.
 		Functions\when( 'get_post_status' )->justReturn( 'publish' );
+		// The Returns link in llms.txt also gates on `page` post type
+		// (parity with resolve_merchant_return_link()). Default to `'page'`
+		// so tests that configure a page_id render the link; tests that
+		// exercise the non-page drift path override this to another type.
+		Functions\when( 'get_post_type' )->justReturn( 'page' );
 
 		// Note: NOT stubbing `WC()` here despite the new generate()
 		// reaching into WC()->countries->countries via the
@@ -740,6 +745,75 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$output = $this->llms->generate();
 
 		$this->assertStringNotContainsString( '## Shipping & Returns', $output );
+	}
+
+	public function test_link_mode_omits_returns_link_when_page_id_is_non_page_post_type(): void {
+		// Parity with resolve_merchant_return_link(): both `publish` status AND
+		// `page` post type are required. A page_id pointing at a `post` (or any
+		// non-`page` type) must not surface a Returns link in llms.txt —
+		// mirroring the JSON-LD emitter which also gates on post_type.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [
+				'mode'    => 'link',
+				'page_id' => 88,
+			],
+		];
+
+		Functions\when( 'get_post_status' )->justReturn( 'publish' );
+		Functions\when( 'get_post_type' )->justReturn( 'post' ); // non-page type
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 88 === (int) $id ? 'https://example.com/returns-policy/' : false
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '- **Returns**:', $output );
+	}
+
+	public function test_details_returns_accepted_omitted_when_base_country_empty(): void {
+		// Parity with build_return_policy_block(): details+returns_accepted
+		// requires a non-empty store base country. Without a country the
+		// Returns line must be omitted entirely from llms.txt.
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '', 'state' => '' ]
+		);
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
+			],
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '- **Returns**:', $output );
+	}
+
+	public function test_details_final_sale_emits_even_when_base_country_empty(): void {
+		// Parity with build_return_policy_block(): final_sale does NOT
+		// require a country — "no returns" is a globally meaningful claim.
+		// The Returns line must still appear even when base country is empty.
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '', 'state' => '' ]
+		);
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [
+				'mode'     => 'details',
+				'category' => 'final_sale',
+			],
+		];
+
+		$output = $this->llms->generate();
+
+		$this->assertStringContainsString( '- **Returns**: final sale, no returns accepted', $output );
 	}
 
 	// ------------------------------------------------------------------
