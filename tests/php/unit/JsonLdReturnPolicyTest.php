@@ -1024,4 +1024,81 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 2, $methods, 'Duplicate methods must be deduped at emission.' );
 		$this->assertSame( array_unique( $methods ), $methods );
 	}
+
+	// ------------------------------------------------------------------
+	// Fail-closed defensive branches (FIX 5a)
+	// ------------------------------------------------------------------
+
+	public function test_unknown_top_level_mode_emits_no_policy_block(): void {
+		// The sanitizer rejects unknown modes at save time (failing closed
+		// to 'unconfigured'), but a direct DB write or a malformed filter
+		// could bypass it. The emitter must also fail closed: an
+		// unrecognized top-level mode value must produce no policy block,
+		// matching the JS derivePreview() fail-closed guard.
+		$this->set_settings( [ 'mode' => 'gibberish' ] );
+		$result = $this->run_with_offer();
+
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0],
+			'Unknown top-level mode must not emit a policy block (fail closed).'
+		);
+	}
+
+	public function test_details_with_unknown_category_emits_no_policy_block(): void {
+		// mode='details' with an unrecognized category value must also
+		// fail closed. Mirrors the JS guard: `category !== RETURNS_ACCEPTED
+		// && category !== FINAL_SALE → return null`.
+		$this->set_settings(
+			[
+				'mode'     => 'details',
+				'category' => 'gibberish',
+			]
+		);
+		$result = $this->run_with_offer();
+
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0],
+			'mode=details + unknown category must not emit a policy block (fail closed).'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Per-product override: unpublished link page (FIX 5c)
+	//
+	// Currently only the page_id=0 path is covered. This test verifies
+	// that when the store is mode='link' but the linked page has been
+	// unpublished (get_post_status returns 'draft'), the link drops and
+	// the per-product final-sale override falls back to bare
+	// MerchantReturnNotPermitted (no merchantReturnLink key).
+	// ------------------------------------------------------------------
+
+	public function test_per_product_final_sale_with_link_mode_and_unpublished_page_emits_not_permitted(): void {
+		// Page is registered (page_id > 0) but unpublished — status drifted
+		// after save. The link resolution must fail (no URL emitted), and
+		// the per-product final-sale override must fall back to bare
+		// MerchantReturnNotPermitted, not nothing.
+		Functions\when( 'get_post_status' )->justReturn( 'draft' );
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'link',
+				'page_id' => 99,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory'],
+			'Flagged product + link mode + unpublished page must fall back to MerchantReturnNotPermitted.'
+		);
+		$this->assertArrayNotHasKey(
+			'merchantReturnLink',
+			$block,
+			'merchantReturnLink must be absent when the linked page is unpublished.'
+		);
+	}
 }

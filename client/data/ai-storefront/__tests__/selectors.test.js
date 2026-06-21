@@ -207,13 +207,23 @@ describe( 'AI Syndication selectors', () => {
 		it( 'distinguishes nested object differences', () => {
 			// `return_policy` is a nested object — JSON.stringify
 			// recurses, so a change inside the nested shape correctly
-			// reads as dirty.
+			// reads as dirty. Uses the current mode+category shape
+			// (returns_accepted is category='returns_accepted' under
+			// mode='details', not a top-level mode).
 			const state = {
 				settings: {
-					return_policy: { mode: 'returns_accepted', days: 30 },
+					return_policy: {
+						mode: 'details',
+						category: 'returns_accepted',
+						days: 30,
+					},
 				},
 				savedSettings: {
-					return_policy: { mode: 'returns_accepted', days: 14 },
+					return_policy: {
+						mode: 'details',
+						category: 'returns_accepted',
+						days: 14,
+					},
 				},
 			};
 			expect( isDirty( state ) ).toBe( true );
