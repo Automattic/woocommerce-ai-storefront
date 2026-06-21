@@ -10,6 +10,7 @@
 import {
 	applyHandlingTimeMin,
 	applyHandlingTimeMax,
+	applyModeChange,
 	derivePreview,
 	deriveHandlingTimePreview,
 } from '../policies-tab';
@@ -198,6 +199,35 @@ describe( 'derivePreview', () => {
 		expect(
 			derivePreview( { mode: 'details', category: 'gibberish' }, 'US' )
 		).toBeNull();
+	} );
+} );
+
+describe( 'applyModeChange', () => {
+	it( 'sets the new mode', () => {
+		const next = applyModeChange( { mode: 'unconfigured' }, 'link' );
+		expect( next.mode ).toBe( 'link' );
+	} );
+
+	it( 'defaults category to returns_accepted when entering details with no category', () => {
+		const next = applyModeChange( { mode: 'unconfigured' }, 'details' );
+		expect( next.mode ).toBe( 'details' );
+		expect( next.category ).toBe( 'returns_accepted' );
+	} );
+
+	it( 'preserves an existing category when re-entering details', () => {
+		const next = applyModeChange(
+			{ mode: 'details', category: 'final_sale' },
+			'details'
+		);
+		expect( next.mode ).toBe( 'details' );
+		expect( next.category ).toBe( 'final_sale' );
+	} );
+
+	it( 'does not mutate its input', () => {
+		const input = { mode: 'details', category: 'final_sale', days: 30 };
+		const snapshot = JSON.parse( JSON.stringify( input ) );
+		applyModeChange( input, 'link' );
+		expect( input ).toEqual( snapshot );
 	} );
 } );
 

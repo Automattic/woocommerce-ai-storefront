@@ -303,6 +303,31 @@ export const derivePreview = ( policy, country ) => {
 };
 
 /**
+ * Pure helper: produce the next policy draft when the top-level return
+ * mode changes. Resets fields that don't belong to the new mode so stale
+ * values (e.g. a `page_id` left over from `link`, or `days`/`fees`/
+ * `methods` left over from `details`) never survive a mode switch and
+ * silently leak back into the emitted JSON-LD.
+ *
+ * Starts from the complete `DEFAULT_POLICY` shape and overrides only
+ * `mode`. When entering `details`, the merchant's current `category` is
+ * carried forward so toggling away from `details` and back doesn't snap
+ * the sub-choice back to `returns_accepted`; with no prior category it
+ * defaults to `returns_accepted`. Pure: never mutates its input.
+ *
+ * @param {Object} policy  Current policy draft.
+ * @param {string} newMode New top-level mode (`unconfigured`/`link`/`details`).
+ * @return {Object} The next policy draft.
+ */
+export const applyModeChange = ( policy, newMode ) => {
+	const next = { ...DEFAULT_POLICY, mode: newMode };
+	if ( newMode === POLICY_MODES.DETAILS ) {
+		next.category = policy.category || CATEGORY_OPTIONS.RETURNS_ACCEPTED;
+	}
+	return next;
+};
+
+/**
  * Pure helper: derive the JSON-LD `ShippingDeliveryTime.handlingTime` block
  * from a draft handling-time state. Mirrors the server-side
  * `WC_AI_Storefront_JsonLd::add_handling_time()` emission contract.
@@ -456,18 +481,6 @@ const ReturnRefundPolicySection = ( {
 		onChange( { ...policy, [ field ]: value } );
 	};
 
-	// Switching mode resets fields that don't belong to the new mode so
-	// stale values don't survive in the draft. Preserve category when
-	// staying in details.
-	const handleModeChange = ( val ) => {
-		const next = { ...DEFAULT_POLICY, mode: val };
-		if ( val === POLICY_MODES.DETAILS ) {
-			next.category =
-				policy.category || CATEGORY_OPTIONS.RETURNS_ACCEPTED;
-		}
-		onChange( next );
-	};
-
 	const handleMethodToggle = ( method, checked ) => {
 		const next = checked
 			? Array.from( new Set( [ ...( policy.methods || [] ), method ] ) )
@@ -542,7 +555,9 @@ const ReturnRefundPolicySection = ( {
 						'woocommerce-ai-storefront'
 					) }
 					value={ policy.mode }
-					onChange={ handleModeChange }
+					onChange={ ( val ) =>
+						onChange( applyModeChange( policy, val ) )
+					}
 					options={ [
 						{
 							value: POLICY_MODES.UNCONFIGURED,
