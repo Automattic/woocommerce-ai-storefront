@@ -21,7 +21,7 @@ These layers are **complementary, not substitutes**:
 
 **WooCommerce / WordPress core is the single source of truth.** This plugin reads core fields and never an SEO plugin's parallel copies:
 
-- GTIN → core Global Unique ID field (WC 9.2+). Brand → core Brand taxonomy (WC 9.6+).
+- GTIN → core Global Unique ID field (WC 9.4+). Brand → core Brand taxonomy (WC 9.5+).
 - Any historical reads of an SEO plugin's stored options (e.g. social-profile URLs) are *legacy fallbacks*, not preferred sources, and read from the database (which survives the plugin being deactivated) — never a runtime dependency on the SEO plugin being active.
 
 Yoast-stored data is **migration territory**, considered later — never a runtime dependency.

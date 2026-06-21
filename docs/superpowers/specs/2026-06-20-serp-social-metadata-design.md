@@ -21,7 +21,7 @@ The merchant-facing goal is **replace, not coexist-subservient**: installing thi
 
 **WooCommerce/WordPress core is the single source of truth.** The plugin reads core fields and never an SEO plugin's parallel copies. Examples:
 
-- GTIN → core Global Unique ID field (WC 9.2+). Brand → core Brand taxonomy (WC 9.6+).
+- GTIN → core Global Unique ID field (WC 9.4+). Brand → core Brand taxonomy (WC 9.5+).
 - Existing opportunistic reads of `wpseo_social` (sameAs) and `_yoast_wpseo_primary_product_cat` (primary category) are **legacy fallbacks, not preferred sources** — they exist only because core lacked an equivalent, and they migrate out as core grows native homes. They are read from the DB (which survives plugin deactivation), so they are not a runtime dependency on Yoast being active.
 
 Yoast-stored data is **migration territory**, considered later — never a runtime dependency.
