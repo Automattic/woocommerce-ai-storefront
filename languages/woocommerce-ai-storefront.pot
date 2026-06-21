@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-21T19:05:49+00:00\n"
+"POT-Creation-Date: 2026-06-21T19:07:23+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -59,7 +59,7 @@ msgid "Could not load crawler stats."
 msgstr ""
 
 #: includes/admin/class-wc-ai-storefront-product-meta-box.php:140
-#: client/settings/ai-storefront/policies-tab.js:674
+#: client/settings/ai-storefront/policies-tab.js:696
 msgid "Final sale"
 msgstr ""
 
@@ -1076,13 +1076,13 @@ msgid "/ min"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:2776
-#: client/settings/ai-storefront/policies-tab.js:1395
+#: client/settings/ai-storefront/policies-tab.js:1417
 #: client/settings/ai-storefront/product-selection.js:1926
 msgid "Saving…"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:2777
-#: client/settings/ai-storefront/policies-tab.js:1396
+#: client/settings/ai-storefront/policies-tab.js:1418
 #: client/settings/ai-storefront/product-selection.js:1927
 msgid "Save changes"
 msgstr ""
@@ -1115,113 +1115,113 @@ msgstr ""
 msgid "Return at kiosk"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:381
+#: client/settings/ai-storefront/policies-tab.js:402
 msgid "Decrease"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:428
+#: client/settings/ai-storefront/policies-tab.js:449
 msgid "Increase"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:495
+#: client/settings/ai-storefront/policies-tab.js:517
 msgid "— No policy page selected —"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:534
+#: client/settings/ai-storefront/policies-tab.js:556
 msgid "Return & refund policy"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:546
+#: client/settings/ai-storefront/policies-tab.js:568
 msgid "AI agents read this to decide whether to recommend your products and place buy actions. Without a clear return policy, they typically downgrade or skip your products in favour of competitors who publish one."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:553
+#: client/settings/ai-storefront/policies-tab.js:575
 msgid "How should returns be described?"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:564
+#: client/settings/ai-storefront/policies-tab.js:586
 msgid "Not configured"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:571
+#: client/settings/ai-storefront/policies-tab.js:593
 msgid "Link to a returns page"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:578
+#: client/settings/ai-storefront/policies-tab.js:600
 msgid "Specify the details here"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:589
+#: client/settings/ai-storefront/policies-tab.js:611
 msgid "AI agents may downgrade your products in recommendations, or skip them entirely. Pick a returns mode to publish a policy."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:606
+#: client/settings/ai-storefront/policies-tab.js:628
 msgid "Link AI agents to a full-text returns policy page on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:617
-#: client/settings/ai-storefront/policies-tab.js:629
+#: client/settings/ai-storefront/policies-tab.js:639
+#: client/settings/ai-storefront/policies-tab.js:651
 msgid "Returns policy page"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:653
+#: client/settings/ai-storefront/policies-tab.js:675
 msgid "Return category"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:667
+#: client/settings/ai-storefront/policies-tab.js:689
 msgid "Returns accepted"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:720
+#: client/settings/ai-storefront/policies-tab.js:742
 msgid "Applied as the default for all returns. You can override this per product on the Product edit screen."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:731
-#: client/settings/ai-storefront/policies-tab.js:740
+#: client/settings/ai-storefront/policies-tab.js:753
+#: client/settings/ai-storefront/policies-tab.js:762
 msgid "Return fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:763
+#: client/settings/ai-storefront/policies-tab.js:785
 msgid "Return window (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:782
+#: client/settings/ai-storefront/policies-tab.js:804
 msgid "Leave at 0 to publish \"Unspecified\" instead of a finite window."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:836
+#: client/settings/ai-storefront/policies-tab.js:858
 msgid "Return methods"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:965
+#: client/settings/ai-storefront/policies-tab.js:987
 msgid "Shipping"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:974
+#: client/settings/ai-storefront/policies-tab.js:996
 msgid "Set your typical order handling time so AI agents can quote an accurate fulfilment window before checkout."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:998
+#: client/settings/ai-storefront/policies-tab.js:1020
 msgid "Min handling time (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1019
+#: client/settings/ai-storefront/policies-tab.js:1041
 msgid "Max handling time (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1038
+#: client/settings/ai-storefront/policies-tab.js:1060
 msgid "Leave both at 0 to omit handling time from structured data."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1323
+#: client/settings/ai-storefront/policies-tab.js:1345
 msgid "Store policies"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1332
+#: client/settings/ai-storefront/policies-tab.js:1354
 msgid "Policies AI agents can quote to shoppers before checkout."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1341
+#: client/settings/ai-storefront/policies-tab.js:1363
 msgid "Could not load your pages. Page links won't be available."
 msgstr ""
 

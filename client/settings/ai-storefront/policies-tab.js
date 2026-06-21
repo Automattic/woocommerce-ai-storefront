@@ -187,9 +187,11 @@ const SegmentedControl = ( {
  * caller can compute the would-be emission shape without a roundtrip.
  *
  * Currently consumed only by the unit-test suite
- * (`__tests__/policies-tab.test.js`), which exercises both this helper
- * and the server emitter against the same fixtures to keep the two
- * implementations in lockstep. No production render path uses this
+ * (`__tests__/policies-tab.test.js`), which covers the same emission
+ * scenarios as `JsonLdReturnPolicyTest.php`. The two suites are
+ * independent — there is no shared cross-language fixture harness —
+ * so they must be kept in sync manually whenever either the JS helper
+ * or the PHP emitter changes. No production render path uses this
  * function — the merchant-facing live-preview block was removed; the
  * Discovery tab's reachability check + the actual product page's
  * JSON-LD inspector are the wire-level verification surfaces.
@@ -290,9 +292,28 @@ export const derivePreview = ( policy, country ) => {
 						'https://schema.org/MerchantReturnUnspecified',
 			  };
 
-	block.returnFees = 'https://schema.org/' + ( policy.fees || 'FreeReturn' );
+	// Mirror the PHP emitter's emit-time allow-lists so invalid stored
+	// values don't produce bogus schema.org URLs. The save-time sanitizer
+	// rejects unknown values, but a direct DB write or import could bypass
+	// it — matching the PHP emitter's defense-in-depth.
+	const FEES_ALLOW_LIST = new Set( [
+		'FreeReturn',
+		'ReturnFeesCustomerResponsibility',
+		'OriginalShippingFees',
+		'RestockingFees',
+	] );
+	const METHODS_ALLOW_LIST = new Set( [
+		'ReturnByMail',
+		'ReturnInStore',
+		'ReturnAtKiosk',
+	] );
 
-	const methods = Array.isArray( policy.methods ) ? policy.methods : [];
+	const feesValue = FEES_ALLOW_LIST.has( policy.fees ) ? policy.fees : 'FreeReturn';
+	block.returnFees = 'https://schema.org/' + feesValue;
+
+	const methods = ( Array.isArray( policy.methods ) ? policy.methods : [] ).filter(
+		( m ) => METHODS_ALLOW_LIST.has( m )
+	);
 	if ( methods.length === 1 ) {
 		block.returnMethod = 'https://schema.org/' + methods[ 0 ];
 	} else if ( methods.length >= 2 ) {
@@ -462,8 +483,9 @@ const StepperInput = ( { id, value, onChange, min = 0, max = 365 } ) => (
  * up through `onChange` so the parent (`PoliciesTab`) owns the
  * canonical draft. The mode/category split mirrors the server-side
  * `build_return_policy_block()` Option A / Option B separation — the
- * preview helper `derivePreview()` and the server emitter are exercised
- * in lockstep by the test suite.
+ * preview helper `derivePreview()` and the PHP emitter each have their
+ * own independent test suites that cover the same scenarios and must
+ * be kept in sync manually.
  *
  * @param {Object}   props
  * @param {Object}   props.policy       Current policy draft (mode + sub-fields).

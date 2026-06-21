@@ -200,6 +200,45 @@ describe( 'derivePreview', () => {
 			derivePreview( { mode: 'details', category: 'gibberish' }, 'US' )
 		).toBeNull();
 	} );
+
+	// -- allow-list parity with PHP emitter --
+
+	it( 'invalid fees value defaults to schema.org/FreeReturn', () => {
+		// The PHP emitter sanitizes fees against an allow-list at emission
+		// time (EvilReturn → FreeReturn). derivePreview must mirror this so
+		// invalid stored values don't produce a bogus schema.org URL.
+		const block = derivePreview(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 30,
+				fees: 'EvilReturn',
+				methods: [],
+			},
+			'US'
+		);
+		expect( block.returnFees ).toBe( 'https://schema.org/FreeReturn' );
+	} );
+
+	it( 'non-allow-listed method is dropped from returnMethod', () => {
+		// The PHP emitter filters methods to the allow-list. derivePreview
+		// must do the same so a bogus stored method doesn't produce an
+		// invalid schema.org URL.
+		const block = derivePreview(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 14,
+				fees: 'FreeReturn',
+				methods: [ 'ReturnByMail', 'NotAValidMethod', 'ReturnInStore' ],
+			},
+			'US'
+		);
+		expect( block.returnMethod ).toEqual( [
+			'https://schema.org/ReturnByMail',
+			'https://schema.org/ReturnInStore',
+		] );
+	} );
 } );
 
 describe( 'applyModeChange', () => {
