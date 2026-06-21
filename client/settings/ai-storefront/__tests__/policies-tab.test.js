@@ -229,6 +229,56 @@ describe( 'applyModeChange', () => {
 		applyModeChange( input, 'link' );
 		expect( input ).toEqual( snapshot );
 	} );
+
+	it( 'clears details fields when switching details -> link (no stale days/fees/methods)', () => {
+		// Core anti-stale-value contract: switching modes must reset the
+		// other branch's fields to DEFAULT_POLICY so a leftover
+		// days/fees/methods never leaks back into emitted JSON-LD. Mutating
+		// applyModeChange to spread `...policy` instead of `...DEFAULT_POLICY`
+		// makes these assertions fail.
+		const next = applyModeChange(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 30,
+				fees: 'RestockingFees',
+				methods: [ 'ReturnByMail', 'ReturnInStore' ],
+			},
+			'link'
+		);
+		expect( next.mode ).toBe( 'link' );
+		expect( next.days ).toBe( 0 );
+		expect( next.fees ).toBe( 'FreeReturn' );
+		expect( next.methods ).toEqual( [] );
+		expect( next.page_id ).toBe( 0 );
+	} );
+
+	it( 'clears the link page_id when switching link -> details', () => {
+		const next = applyModeChange(
+			{ mode: 'link', page_id: 42 },
+			'details'
+		);
+		expect( next.mode ).toBe( 'details' );
+		expect( next.page_id ).toBe( 0 );
+	} );
+
+	it( 'clears all branch fields when switching details -> unconfigured', () => {
+		const next = applyModeChange(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 30,
+				fees: 'RestockingFees',
+				methods: [ 'ReturnByMail' ],
+			},
+			'unconfigured'
+		);
+		expect( next.mode ).toBe( 'unconfigured' );
+		expect( next.days ).toBe( 0 );
+		expect( next.fees ).toBe( 'FreeReturn' );
+		expect( next.methods ).toEqual( [] );
+		expect( next.page_id ).toBe( 0 );
+	} );
 } );
 
 describe( 'applyHandlingTimeMin', () => {

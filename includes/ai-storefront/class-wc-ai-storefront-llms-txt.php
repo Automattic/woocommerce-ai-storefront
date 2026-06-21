@@ -590,35 +590,64 @@ class WC_AI_Storefront_Llms_Txt {
 			$shipping_lines[] = '- **Handling time**: ' . $range;
 		}
 
+		// Mirrors the new unconfigured/link/details shape persisted by
+		// WC_AI_Storefront_Return_Policy::sanitize() and emitted by
+		// WC_AI_Storefront_JsonLd::build_return_policy_block(). The
+		// accepted/final-sale distinction now lives in `category` under
+		// mode='details'; the old top-level `returns_accepted`/`final_sale`
+		// modes no longer exist (the sanitizer fails them closed to
+		// 'unconfigured'), so this reader keys off mode + category to stay
+		// in lockstep with the JSON-LD emitter.
 		$return_policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
 			? $settings['return_policy']
 			: [];
 		$return_mode   = isset( $return_policy['mode'] ) ? (string) $return_policy['mode'] : 'unconfigured';
 
-		if ( 'returns_accepted' === $return_mode ) {
-			$return_parts = [];
-			$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
-			if ( $days > 0 ) {
-				$return_parts[] = sprintf( '%d days', $days );
+		if ( 'link' === $return_mode ) {
+			// Option B: a single resolved policy-page permalink. Gate on a
+			// positive id + `publish` status, mirroring the `## Policies`
+			// section's page-backed links and the JSON-LD emitter's
+			// re-check (the page can be unpublished after save).
+			$return_page_id = isset( $return_policy['page_id'] ) ? (int) $return_policy['page_id'] : 0;
+			if ( $return_page_id > 0 && 'publish' === get_post_status( $return_page_id ) ) {
+				$return_url = get_permalink( $return_page_id );
+				if ( is_string( $return_url ) && '' !== $return_url ) {
+					$shipping_lines[] = '- **Returns**: ' . esc_url_raw( $return_url );
+				}
 			}
-			$fees_map = [
-				'FreeReturn'                       => 'free return shipping',
-				'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
-				'OriginalShippingFees'             => 'original shipping non-refundable',
-				'RestockingFees'                   => 'restocking fee applies',
-			];
-			$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
-			if ( isset( $fees_map[ $fees ] ) ) {
-				$return_parts[] = $fees_map[ $fees ];
+		} elseif ( 'details' === $return_mode ) {
+			$return_category = isset( $return_policy['category'] ) ? (string) $return_policy['category'] : '';
+
+			if ( 'final_sale' === $return_category ) {
+				$shipping_lines[] = '- **Returns**: final sale, no returns accepted';
+			} elseif ( 'returns_accepted' === $return_category ) {
+				$return_parts = [];
+				$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
+				if ( $days > 0 ) {
+					$return_parts[] = sprintf( '%d days', $days );
+				}
+				$fees_map = [
+					'FreeReturn'                       => 'free return shipping',
+					'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
+					'OriginalShippingFees'             => 'original shipping non-refundable',
+					'RestockingFees'                   => 'restocking fee applies',
+				];
+				$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
+				if ( isset( $fees_map[ $fees ] ) ) {
+					$return_parts[] = $fees_map[ $fees ];
+				}
+				// Country is sourced from wc_get_base_location() (the store
+				// base country) like the JSON-LD emitter, not from the
+				// policy object — the sanitized shape never carried a
+				// `country` field, so the old `$return_policy['country']`
+				// read was already dead.
+				if ( '' !== $ship_country ) {
+					$return_parts[] = 'applies to ' . self::sanitize_markdown_inline( $this->resolve_country_name( $ship_country ) );
+				}
+				if ( ! empty( $return_parts ) ) {
+					$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
+				}
 			}
-			if ( ! empty( $return_policy['country'] ) ) {
-				$return_parts[] = 'applies to ' . self::sanitize_markdown_inline( (string) $return_policy['country'] );
-			}
-			if ( ! empty( $return_parts ) ) {
-				$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
-			}
-		} elseif ( 'final_sale' === $return_mode ) {
-			$shipping_lines[] = '- **Returns**: final sale, no returns accepted';
 		}
 
 		if ( ! empty( $shipping_lines ) ) {

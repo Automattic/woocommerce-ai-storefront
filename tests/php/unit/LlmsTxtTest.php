@@ -634,34 +634,96 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_shipping_section_emits_returns_when_accepted(): void {
+		// New shape: mode='details' + category='returns_accepted'. The
+		// sanitizer can no longer persist a top-level `returns_accepted`
+		// mode (allowed_modes is unconfigured/link/details), so the
+		// accepted/final-sale distinction moved into `category`. Country
+		// is sourced from `wc_get_base_location()` (US default), mirroring
+		// the JSON-LD emitter — the old top-level `country` field is gone.
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'return_policy'          => [
-				'mode'    => 'returns_accepted',
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'country' => 'US',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
+			],
+		];
+
+		// Country name resolves via the injected country-map seam so the
+		// "applies to" clause renders a human-readable name.
+		$llms   = $this->llms_with_countries( [ 'US' => 'United States' ] );
+		$output = $llms->generate();
+
+		$this->assertStringContainsString( '- **Returns**: 30 days', $output );
+		$this->assertStringContainsString( 'free return shipping', $output );
+		$this->assertStringContainsString( 'applies to United States', $output );
+	}
+
+	public function test_shipping_section_emits_final_sale_when_no_returns(): void {
+		// New shape: mode='details' + category='final_sale'.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [
+				'mode'     => 'details',
+				'category' => 'final_sale',
 			],
 		];
 
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( '- **Returns**: 30 days', $output );
-		$this->assertStringContainsString( 'free return shipping', $output );
-		$this->assertStringContainsString( 'applies to US', $output );
+		$this->assertStringContainsString( '- **Returns**: final sale, no returns accepted', $output );
 	}
 
-	public function test_shipping_section_emits_final_sale_when_no_returns(): void {
+	public function test_shipping_section_emits_returns_link_when_mode_link(): void {
+		// New shape: mode='link' + page_id. The Returns subline links the
+		// resolved, published policy-page permalink. Mirrors the
+		// `## Policies` section's gate: positive id + `publish` status.
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [ 'mode' => 'final_sale' ],
+			'return_policy'          => [
+				'mode'    => 'link',
+				'page_id' => 88,
+			],
 		];
+
+		Functions\when( 'get_post_status' )->justReturn( 'publish' );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 88 === (int) $id ? 'https://example.com/returns-policy/' : false
+		);
 
 		$output = $this->llms->generate();
 
-		$this->assertStringContainsString( '- **Returns**: final sale, no returns accepted', $output );
+		$this->assertStringContainsString(
+			'- **Returns**: https://example.com/returns-policy/',
+			$output
+		);
+	}
+
+	public function test_shipping_section_omits_returns_link_when_page_unpublished(): void {
+		// mode='link' but the page is no longer published (drift after
+		// save). No Returns line, mirroring the JSON-LD emitter and the
+		// `## Policies` trashed-page handling.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [
+				'mode'    => 'link',
+				'page_id' => 88,
+			],
+		];
+
+		Functions\when( 'get_post_status' )->justReturn( 'trash' );
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => 88 === (int) $id ? 'https://example.com/returns-policy/' : false
+		);
+
+		$output = $this->llms->generate();
+
+		$this->assertStringNotContainsString( '- **Returns**:', $output );
 	}
 
 	public function test_shipping_section_omitted_when_no_data_configured(): void {
@@ -929,7 +991,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => array( 'mode' => 'final_sale' ),
+			'return_policy'          => array(
+				'mode'     => 'details',
+				'category' => 'final_sale',
+			),
 		);
 		Functions\when( 'get_privacy_policy_url' )->justReturn( 'https://example.com/privacy-policy/' );
 		Functions\when( 'wc_terms_and_conditions_page_id' )->justReturn( 0 );
