@@ -3519,6 +3519,13 @@ class WC_AI_Storefront_JsonLd {
 		$effective_page = min( $per_page, 100 );
 		$position       = ( ( $paged - 1 ) * $effective_page ) + 1;
 
+		// Mirror the product page return policy into stub offers (#518).
+		$return_policy  = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
+			? $settings['return_policy']
+			: array( 'mode' => 'unconfigured' );
+		$base_location  = function_exists( 'wc_get_base_location' ) ? wc_get_base_location() : array();
+		$policy_country = is_array( $base_location ) ? (string) ( $base_location['country'] ?? '' ) : '';
+
 		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
@@ -3592,6 +3599,16 @@ class WC_AI_Storefront_JsonLd {
 				$product_stub['image'] = $image_url;
 			}
 
+			// Mirror product-page description (#518 — same WC core strip/shortcode pattern).
+			$raw_description = (string) $product->get_short_description();
+			if ( '' === $raw_description ) {
+				$raw_description = (string) $product->get_description();
+			}
+			$description = trim( wp_strip_all_tags( do_shortcode( $raw_description ) ) );
+			if ( '' !== $description ) {
+				$product_stub['description'] = $description;
+			}
+
 			if ( '' !== (string) $price ) {
 				$product_stub['offers'] = array(
 					'@type'         => 'Offer',
@@ -3601,6 +3618,16 @@ class WC_AI_Storefront_JsonLd {
 						? 'https://schema.org/InStock'
 						: 'https://schema.org/OutOfStock',
 				);
+			}
+
+			// Mirror product-page return policy onto stub offer (#518).
+			if ( isset( $product_stub['offers'] ) ) {
+				$parent_id         = wp_get_post_parent_id( $product->get_id() );
+				$policy_product_id = $parent_id > 0 ? $parent_id : $product->get_id();
+				$policy_block      = $this->build_return_policy_block( $return_policy, $policy_country, $policy_product_id );
+				if ( null !== $policy_block ) {
+					$product_stub['offers']['hasMerchantReturnPolicy'] = $policy_block;
+				}
 			}
 
 			// All-in-one carousel ListItem: `position` + nested `item` only.

@@ -60,6 +60,22 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product_tag' )->justReturn( false );
 		Functions\when( 'is_search' )->justReturn( false );
 		Functions\when( 'is_woocommerce' )->justReturn( false );
+		// Stubs needed by description + hasMerchantReturnPolicy enrichment (#518).
+		// do_shortcode: pass-through (description content has no shortcodes in tests).
+		Functions\when( 'do_shortcode' )->returnArg( 1 );
+		// wp_get_post_parent_id: default 0 (non-variation); policy tests override.
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
+		// wc_get_base_location: default US; policy tests with blank country override.
+		Functions\when( 'wc_get_base_location' )->justReturn( [ 'country' => 'US' ] );
+		// get_post_status / get_post_type: needed by resolve_merchant_return_link
+		// when a page_id is configured (Option B). Default to 'publish'/'page' so
+		// the helpers that stub page_id don't also need to re-stub these.
+		Functions\when( 'get_post_status' )->justReturn( 'publish' );
+		Functions\when( 'get_post_type' )->justReturn( 'page' );
+		// get_post_meta: needed by WC_AI_Storefront_Product_Meta_Box::is_final_sale()
+		// which build_return_policy_block() calls for per-product overrides.
+		// Default '' → not final-sale; the test scenarios here are all regular products.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
 	}
 
 	protected function tearDown(): void {
@@ -233,7 +249,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		bool $in_stock,
 		int $rating_count = 0,
 		string $average_rating = '0',
-		int $review_count = 0
+		int $review_count = 0,
+		string $short = '',
+		string $desc = ''
 	): object {
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $id );
@@ -247,6 +265,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_rating_count' )->andReturn( $rating_count );
 		$product->shouldReceive( 'get_average_rating' )->andReturn( $average_rating );
 		$product->shouldReceive( 'get_review_count' )->andReturn( $review_count );
+		// Description (#518): default empty → no description emitted; tests that
+		// exercise description pass a non-empty $short or $desc.
+		$product->shouldReceive( 'get_short_description' )->andReturn( $short );
+		$product->shouldReceive( 'get_description' )->andReturn( $desc );
 		return $product;
 	}
 
@@ -697,6 +719,8 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 				$p->shouldReceive( 'get_rating_count' )->andReturn( 0 );
 				$p->shouldReceive( 'get_average_rating' )->andReturn( '0' );
 				$p->shouldReceive( 'get_review_count' )->andReturn( 0 );
+				$p->shouldReceive( 'get_short_description' )->andReturn( '' );
+				$p->shouldReceive( 'get_description' )->andReturn( '' );
 				return [ $p ];
 			}
 		);
@@ -765,6 +789,8 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_rating_count' )->andReturn( 0 );
 		$product->shouldReceive( 'get_average_rating' )->andReturn( '0' );
 		$product->shouldReceive( 'get_review_count' )->andReturn( 0 );
+		$product->shouldReceive( 'get_short_description' )->andReturn( '' );
+		$product->shouldReceive( 'get_description' )->andReturn( '' );
 
 		Functions\when( 'wp_get_attachment_url' )->justReturn( 'https://example.com/tee.jpg' );
 		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
@@ -778,5 +804,88 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$stub = $data['itemListElement'][0]['item'];
 		$this->assertSame( 'TEE-001', $stub['sku'] );
 		$this->assertSame( 'https://example.com/tee.jpg', $stub['image'] );
+	}
+
+	// -------------------------------------------------------------------------
+	// description enrichment (#518) — mirrors the product-page short/long
+	// description so the homepage ItemList isn't flagged for missing fields.
+	// -------------------------------------------------------------------------
+
+	public function test_stub_includes_description_from_short_description(): void {
+		$this->enable_shop_page();
+		// Product with a short description.
+		$stub = $this->first_stub(
+			[ $this->make_product( 1, 'Hoodie', '49.00', true, 0, '0', 0, 'A cosy zip-up hoodie.' ) ]
+		);
+
+		$this->assertArrayHasKey( 'description', $stub );
+		$this->assertSame( 'A cosy zip-up hoodie.', $stub['description'] );
+	}
+
+	public function test_stub_falls_back_to_long_description_when_short_is_empty(): void {
+		$this->enable_shop_page();
+		// No short description but a long one: the stub falls back to get_description().
+		$stub = $this->first_stub(
+			[ $this->make_product( 1, 'Hoodie', '49.00', true, 0, '0', 0, '', 'Full description here.' ) ]
+		);
+
+		$this->assertArrayHasKey( 'description', $stub );
+		$this->assertSame( 'Full description here.', $stub['description'] );
+	}
+
+	public function test_stub_omits_description_when_both_are_empty(): void {
+		$this->enable_shop_page();
+		// Default make_product: $short = '' and $desc = '' → no description key.
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertArrayNotHasKey( 'description', $stub );
+	}
+
+	public function test_stub_strips_html_tags_from_description(): void {
+		$this->enable_shop_page();
+		// HTML in the short description must be stripped (same as product page).
+		$stub = $this->first_stub(
+			[ $this->make_product( 1, 'Hoodie', '49.00', true, 0, '0', 0, '<p>Bold <strong>hoodie</strong>.</p>' ) ]
+		);
+
+		$this->assertSame( 'Bold hoodie.', $stub['description'] );
+	}
+
+	// -------------------------------------------------------------------------
+	// hasMerchantReturnPolicy enrichment (#518) — mirrors the product page's
+	// offer-level return policy block onto each stub's offer.
+	// -------------------------------------------------------------------------
+
+	public function test_stub_offer_includes_return_policy_link_when_configured(): void {
+		$this->enable_shop_page();
+		// Option B: a published return-policy page configured → merchantReturnLink.
+		// get_post_status / get_post_type default to 'publish'/'page' from setUp().
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+			'return_policy'          => [
+				'mode'    => 'returns_accepted',
+				'page_id' => 99,
+				'days'    => 30,
+			],
+		];
+		Functions\when( 'get_permalink' )->alias( static fn( $id ) => "https://example.com/?p={$id}" );
+
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertArrayHasKey( 'hasMerchantReturnPolicy', $stub['offers'] );
+		$policy = $stub['offers']['hasMerchantReturnPolicy'];
+		$this->assertSame( 'MerchantReturnPolicy', $policy['@type'] );
+		$this->assertSame( 'https://example.com/?p=99', $policy['merchantReturnLink'] );
+		// Option B is link-only — no inline detail keys.
+		$this->assertArrayNotHasKey( 'returnPolicyCategory', $policy );
+	}
+
+	public function test_stub_offer_omits_return_policy_when_not_configured(): void {
+		$this->enable_shop_page();
+		// Default test settings: no return_policy key → unconfigured → no emission.
+		$stub = $this->first_stub( [ $this->make_product( 1, 'Hoodie', '49.00', true ) ] );
+
+		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $stub['offers'] );
 	}
 }
