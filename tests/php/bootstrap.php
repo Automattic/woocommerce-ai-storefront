@@ -53,9 +53,11 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-logger.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-crawl-logger.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-return-policy.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-llms-txt.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-meta-tags.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-products-feed.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-ucp.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-attribution.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-cache-invalidator.php';
@@ -91,6 +93,7 @@ require_once $plugin_path . 'admin/class-wc-ai-storefront-admin-controller.php';
 // — exercised by JsonLdReturnPolicyTest's per-product override
 // branches plus the dedicated ProductMetaBoxTest.
 require_once $plugin_path . 'admin/class-wc-ai-storefront-product-meta-box.php';
+require_once dirname( __DIR__, 2 ) . '/includes/admin/class-wc-ai-storefront-schema-conflict-notice.php';
 
 // Self-updater wrapper around the PUC library (1.4.0+).
 require_once $plugin_path . 'class-wc-ai-storefront-updater.php';

@@ -381,6 +381,16 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		}
 
 		/**
+		 * Product short description (post excerpt). Declared so PHPStan sees
+		 * the signature used by
+		 * `WC_AI_Storefront_Meta_Tags::build_description()`. Tests override
+		 * the return value via Mockery.
+		 */
+		public function get_short_description(): string {
+			return '';
+		}
+
+		/**
 		 * Variation/product sale-end date. Declared so
 		 * `method_exists( $variation, 'get_date_on_sale_to' )` resolves
 		 * true in the per-variant `priceValidUntil` derivation in
