@@ -11,9 +11,10 @@
  *
  * Mode-aware shape: only the fields that are meaningful for the
  * resolved mode are persisted. `unconfigured` stores `mode` only;
- * `final_sale` stores `mode` + `page_id`; `returns_accepted` stores
- * the full 5-field shape. This prevents stale `days`/`fees`/`methods`
- * from lingering when a merchant flips modes.
+ * `link` stores `mode` + `page_id`; `details` + `final_sale` stores
+ * `mode` + `category`; `details` + `returns_accepted` stores the full
+ * shape. This prevents stale `days`/`fees`/`methods` from lingering
+ * when a merchant flips modes.
  *
  * @package WooCommerce_AI_Storefront
  * @since 0.1.15
@@ -30,25 +31,20 @@ class WC_AI_Storefront_Return_Policy {
 	 * Sanitize a raw return-policy input.
 	 *
 	 * Field rules:
-	 *   - `mode`: one of `unconfigured`, `returns_accepted`,
-	 *     `final_sale`. Default `unconfigured` (emit no policy).
-	 *   - `page_id`: WP page ID. Must point to an existing, published
-	 *     `page` post. Otherwise reset to 0 (omit `merchantReturnLink`).
-	 *   - `days`: integer 0–365, OR null to mean "no days configured" —
-	 *     emission smart-degrades to `MerchantReturnUnspecified` rather
-	 *     than emit a `FiniteReturnWindow` without `merchantReturnDays`.
-	 *   - `fees`: one of `FreeReturn`, `ReturnFeesCustomerResponsibility`,
-	 *     `OriginalShippingFees`, `RestockingFees`. Default `FreeReturn`.
-	 *   - `methods`: array of `ReturnByMail`, `ReturnInStore`,
-	 *     `ReturnAtKiosk`. Deduped and reindexed. Empty array allowed
-	 *     (omits the field).
+	 *   - `mode`: one of `unconfigured`, `link`, `details`. Default `unconfigured`.
+	 *   - `page_id`: WP page ID. Used iff mode === 'link'. Must point to an
+	 *     existing, published `page` post. Otherwise reset to 0.
+	 *   - `category`: one of `returns_accepted`, `final_sale`. Used iff
+	 *     mode === 'details'. Unknown/missing → fails closed to `unconfigured`.
+	 *   - `days`, `fees`, `methods`: used iff mode === 'details' &&
+	 *     category === 'returns_accepted'. Same rules as before.
 	 *
 	 * Mode-aware persistence:
-	 *   - `unconfigured` → returns `[ 'mode' => 'unconfigured' ]` only.
-	 *   - `final_sale` → returns `[ 'mode', 'page_id' ]`. The other
-	 *     three fields are nonsensical when returns are not permitted,
-	 *     so we drop them rather than carry stale values forward.
-	 *   - `returns_accepted` → returns all 5 fields.
+	 *   - `unconfigured` → `{ mode }` only.
+	 *   - `link`         → `{ mode, page_id }`.
+	 *   - `details` + `final_sale`      → `{ mode, category }`.
+	 *   - `details` + `returns_accepted` → `{ mode, category, days, fees, methods }`.
+	 *   Unknown `mode` or `category` → `{ mode: 'unconfigured' }`.
 	 *
 	 * @param mixed $policy Raw return-policy input.
 	 * @return array<string, mixed>
@@ -58,7 +54,7 @@ class WC_AI_Storefront_Return_Policy {
 			$policy = [];
 		}
 
-		$allowed_modes = [ 'unconfigured', 'returns_accepted', 'final_sale' ];
+		$allowed_modes = [ 'unconfigured', 'link', 'details' ];
 		$mode          = isset( $policy['mode'] ) && in_array( $policy['mode'], $allowed_modes, true )
 			? $policy['mode']
 			: 'unconfigured';
@@ -67,30 +63,41 @@ class WC_AI_Storefront_Return_Policy {
 			return [ 'mode' => 'unconfigured' ];
 		}
 
-		// Page ID validation — accept only IDs that resolve to a
-		// published `page` post. A draft / trashed / deleted page
-		// would otherwise emit a broken `merchantReturnLink`.
-		$page_id = isset( $policy['page_id'] ) ? self::absint( $policy['page_id'] ) : 0;
-		if ( $page_id > 0 ) {
-			$status = function_exists( 'get_post_status' ) ? get_post_status( $page_id ) : false;
-			$type   = function_exists( 'get_post_type' ) ? get_post_type( $page_id ) : false;
-			if ( 'publish' !== $status || 'page' !== $type ) {
-				$page_id = 0;
+		if ( 'link' === $mode ) {
+			$page_id = isset( $policy['page_id'] ) ? self::absint( $policy['page_id'] ) : 0;
+			if ( $page_id > 0 ) {
+				$status = function_exists( 'get_post_status' ) ? get_post_status( $page_id ) : false;
+				$type   = function_exists( 'get_post_type' ) ? get_post_type( $page_id ) : false;
+				if ( 'publish' !== $status || 'page' !== $type ) {
+					$page_id = 0;
+				}
 			}
-		}
-
-		if ( 'final_sale' === $mode ) {
-			// Only `mode` + `page_id` are meaningful for final_sale.
-			// Drop `days` / `fees` / `methods` — they don't apply when
-			// returns aren't permitted, and persisting them would
-			// resurrect stale state if the merchant flipped back.
 			return [
-				'mode'    => 'final_sale',
+				'mode'    => 'link',
 				'page_id' => $page_id,
 			];
 		}
 
-		// Mode: returns_accepted — full 5-field shape.
+		// mode === 'details': requires a valid category.
+		$allowed_categories = [ 'returns_accepted', 'final_sale' ];
+		$category           = isset( $policy['category'] ) && in_array( $policy['category'], $allowed_categories, true )
+			? $policy['category']
+			: null;
+
+		if ( null === $category ) {
+			// Unknown/missing category: fail closed.
+			return [ 'mode' => 'unconfigured' ];
+		}
+
+		if ( 'final_sale' === $category ) {
+			// Only mode + category are meaningful for final_sale.
+			return [
+				'mode'     => 'details',
+				'category' => 'final_sale',
+			];
+		}
+
+		// details + returns_accepted: full 5-field shape (no page_id).
 
 		// `days` accepts integer 0–365 OR null (no window configured).
 		// Null is the canonical "unset" representation; legacy 0 is
@@ -130,11 +137,11 @@ class WC_AI_Storefront_Return_Policy {
 		$methods = array_values( array_unique( $methods ) );
 
 		return [
-			'mode'    => 'returns_accepted',
-			'page_id' => $page_id,
-			'days'    => $days,
-			'fees'    => $fees,
-			'methods' => $methods,
+			'mode'     => 'details',
+			'category' => 'returns_accepted',
+			'days'     => $days,
+			'fees'     => $fees,
+			'methods'  => $methods,
 		];
 	}
 
