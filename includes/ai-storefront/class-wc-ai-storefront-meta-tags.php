@@ -47,7 +47,8 @@ class WC_AI_Storefront_Meta_Tags {
 
 		return ( function_exists( 'is_product' ) && is_product() )
 			|| ( function_exists( 'is_product_category' ) && is_product_category() )
-			|| ( function_exists( 'is_shop' ) && is_shop() );
+			|| ( function_exists( 'is_shop' ) && is_shop() )
+			|| ( function_exists( 'is_search' ) && is_search() && 'product' === get_query_var( 'post_type' ) );
 	}
 
 	/**
@@ -191,14 +192,17 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Build the Open Graph tag map for a product page.
 	 *
-	 * @param WC_Product $product Product.
+	 * @param WC_Product  $product     Product.
+	 * @param string|null $description Optional pre-built description; when null,
+	 *                                 it is derived via build_description() so the
+	 *                                 description filter fires only once per render.
 	 * @return array<string,string> property => content.
 	 */
-	public function build_og_tags( $product ): array {
+	public function build_og_tags( $product, ?string $description = null ): array {
 		$og = array(
 			'og:type'        => 'product',
 			'og:title'       => $product->get_name(),
-			'og:description' => $this->build_description( $product ),
+			'og:description' => null === $description ? $this->build_description( $product ) : $description,
 			'og:url'         => get_permalink( $product->get_id() ),
 			'og:site_name'   => get_bloginfo( 'name' ),
 		);
@@ -246,13 +250,17 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Build the Open Graph tag map for a category or shop archive.
 	 *
+	 * @param string|null $description Optional pre-built description; when null,
+	 *                                 it is derived via build_archive_description()
+	 *                                 so the description filter fires only once per
+	 *                                 render.
 	 * @return array<string,string> property => content.
 	 */
-	public function build_archive_og_tags(): array {
+	public function build_archive_og_tags( ?string $description = null ): array {
 		$site = get_bloginfo( 'name' );
 		$og   = array(
 			'og:type'        => 'website',
-			'og:description' => $this->build_archive_description(),
+			'og:description' => null === $description ? $this->build_archive_description() : $description,
 			'og:site_name'   => $site,
 			'og:title'       => $site,
 			'og:url'         => '',
@@ -323,11 +331,15 @@ class WC_AI_Storefront_Meta_Tags {
 				return;
 			}
 			$description = $this->build_description( $product );
-			$og          = $this->build_og_tags( $product );
-		} else {
-			// Category or shop archive (should_emit() guarantees one of these).
+			$og          = $this->build_og_tags( $product, $description );
+		} elseif ( ( function_exists( 'is_product_category' ) && is_product_category() )
+			|| ( function_exists( 'is_shop' ) && is_shop() ) ) {
 			$description = $this->build_archive_description();
-			$og          = $this->build_archive_og_tags();
+			$og          = $this->build_archive_og_tags( $description );
+		} else {
+			// Product-search results: robots noindex only (emitted above);
+			// there is no single product or term to describe.
+			return;
 		}
 
 		if ( '' !== $description ) {
@@ -343,9 +355,15 @@ class WC_AI_Storefront_Meta_Tags {
 	 */
 	private function print_og_and_twitter( array $og ): void {
 		foreach ( $og as $property => $content ) {
+			if ( '' === $content ) {
+				continue;
+			}
 			$this->print_meta( 'property', $property, $content, 'url' === $this->attr_kind( $property ) );
 		}
 		foreach ( $this->build_twitter_tags( $og ) as $name => $content ) {
+			if ( '' === $content ) {
+				continue;
+			}
 			$this->print_meta( 'name', $name, $content, 'twitter:image' === $name );
 		}
 	}
