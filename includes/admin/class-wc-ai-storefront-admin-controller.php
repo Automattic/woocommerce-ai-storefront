@@ -109,10 +109,13 @@ class WC_AI_Storefront_Admin_Controller {
 						'return_policy'            => array(
 							'type'       => 'object',
 							'properties' => array(
-								'mode'    => array(
+								'mode'     => array(
 									'type' => 'string',
 								),
-								'page_id' => array(
+								'category' => array(
+									'type' => 'string',
+								),
+								'page_id'  => array(
 									'type' => 'integer',
 								),
 								// `days` accepts integer OR null (the
@@ -121,13 +124,13 @@ class WC_AI_Storefront_Admin_Controller {
 								// `'null'` in the type list, sending
 								// `days: null` would 400 even though
 								// it's a canonical sanitizer output.
-								'days'    => array(
+								'days'     => array(
 									'type' => array( 'integer', 'null' ),
 								),
-								'fees'    => array(
+								'fees'     => array(
 									'type' => 'string',
 								),
-								'methods' => array(
+								'methods'  => array(
 									'type'  => 'array',
 									'items' => array(
 										'type' => 'string',

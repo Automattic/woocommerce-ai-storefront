@@ -6,11 +6,13 @@
  * the Offer level. Before this section shipped, the plugin emitted a
  * structurally invalid `MerchantReturnFiniteReturnWindow` block on
  * every product (no `merchantReturnDays`, no `merchantReturnLink`);
- * Google's validators reject that combination. The current flow lets
- * merchants choose one of three explicit modes (returns accepted /
- * final sale / don't expose) and smart-degrades to
- * `MerchantReturnUnspecified` when days aren't set, so the plugin
- * never publishes a broken claim.
+ * Google's validators reject that combination. The current flow makes
+ * Google's Option A (inline detail) vs. Option B (link) distinction
+ * explicit: merchants pick one of three modes (not configured / link to
+ * a returns page / specify the details here). In `details` mode they
+ * then pick a category (returns accepted / final sale); returns-accepted
+ * smart-degrades to `MerchantReturnUnspecified` when days aren't set, so
+ * the plugin never publishes a broken claim.
  *
  * The tab is structured to host additional policy sections in the
  * future (shipping policy, legal pages); for now the return-policy
@@ -35,6 +37,11 @@ import { TabInputStyles } from './tab-input-styles';
 
 const POLICY_MODES = {
 	UNCONFIGURED: 'unconfigured',
+	LINK: 'link',
+	DETAILS: 'details',
+};
+
+const CATEGORY_OPTIONS = {
 	RETURNS_ACCEPTED: 'returns_accepted',
 	FINAL_SALE: 'final_sale',
 };
@@ -76,6 +83,7 @@ const METHOD_OPTIONS = [
 const DEFAULT_POLICY = {
 	mode: POLICY_MODES.UNCONFIGURED,
 	page_id: 0,
+	category: CATEGORY_OPTIONS.RETURNS_ACCEPTED,
 	days: 0,
 	fees: 'FreeReturn',
 	methods: [],
@@ -179,9 +187,11 @@ const SegmentedControl = ( {
  * caller can compute the would-be emission shape without a roundtrip.
  *
  * Currently consumed only by the unit-test suite
- * (`__tests__/policies-tab.test.js`), which exercises both this helper
- * and the server emitter against the same fixtures to keep the two
- * implementations in lockstep. No production render path uses this
+ * (`__tests__/policies-tab.test.js`), which covers the same emission
+ * scenarios as `JsonLdReturnPolicyTest.php`. The two suites are
+ * independent — there is no shared cross-language fixture harness —
+ * so they must be kept in sync manually whenever either the JS helper
+ * or the PHP emitter changes. No production render path uses this
  * function — the merchant-facing live-preview block was removed; the
  * Discovery tab's reachability check + the actual product page's
  * JSON-LD inspector are the wire-level verification surfaces.
@@ -192,47 +202,79 @@ const SegmentedControl = ( {
  * primitive to render from.
  *
  * @param {Object} policy  Draft policy state. Recognised fields:
- *                         `mode`, `page_id`, `days`, `fees`,
- *                         `methods[]`, `pageLink` — the last is a
- *                         test-input shape (production code resolves
- *                         the URL server-side).
+ *                         `mode` (`unconfigured`/`link`/`details`),
+ *                         `page_id`, `pageLink` (link mode),
+ *                         `category` (`returns_accepted`/`final_sale`),
+ *                         `days`, `fees`, `methods[]` (details +
+ *                         returns_accepted). `pageLink` is a test-input
+ *                         surrogate (production resolves the URL
+ *                         server-side).
  * @param {string} country Store base country (ISO 3166-1 alpha-2).
- *                         Empty string returns null, mirroring the
- *                         server-side `if ( $country && ... )` gate.
+ *                         Empty string returns null for
+ *                         details+returns_accepted, mirroring the
+ *                         server-side country gate; link and final_sale
+ *                         do not require a country.
  * @return {Object|null}   Structured-data block, or `null` for
  *                         `unconfigured` (no emission).
  */
 export const derivePreview = ( policy, country ) => {
-	if ( ! country || policy.mode === POLICY_MODES.UNCONFIGURED ) {
+	const mode = policy.mode;
+
+	if ( ! mode || mode === POLICY_MODES.UNCONFIGURED ) {
 		return null;
 	}
 
-	if ( policy.mode === POLICY_MODES.FINAL_SALE ) {
+	// mode: link — Option B: merchantReturnLink only, no category,
+	// no applicableCountry. `pageLink` is the test-input surrogate for
+	// the server-resolved permalink (production resolves server-side
+	// via resolve_merchant_return_link).
+	if ( mode === POLICY_MODES.LINK ) {
+		if ( ! policy.pageLink || policy.page_id <= 0 ) {
+			return null;
+		}
+		return {
+			'@type': 'MerchantReturnPolicy',
+			merchantReturnLink: policy.pageLink,
+		};
+	}
+
+	// Fail closed for any unknown mode. A corrupted / legacy /
+	// filter-mutated mode value would otherwise silently produce a
+	// block in tests that disagrees with the server's
+	// `build_return_policy_block()` (which also fails closed). Mirrors
+	// the server's defense-in-depth so client-server parity stays
+	// intact under malformed input.
+	if ( mode !== POLICY_MODES.DETAILS ) {
+		return null;
+	}
+
+	const category = policy.category;
+
+	// mode: details, category: final_sale — Option A: NotPermitted.
+	// The country gate does not block it; applicableCountry is added
+	// only when a country is set.
+	if ( category === CATEGORY_OPTIONS.FINAL_SALE ) {
 		const block = {
 			'@type': 'MerchantReturnPolicy',
-			applicableCountry: country,
 			returnPolicyCategory:
 				'https://schema.org/MerchantReturnNotPermitted',
 		};
-		if ( policy.page_id > 0 && policy.pageLink ) {
-			block.merchantReturnLink = policy.pageLink;
+		if ( country ) {
+			block.applicableCountry = country;
 		}
 		return block;
 	}
 
-	// Fail closed for any unknown mode. `unconfigured` and
-	// `final_sale` were handled above; only `returns_accepted` should
-	// reach the structured-block construction below. A corrupted /
-	// legacy / filter-mutated mode value would otherwise silently
-	// produce a returns-accepted block in tests that disagrees with
-	// the server's `build_return_policy_block()` (which also fails
-	// closed). Mirrors the server's defense-in-depth so client-server
-	// parity stays intact under malformed input.
-	if ( policy.mode !== POLICY_MODES.RETURNS_ACCEPTED ) {
+	if ( category !== CATEGORY_OPTIONS.RETURNS_ACCEPTED ) {
+		// Unknown category: fail closed.
 		return null;
 	}
 
-	// returns_accepted
+	// details + returns_accepted requires a country.
+	if ( ! country ) {
+		return null;
+	}
+
 	const days = Number( policy.days ) || 0;
 	const block =
 		days > 0
@@ -250,12 +292,30 @@ export const derivePreview = ( policy, country ) => {
 						'https://schema.org/MerchantReturnUnspecified',
 			  };
 
-	if ( policy.page_id > 0 && policy.pageLink ) {
-		block.merchantReturnLink = policy.pageLink;
-	}
-	block.returnFees = 'https://schema.org/' + ( policy.fees || 'FreeReturn' );
+	// Mirror the PHP emitter's emit-time allow-lists so invalid stored
+	// values don't produce bogus schema.org URLs. The save-time sanitizer
+	// rejects unknown values, but a direct DB write or import could bypass
+	// it — matching the PHP emitter's defense-in-depth.
+	const FEES_ALLOW_LIST = new Set( [
+		'FreeReturn',
+		'ReturnFeesCustomerResponsibility',
+		'OriginalShippingFees',
+		'RestockingFees',
+	] );
+	const METHODS_ALLOW_LIST = new Set( [
+		'ReturnByMail',
+		'ReturnInStore',
+		'ReturnAtKiosk',
+	] );
 
-	const methods = Array.isArray( policy.methods ) ? policy.methods : [];
+	const feesValue = FEES_ALLOW_LIST.has( policy.fees )
+		? policy.fees
+		: 'FreeReturn';
+	block.returnFees = 'https://schema.org/' + feesValue;
+
+	const methods = (
+		Array.isArray( policy.methods ) ? policy.methods : []
+	).filter( ( m ) => METHODS_ALLOW_LIST.has( m ) );
 	if ( methods.length === 1 ) {
 		block.returnMethod = 'https://schema.org/' + methods[ 0 ];
 	} else if ( methods.length >= 2 ) {
@@ -263,6 +323,31 @@ export const derivePreview = ( policy, country ) => {
 	}
 
 	return block;
+};
+
+/**
+ * Pure helper: produce the next policy draft when the top-level return
+ * mode changes. Resets fields that don't belong to the new mode so stale
+ * values (e.g. a `page_id` left over from `link`, or `days`/`fees`/
+ * `methods` left over from `details`) never survive a mode switch and
+ * silently leak back into the emitted JSON-LD.
+ *
+ * Starts from the complete `DEFAULT_POLICY` shape and overrides only
+ * `mode`. When entering `details`, the merchant's current `category` is
+ * carried forward so toggling away from `details` and back doesn't snap
+ * the sub-choice back to `returns_accepted`; with no prior category it
+ * defaults to `returns_accepted`. Pure: never mutates its input.
+ *
+ * @param {Object} policy  Current policy draft.
+ * @param {string} newMode New top-level mode (`unconfigured`/`link`/`details`).
+ * @return {Object} The next policy draft.
+ */
+export const applyModeChange = ( policy, newMode ) => {
+	const next = { ...DEFAULT_POLICY, mode: newMode };
+	if ( newMode === POLICY_MODES.DETAILS ) {
+		next.category = policy.category || CATEGORY_OPTIONS.RETURNS_ACCEPTED;
+	}
+	return next;
 };
 
 /**
@@ -388,15 +473,21 @@ const StepperInput = ( { id, value, onChange, min = 0, max = 365 } ) => (
 
 /**
  * The return & refund policy configuration section inside the Policies
- * tab. Renders the three-way mode toggle (returns accepted / final
- * sale / don't expose), conditional fields per mode, and a live
- * JSON-LD preview of what the server will emit.
+ * tab. Renders the three-way mode toggle (not configured / link to a
+ * returns page / specify the details here) with conditional reveal:
+ *   - `link`    → the page dropdown only (Option B).
+ *   - `details` → a category sub-choice (returns accepted / final sale);
+ *                 returns accepted reveals days/fees/methods, final sale
+ *                 reveals nothing further (Option A).
+ *   - `unconfigured` → a warning Notice.
  *
  * The section is purely presentational: every state change is bubbled
  * up through `onChange` so the parent (`PoliciesTab`) owns the
- * canonical draft. The preview is computed via `derivePreview()` and
- * mirrors the server-side `build_return_policy_block()` smart-degrade
- * logic — the two are exercised in lockstep by the test suite.
+ * canonical draft. The mode/category split mirrors the server-side
+ * `build_return_policy_block()` Option A / Option B separation — the
+ * preview helper `derivePreview()` and the PHP emitter each have their
+ * own independent test suites that cover the same scenarios and must
+ * be kept in sync manually.
  *
  * @param {Object}   props
  * @param {Object}   props.policy       Current policy draft (mode + sub-fields).
@@ -483,28 +574,33 @@ const ReturnRefundPolicySection = ( {
 				</p>
 
 				<SegmentedControl
-					label={ __( 'Policy mode', 'woocommerce-ai-storefront' ) }
+					label={ __(
+						'How should returns be described?',
+						'woocommerce-ai-storefront'
+					) }
 					value={ policy.mode }
-					onChange={ ( val ) => handleField( 'mode', val ) }
+					onChange={ ( val ) =>
+						onChange( applyModeChange( policy, val ) )
+					}
 					options={ [
-						{
-							value: POLICY_MODES.RETURNS_ACCEPTED,
-							label: __(
-								'Returns accepted',
-								'woocommerce-ai-storefront'
-							),
-						},
-						{
-							value: POLICY_MODES.FINAL_SALE,
-							label: __(
-								'No returns',
-								'woocommerce-ai-storefront'
-							),
-						},
 						{
 							value: POLICY_MODES.UNCONFIGURED,
 							label: __(
-								"Don't expose",
+								'Not configured',
+								'woocommerce-ai-storefront'
+							),
+						},
+						{
+							value: POLICY_MODES.LINK,
+							label: __(
+								'Link to a returns page',
+								'woocommerce-ai-storefront'
+							),
+						},
+						{
+							value: POLICY_MODES.DETAILS,
+							label: __(
+								'Specify the details here',
 								'woocommerce-ai-storefront'
 							),
 						},
@@ -515,178 +611,206 @@ const ReturnRefundPolicySection = ( {
 					{ policy.mode === POLICY_MODES.UNCONFIGURED && (
 						<Notice status="warning" isDismissible={ false }>
 							{ __(
-								'AI agents may downgrade your products in recommendations, or skip them entirely. Pick "Returns accepted" or "No returns" to publish a policy.',
+								'AI agents may downgrade your products in recommendations, or skip them entirely. Pick a returns mode to publish a policy.',
 								'woocommerce-ai-storefront'
 							) }
 						</Notice>
 					) }
 
-					{ policy.mode === POLICY_MODES.RETURNS_ACCEPTED && (
-						<>
-							{ /*
-								Field order: Policy page → Return fees →
-								Return window → Return methods. The two
-								Select dropdowns sit adjacent at the top
-								as a "what is your policy" pair, sharing
-								the same 320px width so the eye tracks
-								down the column rather than zigzagging.
-								Return window is a numeric detail that
-								follows the policy choice (96px input);
-								Return methods is a multi-select that
-								closes the section.
-
-								Width rule:
-								- Select dropdowns: 320px. Comfortably
-								  fits the longest fee label
-								  ("Customer pays return fees", 24
-								  chars) and matches the WordPress core
-								  settings-field rhythm. 480px (the
-								  prior value) was wider than any
-								  option content needed.
-								- Number input: 96px on the input
-								  itself; the BaseControl wrapper spans
-								  the panel so its uppercase tracked
-								  label "RETURN WINDOW (DAYS)" and
-								  helper text don't truncate or wrap
-								  to 4 narrow lines under a 120px
-								  field. NumberControl's built-in
-								  label/help props are deliberately
-								  unused here — they would inherit the
-								  96px input width.
-							*/ }
-							<div
-								style={ {
-									marginBottom: spacing.s4,
-									maxWidth: '320px',
-								} }
+					{ policy.mode === POLICY_MODES.LINK && (
+						<div
+							style={ {
+								marginBottom: spacing.s4,
+								maxWidth: '320px',
+							} }
+						>
+							<BaseControl
+								__nextHasNoMarginBottom
+								id="wc-ai-storefront-policy-page"
+								help={ __(
+									'Link AI agents to a full-text returns policy page on your store.',
+									'woocommerce-ai-storefront'
+								) }
 							>
-								<BaseControl
-									__nextHasNoMarginBottom
-									id="wc-ai-storefront-policy-page"
-									help={ __(
-										'Link AI agents to a full-text policy page on your store.',
-										'woocommerce-ai-storefront'
-									) }
-								>
-									<BaseControl.VisualLabel
-										style={ {
-											...typography.eyebrowLabel,
-											color: colors.textSecondary,
-										} }
-									>
-										{ __(
-											'Policy page (optional)',
-											'woocommerce-ai-storefront'
-										) }
-									</BaseControl.VisualLabel>
-									{ pagesLoading ? (
-										<Spinner />
-									) : (
-										<SelectControl
-											__nextHasNoMarginBottom
-											id="wc-ai-storefront-policy-page"
-											hideLabelFromVision
-											label={ __(
-												'Policy page (optional)',
-												'woocommerce-ai-storefront'
-											) }
-											value={ String( policy.page_id ) }
-											options={ pageOptions.map(
-												( o ) => ( {
-													...o,
-													value: String( o.value ),
-												} )
-											) }
-											onChange={ ( val ) =>
-												handleField(
-													'page_id',
-													parseInt( val, 10 ) || 0
-												)
-											}
-										/>
-									) }
-								</BaseControl>
-							</div>
-
-							<div
-								style={ {
-									marginBottom: spacing.s4,
-									maxWidth: '320px',
-								} }
-							>
-								<BaseControl
-									__nextHasNoMarginBottom
-									id="wc-ai-storefront-return-fees"
-									help={ __(
-										'Applied as the default for all returns. You can override this per product on the Product edit screen.',
-										'woocommerce-ai-storefront'
-									) }
-								>
-									<BaseControl.VisualLabel
-										style={ {
-											...typography.eyebrowLabel,
-											color: colors.textSecondary,
-										} }
-									>
-										{ __(
-											'Return fees',
-											'woocommerce-ai-storefront'
-										) }
-									</BaseControl.VisualLabel>
-									<SelectControl
-										__nextHasNoMarginBottom
-										id="wc-ai-storefront-return-fees"
-										hideLabelFromVision
-										label={ __(
-											'Return fees',
-											'woocommerce-ai-storefront'
-										) }
-										value={ policy.fees }
-										options={ FEE_OPTIONS }
-										onChange={ ( val ) =>
-											handleField( 'fees', val )
-										}
-									/>
-								</BaseControl>
-							</div>
-
-							<div style={ { marginBottom: spacing.s4 } }>
-								<label
-									htmlFor="wc-ai-storefront-return-window"
+								<BaseControl.VisualLabel
 									style={ {
-										display: 'block',
-										marginBottom: spacing.s1,
 										...typography.eyebrowLabel,
 										color: colors.textSecondary,
 									} }
 								>
 									{ __(
-										'Return window (days)',
+										'Returns policy page',
 										'woocommerce-ai-storefront'
 									) }
-								</label>
-								<StepperInput
-									id="wc-ai-storefront-return-window"
-									value={ policy.days ?? 0 }
-									onChange={ ( v ) =>
-										handleField( 'days', v )
-									}
-								/>
-								<p
-									style={ {
-										margin: `${ spacing.s1 } 0 0`,
-										fontSize: '12px',
-										color: colors.textMuted,
-									} }
-								>
-									{ __(
-										'Leave at 0 to publish "Unspecified" instead of a finite window.',
-										'woocommerce-ai-storefront'
-									) }
-								</p>
-							</div>
+								</BaseControl.VisualLabel>
+								{ pagesLoading ? (
+									<Spinner />
+								) : (
+									<SelectControl
+										__nextHasNoMarginBottom
+										id="wc-ai-storefront-policy-page"
+										hideLabelFromVision
+										label={ __(
+											'Returns policy page',
+											'woocommerce-ai-storefront'
+										) }
+										value={ String( policy.page_id || 0 ) }
+										options={ pageOptions.map( ( o ) => ( {
+											...o,
+											value: String( o.value ),
+										} ) ) }
+										onChange={ ( val ) =>
+											handleField(
+												'page_id',
+												parseInt( val, 10 ) || 0
+											)
+										}
+									/>
+								) }
+							</BaseControl>
+						</div>
+					) }
 
-							{ /*
+					{ policy.mode === POLICY_MODES.DETAILS && (
+						<>
+							<SegmentedControl
+								label={ __(
+									'Return category',
+									'woocommerce-ai-storefront'
+								) }
+								value={
+									policy.category ||
+									CATEGORY_OPTIONS.RETURNS_ACCEPTED
+								}
+								onChange={ ( val ) =>
+									handleField( 'category', val )
+								}
+								options={ [
+									{
+										value: CATEGORY_OPTIONS.RETURNS_ACCEPTED,
+										label: __(
+											'Returns accepted',
+											'woocommerce-ai-storefront'
+										),
+									},
+									{
+										value: CATEGORY_OPTIONS.FINAL_SALE,
+										label: __(
+											'Final sale',
+											'woocommerce-ai-storefront'
+										),
+									},
+								] }
+							/>
+
+							{ ( policy.category ||
+								CATEGORY_OPTIONS.RETURNS_ACCEPTED ) ===
+								CATEGORY_OPTIONS.RETURNS_ACCEPTED && (
+								<div style={ { marginTop: '20px' } }>
+									{ /*
+										Field order: Return fees → Return
+										window → Return methods. The fee
+										Select sits at the top at 320px
+										width so the eye tracks down the
+										column. Return window is a numeric
+										detail (96px input); Return
+										methods is a multi-select that
+										closes the section.
+
+										Width rule:
+										- Select dropdown: 320px.
+										  Comfortably fits the longest fee
+										  label ("Customer pays return
+										  fees", 24 chars) and matches the
+										  WordPress core settings-field
+										  rhythm.
+										- Number input: 96px on the input
+										  itself; the BaseControl wrapper
+										  spans the panel so its uppercase
+										  tracked label "RETURN WINDOW
+										  (DAYS)" and helper text don't
+										  truncate or wrap to 4 narrow
+										  lines under a 120px field.
+									*/ }
+									<div
+										style={ {
+											marginBottom: spacing.s4,
+											maxWidth: '320px',
+										} }
+									>
+										<BaseControl
+											__nextHasNoMarginBottom
+											id="wc-ai-storefront-return-fees"
+											help={ __(
+												'Applied as the default for all returns. You can override this per product on the Product edit screen.',
+												'woocommerce-ai-storefront'
+											) }
+										>
+											<BaseControl.VisualLabel
+												style={ {
+													...typography.eyebrowLabel,
+													color: colors.textSecondary,
+												} }
+											>
+												{ __(
+													'Return fees',
+													'woocommerce-ai-storefront'
+												) }
+											</BaseControl.VisualLabel>
+											<SelectControl
+												__nextHasNoMarginBottom
+												id="wc-ai-storefront-return-fees"
+												hideLabelFromVision
+												label={ __(
+													'Return fees',
+													'woocommerce-ai-storefront'
+												) }
+												value={ policy.fees }
+												options={ FEE_OPTIONS }
+												onChange={ ( val ) =>
+													handleField( 'fees', val )
+												}
+											/>
+										</BaseControl>
+									</div>
+
+									<div style={ { marginBottom: spacing.s4 } }>
+										<label
+											htmlFor="wc-ai-storefront-return-window"
+											style={ {
+												display: 'block',
+												marginBottom: spacing.s1,
+												...typography.eyebrowLabel,
+												color: colors.textSecondary,
+											} }
+										>
+											{ __(
+												'Return window (days)',
+												'woocommerce-ai-storefront'
+											) }
+										</label>
+										<StepperInput
+											id="wc-ai-storefront-return-window"
+											value={ policy.days ?? 0 }
+											onChange={ ( v ) =>
+												handleField( 'days', v )
+											}
+										/>
+										<p
+											style={ {
+												margin: `${ spacing.s1 } 0 0`,
+												fontSize: '12px',
+												color: colors.textMuted,
+											} }
+										>
+											{ __(
+												'Leave at 0 to publish "Unspecified" instead of a finite window.',
+												'woocommerce-ai-storefront'
+											) }
+										</p>
+									</div>
+
+									{ /*
 								Return methods: a CheckboxControl
 								*group* labeled with the same uppercase
 								tracked treatment as the three form
@@ -725,125 +849,82 @@ const ReturnRefundPolicySection = ( {
 								flex-column + 6px gap restores
 								breathing room.
 							*/ }
-							<BaseControl __nextHasNoMarginBottom>
-								<BaseControl.VisualLabel
-									id="wc-ai-storefront-return-methods-label"
-									style={ {
-										...typography.eyebrowLabel,
-										color: colors.textSecondary,
-									} }
-								>
-									{ __(
-										'Return methods',
-										'woocommerce-ai-storefront'
-									) }
-								</BaseControl.VisualLabel>
-								<div
-									role="group"
-									aria-labelledby="wc-ai-storefront-return-methods-label"
-									style={ {
-										display: 'flex',
-										flexDirection: 'column',
-										gap: spacing.s1,
-										marginTop: spacing.s2,
-									} }
-								>
-									{ METHOD_OPTIONS.map( ( opt ) => (
-										// eslint-disable-next-line jsx-a11y/label-has-associated-control -- Input is nested inside the label.
-										<label
-											key={ opt.value }
+									<BaseControl __nextHasNoMarginBottom>
+										<BaseControl.VisualLabel
+											id="wc-ai-storefront-return-methods-label"
 											style={ {
-												display: 'flex',
-												alignItems: 'center',
-												gap: spacing.s2,
-												paddingTop: '4px',
-												paddingBottom: '4px',
-												minHeight: '24px',
-												fontSize: '13px',
-												color: colors.textPrimary,
-												cursor: 'pointer',
+												...typography.eyebrowLabel,
+												color: colors.textSecondary,
 											} }
 										>
-											<input
-												type="checkbox"
-												checked={ (
-													policy.methods || []
-												).includes( opt.value ) }
-												onChange={ ( e ) =>
-													handleMethodToggle(
-														opt.value,
-														e.target.checked
-													)
-												}
-												style={ {
-													width: '16px',
-													height: '16px',
-													margin: 0,
-													flexShrink: 0,
-													cursor: 'pointer',
-													accentColor: colors.accent,
-												} }
-											/>
-											{ opt.label }
-										</label>
-									) ) }
+											{ __(
+												'Return methods',
+												'woocommerce-ai-storefront'
+											) }
+										</BaseControl.VisualLabel>
+										<div
+											role="group"
+											aria-labelledby="wc-ai-storefront-return-methods-label"
+											style={ {
+												display: 'flex',
+												flexDirection: 'column',
+												gap: spacing.s1,
+												marginTop: spacing.s2,
+											} }
+										>
+											{ METHOD_OPTIONS.map( ( opt ) => (
+												// eslint-disable-next-line jsx-a11y/label-has-associated-control -- Input is nested inside the label.
+												<label
+													key={ opt.value }
+													style={ {
+														display: 'flex',
+														alignItems: 'center',
+														gap: spacing.s2,
+														paddingTop: '4px',
+														paddingBottom: '4px',
+														minHeight: '24px',
+														fontSize: '13px',
+														color: colors.textPrimary,
+														cursor: 'pointer',
+													} }
+												>
+													<input
+														type="checkbox"
+														checked={ (
+															policy.methods || []
+														).includes(
+															opt.value
+														) }
+														onChange={ ( e ) =>
+															handleMethodToggle(
+																opt.value,
+																e.target.checked
+															)
+														}
+														style={ {
+															width: '16px',
+															height: '16px',
+															margin: 0,
+															flexShrink: 0,
+															cursor: 'pointer',
+															accentColor:
+																colors.accent,
+														} }
+													/>
+													{ opt.label }
+												</label>
+											) ) }
+										</div>
+									</BaseControl>
 								</div>
-							</BaseControl>
-						</>
-					) }
+							) }
 
-					{ policy.mode === POLICY_MODES.FINAL_SALE && (
-						<div
-							style={ {
-								marginBottom: spacing.s4,
-								maxWidth: '320px',
-							} }
-						>
-							<BaseControl
-								__nextHasNoMarginBottom
-								id="wc-ai-storefront-policy-page-final"
-								help={ __(
-									'Link AI agents to a "no returns" explainer on your store.',
-									'woocommerce-ai-storefront'
-								) }
-							>
-								<BaseControl.VisualLabel
-									style={ {
-										...typography.eyebrowLabel,
-										color: colors.textSecondary,
-									} }
-								>
-									{ __(
-										'Policy page (optional)',
-										'woocommerce-ai-storefront'
-									) }
-								</BaseControl.VisualLabel>
-								{ pagesLoading ? (
-									<Spinner />
-								) : (
-									<SelectControl
-										__nextHasNoMarginBottom
-										id="wc-ai-storefront-policy-page-final"
-										hideLabelFromVision
-										label={ __(
-											'Policy page (optional)',
-											'woocommerce-ai-storefront'
-										) }
-										value={ String( policy.page_id ) }
-										options={ pageOptions.map( ( o ) => ( {
-											...o,
-											value: String( o.value ),
-										} ) ) }
-										onChange={ ( val ) =>
-											handleField(
-												'page_id',
-												parseInt( val, 10 ) || 0
-											)
-										}
-									/>
-								) }
-							</BaseControl>
-						</div>
+							{ /*
+									Final sale reveals no additional fields:
+									the category alone drives the
+									MerchantReturnNotPermitted emission.
+								*/ }
+						</>
 					) }
 				</div>
 			</CardBody>
@@ -1049,6 +1130,7 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 			const same =
 				prev.mode === merged.mode &&
 				prev.page_id === merged.page_id &&
+				prev.category === merged.category &&
 				prev.days === merged.days &&
 				prev.fees === merged.fees &&
 				Array.isArray( prev.methods ) &&
@@ -1144,7 +1226,13 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 	// since-unpublished id silently drops from JSON-LD; the
 	// dropdown row is just a "you previously picked this, here's
 	// its name" affordance.
-	const savedPageId = settings.return_policy?.page_id || 0;
+	// page_id is only meaningful (and only present) when mode='link'.
+	// Skip the optional `/wp/v2/pages?include=` recovery fetch in other
+	// modes — there is no saved page to resolve.
+	const savedPageId =
+		settings.return_policy?.mode === 'link'
+			? settings.return_policy?.page_id || 0
+			: 0;
 	useEffect( () => {
 		let cancelled = false;
 		setPagesLoading( true );

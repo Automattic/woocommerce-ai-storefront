@@ -1,14 +1,17 @@
 <?php
 /**
  * Tests for `WC_AI_Storefront_JsonLd::build_return_policy_block()` and
- * the wider settings-driven return-policy emission (PR-C).
+ * the wider settings-driven return-policy emission.
  *
  * Pin the per-mode emission shape so a regression in
- * `enhance_product_data()` (or the new `build_return_policy_block()`
+ * `enhance_product_data()` (or the `build_return_policy_block()`
  * helper) can't silently produce a structurally invalid
- * `hasMerchantReturnPolicy` block. Three modes × edge cases
- * (smart-degrade days, single-vs-multi method, page link presence,
- * Offer-level placement, missing country) round out the coverage.
+ * `hasMerchantReturnPolicy` block. The new shape separates Google's
+ * Option A (inline detail, `mode='details'`) from Option B
+ * (`merchantReturnLink`, `mode='link'`); `mode='unconfigured'` emits
+ * nothing. Edge cases (smart-degrade days, single-vs-multi method,
+ * page link presence, Offer-level placement, missing country) round
+ * out the coverage.
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -59,8 +62,8 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// Default policy pages to `publish` status + `page` type.
 		// Tests that exercise the degradation paths (unpublished page,
 		// wrong post type) override these — see
-		// `test_emission_omits_merchant_return_link_when_page_unpublished`
-		// for an example. Both are required because emission re-checks
+		// `test_link_mode_with_unpublished_page_emits_null` for an
+		// example. Both are required because emission re-checks
 		// both at runtime to mirror the sanitizer's save-time gate
 		// (which enforces `'publish' === get_post_status()` AND
 		// `'page' === get_post_type()`).
@@ -151,6 +154,24 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	/**
+	 * Helper: flip the per-product final-sale flag on for product 42.
+	 * Tests that need the flag OFF rely on the setUp default ('').
+	 */
+	private function flag_product_as_final_sale(): void {
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( int $product_id, string $key, bool $single = false ) {
+				if (
+					42 === $product_id
+					&& WC_AI_Storefront_Product_Meta_Box::META_KEY === $key
+				) {
+					return 'yes';
+				}
+				return '';
+			}
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// Mode: unconfigured
 	// ------------------------------------------------------------------
@@ -163,12 +184,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
 	}
 
-	public function test_unconfigured_mode_with_page_still_emits_no_policy_block(): void {
-		// The opt-out wins over link-precedence: an `unconfigured` mode emits
-		// nothing even when a return-policy page IS configured. Guards the gate
-		// ordering (the unconfigured null-gate sits ABOVE the link short-circuit)
-		// — a refactor hoisting link-precedence above it would leak Option B for
-		// merchants who explicitly opted out.
+	public function test_unconfigured_mode_emits_no_policy_block_even_with_junk_fields(): void {
+		// After the mode-aware sanitizer runs, unconfigured can never carry
+		// page_id — but a direct DB write or legacy stored value could. Gate
+		// must still emit nothing.
 		$this->set_settings( [ 'mode' => 'unconfigured', 'page_id' => 99 ] );
 		$result = $this->run_with_offer();
 
@@ -176,24 +195,162 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Mode: returns_accepted
+	// Mode: link (new shape)
 	// ------------------------------------------------------------------
 
-	public function test_returns_accepted_no_page_emits_full_inline_detail(): void {
-		// No return-policy page configured -> inline detail (Option A), with NO
-		// merchantReturnLink (Google bars combining the two in one item).
+	public function test_link_mode_with_valid_page_emits_link_only(): void {
+		// Option B: only merchantReturnLink, no returnPolicyCategory,
+		// no applicableCountry.
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail' ],
+				'mode'    => 'link',
+				'page_id' => 99,
 			]
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
 
 		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
+		$this->assertSame( 'https://example.com/?p=99', $block['merchantReturnLink'] );
+		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
+		$this->assertArrayNotHasKey( 'applicableCountry', $block );
+		$this->assertArrayNotHasKey( 'returnFees', $block );
+		$this->assertArrayNotHasKey( 'merchantReturnDays', $block );
+	}
+
+	public function test_link_mode_with_zero_page_emits_null(): void {
+		// mode='link' with page_id=0 produces nothing — the merchant
+		// chose "link" but hasn't picked a page yet.
+		$this->set_settings(
+			[
+				'mode'    => 'link',
+				'page_id' => 0,
+			]
+		);
+
+		$result = $this->run_with_offer();
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0]
+		);
+	}
+
+	public function test_link_mode_with_unpublished_page_emits_null(): void {
+		Functions\when( 'get_post_status' )->justReturn( 'draft' );
+		$this->set_settings(
+			[
+				'mode'    => 'link',
+				'page_id' => 99,
+			]
+		);
+
+		$result = $this->run_with_offer();
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0]
+		);
+	}
+
+	public function test_link_mode_with_non_page_post_type_emits_null(): void {
+		// page_id points at a post (or any non-`page` post type) —
+		// reject the link emission to mirror the sanitizer's save-time
+		// gate (`'page' === get_post_type()`). Without this re-check,
+		// a merchant who flipped a `page_id` to point at a `post` via
+		// direct option edit would get an unintended URL leaked into
+		// JSON-LD.
+		Functions\when( 'get_post_type' )->justReturn( 'post' );
+		$this->set_settings(
+			[
+				'mode'    => 'link',
+				'page_id' => 99,
+			]
+		);
+
+		$result = $this->run_with_offer();
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0]
+		);
+	}
+
+	public function test_link_mode_emits_even_when_country_unset(): void {
+		// Option B carries no applicableCountry, so the country gate
+		// must not block it.
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '' ]
+		);
+		$this->set_settings(
+			[
+				'mode'    => 'link',
+				'page_id' => 99,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+		$this->assertSame( 'https://example.com/?p=99', $block['merchantReturnLink'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Mode: details + category: final_sale
+	// ------------------------------------------------------------------
+
+	public function test_details_final_sale_emits_not_permitted(): void {
+		$this->set_settings(
+			[
+				'mode'     => 'details',
+				'category' => 'final_sale',
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
+		$this->assertSame( 'US', $block['applicableCountry'] );
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+		$this->assertArrayNotHasKey( 'returnFees', $block );
+	}
+
+	public function test_details_final_sale_emits_without_country_when_unset(): void {
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '' ]
+		);
+		$this->set_settings(
+			[
+				'mode'     => 'details',
+				'category' => 'final_sale',
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		$this->assertArrayNotHasKey( 'applicableCountry', $block );
+	}
+
+	// ------------------------------------------------------------------
+	// Mode: details + category: returns_accepted
+	// ------------------------------------------------------------------
+
+	public function test_details_returns_accepted_days_gt_0_emits_finite_window(): void {
+		$this->set_settings(
+			[
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
+				'methods'  => [ 'ReturnByMail' ],
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
 		$this->assertSame( 'US', $block['applicableCountry'] );
 		$this->assertSame(
 			'https://schema.org/MerchantReturnFiniteReturnWindow',
@@ -205,36 +362,14 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
 	}
 
-	public function test_returns_accepted_with_page_emits_link_only(): void {
-		// A configured return-policy page takes precedence (Option B): emit
-		// ONLY the link, dropping the inline detail (mutually exclusive per
-		// Google), even though days/fees/methods are also configured.
+	public function test_details_returns_accepted_days_0_smart_degrades_to_unspecified(): void {
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 99,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail' ],
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
-		$this->assertSame( 'https://example.com/?p=99', $block['merchantReturnLink'] );
-		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
-		$this->assertArrayNotHasKey( 'merchantReturnDays', $block );
-		$this->assertArrayNotHasKey( 'returnFees', $block );
-		$this->assertArrayNotHasKey( 'applicableCountry', $block );
-	}
-
-	public function test_returns_accepted_no_days_smart_degrades_to_unspecified(): void {
-		$this->set_settings(
-			[
-				'mode' => 'returns_accepted',
-				'days' => 0,
-				'fees' => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => null,
+				'fees'     => 'FreeReturn',
+				'methods'  => [],
 			]
 		);
 
@@ -247,28 +382,35 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'merchantReturnDays', $block );
 	}
 
-	public function test_returns_accepted_no_page_omits_merchant_return_link(): void {
+	public function test_details_returns_accepted_no_country_emits_null(): void {
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			[ 'country' => '' ]
+		);
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 0,
-				'days'    => 14,
-				'fees'    => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
+				'methods'  => [],
 			]
 		);
 
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+		$result = $this->run_with_offer();
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0]
+		);
 	}
 
-	public function test_returns_accepted_single_method_emits_scalar(): void {
+	public function test_details_returns_accepted_single_method_emits_scalar(): void {
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'days'    => 14,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnInStore' ],
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 14,
+				'fees'     => 'FreeReturn',
+				'methods'  => [ 'ReturnInStore' ],
 			]
 		);
 
@@ -278,13 +420,14 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://schema.org/ReturnInStore', $block['returnMethod'] );
 	}
 
-	public function test_returns_accepted_multiple_methods_emits_array(): void {
+	public function test_details_returns_accepted_multiple_methods_emits_array(): void {
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'days'    => 14,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ],
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 14,
+				'fees'     => 'FreeReturn',
+				'methods'  => [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ],
 			]
 		);
 
@@ -301,149 +444,20 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_returns_accepted_no_methods_omits_return_method_field(): void {
+	public function test_details_returns_accepted_no_methods_omits_return_method_field(): void {
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'days'    => 14,
-				'fees'    => 'FreeReturn',
-				'methods' => [],
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 14,
+				'fees'     => 'FreeReturn',
+				'methods'  => [],
 			]
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
 
 		$this->assertArrayNotHasKey( 'returnMethod', $block );
-	}
-
-	// ------------------------------------------------------------------
-	// Mode: final_sale
-	// ------------------------------------------------------------------
-
-	public function test_final_sale_with_page_emits_link_only(): void {
-		// A configured policy page takes precedence (Option B): emit ONLY the
-		// link. The NotPermitted category is dropped (mutually exclusive with
-		// merchantReturnLink); the "no returns" page documents the policy.
-		$this->set_settings(
-			[
-				'mode'    => 'final_sale',
-				'page_id' => 17,
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
-		$this->assertSame( 'https://example.com/?p=17', $block['merchantReturnLink'] );
-		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
-		$this->assertArrayNotHasKey( 'returnFees', $block );
-		$this->assertArrayNotHasKey( 'returnMethod', $block );
-	}
-
-	public function test_final_sale_no_page_emits_not_permitted_only(): void {
-		$this->set_settings(
-			[
-				'mode'    => 'final_sale',
-				'page_id' => 0,
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertSame(
-			'https://schema.org/MerchantReturnNotPermitted',
-			$block['returnPolicyCategory']
-		);
-		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
-	}
-
-	// ------------------------------------------------------------------
-	// Stale page_id degradation (page unpublished after save)
-	// ------------------------------------------------------------------
-
-	public function test_emission_omits_merchant_return_link_when_page_unpublished(): void {
-		// Save-time sanitization enforces published status, but a
-		// merchant can unpublish the page later. Without this gate,
-		// `get_permalink()` would still return a URL pointing at a
-		// dead/draft post — Google validators get a stale link, the
-		// JS preview (which uses the published-only pages list)
-		// silently omits the link, and the two outputs drift.
-		// Re-checking at emission time keeps PHP and JS in lockstep.
-		Functions\when( 'get_post_status' )->justReturn( 'draft' );
-
-		$this->set_settings(
-			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 99,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail' ],
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
-		// Other fields still emit — only the link is gated.
-		$this->assertSame(
-			'https://schema.org/MerchantReturnFiniteReturnWindow',
-			$block['returnPolicyCategory']
-		);
-		$this->assertSame( 30, $block['merchantReturnDays'] );
-	}
-
-	public function test_final_sale_omits_merchant_return_link_when_page_unpublished(): void {
-		// Same gate applies in final_sale mode — a merchant might
-		// have a "no returns / final sale" disclaimer page they
-		// later unpublish. The category claim still emits; just the
-		// stale link drops.
-		Functions\when( 'get_post_status' )->justReturn( 'draft' );
-
-		$this->set_settings(
-			[
-				'mode'    => 'final_sale',
-				'page_id' => 17,
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertSame(
-			'https://schema.org/MerchantReturnNotPermitted',
-			$block['returnPolicyCategory']
-		);
-		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
-	}
-
-	public function test_emission_omits_merchant_return_link_when_post_type_is_not_page(): void {
-		// Same gate as the unpublished-page check, different drift
-		// case: settings corrupted/bypassed (or future UI expanded
-		// to other post types) such that page_id points at a
-		// post/attachment instead of a page. Save-time sanitizer
-		// would reject this, but a direct DB write or settings
-		// migration could land an out-of-contract value. Emission
-		// must mirror the sanitizer's `'page' === get_post_type()`
-		// gate to refuse a wrong-shape link.
-		Functions\when( 'get_post_type' )->justReturn( 'post' );
-
-		$this->set_settings(
-			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 99,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail' ],
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
-		// Other fields still emit — only the link is gated.
-		$this->assertSame(
-			'https://schema.org/MerchantReturnFiniteReturnWindow',
-			$block['returnPolicyCategory']
-		);
 	}
 
 	// ------------------------------------------------------------------
@@ -453,9 +467,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	public function test_policy_block_emitted_at_offer_level_not_product_level(): void {
 		$this->set_settings(
 			[
-				'mode' => 'returns_accepted',
-				'days' => 30,
-				'fees' => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			]
 		);
 
@@ -490,9 +505,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->set_settings(
 			[
-				'mode' => 'returns_accepted',
-				'days' => 30,
-				'fees' => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			]
 		);
 
@@ -503,65 +519,79 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Per-product final-sale override (PR-D)
+	// Per-product final-sale override
 	//
 	// The override gate runs BEFORE store-wide mode logic. A flagged
 	// product emits MerchantReturnNotPermitted regardless of the
 	// store-wide setting — including when the store-wide is
 	// `unconfigured` (the override forces a structured claim even
-	// when the merchant otherwise opted out).
+	// when the merchant otherwise opted out). When the store is
+	// `mode='link'` with a resolved page, the link wins for that
+	// product too (the linked page documents what is still covered).
 	//
-	// All tests here flip the meta read to 'yes' for product 42
-	// (the make_product() default ID) to exercise the override
+	// All override tests here flip the meta read to 'yes' for product
+	// 42 (the make_product() default ID) to exercise the override
 	// branch.
 	// ------------------------------------------------------------------
 
-	/**
-	 * Helper: flip the per-product final-sale flag on for product 42.
-	 * Tests that need the flag OFF rely on the setUp default ('').
-	 */
-	private function flag_product_as_final_sale(): void {
-		Functions\when( 'get_post_meta' )->alias(
-			static function ( int $product_id, string $key, bool $single = false ) {
-				if (
-					42 === $product_id
-					&& WC_AI_Storefront_Product_Meta_Box::META_KEY === $key
-				) {
-					return 'yes';
-				}
-				return '';
-			}
-		);
-	}
-
-	public function test_per_product_final_sale_overrides_returns_accepted_mode(): void {
-		// Store-wide is `returns_accepted` with a full configuration.
-		// Per-product flag forces MerchantReturnNotPermitted instead.
+	public function test_per_product_final_sale_with_link_mode_and_valid_page_emits_link(): void {
+		// Flagged product + store is mode='link' + page resolves → link wins.
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 0,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail' ],
+				'mode'    => 'link',
+				'page_id' => 99,
 			]
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
 
-		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
+		$this->assertSame( 'https://example.com/?p=99', $block['merchantReturnLink'] );
+		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
+	}
+
+	public function test_per_product_final_sale_with_link_mode_no_page_emits_not_permitted(): void {
+		// Flagged product + store is mode='link' + page_id=0 → link fails,
+		// fall back to NotPermitted.
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'link',
+				'page_id' => 0,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
 		$this->assertSame(
 			'https://schema.org/MerchantReturnNotPermitted',
-			$block['returnPolicyCategory'],
-			'Per-product flag must force NotPermitted regardless of store-wide accepts mode.'
+			$block['returnPolicyCategory']
 		);
-		// Override must NOT carry the store-wide accepts-returns
-		// fields (days/fees/methods) — those describe the opposite
-		// posture from "no returns".
-		$this->assertArrayNotHasKey( 'merchantReturnDays', $block );
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
+	}
+
+	public function test_per_product_final_sale_with_details_mode_emits_not_permitted(): void {
+		// Flagged product + store is mode='details' → no page_id available,
+		// emit NotPermitted.
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
+				'methods'  => [],
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory']
+		);
+		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
 		$this->assertArrayNotHasKey( 'returnFees', $block );
-		$this->assertArrayNotHasKey( 'returnMethod', $block );
 	}
 
 	public function test_per_product_final_sale_overrides_unconfigured_mode(): void {
@@ -583,7 +613,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_per_product_final_sale_overrides_store_wide_final_sale_mode(): void {
+	public function test_per_product_final_sale_overrides_details_final_sale_mode(): void {
 		// Both store-wide AND per-product flag agree (final-sale).
 		// The override path still wins; the result is the same as
 		// the store-wide path would emit, but produced by the
@@ -593,8 +623,8 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
 			[
-				'mode'    => 'final_sale',
-				'page_id' => 0,
+				'mode'     => 'details',
+				'category' => 'final_sale',
 			]
 		);
 
@@ -606,65 +636,17 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_per_product_final_sale_with_store_page_emits_link_only(): void {
-		// Flagged product + a store-wide policy page → the override emits ONLY
-		// the link (Option B), dropping the NotPermitted category (mutually
-		// exclusive with merchantReturnLink). The "no returns" page documents
-		// what's still covered (defective goods, statutory rights).
-		$this->flag_product_as_final_sale();
-		$this->set_settings(
-			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 99,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertSame( 'MerchantReturnPolicy', $block['@type'] );
-		$this->assertSame(
-			'https://example.com/?p=99',
-			$block['merchantReturnLink']
-		);
-		$this->assertArrayNotHasKey( 'returnPolicyCategory', $block );
-	}
-
-	public function test_per_product_final_sale_omits_link_when_no_store_wide_page(): void {
-		// No store-wide page configured → override block emits the
-		// bare minimum (no `merchantReturnLink`). Verifying the
-		// optional-link branch under the override path.
-		$this->flag_product_as_final_sale();
-		$this->set_settings(
-			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 0,
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertArrayNotHasKey( 'merchantReturnLink', $block );
-	}
-
 	// ------------------------------------------------------------------
 	// Per-product override: empty base country (issue #124)
 	//
 	// WC's setup wizard sets the store country, but installs that skip
 	// or disable the wizard (custom onboarding, headless storefronts,
 	// B2B sites) can have an empty `wc_get_base_location()['country']`.
-	// Pre-fix: the entire return-policy block was inside the
-	// `if ($country &&...)` gate, so a per-product final-sale flag
-	// was silently dropped when the merchant hadn't configured a
-	// store country.
-	//
-	// Fix: move return-policy emission outside the country gate. For
-	// MerchantReturnNotPermitted paths (per-product flag AND store-wide
-	// final_sale mode), omit `applicableCountry` when empty — Schema.org
+	// For MerchantReturnNotPermitted paths (per-product flag AND store-
+	// wide final_sale), omit `applicableCountry` when empty — Schema.org
 	// marks the field as recommended, not required, for no-return
-	// policies. For returns_accepted mode, keep the null return (a
-	// return window without a target region is not useful).
+	// policies. For returns_accepted, keep the null return (a return
+	// window without a target region is not useful).
 	// ------------------------------------------------------------------
 
 	public function test_per_product_final_sale_emits_without_country(): void {
@@ -709,13 +691,18 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_store_wide_final_sale_emits_without_country(): void {
-		// Store-wide final_sale mode must also emit without
+		// Store-wide details/final_sale must also emit without
 		// applicableCountry when the base country is unset, for
 		// the same Schema.org rationale as the per-product override.
 		Functions\when( 'wc_get_base_location' )->justReturn(
 			[ 'country' => '' ]
 		);
-		$this->set_settings( [ 'mode' => 'final_sale', 'page_id' => 0 ] );
+		$this->set_settings(
+			[
+				'mode'     => 'details',
+				'category' => 'final_sale',
+			]
+		);
 
 		$result = $this->run_with_offer();
 
@@ -730,7 +717,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_returns_accepted_still_omitted_when_country_unset(): void {
-		// Regression guard: returns_accepted mode must still produce
+		// Regression guard: details/returns_accepted must still produce
 		// no policy block when country is unset (same behavior as
 		// before the issue #124 fix). A return-window declaration
 		// without a target region is not useful to validators.
@@ -739,9 +726,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->set_settings(
 			[
-				'mode' => 'returns_accepted',
-				'days' => 30,
-				'fees' => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			]
 		);
 
@@ -750,26 +738,25 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey(
 			'hasMerchantReturnPolicy',
 			$result['offers'][0],
-			'returns_accepted mode must NOT emit a policy block when the store country is unset.'
+			'details/returns_accepted must NOT emit a policy block when the store country is unset.'
 		);
 	}
 
-	public function test_returns_accepted_with_page_emits_link_even_when_country_unset(): void {
-		// Complement to the test above: with a configured policy page, the
-		// Option B link emits even when the store country is unset. Option B
-		// (a bare merchantReturnLink) carries no applicableCountry, so the
-		// link short-circuit MUST sit ABOVE the country null-gate. A refactor
+	public function test_link_mode_emits_link_even_when_country_unset(): void {
+		// Complement to the test above: in link mode, the Option B link
+		// emits even when the store country is unset. Option B (a bare
+		// merchantReturnLink) carries no applicableCountry, so the link
+		// short-circuit MUST sit ABOVE the country null-gate. A refactor
 		// that reordered them would wrongly drop the link for headless/B2B
-		// stores with no base country — exactly the merchants most likely to
-		// lean on a hosted policy page.
+		// stores with no base country — exactly the merchants most likely
+		// to lean on a hosted policy page.
 		Functions\when( 'wc_get_base_location' )->justReturn(
 			[ 'country' => '' ]
 		);
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
+				'mode'    => 'link',
 				'page_id' => 99,
-				'days'    => 30,
 			]
 		);
 
@@ -783,18 +770,17 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	public function test_unflagged_product_uses_store_wide_setting(): void {
 		// Regression guard: the override gate must not fire when the
 		// product is NOT flagged. Without the meta read returning ''
-		// (setUp default), the product falls through to the
-		// store-wide returns_accepted logic. This is the ~99% common
-		// path — every other JsonLdReturnPolicyTest exercises it
-		// implicitly, but pinning a dedicated assertion here makes
-		// the contract explicit.
+		// (setUp default), the product falls through to the store-wide
+		// details/returns_accepted logic. This is the ~99% common path —
+		// every other test exercises it implicitly, but pinning a
+		// dedicated assertion here makes the contract explicit.
 		// (No flag — setUp's default get_post_meta('') applies.)
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 0,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			]
 		);
 
@@ -803,7 +789,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame(
 			'https://schema.org/MerchantReturnFiniteReturnWindow',
 			$block['returnPolicyCategory'],
-			'Unflagged product must fall through to store-wide accepts mode.'
+			'Unflagged product must fall through to store-wide details/returns_accepted mode.'
 		);
 		$this->assertSame( 30, $block['merchantReturnDays'] );
 	}
@@ -843,10 +829,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 0,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			]
 		);
 
@@ -872,10 +858,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->set_settings(
 			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 0,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			]
 		);
 
@@ -890,70 +876,6 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// Per-product override: page-status degradation
-	//
-	// Mirror the store-wide path's coverage: when the configured
-	// policy page is unpublished or not a `page` post type, the
-	// override block omits `merchantReturnLink` rather than emit a
-	// 404-bound URL. The override branch shares the same
-	// `resolve_merchant_return_link()` helper as the store-wide path,
-	// so behavior should match — pin it explicitly so a future
-	// refactor that diverges the two branches gets caught.
-	// ------------------------------------------------------------------
-
-	public function test_per_product_override_omits_link_when_page_unpublished(): void {
-		Functions\when( 'get_post_status' )->justReturn( 'draft' );
-		$this->flag_product_as_final_sale();
-		$this->set_settings(
-			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 99,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertSame(
-			'https://schema.org/MerchantReturnNotPermitted',
-			$block['returnPolicyCategory']
-		);
-		$this->assertArrayNotHasKey(
-			'merchantReturnLink',
-			$block,
-			'Override block must omit merchantReturnLink when the policy page is unpublished.'
-		);
-	}
-
-	public function test_per_product_override_omits_link_when_page_is_not_a_page(): void {
-		// page_id points at a post (or any non-`page` post type) —
-		// reject the link emission to mirror the sanitizer's save-time
-		// gate (`'page' === get_post_type()`). Without this re-check,
-		// a merchant who flipped a `page_id` to point at a `post` via
-		// direct option edit would get an unintended URL leaked into
-		// JSON-LD.
-		Functions\when( 'get_post_type' )->justReturn( 'post' );
-		$this->flag_product_as_final_sale();
-		$this->set_settings(
-			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 99,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-			]
-		);
-
-		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
-
-		$this->assertArrayNotHasKey(
-			'merchantReturnLink',
-			$block,
-			'Override block must omit merchantReturnLink when the configured page is not a `page` post type.'
-		);
-	}
-
-	// ------------------------------------------------------------------
 	// Per-product override: build_return_policy_block null short-circuit
 	//
 	// The `?int $product_id = null` signature default exists for
@@ -962,7 +884,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	// tests). Verify the override gate skips entirely when null is
 	// passed — even when the meta read would otherwise return 'yes'
 	// for some other product ID. Reflection is needed because the
-	// method is private.
+	// method is protected.
 	// ------------------------------------------------------------------
 
 	public function test_build_return_policy_block_skips_override_when_product_id_is_null(): void {
@@ -970,7 +892,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// product ID were passed — `get_post_meta` returns 'yes' for
 		// any input. Then call build_return_policy_block(...null) and
 		// assert the override branch was not taken (returnPolicyCategory
-		// reflects the store-wide returns_accepted mode, not
+		// reflects the store-wide details/returns_accepted mode, not
 		// MerchantReturnNotPermitted).
 		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
 
@@ -980,10 +902,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$result = $method->invoke(
 			$this->jsonld,
 			[
-				'mode'    => 'returns_accepted',
-				'page_id' => 0,
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			],
 			'US',
 			null
@@ -1017,9 +939,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_settings = [
 			'enabled'       => 'yes',
 			'return_policy' => [
-				'mode' => 'returns_accepted',
-				'days' => 30,
-				'fees' => 'EvilReturn',  // Not in allow-list.
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'EvilReturn',  // Not in allow-list.
 			],
 		];
 
@@ -1050,10 +973,11 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_settings = [
 			'enabled'       => 'yes',
 			'return_policy' => [
-				'mode'    => 'returns_accepted',
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail', 'NotAValidMethod', 'ReturnInStore' ],
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
+				'methods'  => [ 'ReturnByMail', 'NotAValidMethod', 'ReturnInStore' ],
 			],
 		];
 
@@ -1084,10 +1008,11 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_settings = [
 			'enabled'       => 'yes',
 			'return_policy' => [
-				'mode'    => 'returns_accepted',
-				'days'    => 30,
-				'fees'    => 'FreeReturn',
-				'methods' => [ 'ReturnByMail', 'ReturnByMail', 'ReturnInStore' ],
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
+				'methods'  => [ 'ReturnByMail', 'ReturnByMail', 'ReturnInStore' ],
 			],
 		];
 
@@ -1098,5 +1023,82 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $methods );
 		$this->assertCount( 2, $methods, 'Duplicate methods must be deduped at emission.' );
 		$this->assertSame( array_unique( $methods ), $methods );
+	}
+
+	// ------------------------------------------------------------------
+	// Fail-closed defensive branches (FIX 5a)
+	// ------------------------------------------------------------------
+
+	public function test_unknown_top_level_mode_emits_no_policy_block(): void {
+		// The sanitizer rejects unknown modes at save time (failing closed
+		// to 'unconfigured'), but a direct DB write or a malformed filter
+		// could bypass it. The emitter must also fail closed: an
+		// unrecognized top-level mode value must produce no policy block,
+		// matching the JS derivePreview() fail-closed guard.
+		$this->set_settings( [ 'mode' => 'gibberish' ] );
+		$result = $this->run_with_offer();
+
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0],
+			'Unknown top-level mode must not emit a policy block (fail closed).'
+		);
+	}
+
+	public function test_details_with_unknown_category_emits_no_policy_block(): void {
+		// mode='details' with an unrecognized category value must also
+		// fail closed. Mirrors the JS guard: `category !== RETURNS_ACCEPTED
+		// && category !== FINAL_SALE → return null`.
+		$this->set_settings(
+			[
+				'mode'     => 'details',
+				'category' => 'gibberish',
+			]
+		);
+		$result = $this->run_with_offer();
+
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$result['offers'][0],
+			'mode=details + unknown category must not emit a policy block (fail closed).'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// Per-product override: unpublished link page (FIX 5c)
+	//
+	// Currently only the page_id=0 path is covered. This test verifies
+	// that when the store is mode='link' but the linked page has been
+	// unpublished (get_post_status returns 'draft'), the link drops and
+	// the per-product final-sale override falls back to bare
+	// MerchantReturnNotPermitted (no merchantReturnLink key).
+	// ------------------------------------------------------------------
+
+	public function test_per_product_final_sale_with_link_mode_and_unpublished_page_emits_not_permitted(): void {
+		// Page is registered (page_id > 0) but unpublished — status drifted
+		// after save. The link resolution must fail (no URL emitted), and
+		// the per-product final-sale override must fall back to bare
+		// MerchantReturnNotPermitted, not nothing.
+		Functions\when( 'get_post_status' )->justReturn( 'draft' );
+		$this->flag_product_as_final_sale();
+		$this->set_settings(
+			[
+				'mode'    => 'link',
+				'page_id' => 99,
+			]
+		);
+
+		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
+
+		$this->assertSame(
+			'https://schema.org/MerchantReturnNotPermitted',
+			$block['returnPolicyCategory'],
+			'Flagged product + link mode + unpublished page must fall back to MerchantReturnNotPermitted.'
+		);
+		$this->assertArrayNotHasKey(
+			'merchantReturnLink',
+			$block,
+			'merchantReturnLink must be absent when the linked page is unpublished.'
+		);
 	}
 }

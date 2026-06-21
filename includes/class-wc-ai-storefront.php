@@ -87,10 +87,12 @@ class WC_AI_Storefront {
 			'products_json_enabled'    => 'yes',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
-			// `unconfigured` mode emits NO policy block — until a
-			// merchant opts into one of the explicit modes
-			// (`returns_accepted` / `final_sale`) we never publish
-			// a structurally invalid claim. See
+			// `unconfigured` mode emits NO policy block — merchants
+			// choose mode='link' (Option B: policy-page URL) or
+			// mode='details' (Option A: inline claim) with sub-choice
+			// category='returns_accepted' or category='final_sale'.
+			// Until a mode is explicitly chosen we never publish a
+			// structurally invalid claim. See
 			// `WC_AI_Storefront_JsonLd::build_return_policy_block()`
 			// for the per-mode emission logic.
 			'return_policy'            => array( 'mode' => 'unconfigured' ),
@@ -839,9 +841,10 @@ class WC_AI_Storefront {
 	 *
 	 * Mode-aware persistence: only the fields that are meaningful for
 	 * the resolved mode are stored. `unconfigured` returns just `mode`;
-	 * `final_sale` returns `mode` + `page_id`; `returns_accepted`
-	 * returns the full 5-field shape. See the helper's docblock for
-	 * the full per-field rules.
+	 * `link` returns `mode` + `page_id`; `details` + `final_sale`
+	 * returns `mode` + `category`; `details` + `returns_accepted`
+	 * returns `mode` + `category` + `days` + `fees` + `methods`. See the
+	 * helper's docblock for the full per-field rules.
 	 *
 	 * @param mixed $policy Raw return-policy input.
 	 * @return array<string, mixed>

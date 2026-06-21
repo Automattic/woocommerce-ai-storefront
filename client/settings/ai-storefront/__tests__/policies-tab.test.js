@@ -10,28 +10,108 @@
 import {
 	applyHandlingTimeMin,
 	applyHandlingTimeMax,
+	applyModeChange,
 	derivePreview,
 	deriveHandlingTimePreview,
 } from '../policies-tab';
 
 describe( 'derivePreview', () => {
-	it( 'returns null for unconfigured mode', () => {
+	it( 'returns null for mode unconfigured', () => {
 		expect( derivePreview( { mode: 'unconfigured' }, 'US' ) ).toBeNull();
 	} );
 
 	it( 'returns null when country is empty', () => {
 		expect(
 			derivePreview(
-				{ mode: 'returns_accepted', days: 30, fees: 'FreeReturn' },
+				{
+					mode: 'details',
+					category: 'returns_accepted',
+					days: 30,
+					fees: 'FreeReturn',
+				},
 				''
 			)
 		).toBeNull();
 	} );
 
-	it( 'emits FiniteReturnWindow with merchantReturnDays when days > 0', () => {
+	// -- mode: link --
+
+	it( 'link mode with pageLink emits merchantReturnLink only', () => {
 		const block = derivePreview(
 			{
-				mode: 'returns_accepted',
+				mode: 'link',
+				page_id: 99,
+				pageLink: 'https://example.com/returns',
+			},
+			'US'
+		);
+		expect( block[ '@type' ] ).toBe( 'MerchantReturnPolicy' );
+		expect( block.merchantReturnLink ).toBe(
+			'https://example.com/returns'
+		);
+		expect( block.returnPolicyCategory ).toBeUndefined();
+		expect( block.applicableCountry ).toBeUndefined();
+	} );
+
+	it( 'link mode without pageLink returns null', () => {
+		// page_id=0 or missing pageLink means no resolved URL.
+		expect(
+			derivePreview( { mode: 'link', page_id: 0 }, 'US' )
+		).toBeNull();
+		expect(
+			derivePreview( { mode: 'link', page_id: 5 }, 'US' )
+		).toBeNull();
+	} );
+
+	it( 'link mode emits even when country is empty', () => {
+		const block = derivePreview(
+			{
+				mode: 'link',
+				page_id: 1,
+				pageLink: 'https://example.com/returns',
+			},
+			''
+		);
+		expect( block.merchantReturnLink ).toBe(
+			'https://example.com/returns'
+		);
+	} );
+
+	// -- mode: details, category: final_sale --
+
+	it( 'details final_sale emits MerchantReturnNotPermitted', () => {
+		const block = derivePreview(
+			{ mode: 'details', category: 'final_sale' },
+			'US'
+		);
+		expect( block.returnPolicyCategory ).toBe(
+			'https://schema.org/MerchantReturnNotPermitted'
+		);
+		expect( block.applicableCountry ).toBe( 'US' );
+		expect( block.merchantReturnLink ).toBeUndefined();
+		expect( block.returnFees ).toBeUndefined();
+	} );
+
+	it( 'details final_sale emits without applicableCountry when country empty', () => {
+		const block = derivePreview(
+			{ mode: 'details', category: 'final_sale' },
+			''
+		);
+		// The PHP emitter emits the block without applicableCountry.
+		expect( block ).not.toBeNull();
+		expect( block.applicableCountry ).toBeUndefined();
+		expect( block.returnPolicyCategory ).toBe(
+			'https://schema.org/MerchantReturnNotPermitted'
+		);
+	} );
+
+	// -- mode: details, category: returns_accepted --
+
+	it( 'details returns_accepted days > 0 emits FiniteReturnWindow', () => {
+		const block = derivePreview(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
 				days: 30,
 				fees: 'FreeReturn',
 				methods: [],
@@ -42,14 +122,17 @@ describe( 'derivePreview', () => {
 			'https://schema.org/MerchantReturnFiniteReturnWindow'
 		);
 		expect( block.merchantReturnDays ).toBe( 30 );
+		expect( block.applicableCountry ).toBe( 'US' );
 		expect( block.returnFees ).toBe( 'https://schema.org/FreeReturn' );
 		expect( block.returnMethod ).toBeUndefined();
+		expect( block.merchantReturnLink ).toBeUndefined();
 	} );
 
-	it( 'smart-degrades to Unspecified when days is 0', () => {
+	it( 'details returns_accepted days 0 smart-degrades to Unspecified', () => {
 		const block = derivePreview(
 			{
-				mode: 'returns_accepted',
+				mode: 'details',
+				category: 'returns_accepted',
 				days: 0,
 				fees: 'FreeReturn',
 				methods: [],
@@ -62,10 +145,11 @@ describe( 'derivePreview', () => {
 		expect( block.merchantReturnDays ).toBeUndefined();
 	} );
 
-	it( 'emits returnMethod as a scalar when one method is selected', () => {
+	it( 'details returns_accepted with single method emits scalar returnMethod', () => {
 		const block = derivePreview(
 			{
-				mode: 'returns_accepted',
+				mode: 'details',
+				category: 'returns_accepted',
 				days: 14,
 				fees: 'FreeReturn',
 				methods: [ 'ReturnByMail' ],
@@ -75,10 +159,11 @@ describe( 'derivePreview', () => {
 		expect( block.returnMethod ).toBe( 'https://schema.org/ReturnByMail' );
 	} );
 
-	it( 'emits returnMethod as an array when multiple methods are selected', () => {
+	it( 'details returns_accepted with multiple methods emits array returnMethod', () => {
 		const block = derivePreview(
 			{
-				mode: 'returns_accepted',
+				mode: 'details',
+				category: 'returns_accepted',
 				days: 14,
 				fees: 'FreeReturn',
 				methods: [ 'ReturnByMail', 'ReturnInStore' ],
@@ -91,27 +176,147 @@ describe( 'derivePreview', () => {
 		] );
 	} );
 
-	it( 'emits NotPermitted for final_sale mode', () => {
-		const block = derivePreview( { mode: 'final_sale', page_id: 0 }, 'US' );
-		expect( block.returnPolicyCategory ).toBe(
-			'https://schema.org/MerchantReturnNotPermitted'
-		);
-		expect( block.merchantReturnLink ).toBeUndefined();
-		expect( block.returnFees ).toBeUndefined();
+	it( 'details returns_accepted no country returns null', () => {
+		expect(
+			derivePreview(
+				{
+					mode: 'details',
+					category: 'returns_accepted',
+					days: 30,
+					fees: 'FreeReturn',
+					methods: [],
+				},
+				''
+			)
+		).toBeNull();
 	} );
 
-	it( 'attaches merchantReturnLink when page_id and pageLink are set', () => {
+	it( 'unknown mode returns null', () => {
+		expect( derivePreview( { mode: 'gibberish' }, 'US' ) ).toBeNull();
+	} );
+
+	it( 'details with unknown category returns null', () => {
+		expect(
+			derivePreview( { mode: 'details', category: 'gibberish' }, 'US' )
+		).toBeNull();
+	} );
+
+	// -- allow-list parity with PHP emitter --
+
+	it( 'invalid fees value defaults to schema.org/FreeReturn', () => {
+		// The PHP emitter sanitizes fees against an allow-list at emission
+		// time (EvilReturn → FreeReturn). derivePreview must mirror this so
+		// invalid stored values don't produce a bogus schema.org URL.
 		const block = derivePreview(
 			{
-				mode: 'final_sale',
-				page_id: 17,
-				pageLink: 'https://example.com/no-returns',
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 30,
+				fees: 'EvilReturn',
+				methods: [],
 			},
 			'US'
 		);
-		expect( block.merchantReturnLink ).toBe(
-			'https://example.com/no-returns'
+		expect( block.returnFees ).toBe( 'https://schema.org/FreeReturn' );
+	} );
+
+	it( 'non-allow-listed method is dropped from returnMethod', () => {
+		// The PHP emitter filters methods to the allow-list. derivePreview
+		// must do the same so a bogus stored method doesn't produce an
+		// invalid schema.org URL.
+		const block = derivePreview(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 14,
+				fees: 'FreeReturn',
+				methods: [ 'ReturnByMail', 'NotAValidMethod', 'ReturnInStore' ],
+			},
+			'US'
 		);
+		expect( block.returnMethod ).toEqual( [
+			'https://schema.org/ReturnByMail',
+			'https://schema.org/ReturnInStore',
+		] );
+	} );
+} );
+
+describe( 'applyModeChange', () => {
+	it( 'sets the new mode', () => {
+		const next = applyModeChange( { mode: 'unconfigured' }, 'link' );
+		expect( next.mode ).toBe( 'link' );
+	} );
+
+	it( 'defaults category to returns_accepted when entering details with no category', () => {
+		const next = applyModeChange( { mode: 'unconfigured' }, 'details' );
+		expect( next.mode ).toBe( 'details' );
+		expect( next.category ).toBe( 'returns_accepted' );
+	} );
+
+	it( 'preserves an existing category when re-entering details', () => {
+		const next = applyModeChange(
+			{ mode: 'details', category: 'final_sale' },
+			'details'
+		);
+		expect( next.mode ).toBe( 'details' );
+		expect( next.category ).toBe( 'final_sale' );
+	} );
+
+	it( 'does not mutate its input', () => {
+		const input = { mode: 'details', category: 'final_sale', days: 30 };
+		const snapshot = JSON.parse( JSON.stringify( input ) );
+		applyModeChange( input, 'link' );
+		expect( input ).toEqual( snapshot );
+	} );
+
+	it( 'clears details fields when switching details -> link (no stale days/fees/methods)', () => {
+		// Core anti-stale-value contract: switching modes must reset the
+		// other branch's fields to DEFAULT_POLICY so a leftover
+		// days/fees/methods never leaks back into emitted JSON-LD. Mutating
+		// applyModeChange to spread `...policy` instead of `...DEFAULT_POLICY`
+		// makes these assertions fail.
+		const next = applyModeChange(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 30,
+				fees: 'RestockingFees',
+				methods: [ 'ReturnByMail', 'ReturnInStore' ],
+			},
+			'link'
+		);
+		expect( next.mode ).toBe( 'link' );
+		expect( next.days ).toBe( 0 );
+		expect( next.fees ).toBe( 'FreeReturn' );
+		expect( next.methods ).toEqual( [] );
+		expect( next.page_id ).toBe( 0 );
+	} );
+
+	it( 'clears the link page_id when switching link -> details', () => {
+		const next = applyModeChange(
+			{ mode: 'link', page_id: 42 },
+			'details'
+		);
+		expect( next.mode ).toBe( 'details' );
+		expect( next.page_id ).toBe( 0 );
+	} );
+
+	it( 'clears all branch fields when switching details -> unconfigured', () => {
+		const next = applyModeChange(
+			{
+				mode: 'details',
+				category: 'returns_accepted',
+				days: 30,
+				fees: 'RestockingFees',
+				methods: [ 'ReturnByMail' ],
+			},
+			'unconfigured'
+		);
+		expect( next.mode ).toBe( 'unconfigured' );
+		expect( next.days ).toBe( 0 );
+		expect( next.fees ).toBe( 'FreeReturn' );
+		expect( next.methods ).toEqual( [] );
+		expect( next.page_id ).toBe( 0 );
 	} );
 } );
 
