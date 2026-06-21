@@ -77,6 +77,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $this->meta->should_emit() );
 	}
 
+	public function test_should_emit_false_for_non_product_search(): void {
+		Functions\when( 'is_search' )->justReturn( true );
+		Functions\when( 'get_query_var' )->justReturn( '' );
+		$this->assertFalse( $this->meta->should_emit() );
+	}
+
 	private function make_product( array $overrides = array() ): \Mockery\MockInterface {
 		$product = \Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_short_description' )->andReturn( $overrides['short'] ?? '' );
@@ -269,6 +275,21 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'product:price:amount', $og );
 	}
 
+	public function test_archive_og_tags_for_category_with_thumbnail(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		// wp_strip_all_tags is a real stub (identity for plain text); see stub_escapers().
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'Leather belts.' )
+		);
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
+		Functions\when( 'get_term_meta' )->justReturn( 77 );
+		Functions\when( 'wp_get_attachment_url' )->justReturn( 'https://shop.test/cat.jpg' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/cat.jpg', $og['og:image'] );
+	}
+
 	public function test_archive_og_tags_for_shop(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		// wp_strip_all_tags is a real stub (identity for plain text); see stub_escapers().
@@ -305,7 +326,14 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_noindex_true_for_search(): void {
 		Functions\when( 'is_search' )->justReturn( true );
+		Functions\when( 'get_query_var' )->justReturn( 'product' );
 		$this->assertTrue( $this->meta->should_noindex() );
+	}
+
+	public function test_noindex_false_for_non_product_search(): void {
+		Functions\when( 'is_search' )->justReturn( true );
+		Functions\when( 'get_query_var' )->justReturn( '' );
+		$this->assertFalse( $this->meta->should_noindex() );
 	}
 
 	private function stub_escapers(): void {

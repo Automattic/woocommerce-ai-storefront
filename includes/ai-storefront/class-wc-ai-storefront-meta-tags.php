@@ -223,8 +223,8 @@ class WC_AI_Storefront_Meta_Tags {
 		/**
 		 * Filter the Open Graph tag map.
 		 *
-		 * @param array      $og      property => content.
-		 * @param WC_Product $product Source product.
+		 * @param array           $og      property => content.
+		 * @param WC_Product|null $product Source product, or null on archive pages (category / shop) where there is no single product.
 		 */
 		return (array) apply_filters( 'wc_ai_storefront_og_tags', $og, $product );
 	}
@@ -399,7 +399,8 @@ class WC_AI_Storefront_Meta_Tags {
 	 *
 	 * Opinionated, zero-config: a product the merchant set to "Hidden" in
 	 * WooCommerce (still reachable by URL) and internal shop search results
-	 * (thin/duplicate content) are noindexed. Everything else is indexable.
+	 * (product search, i.e. post_type=product; thin/duplicate content) are
+	 * noindexed. Everything else is indexable.
 	 */
 	public function should_noindex(): bool {
 		$noindex = false;
@@ -412,7 +413,8 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 		}
 
-		if ( function_exists( 'is_search' ) && is_search() ) {
+		if ( function_exists( 'is_search' ) && is_search()
+			&& 'product' === get_query_var( 'post_type' ) ) {
 			$noindex = true;
 		}
 
