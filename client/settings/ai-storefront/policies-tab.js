@@ -308,12 +308,14 @@ export const derivePreview = ( policy, country ) => {
 		'ReturnAtKiosk',
 	] );
 
-	const feesValue = FEES_ALLOW_LIST.has( policy.fees ) ? policy.fees : 'FreeReturn';
+	const feesValue = FEES_ALLOW_LIST.has( policy.fees )
+		? policy.fees
+		: 'FreeReturn';
 	block.returnFees = 'https://schema.org/' + feesValue;
 
-	const methods = ( Array.isArray( policy.methods ) ? policy.methods : [] ).filter(
-		( m ) => METHODS_ALLOW_LIST.has( m )
-	);
+	const methods = (
+		Array.isArray( policy.methods ) ? policy.methods : []
+	).filter( ( m ) => METHODS_ALLOW_LIST.has( m ) );
 	if ( methods.length === 1 ) {
 		block.returnMethod = 'https://schema.org/' + methods[ 0 ];
 	} else if ( methods.length >= 2 ) {

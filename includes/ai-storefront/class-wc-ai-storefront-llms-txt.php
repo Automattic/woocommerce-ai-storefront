@@ -655,9 +655,10 @@ class WC_AI_Storefront_Llms_Txt {
 				// `country` field, so the old `$return_policy['country']`
 				// read was already dead.
 				$return_parts[] = 'applies to ' . self::sanitize_markdown_inline( $this->resolve_country_name( $ship_country ) );
-				if ( ! empty( $return_parts ) ) {
-					$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
-				}
+				// The country element above is always appended in this branch
+				// (it requires a non-empty base country), so $return_parts is
+				// never empty here — emit unconditionally.
+				$shipping_lines[] = '- **Returns**: ' . implode( ', ', $return_parts );
 			}
 		}
 
