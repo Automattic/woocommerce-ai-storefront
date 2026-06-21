@@ -8,6 +8,16 @@
 use Brain\Monkey;
 use Brain\Monkey\Functions;
 
+// User-defined stand-in for Yoast's WooCommerce SEO addon class. The
+// detector only needs `class_exists( 'Yoast_WooCommerce_SEO' )` to resolve
+// true; this empty class is aliased to that name in the Yoast detection
+// test. It MUST be a user-defined class — `class_alias()` rejects aliasing
+// an internal class (e.g. stdClass) on PHP 8.1-8.3 with a ValueError.
+if ( ! class_exists( 'WC_AI_Storefront_Yoast_WC_SEO_Test_Double' ) ) {
+	// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test double
+	class WC_AI_Storefront_Yoast_WC_SEO_Test_Double {}
+}
+
 class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 
 	protected function setUp(): void {
@@ -54,8 +64,9 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 	 * @preserveGlobalState disabled
 	 */
 	public function test_detect_reports_yoast_when_class_present(): void {
-		// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- inline test double
-		class_alias( '\stdClass', 'Yoast_WooCommerce_SEO' );
+		// Alias a USER-DEFINED stub (not an internal class like stdClass,
+		// which class_alias() rejects on PHP 8.1-8.3).
+		class_alias( 'WC_AI_Storefront_Yoast_WC_SEO_Test_Double', 'Yoast_WooCommerce_SEO' );
 		$slugs = array_column( WC_AI_Storefront_Seo_Plugin_Detector::detect(), 'slug' );
 		$this->assertContains( 'yoast', $slugs );
 	}
