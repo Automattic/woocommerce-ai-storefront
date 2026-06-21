@@ -2,6 +2,21 @@
 
 ---
 
+## [0.25.0] – 2026-06-21
+
+### Features
+
+- **Return and refund policy is now an explicit "Option A or Option B" choice in the Policies tab (#520).** The lumped layout (a returns-page dropdown shown alongside the structured fields) is replaced by a single control that mirrors Google's return-policy options, so the page link and the inline detail can no longer both be live at once:
+  - **Three top-level choices** — Not configured, Link to a returns page (Option B), or Specify the details here (Option A) — reveal only the fields that apply.
+  - **Fixes the silent-precedence bug** where a configured returns page quietly dropped the merchant's inline days/fees/methods from the emitted structured data, and the preview/emission divergence that came with it.
+  - **JSON-LD and llms.txt readers kept in parity** — link mode requires a published page of the correct post type, and the inline returns-accepted claim is gated on the store base country, matching the emitter exactly.
+
+### Fixes
+
+- **The homepage and shop product list now include each product's description and return policy (#518).** Google's Rich Results flagged the root-domain list with "missing field description" and "missing field hasMerchantReturnPolicy (in offers)" because the lightweight list entries omitted them. Each entry now mirrors the product page, clearing both merchant-listing flags.
+
+---
+
 ## [0.24.0] – 2026-06-20
 
 ### Features
