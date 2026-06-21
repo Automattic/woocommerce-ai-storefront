@@ -42,6 +42,8 @@ Yoast-stored data is **migration territory**, considered later — never a runti
 | **XML sitemaps** | Machine list of every URL for crawlers | crawlers | Owns | Never emits; defers to any provider (WP core / Jetpack / Yoast / Rank Math / AIOSEO) and lists it in `llms.txt` | 🟢 No overlap (deliberate) |
 | **UCP/MCP, llms.txt, products feed, BuyAction, inventory, subscriptions, attribution** | Agentic-commerce APIs and signals | agents | None | Owns | 🟢 Plugin-exclusive |
 
+The "transient duplicate" caveat on the **Meta title / description** and **Open Graph / Twitter** rows applies to product, category, and shop pages. On product-search results (`post_type=product`) this plugin emits only the robots `noindex` tag — no meta description and no Open Graph/Twitter cards — so there is no duplication to resolve there regardless of whether the SEO plugin is active.
+
 The single 🔴 is the real overlap: with both plugins active, two `Product` nodes compete for the same Google rich result. The migration nudge surfaces this and invites you to deactivate the SEO plugin — which resolves both the JSON-LD duplication and the head-metadata duplication at once.
 
 ## Coexistence behavior (assert + warn)
