@@ -839,9 +839,10 @@ class WC_AI_Storefront {
 	 *
 	 * Mode-aware persistence: only the fields that are meaningful for
 	 * the resolved mode are stored. `unconfigured` returns just `mode`;
-	 * `final_sale` returns `mode` + `page_id`; `returns_accepted`
-	 * returns the full 5-field shape. See the helper's docblock for
-	 * the full per-field rules.
+	 * `link` returns `mode` + `page_id`; `details` + `final_sale`
+	 * returns `mode` + `category`; `details` + `returns_accepted`
+	 * returns `mode` + `category` + `days` + `fees` + `methods`. See the
+	 * helper's docblock for the full per-field rules.
 	 *
 	 * @param mixed $policy Raw return-policy input.
 	 * @return array<string, mixed>

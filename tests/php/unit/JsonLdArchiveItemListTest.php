@@ -864,9 +864,8 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'return_policy'          => [
-				'mode'    => 'returns_accepted',
+				'mode'    => 'link',
 				'page_id' => 99,
-				'days'    => 30,
 			],
 		];
 		Functions\when( 'get_permalink' )->alias( static fn( $id ) => "https://example.com/?p={$id}" );
