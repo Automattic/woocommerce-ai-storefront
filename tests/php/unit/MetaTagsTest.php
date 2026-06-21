@@ -61,6 +61,22 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $this->meta->should_emit() );
 	}
 
+	public function test_should_emit_true_on_category(): void {
+		Functions\when( 'is_product_category' )->justReturn( true );
+		$this->assertTrue( $this->meta->should_emit() );
+	}
+
+	public function test_should_emit_true_on_shop(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		$this->assertTrue( $this->meta->should_emit() );
+	}
+
+	public function test_should_emit_true_on_product_search(): void {
+		Functions\when( 'is_search' )->justReturn( true );
+		Functions\when( 'get_query_var' )->justReturn( 'product' );
+		$this->assertTrue( $this->meta->should_emit() );
+	}
+
 	private function make_product( array $overrides = array() ): \Mockery\MockInterface {
 		$product = \Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_short_description' )->andReturn( $overrides['short'] ?? '' );
@@ -131,6 +147,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_field' )->justReturn( '' ); // empty shop page content
 		Functions\when( 'get_bloginfo' )->justReturn( 'Fine leather goods, made to last.' );
 		$this->assertSame( 'Fine leather goods, made to last.', $this->meta->build_archive_description() );
+	}
+
+	public function test_archive_description_shop_prefers_page_content(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		// wp_strip_all_tags is a real stub (identity for plain text); see stub_escapers().
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( 'Curated leather goods.' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'tagline should not win' );
+		$this->assertSame( 'Curated leather goods.', $this->meta->build_archive_description() );
 	}
 
 	public function test_title_parts_appends_brand_on_product(): void {
@@ -243,6 +269,22 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'product:price:amount', $og );
 	}
 
+	public function test_archive_og_tags_for_shop(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		// wp_strip_all_tags is a real stub (identity for plain text); see stub_escapers().
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'website', $og['og:type'] );
+		$this->assertSame( 'Shop', $og['og:title'] );
+		$this->assertSame( 'https://shop.test/shop/', $og['og:url'] );
+		$this->assertArrayNotHasKey( 'product:price:amount', $og );
+	}
+
 	public function test_noindex_true_for_hidden_product(): void {
 		Functions\when( 'is_product' )->justReturn( true );
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
@@ -301,6 +343,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '<meta name="description" content="A belt."', $html );
 		$this->assertStringContainsString( '<meta property="og:title" content="Canvas Belt"', $html );
 		$this->assertStringContainsString( '<meta name="twitter:card" content="summary_large_image"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:image" content="https://shop.test/i.jpg"', $html );
 		$this->assertStringNotContainsString( 'noindex', $html );
 	}
 
@@ -341,5 +384,35 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '<meta property="og:type" content="website"', $html );
 		$this->assertStringContainsString( '<meta property="og:title" content="Belts"', $html );
 		$this->assertStringNotContainsString( 'product:price:amount', $html );
+	}
+
+	public function test_render_omits_empty_og_description_for_descriptionless_product(): void {
+		$this->stub_escapers();
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$product = $this->og_product( array( 'short' => '', 'long' => '' ) );
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+		$this->assertStringNotContainsString( 'og:description', $html );
+		$this->assertStringNotContainsString( 'twitter:description', $html );
+	}
+
+	public function test_render_emits_noindex_only_for_product_search(): void {
+		$this->stub_escapers();
+		Functions\when( 'is_search' )->justReturn( true );
+		Functions\when( 'get_query_var' )->justReturn( 'product' );
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+		$this->assertStringContainsString( '<meta name="robots" content="noindex,follow"', $html );
+		$this->assertStringNotContainsString( 'og:', $html );
+		$this->assertStringNotContainsString( 'name="description"', $html );
 	}
 }
