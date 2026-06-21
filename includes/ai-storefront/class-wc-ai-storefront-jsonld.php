@@ -2997,108 +2997,53 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Build the `hasMerchantReturnPolicy` structured-data block from
-	 * the merchant's saved return-policy settings.
+	 * Build the `hasMerchantReturnPolicy` structured-data block for an offer.
 	 *
-	 * Policy-page precedence: Google's `MerchantReturnPolicy` is "Option A"
-	 * (inline detail) XOR "Option B" (a `merchantReturnLink` URL) — emitting
-	 * both is a Rich Results "two or more mutually exclusive properties"
-	 * error. So whenever the merchant has configured a usable (published)
-	 * return-policy page, EVERY mode below emits just that link
-	 * (`{ MerchantReturnPolicy, merchantReturnLink }`, Option B) and skips the
-	 * inline detail. The inline detail (Option A) is emitted only when no page
-	 * is configured.
+	 * Implements the Option A / Option B separation from Google's return-policy
+	 * spec:
+	 *   - mode='link'    → Option B: `merchantReturnLink` only, no category.
+	 *   - mode='details' → Option A: inline `returnPolicyCategory` + country
+	 *                      (+ days/fees/methods for returns_accepted).
+	 *   - mode='unconfigured' → null (emit nothing).
 	 *
-	 * Three modes (inline / Option-A shapes, used when no page is set):
+	 * Per-product final-sale override runs first. If the product is flagged and
+	 * the store is mode='link' with a resolved page, the link wins (the "no
+	 * returns" page documents what is still covered). Otherwise the override
+	 * emits MerchantReturnNotPermitted directly.
 	 *
-	 *   - `unconfigured` → returns `null` (no page-link override applies).
-	 *     Caller omits the `hasMerchantReturnPolicy` field entirely until the
-	 *     merchant explicitly opts into one of the modes below.
-	 *
-	 *   - `returns_accepted` → `applicableCountry`, `returnPolicyCategory`
-	 *     (smart-degrade: `MerchantReturnFiniteReturnWindow` +
-	 *     `merchantReturnDays` when days > 0; `MerchantReturnUnspecified`
-	 *     otherwise — never `FiniteReturnWindow` without the days field, which
-	 *     Google rejects), `returnFees`, and `returnMethod` (scalar when one
-	 *     method, array when multiple). Returns `null` when `$country` is empty
-	 *     (a return window without a target region is not useful) — but a
-	 *     configured page still emits Option B regardless of country.
-	 *
-	 *   - `final_sale` → `returnPolicyCategory: NotPermitted` (no
-	 *     `returnFees`/`returnMethod`, since the policy precludes returns).
-	 *
-	 * @param array    $policy     Sanitized return-policy settings.
-	 * @param string   $country    ISO country code from the WC store base.
-	 * @param int|null $product_id Optional product ID for per-product
-	 *                             override lookup. When non-null AND the
-	 *                             product is flagged final-sale via
-	 *                             `WC_AI_Storefront_Product_Meta_Box::is_final_sale()`
-	 *                             (which reads
-	 *                             `WC_AI_Storefront_Product_Meta_Box::META_KEY` —
-	 *                             `_wc_ai_storefront_final_sale`), the
-	 *                             store-wide policy is bypassed and a
-	 *                             `MerchantReturnNotPermitted` block is
-	 *                             emitted regardless of mode — unless a usable
-	 *                             policy page is configured, in which case the
-	 *                             link (Option B) wins here too (see the
-	 *                             precedence note above). `null` skips the
-	 *                             override lookup (used by store-wide preview
-	 *                             rendering or unit tests that exercise the
-	 *                             store-wide logic in isolation).
-	 * @return array<string, mixed>|null Structured-data block, or null when the
-	 *                                   policy is `unconfigured`, or when mode is
-	 *                                   `returns_accepted`, no usable policy page
-	 *                                   is configured, and `$country` is empty
-	 *                                   (caller skips emission in all null cases).
+	 * @param array<string, mixed> $policy     Sanitized return-policy settings.
+	 * @param string               $country    Store base country (ISO 3166-1 alpha-2).
+	 * @param int|null             $product_id Product ID for per-product override lookup,
+	 *                                         or null to skip override (store-wide only).
+	 * @return array<string, mixed>|null
 	 */
 	protected function build_return_policy_block( array $policy, string $country, ?int $product_id = null ): ?array {
-		// The merchant's configured return-policy page link, when set, TAKES
-		// PRECEDENCE over the inline detail. Google's MerchantReturnPolicy is
-		// "Option A" (inline: returnPolicyCategory + days + fees + methods) XOR
-		// "Option B" (a `merchantReturnLink` URL) — combining them is a Rich
-		// Results "two or more mutually exclusive properties" error. So when a
-		// usable policy page is configured we emit ONLY the link (Option B);
-		// otherwise the inline detail (Option A). resolve_merchant_return_link()
-		// re-validates the page is still published, so `$link_block` is null
-		// when no usable page is set.
-		$page_id    = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
-		$link       = self::resolve_merchant_return_link( $page_id );
-		$link_block = '' !== $link
-			? array(
-				'@type'              => 'MerchantReturnPolicy',
-				'merchantReturnLink' => $link,
-			)
-			: null;
+		$mode = $policy['mode'] ?? 'unconfigured';
 
-		// Per-product final-sale override (highest-priority gate). A
-		// flagged product emits MerchantReturnNotPermitted regardless
-		// of the store-wide mode — including when the store-wide mode
-		// is `unconfigured` (the override forces a structured claim
-		// even when the merchant otherwise opted out of exposing one).
-		// Unflagged products fall through to the store-wide logic
-		// below.
-		//
-		// The override deliberately ignores the store-wide `days` /
-		// `fees` / `methods` settings — those describe an
-		// accepts-returns posture, which is the exact opposite of
-		// what the override declares. Keeping the override block
-		// minimal also avoids surprising merchants who flagged a
-		// product expecting "no returns" and got an emission that
-		// somehow includes a return-window number.
-		//
-		// A configured policy page wins here too (Option B): a "no returns"
-		// page typically documents what's still covered (defective goods,
-		// statutory rights), so the link beats the bare NotPermitted block.
+		// Resolve the link-mode URL now so the per-product override can reuse
+		// it. page_id is only present in the persisted shape when mode='link';
+		// for every other mode there is no page to link, so $link stays empty.
+		$link = '';
+		if ( 'link' === $mode ) {
+			$page_id = isset( $policy['page_id'] ) ? (int) $policy['page_id'] : 0;
+			$link    = self::resolve_merchant_return_link( $page_id );
+		}
+
+		// Per-product final-sale override. Runs before store-wide mode logic
+		// (including the `unconfigured` short-circuit) so a flagged product
+		// emits a structured "no returns" claim even when the merchant left
+		// the store-wide policy unconfigured — the override is the merchant's
+		// most-specific intent.
 		if ( null !== $product_id && WC_AI_Storefront_Product_Meta_Box::is_final_sale( $product_id ) ) {
-			if ( null !== $link_block ) {
-				return $link_block;
+			if ( '' !== $link ) {
+				// Store is mode='link' and page resolves: the link describes
+				// what is still covered (defective goods, statutory rights).
+				return array(
+					'@type'              => 'MerchantReturnPolicy',
+					'merchantReturnLink' => $link,
+				);
 			}
-			// applicableCountry is recommended, not required, for
-			// MerchantReturnNotPermitted — omit when the store's base
-			// country is unset so the block still emits. Merchants who
-			// flag a product final-sale are expressing a clear
-			// structured intent; losing the entire block because the
-			// store address is missing would silently discard it.
+			// No link available: emit bare NotPermitted.
 			$block = array(
 				'@type'                => 'MerchantReturnPolicy',
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
@@ -3108,19 +3053,32 @@ class WC_AI_Storefront_JsonLd {
 			}
 			return $block;
 		}
-
-		$mode = $policy['mode'] ?? 'unconfigured';
 
 		if ( 'unconfigured' === $mode ) {
 			return null;
 		}
 
-		if ( 'final_sale' === $mode ) {
-			if ( null !== $link_block ) {
-				return $link_block;
+		// mode='link': Option B — link only, no category, no country.
+		if ( 'link' === $mode ) {
+			if ( '' === $link ) {
+				// page_id=0 or page not published: emit nothing.
+				return null;
 			}
-			// Same applicableCountry omission rationale as the
-			// per-product override above.
+			return array(
+				'@type'              => 'MerchantReturnPolicy',
+				'merchantReturnLink' => $link,
+			);
+		}
+
+		// mode='details': Option A — inline detail.
+		if ( 'details' !== $mode ) {
+			// Fail closed for any unrecognised mode.
+			return null;
+		}
+
+		$category = $policy['category'] ?? '';
+
+		if ( 'final_sale' === $category ) {
 			$block = array(
 				'@type'                => 'MerchantReturnPolicy',
 				'returnPolicyCategory' => 'https://schema.org/MerchantReturnNotPermitted',
@@ -3131,31 +3089,16 @@ class WC_AI_Storefront_JsonLd {
 			return $block;
 		}
 
-		// Fail closed for any mode the sanitizer doesn't recognize.
-		// `get_settings()` doesn't run `return_policy` through the
-		// sanitizer on read — a corrupted/legacy/filter-mutated
-		// `mode` value would otherwise fall through to the
-		// `returns_accepted` branch below and silently emit a
-		// returns-accepted policy block. Defense in depth: only
-		// emit when the mode is explicitly `returns_accepted`.
-		// `unconfigured` and `final_sale` were handled above.
-		if ( 'returns_accepted' !== $mode ) {
+		if ( 'returns_accepted' !== $category ) {
+			// Unknown category: fail closed.
 			return null;
 		}
 
-		// A configured policy page wins here too (Option B).
-		if ( null !== $link_block ) {
-			return $link_block;
-		}
-
-		// Inline detail (Option A) requires a country — a return window
-		// without a target region is not useful to validators or agents.
-		// Omit when the store address is unset.
+		// details + returns_accepted requires a country.
 		if ( '' === $country ) {
 			return null;
 		}
 
-		// Mode: returns_accepted.
 		$days = isset( $policy['days'] ) ? (int) $policy['days'] : 0;
 		if ( $days > 0 ) {
 			$block = array(
@@ -3165,8 +3108,6 @@ class WC_AI_Storefront_JsonLd {
 				'merchantReturnDays'   => $days,
 			);
 		} else {
-			// Smart-degrade: no days configured → declare Unspecified
-			// rather than emit a FiniteReturnWindow without days.
 			$block = array(
 				'@type'                => 'MerchantReturnPolicy',
 				'applicableCountry'    => $country,
@@ -3174,19 +3115,12 @@ class WC_AI_Storefront_JsonLd {
 			);
 		}
 
-		// Always emit returnFees (sanitization defaults to FreeReturn
-		// when unset). Allow-list validated here at emission time as a
-		// second gate — save-time sanitization is the primary defence,
-		// but a future DB import or direct option write could bypass it.
 		$allowed_fees        = array( 'FreeReturn', 'ReturnFeesCustomerResponsibility', 'OriginalShippingFees', 'RestockingFees' );
 		$fees                = isset( $policy['fees'] ) && is_string( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
 			? $policy['fees']
 			: 'FreeReturn';
 		$block['returnFees'] = 'https://schema.org/' . $fees;
 
-		// returnMethod: scalar string when 1 method selected, array
-		// when 2+, omitted when none. Methods are also allow-list
-		// validated at emission time for the same reason as fees above.
 		$allowed_methods = array( 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' );
 		$methods         = isset( $policy['methods'] ) && is_array( $policy['methods'] )
 			? array_values(
