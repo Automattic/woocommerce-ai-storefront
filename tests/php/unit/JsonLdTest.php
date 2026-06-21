@@ -2869,16 +2869,17 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_return_policy_is_declared(): void {
-		// PR-C: hasMerchantReturnPolicy emission is settings-driven and
-		// lives at the Offer level. Default mode `unconfigured` emits
-		// no block; switch to `returns_accepted` to assert presence.
+		// hasMerchantReturnPolicy emission is settings-driven and lives at
+		// the Offer level. Default mode `unconfigured` emits no block;
+		// switch to `details`/`returns_accepted` to assert presence.
 		WC_AI_Storefront::$test_settings = [
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'return_policy'          => [
-				'mode' => 'returns_accepted',
-				'days' => 30,
-				'fees' => 'FreeReturn',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'FreeReturn',
 			],
 		];
 
@@ -3907,9 +3908,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'return_policy'          => array(
-				'mode' => 'returns_accepted',
-				'days' => 30,
-				'fees' => 'free',
+				'mode'     => 'details',
+				'category' => 'returns_accepted',
+				'days'     => 30,
+				'fees'     => 'free',
 			),
 		);
 		Functions\when( 'wc_get_base_location' )->justReturn(
@@ -3990,9 +3992,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// override — will rely on this contract holding for
 		// non-final-sale products.
 		$policy = array(
-			'mode' => 'returns_accepted',
-			'days' => 14,
-			'fees' => 'restocking',
+			'mode'     => 'details',
+			'category' => 'returns_accepted',
+			'days'     => 14,
+			'fees'     => 'restocking',
 		);
 		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',

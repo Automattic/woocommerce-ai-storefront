@@ -20,6 +20,8 @@ This plugin makes your store speak three of those formats at the same time, all 
 
 You can think of these as three doors into the same store: agents that close the sale walk through door 1, search engines that cite you walk through door 2, conversational tools that talk about you walk through door 3. You don't need to choose; the plugin opens all three.
 
+On top of those three, the plugin also writes the everyday search-engine and social metadata for your product, category, and shop pages: the page title, the meta description, and the Open Graph / Twitter "link preview" tags, all built automatically from data you've already entered. This is the same metadata a traditional SEO plugin manages, so a lean store can let AI Storefront handle it for those pages instead of running a separate SEO plugin. See [§1 Known compatibility notes](#known-compatibility-notes) and [§4c Search-engine and social metadata](#4c-search-engine-and-social-metadata).
+
 You do not need an AI account, an API key, or a developer.
 
 ## What this plugin does not do
@@ -79,7 +81,7 @@ You may want to wait if any of these apply:
 **Plugins worth checking before you enable:**
 
 - **AI-bot blocking plugins.** Some security plugins explicitly block GPTBot, ChatGPT-User, Claude, and similar to prevent training-data scraping. If active, they will defeat the discovery layer entirely. Allowlist AI crawlers in your security plugin, or disable AI-bot blocking on this site.
-- **Other SEO plugins emitting JSON-LD** (Yoast SEO, Rank Math, Schema App, etc.). Two plugins emitting Product structured data on the same page can result in duplicate entities visible to search engines. Modern search engines handle this gracefully, but if Google Search Console flags structured-data warnings, configure one plugin to defer to the other.
+- **Other SEO plugins** (Yoast SEO, Rank Math, All in One SEO, Schema App, etc.). AI Storefront now emits its own page titles, meta descriptions, social-share tags, and Product structured data on commerce pages. With another SEO plugin also active, both emit some of the same tags: the page title stays single (AI Storefront wins via load order), but the meta description and social tags can appear twice until you deactivate one. Search engines tolerate this, though structured-data validators may flag it. When **Yoast WooCommerce SEO, Rank Math, or All in One SEO** is detected, AI Storefront shows a dismissible admin notice explaining that you can deactivate it and let AI Storefront cover your product, category, and shop pages — optional and reversible; see the hand-off checklist in [§4c Search-engine and social metadata](#4c-search-engine-and-social-metadata). (The notice keys off the *Yoast WooCommerce SEO* addon specifically; the free Yoast SEO plugin can still produce duplicate tags without showing the notice.)
 - **Custom robots.txt managers.** This plugin appends AI-crawler rules to WordPress's virtual robots.txt. If a plugin produces its own robots.txt (overriding WP's virtual one), the rules may not appear. After enabling, visit `/robots.txt` and confirm AI crawler rules are present.
 
 ### Full WooPayments multi-currency support
@@ -118,12 +120,13 @@ Click **Enable AI Storefront**. The hero is replaced by the section nav (Overvie
 
 ![Overview tab after enabling](screenshots/02-enable-toggle.png)
 
-Enabling does five things:
+Enabling does six things:
 
 - Tells AI crawlers where they're allowed to look on your store.
 - Publishes a text guide of your store at `/llms.txt` (visible to AI agents), and advertises it to AI tools two ways shoppers never see: an HTTP response header and a hidden link in each page's `<head>`.
 - Publishes your store's business details at `/.well-known/ucp` (visible to AI agents).
 - Adds product details (prices, return policies, etc.) in a format AI agents understand.
+- Writes the search-engine and social metadata (page title, meta description, Open Graph / Twitter tags) for your product, category, and shop pages. See [§4c](#4c-search-engine-and-social-metadata).
 - Starts tracking which orders came from AI shopping assistants so you can see the results.
 
 To pause, click **Disable AI Storefront** at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.
@@ -162,6 +165,7 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 | `https://your-store.com/opensearch.xml` | A small XML document starting with `<OpenSearchDescription>`. It tells AI agents and browsers how to search your products, pointing at both your product-search page and the catalog API. |
 | Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4b](#4b-what-the-homepage-publishes-to-ai-agents). |
 | Any product page → "View page source" | Search for `"@type":"Product"`. You should see product details like prices and (once you set one in [section 7](#7-set-your-store-policies)) return policy information. |
+| Any product page → "View page source" | Search for `<meta name="description"` and `og:title`. These are the search-result snippet and social-share preview the plugin generates for the page. See [section 4c](#4c-search-engine-and-social-metadata). |
 
 The Discovery tab shows the same URLs as clickable links with reachability dots. URLs render in monospace font:
 
@@ -230,7 +234,28 @@ If your homepage *is* your shop page (the default WooCommerce layout where the s
 
 The plugin never publishes your WordPress admin email as a public contact. If neither address works, the email contact is omitted entirely.
 
-**Phone and social profiles** are not published by this plugin. If you want to add them, other plugins (like Jetpack or Yoast) can help with that.
+**Phone and social profile links** are not part of this homepage business block. (This is separate from the Open Graph and Twitter social-share *cards* the plugin emits on product, category, and shop pages, which create the link preview when a page is shared — see [§4c](#4c-search-engine-and-social-metadata).) If you want to publish profile links, plugins like Jetpack or Yoast can help.
+
+### 4c. Search-engine and social metadata
+
+The plugin writes the everyday metadata search engines and social platforms read for your **product, category, and shop pages**, automatically, from data you've already entered. There is nothing to configure.
+
+| Tag | What it is | Built from |
+|-----|-----------|-----------|
+| Page title (`<title>`) | The clickable headline in Google results and the browser tab | Product name, with your product brand appended when set |
+| Meta description | The gray summary under the headline in search results | Product short description, then long description; category description; shop page content, then your store tagline |
+| Open Graph + Twitter tags | The image-and-title "link preview" when a page is shared on social or in chat | Product title, description, price, and featured image |
+
+It also keeps two kinds of page out of search results automatically: products you've set to **Hidden** in WooCommerce (catalog visibility), and your internal product-search results pages (thin, duplicate content). Everything else stays indexable. (Developers who need to override any of these values can use the plugin's filters; see the engineering docs.)
+
+**If you run Yoast WooCommerce SEO, Rank Math, or All in One SEO**, the plugin shows a dismissible admin notice letting you know it now provides this metadata and that you can deactivate that plugin for these pages. (The notice detects the *Yoast WooCommerce SEO* addon specifically; the free Yoast SEO plugin won't trigger it, though it can still produce duplicate tags you'd resolve the same way.) The notice is per user — dismiss it and it stays dismissed for you. Before deactivating your SEO plugin, check this short list (it's also in the notice):
+
+- **Breadcrumbs.** Your breadcrumb *structured data* is already provided by WooCommerce core, so the search-result breadcrumb is safe. The visible breadcrumb *trail* is only at risk if your theme hard-codes the SEO plugin's breadcrumb function — switch that template call to `woocommerce_breadcrumb()`.
+- **Redirects.** Any 301/410 redirects you configured in the SEO plugin stop working when it's deactivated. Keep a dedicated redirect plugin, or move the redirects into one, first.
+- **Custom noindex rules.** Pages you manually told the SEO plugin to hide from search become indexable again (beyond the plugin's hidden-product and search-results defaults above).
+- **Sitemap.** WordPress core serves a sitemap at `/wp-sitemap.xml`. If you had submitted the SEO plugin's `/sitemap_index.xml` to Google Search Console, resubmit the core one.
+
+Keeping your SEO plugin is fine too — dismiss the notice and both keep working, with the minor duplicate-tag caveat noted in [§1](#known-compatibility-notes). The full side-by-side comparison is in the engineering doc [`YOAST-COEXISTENCE.md`](../engineering/YOAST-COEXISTENCE.md).
 
 ---
 
@@ -610,6 +635,14 @@ A security plugin is blocking `/.well-known/`. Add `/.well-known/ucp` to its all
 ### JSON-LD doesn't include the BuyAction
 
 Your theme or page builder may be overriding WooCommerce's product details. Try switching to the Storefront theme temporarily to confirm. If that works, contact your theme developer or try a different theme.
+
+### I see two meta descriptions or social tags in my page source
+
+You have both AI Storefront and a dedicated SEO plugin (Yoast, Rank Math, AIOSEO) active, and both emit metadata. The page `<title>` stays single (AI Storefront wins), but the meta description and Open Graph / Twitter tags appear twice. Search engines pick one, so it isn't harmful, but to make it clean, deactivate one of the two for your commerce pages — see [section 4c](#4c-search-engine-and-social-metadata) for the hand-off checklist.
+
+### The "you can deactivate your SEO plugin" notice keeps coming back
+
+It's dismissed per user — each admin sees it until they dismiss it. If it reappears for the *same* user after dismissing, the dismissal didn't save: check the browser console for an error when you click the notice's ✕, and confirm your login session hasn't expired.
 
 ### AI agents say they can't find your store
 

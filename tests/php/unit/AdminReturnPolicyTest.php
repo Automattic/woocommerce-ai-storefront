@@ -66,11 +66,11 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::update_settings(
 			[
 				'return_policy' => [
-					'mode'    => 'returns_accepted',
-					'page_id' => 0,
-					'days'    => 30,
-					'fees'    => 'FreeReturn',
-					'methods' => [ 'ReturnByMail' ],
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 30,
+					'fees'     => 'FreeReturn',
+					'methods'  => [ 'ReturnByMail' ],
 				],
 			]
 		);
@@ -78,7 +78,8 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$response = $this->controller->get_settings();
 		$policy   = $response->data['return_policy'];
 
-		$this->assertSame( 'returns_accepted', $policy['mode'] );
+		$this->assertSame( 'details', $policy['mode'] );
+		$this->assertSame( 'returns_accepted', $policy['category'] );
 		$this->assertSame( 30, $policy['days'] );
 		$this->assertSame( 'FreeReturn', $policy['fees'] );
 		$this->assertSame( [ 'ReturnByMail' ], $policy['methods'] );
@@ -92,16 +93,18 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode'    => 'returns_accepted',
-					'days'    => 14,
-					'fees'    => 'FreeReturn',
-					'methods' => [ 'ReturnByMail' ],
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 14,
+					'fees'     => 'FreeReturn',
+					'methods'  => [ 'ReturnByMail' ],
 				],
 			]
 		);
 
 		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
-		$this->assertSame( 'returns_accepted', $persisted['mode'] );
+		$this->assertSame( 'details', $persisted['mode'] );
+		$this->assertSame( 'returns_accepted', $persisted['category'] );
 	}
 
 	public function test_post_rejects_invalid_mode(): void {
@@ -117,32 +120,15 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'unconfigured', $persisted['mode'] );
 	}
 
-	public function test_post_validates_page_id_is_published(): void {
-		// Stub a draft page → sanitizer must reset page_id to 0.
-		Functions\when( 'get_post_status' )->justReturn( 'draft' );
-
-		$this->post_settings(
-			[
-				'return_policy' => [
-					'mode'    => 'returns_accepted',
-					'page_id' => 555,
-					'days'    => 14,
-				],
-			]
-		);
-
-		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
-		$this->assertSame( 0, $persisted['page_id'] );
-	}
-
 	public function test_post_clamps_days_to_valid_range(): void {
 		// Above max — clamp to 365.
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode' => 'returns_accepted',
-					'days' => 9999,
-					'fees' => 'FreeReturn',
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 9999,
+					'fees'     => 'FreeReturn',
 				],
 			]
 		);
@@ -158,9 +144,10 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode' => 'returns_accepted',
-					'days' => -5,
-					'fees' => 'FreeReturn',
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => -5,
+					'fees'     => 'FreeReturn',
 				],
 			]
 		);
@@ -171,10 +158,11 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode'    => 'returns_accepted',
-					'days'    => 14,
-					'fees'    => 'FreeReturn',
-					'methods' => [ 'ReturnByMail', 'ReturnByMail', 'ReturnInStore', 'ReturnByMail' ],
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 14,
+					'fees'     => 'FreeReturn',
+					'methods'  => [ 'ReturnByMail', 'ReturnByMail', 'ReturnInStore', 'ReturnByMail' ],
 				],
 			]
 		);
@@ -189,9 +177,10 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode' => 'returns_accepted',
-					'days' => 14,
-					'fees' => 'PayDoubleAtPickup',
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 14,
+					'fees'     => 'PayDoubleAtPickup',
 				],
 			]
 		);
@@ -204,10 +193,11 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode'    => 'returns_accepted',
-					'days'    => 14,
-					'fees'    => 'FreeReturn',
-					'methods' => [ 'ReturnByCarrierPigeon', 'ReturnByMail' ],
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 14,
+					'fees'     => 'FreeReturn',
+					'methods'  => [ 'ReturnByCarrierPigeon', 'ReturnByMail' ],
 				],
 			]
 		);
@@ -243,27 +233,162 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( [ 'mode' => 'unconfigured' ], $persisted );
 	}
 
-	public function test_final_sale_mode_drops_days_fees_methods(): void {
-		// `final_sale` only consumes `mode` + `page_id` at emission.
-		// `days` / `fees` / `methods` are nonsensical (returns aren't
-		// permitted, so there's no window, fee, or method) — sanitizer
-		// drops them so storage doesn't carry meaningless state.
+	// ------------------------------------------------------------------
+	// New mode: link (Task 1 — Option A/B separation)
+	// ------------------------------------------------------------------
+
+	public function test_link_mode_persists_only_mode_and_page_id(): void {
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode'    => 'final_sale',
-					'page_id' => 17,
-					'days'    => 30,
-					'fees'    => 'FreeReturn',
-					'methods' => [ 'ReturnByMail' ],
+					'mode'     => 'link',
+					'page_id'  => 42,
+					// These must be stripped — irrelevant for link mode.
+					'category' => 'returns_accepted',
+					'days'     => 30,
+					'fees'     => 'FreeReturn',
+					'methods'  => [ 'ReturnByMail' ],
 				],
 			]
 		);
 		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
-		$this->assertSame(
-			[ 'mode' => 'final_sale', 'page_id' => 17 ],
-			$persisted
+		$this->assertSame( [ 'mode' => 'link', 'page_id' => 42 ], $persisted );
+	}
+
+	public function test_link_mode_with_zero_page_id_persists_page_id_zero(): void {
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'    => 'link',
+					'page_id' => 0,
+				],
+			]
 		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( [ 'mode' => 'link', 'page_id' => 0 ], $persisted );
+	}
+
+	public function test_link_mode_with_unpublished_page_resets_page_id_to_zero(): void {
+		Functions\when( 'get_post_status' )->justReturn( 'draft' );
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'    => 'link',
+					'page_id' => 99,
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( 0, $persisted['page_id'] );
+	}
+
+	// ------------------------------------------------------------------
+	// New mode: details (Task 1 — Option A/B separation)
+	// ------------------------------------------------------------------
+
+	public function test_details_final_sale_persists_only_mode_and_category(): void {
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'     => 'details',
+					'category' => 'final_sale',
+					// These must be stripped — not meaningful for final_sale.
+					'page_id'  => 17,
+					'days'     => 30,
+					'fees'     => 'FreeReturn',
+					'methods'  => [ 'ReturnByMail' ],
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( [ 'mode' => 'details', 'category' => 'final_sale' ], $persisted );
+	}
+
+	public function test_details_returns_accepted_persists_full_shape(): void {
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 30,
+					'fees'     => 'FreeReturn',
+					'methods'  => [ 'ReturnByMail', 'ReturnInStore' ],
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( 'details', $persisted['mode'] );
+		$this->assertSame( 'returns_accepted', $persisted['category'] );
+		$this->assertSame( 30, $persisted['days'] );
+		$this->assertSame( 'FreeReturn', $persisted['fees'] );
+		$this->assertSame( [ 'ReturnByMail', 'ReturnInStore' ], $persisted['methods'] );
+	}
+
+	public function test_details_returns_accepted_does_not_persist_page_id(): void {
+		// page_id is only meaningful for mode='link'; details drops it.
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'page_id'  => 55,
+					'days'     => 14,
+					'fees'     => 'FreeReturn',
+					'methods'  => [],
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertArrayNotHasKey( 'page_id', $persisted );
+	}
+
+	public function test_details_with_invalid_category_falls_back_to_unconfigured(): void {
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode'     => 'details',
+					'category' => 'pirate_category',
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( 'unconfigured', $persisted['mode'] );
+	}
+
+	public function test_details_without_category_falls_back_to_unconfigured(): void {
+		$this->post_settings(
+			[
+				'return_policy' => [
+					'mode' => 'details',
+					// No 'category' key at all.
+					'days' => 14,
+				],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( 'unconfigured', $persisted['mode'] );
+	}
+
+	// Verify old modes now fail closed (they are no longer in the allow-list).
+
+	public function test_old_returns_accepted_mode_falls_back_to_unconfigured(): void {
+		$this->post_settings(
+			[
+				'return_policy' => [ 'mode' => 'returns_accepted' ],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( 'unconfigured', $persisted['mode'] );
+	}
+
+	public function test_old_final_sale_mode_falls_back_to_unconfigured(): void {
+		$this->post_settings(
+			[
+				'return_policy' => [ 'mode' => 'final_sale' ],
+			]
+		);
+		$persisted = WC_AI_Storefront::get_settings()['return_policy'];
+		$this->assertSame( 'unconfigured', $persisted['mode'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -281,11 +406,11 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->post_settings(
 			[
 				'return_policy' => [
-					'mode'    => 'returns_accepted',
-					'page_id' => 42,
-					'days'    => 14,
-					'fees'    => 'OriginalShippingFees',
-					'methods' => [ 'ReturnByMail', 'ReturnAtKiosk' ],
+					'mode'     => 'details',
+					'category' => 'returns_accepted',
+					'days'     => 14,
+					'fees'     => 'OriginalShippingFees',
+					'methods'  => [ 'ReturnByMail', 'ReturnAtKiosk' ],
 				],
 			]
 		);
@@ -293,8 +418,8 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$response = $this->controller->get_settings();
 		$policy   = $response->data['return_policy'];
 
-		$this->assertSame( 'returns_accepted', $policy['mode'] );
-		$this->assertSame( 42, $policy['page_id'] );
+		$this->assertSame( 'details', $policy['mode'] );
+		$this->assertSame( 'returns_accepted', $policy['category'] );
 		$this->assertSame( 14, $policy['days'] );
 		$this->assertSame( 'OriginalShippingFees', $policy['fees'] );
 		$this->assertSame(
