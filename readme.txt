@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.23.7
+Stable tag: 0.24.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,11 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.24.0 - 2026-06-20 =
+**Added**
+* Your store now creates its own search-engine and social-media metadata for product, category, and shop pages: page titles, meta descriptions, and link previews (Open Graph and Twitter), built automatically from your existing product information with no setup. Hidden products and internal search results are kept out of search engines.
+* If you run a dedicated SEO plugin (Yoast, Rank Math, All in One SEO), a dismissible notice shows how to hand this job over to WooCommerce AI Storefront, with a checklist to review before you deactivate it.
 
 = 0.23.7 - 2026-06-20 =
 **Fixed**

@@ -2,6 +2,20 @@
 
 ---
 
+## [0.24.0] – 2026-06-20
+
+### Features
+
+- **Self-emitted SERP and social metadata on commerce pages, so a lean store can drop a separate SEO plugin (#511).** Product, category, and shop pages now get human-facing `<head>` metadata built automatically from WooCommerce/WordPress core data, with no configuration:
+  - **Title** enriched with the core Brand taxonomy (`Product Name | Brand`), winning over an active SEO plugin via late `document_title_parts` priority — a single `<title>`, no duplication.
+  - **Meta description** derived from core fields (product short/long description; category term description; shop page content, then store tagline), HTML/shortcode-stripped and truncated on a word boundary; omitted rather than emitted empty.
+  - **Open Graph and Twitter Card** tags (product type with price and image; `website` type on archives); empty tags are omitted.
+  - **Opinionated `robots noindex`** for `catalog_visibility=hidden` products and internal product-search results.
+  - **Developer filters** are the only override surface: `wc_ai_storefront_emit_meta_tags`, `wc_ai_storefront_meta_title_parts`, `wc_ai_storefront_meta_description`, `wc_ai_storefront_og_tags`, `wc_ai_storefront_robots_noindex`.
+  - **Migration nudge:** a dismissible admin notice appears when Yoast WooCommerce SEO, Rank Math, or All in One SEO is active, inviting deactivation with an inline pre-flight checklist (breadcrumbs, redirects, custom noindex, sitemap) and a link to a new coexistence guide. The plugin never reads an SEO plugin's stored metadata; WooCommerce/WordPress core is the single source of truth.
+
+---
+
 ## [0.23.7] – 2026-06-20
 
 ### Fixes
