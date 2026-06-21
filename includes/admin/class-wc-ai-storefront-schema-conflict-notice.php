@@ -66,16 +66,16 @@ class WC_AI_Storefront_Schema_Conflict_Notice {
 		echo '<p>';
 		printf(
 			/* translators: %s: comma-separated list of detected SEO plugin names. */
-			esc_html__( 'WooCommerce AI Storefront now provides your product titles, descriptions, social cards, and structured data. %s is also emitting these, which can produce duplicate tags. You can deactivate it — review the checklist first.', 'woocommerce-ai-storefront' ),
+			esc_html__( 'WooCommerce AI Storefront now provides your product titles, descriptions, social cards, and structured data. %s is also emitting these, which can produce duplicate tags. You can deactivate it. Review the checklist first.', 'woocommerce-ai-storefront' ),
 			'<strong>' . esc_html( $labels ) . '</strong>'
 		);
 		echo '</p>';
 		echo '<p><strong>' . esc_html__( 'Before deactivating, check:', 'woocommerce-ai-storefront' ) . '</strong></p>';
 		echo '<ul style="list-style:disc;margin-left:20px;">';
 		echo '<li>' . esc_html__( 'Breadcrumbs: if your theme calls the SEO plugin\'s breadcrumb function, switch it to woocommerce_breadcrumb().', 'woocommerce-ai-storefront' ) . '</li>';
-		echo '<li>' . esc_html__( 'Redirects: any redirects configured in the SEO plugin will stop working — keep a dedicated redirect plugin.', 'woocommerce-ai-storefront' ) . '</li>';
+		echo '<li>' . esc_html__( 'Redirects: any redirects configured in the SEO plugin will stop working. Keep a dedicated redirect plugin.', 'woocommerce-ai-storefront' ) . '</li>';
 		echo '<li>' . esc_html__( 'Custom noindex rules: pages you manually noindexed will become indexable.', 'woocommerce-ai-storefront' ) . '</li>';
-		echo '<li>' . esc_html__( 'Sitemap: WordPress core serves /wp-sitemap.xml — resubmit it in Google Search Console.', 'woocommerce-ai-storefront' ) . '</li>';
+		echo '<li>' . esc_html__( 'Sitemap: WordPress core serves /wp-sitemap.xml. Resubmit it in Google Search Console.', 'woocommerce-ai-storefront' ) . '</li>';
 		echo '</ul>';
 		echo '<p><a href="' . esc_url( $doc_url ) . '" target="_blank" rel="noopener">' . esc_html__( 'Read the full coexistence guide', 'woocommerce-ai-storefront' ) . '</a></p>';
 		echo '</div>';
@@ -104,6 +104,12 @@ class WC_AI_Storefront_Schema_Conflict_Notice {
 					credentials: 'same-origin',
 					headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
 					body: body.toString()
+				} ).then( function ( response ) {
+					if ( ! response.ok ) {
+						window.console && window.console.warn( 'AI Storefront: notice dismiss failed (HTTP ' + response.status + ')' );
+					}
+				} ).catch( function ( err ) {
+					window.console && window.console.warn( 'AI Storefront: notice dismiss network error', err );
 				} );
 			} );
 		} )();
