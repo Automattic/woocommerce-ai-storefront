@@ -180,9 +180,9 @@ Conventions:
 - One-line bullets only. The verbose body that lives in `CHANGELOG.md` belongs there, not here. wp.org renders the readme into a tabbed UI where verbose changelog entries get awkward.
 - Keep only the last 5–10 versions in `readme.txt`. Older history lives in `CHANGELOG.md`. The wp.org "Changelog" tab is meant for "what's new lately," not the full archive.
 
-### Today's gap
+### Keep both changelogs in sync
 
-`readme.txt` currently has only the `0.1.0` entry. Bringing it up to date is a follow-up task — track in an issue and tackle in the next release commit.
+`readme.txt`'s `== Changelog ==` is hand-maintained per release and is the one most likely to drift: step 2's `sed` bumps the `Stable tag` but never touches the changelog body, so a release can ship with the tag bumped and no matching entry. That happened to 0.25.0 and 0.26.0 (backfilled in #526). `CHANGELOG.md` and the GitHub Release notes are generated/extracted automatically; `readme.txt` is not. Every release must add the matching `= X.Y.Z =` block — see step 4 and its verification command.
 
 ## Release checklist
 
@@ -246,7 +246,17 @@ The new empty `[Unreleased]` skeleton at the top accumulates entries for the nex
 
 ### 4. Mirror the new entries into `readme.txt`
 
-Trim each headline to one line. Drop the body paragraph. Keep only the last 5–10 versions.
+**Don't skip this — step 2's `sed` bumps the `Stable tag` but does NOT touch the `== Changelog ==` section.** They drift silently otherwise (0.25.0 and 0.26.0 shipped with the tag bumped but no entry; backfilled in #526).
+
+For each version block you just moved under a header in `CHANGELOG.md`, add a matching `= X.Y.Z - YYYY-MM-DD =` block at the top of `readme.txt`'s `== Changelog ==`. Trim each headline to one line, drop the body paragraphs, map `### Features`/`### Fixes` to `**New**`/`**Fixed**`/`**Improved**`/`**Tweaked**`, and keep only the last 5–10 versions.
+
+Verify the readme's newest entry matches the release version before committing:
+
+```bash
+test "$(grep -m1 -oE '= [0-9]+\.[0-9]+\.[0-9]+ ' readme.txt | tr -d '= ')" = "${NEW}" \
+  && echo "readme.txt changelog OK for ${NEW}" \
+  || echo "MISMATCH: readme.txt == Changelog == not updated for ${NEW}"
+```
 
 ### 5. Run the full quality gate
 
