@@ -26,7 +26,7 @@ class WC_AI_Storefront_Seo_Plugin_Detector {
 	/**
 	 * Return descriptors for every detected SEO plugin.
 	 *
-	 * @return array<int,array{slug:string,label:string}>
+	 * @return array<int,array{slug:string,label:string,handled?:bool}>
 	 */
 	public static function detect(): array {
 		$found = array();
@@ -54,13 +54,32 @@ class WC_AI_Storefront_Seo_Plugin_Detector {
 			);
 		}
 
+		// Jetpack (incl. WordPress.com / Atomic) emits its own Open Graph +
+		// SEO meta description. We auto-suppress the overlap on commerce pages
+		// (see WC_AI_Storefront_Meta_Tags), so it is reported as handled — the
+		// merchant is never asked to deactivate Jetpack.
+		if ( defined( 'JETPACK__VERSION' ) ) {
+			$found[] = array(
+				'slug'    => 'jetpack',
+				'label'   => __( 'Jetpack', 'woocommerce-ai-storefront' ),
+				'handled' => true,
+			);
+		}
+
 		return $found;
 	}
 
 	/**
-	 * Whether any overlapping SEO plugin is present.
+	 * Whether any deactivate-able (non auto-handled) overlapping SEO plugin is
+	 * present. Auto-handled entries (e.g. Jetpack, whose overlap we suppress
+	 * ourselves) do not count — we never nudge the merchant to remove them.
 	 */
 	public static function has_conflict(): bool {
-		return ! empty( self::detect() );
+		foreach ( self::detect() as $plugin ) {
+			if ( empty( $plugin['handled'] ) ) {
+				return true;
+			}
+		}
+		return false;
 	}
 }
