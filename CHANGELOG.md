@@ -2,12 +2,22 @@
 
 ---
 
+## [0.26.0] – 2026-06-22
+
+### Features
+
+- **UCP catalog and checkout prices are now returned in the agent's requested currency (#517).** When an agent sends `context.currency` (e.g. CAD) on `catalog/search`, `catalog/lookup`, or `checkout-sessions`, prices come back converted to that currency — full WooPayments conversion (exchange rate + rounding + charm pricing), matching the buyer-facing product page — instead of the store base currency:
+  - **Requires WooPayments >= 10.9** (its Store-API currency support). On older WooPayments the prices stay in the base currency, exactly as before.
+  - **Unsupported currencies fail safe:** a requested currency the store does not accept (or no `context.currency` at all) returns base-currency prices and surfaces a `currency_conversion_unsupported` warning, so an agent never quotes a base-currency price as if it were the requested currency.
+
+---
+
 ## [0.25.0] – 2026-06-21
 
 ### Features
 
-- **Return and refund policy is now an explicit "Option A or Option B" choice in the Policies tab (#520).** The lumped layout (a returns-page dropdown shown alongside the structured fields) is replaced by a single control that mirrors Google's return-policy options, so the page link and the inline detail can no longer both be live at once:
-  - **Three top-level choices** — Not configured, Link to a returns page (Option B), or Specify the details here (Option A) — reveal only the fields that apply.
+- **Return and refund policy is now an explicit "Option A or Option B" choice in the Policies tab (#520).** Google's return-policy structured-data docs let a store express `hasMerchantReturnPolicy` two ways: **Option A**, inline structured fields (`applicableCountry` + `returnPolicyCategory`, plus return window / fees / methods); or **Option B**, a single `merchantReturnLink` URL pointing at the store's returns policy page. The plugin previously lumped both into one mode (a returns-page dropdown shown alongside the structured fields), which let them conflict; it is now one control matching Google's either/or model:
+  - **Three top-level choices** — Not configured; **Link to a returns page** (Google's Option B, emits `merchantReturnLink`); or **Specify the details here** (Google's Option A, emits inline `returnPolicyCategory` with the return window / fees / methods) — revealing only the fields that apply.
   - **Fixes the silent-precedence bug** where a configured returns page quietly dropped the merchant's inline days/fees/methods from the emitted structured data, and the preview/emission divergence that came with it.
   - **JSON-LD and llms.txt readers kept in parity** — link mode requires a published page of the correct post type, and the inline returns-accepted claim is gated on the store base country, matching the emitter exactly.
 
