@@ -287,10 +287,17 @@ class WC_AI_Storefront_Meta_Tags {
 				}
 			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
-			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
-			if ( $shop_id > 0 ) {
+			$is_front_page = function_exists( 'is_front_page' ) && is_front_page();
+			$shop_id       = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			// When the shop archive is the site front page, the brand is the
+			// correct share headline; the bare "Shop" archive title is not.
+			if ( $is_front_page ) {
+				$og['og:title'] = $site;
+			} elseif ( $shop_id > 0 ) {
 				$og['og:title'] = get_the_title( $shop_id );
-				$og['og:url']   = get_permalink( $shop_id );
+			}
+			if ( $shop_id > 0 ) {
+				$og['og:url'] = get_permalink( $shop_id );
 			}
 		}
 

@@ -542,4 +542,19 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'https://shop.test/branded-og.png', $og['og:image'] );
 	}
+
+	// --- Task 3: front-page brand og:title (#527) ---
+
+	public function test_archive_og_title_is_brand_when_shop_is_front_page(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'Saltwarp', $og['og:title'] );
+	}
 }
