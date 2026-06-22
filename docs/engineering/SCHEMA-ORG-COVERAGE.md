@@ -1,6 +1,15 @@
 # Schema.org Coverage Audit
 
-> Last reviewed: 2026-05-07 (post-[#331](https://github.com/Automattic/woocommerce-ai-storefront/pull/331))
+> Last reviewed: 2026-06-22 (post-[#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)/[#373](https://github.com/Automattic/woocommerce-ai-storefront/pull/373) variant ProductGroup, [#517](https://github.com/Automattic/woocommerce-ai-storefront/pull/517) multi-currency, [#520](https://github.com/Automattic/woocommerce-ai-storefront/pull/520) return-policy A/B)
+
+## What changed since the last review (2026-05-07)
+
+- **Variable products now emit `ProductGroup`** (#328/#373): `maybe_convert_to_product_group()` converts a variable product to `@type: ProductGroup`, emitting `productGroupID` (SKU or id fallback), `variesBy` (the varying attribute axes), and `hasVariant: [...]` (each a standalone `Product` with its own offer, `BuyAction`, and `checkoutPageURLTemplate`).
+- **`Offer.checkoutPageURLTemplate` now emitted** on simple offers (`add_checkout_page_url_template()`) and on every per-variant offer inside `hasVariant`; coexists with `BuyAction`.
+- **Catalog/checkout API prices now currency-converted** (#517, 0.26.0): `with_active_currency()` wraps the UCP REST Store-API dispatch; page JSON-LD follows `?currency=` render handling — these are distinct paths.
+- **Return policy is now Option A/B** (#520): merchants choose between a direct return-policy link (Option A) or a structured `MerchantReturnPolicy` block (Option B).
+
+---
 
 This document audits the plugin's JSON-LD output against [Schema.org](https://schema.org) for every type we emit. It complements [`JSON-LD-SCHEMA.md`](./JSON-LD-SCHEMA.md) (which describes *what we emit and how*) by enumerating *what the spec offers* and where we have coverage gaps.
 
@@ -25,10 +34,11 @@ The plugin emits two top-level JSON-LD blocks:
 
 | Surface | Currently emitted `@type` | Schema.org chain |
 |---|---|---|
-| Single product page | `Product` | Thing → Product |
+| Single product page (simple) | `Product` | Thing → Product |
+| Single product page (variable) | `ProductGroup` | Thing → Product → ProductGroup |
 | Homepage / shop | `OnlineBusiness` *([decision](#why-onlinebusiness-and-not-onlinestore))* | Thing → Organization → OnlineBusiness → OnlineStore |
 
-Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeValue`, `MonetaryAmount`, `OfferShippingDetails`, `ShippingDeliveryTime`, `MerchantReturnPolicy`, `DefinedRegion`, `PostalAddress`, `ContactPoint`, `OfferCatalog`, `Review`, `Rating`, `AggregateRating`, `Person`, `PropertyValue`, `SearchAction`.
+Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeValue`, `MonetaryAmount`, `OfferShippingDetails`, `ShippingDeliveryTime`, `MerchantReturnPolicy`, `DefinedRegion`, `PostalAddress`, `ContactPoint`, `OfferCatalog`, `Review`, `Rating`, `AggregateRating`, `Person`, `PropertyValue`, `SearchAction`, `ProductGroup`, `variesBy`, `hasVariant`.
 
 ## Legend
 
@@ -71,10 +81,10 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `hasMeasurement` | — | — | — |
 | `hasMerchantReturnPolicy` | ✓ §return | ✓ at `offers[0]` level | Plugin |
 | `height` | ✓ §dimensions | ✓ | Plugin |
-| `inProductGroupWithID` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) |
+| `inProductGroupWithID` | — | — | Not emitted — the parent `ProductGroup` carries `productGroupID` instead (sku, or id fallback) |
 | `isAccessoryOrSparePartFor` / `isConsumableFor` | — | — | — |
 | `isRelatedTo` / `isSimilarTo` | ✓ §isRelatedTo-isSimilarTo | ✓ when product has cross-sells / upsells | Plugin (`add_related_products()`) — cross-sells → `isRelatedTo`, upsells → `isSimilarTo`, capped at 10 entries each, syndication-filtered |
-| `isVariantOf` | — | — | Future [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328) |
+| `isVariantOf` | — | — | Not emitted — variants emit as standalone `Product` entries under the parent's `hasVariant`; no back-pointer is emitted |
 | `itemCondition` | — | — | — *(see "Recommended follow-ups")* |
 | `keywords` | — | — | — |
 | `logo` | — | — | — |
@@ -109,6 +119,27 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 
 ---
 
+## `ProductGroup`
+
+[Schema.org spec →](https://schema.org/ProductGroup)
+
+Variable products are converted to `@type: ProductGroup` by `maybe_convert_to_product_group()` (~line 1085). This is Google's preferred shape for variant rich results — each variant is a standalone `Product` listed under `hasVariant`, and the parent carries the grouping metadata.
+
+| Property | In doc? | Emitted? | Source |
+|---|---|---|---|
+| `@type: ProductGroup` | — | ✓ | Plugin (`maybe_convert_to_product_group()`) |
+| `productGroupID` | — | ✓ (SKU, or product `id` as fallback) | Plugin (line 1187) |
+| `variesBy` | — | ✓ (the varying attribute axes, e.g. `"color"`, `"size"`) | Plugin (line 1188) |
+| `hasVariant` | — | ✓ (array of `Product` entries built by `build_variant_entry()`, ~line 1219) | Plugin (line 1195) |
+
+### Per-variant `Product` entries (inside `hasVariant[]`)
+
+Each `hasVariant` entry is a standalone `Product` built by `build_variant_entry()` and includes: `@id`, `url`, `name`, `sku`, `image`, typed props, `brand`, `category`, and `offers[0]` with `seller` (copied from parent), the variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
+
+**Not emitted on variants**: `isVariantOf` (no back-pointer to the parent) and `inProductGroupWithID` (the parent carries `productGroupID` instead).
+
+---
+
 ## `Offer`
 
 [Schema.org spec →](https://schema.org/Offer)
@@ -129,7 +160,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `availableAtOrFrom` / `availableDeliveryMethod` | — | — | — |
 | `businessFunction` | — | — | — |
 | `category` | — | — | — *(plugin emits at Product level; WC's `product_cat` taxonomy classifies the thing being sold, not the offer's commercial role)* |
-| `checkoutPageURLTemplate` | — | — | **In-scope for [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)** — coexists with `BuyAction`, not a replacement. The two emit the same URL at different positions: `BuyAction` on `Product.potentialAction` (Action-vocabulary signal, with `actionPlatform`/`agent`/`result`, recognized by older consumers and cross-domain action-discovery agents); `checkoutPageURLTemplate` directly on `Offer` (newer dedicated e-commerce property, supports per-offer URLs natively — important for #328's per-variant emission). Keep BuyAction for breadth of consumer support; add checkoutPageURLTemplate for modern signal + per-variant fit. |
+| `checkoutPageURLTemplate` | ✓ | ✓ (Plugin) | Plugin — emitted on simple offers (`add_checkout_page_url_template()`) and on every per-variant offer inside `hasVariant`; coexists with `BuyAction` (same URL at different positions: `BuyAction` on `Product.potentialAction` for Action-vocabulary breadth; `checkoutPageURLTemplate` directly on `Offer` for modern e-commerce signal + per-variant fit) |
 | `deliveryLeadTime` | — | — | — *(handlingTime is in `shippingDetails` instead)* |
 | `eligibleDuration` | — | ✓ for WC Subscriptions products with a finite `get_length() > 0` | Plugin (#368) — emitted as `QuantitativeValue` with UN/CEFACT `unitCode` (DAY/WEE/MON/ANN); indefinite subscriptions omit the field |
 | `eligibleCustomerType` / `eligibleQuantity` / `eligibleRegion` / `eligibleTransactionVolume` | — | — | — |
@@ -144,8 +175,8 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `leaseLength` | — | — | — |
 | `mobileUrl` | — | — | — |
 | `offeredBy` | — | — | — |
-| `price` | — | ✓ | WC core |
-| `priceCurrency` | ✓ | ✓ | Plugin (hoists from `priceSpecification[0]` to outer Offer) |
+| `price` | — | ✓ | WC core. **API path**: catalog/checkout API responses are currency-converted per the agent's `context.currency` via `with_active_currency()` (#517, requires WooPayments ≥ 10.9); page JSON-LD follows `?currency=` render — these are distinct paths. |
+| `priceCurrency` | ✓ | ✓ | Plugin (hoists from `priceSpecification[0]` to outer Offer). Same API vs page path distinction as `price` above. |
 | `priceSpecification` | — | ✓ (`UnitPriceSpecification`) | WC core for non-subscription sale-window entries; for WC Subscriptions products the plugin replaces `offers[0].priceSpecification` wholesale (#368) — the subscription array overwrites any WC-core entries rather than merging. The plugin emits `UnitPriceSpecification` entries carrying `priceComponentType: Subscription` with ISO 8601 `billingDuration`, plus `priceComponentType: ActivationFee` for sign-up fees. Free trial uses a two-element array (trial entry at `price: 0`, recurring entry second); deliberately does NOT emit `billingStart` since Schema.org types it `Number`, not Duration |
 | `priceValidUntil` | — | ✓ when sale-end date is set | WC core |
 | `review` | — | — | — |
@@ -426,7 +457,7 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 
 2. **`brand` IS emitted by WC core** via a separate handler. `WC_Brands::add_structured_data()` in `wp-content/plugins/woocommerce/includes/class-wc-brands.php` hooks `woocommerce_structured_data_product` at priority 20 — distinct from the main `WC_Structured_Data` class. An audit grep against just the main file would miss this; the lesson is to grep the broader plugin tree for filter handlers, not just the canonical class. Coverage is conditional: requires WC's modern brands feature and `product_brand` taxonomy values.
 
-3. **Future #328 fills three gaps**: `Product.inProductGroupWithID`, `Product.isVariantOf`, and per-variant `Product` emission via `hasVariant`. Plus migrating `BuyAction.urlTemplate` to the WC Shareable Checkout URL format (`?products=ID:1`).
+3. **#328/#373 shipped `ProductGroup`/`variesBy`/`hasVariant` and `Offer.checkoutPageURLTemplate`**. Still not emitted by deliberate choice or WC-core limit: `isVariantOf` (no back-pointer on variants — the parent's `hasVariant` is the canonical link) and `gtin8`/`gtin12`/`gtin13`/`gtin14` (WC core emits a generic `gtin` only).
 
 4. **High-coverage areas**: shipping (`shippingDetails`, `handlingTime`, `shippingRate`), returns (`hasMerchantReturnPolicy`), pricing (`priceCurrency`, `priceSpecification`, `priceValidUntil`), inventory (`inventoryLevel`), reviews (`Review[]`, `aggregateRating`), and identity (`logo`, `address`, `contactPoint`, `currenciesAccepted`).
 
@@ -450,12 +481,9 @@ In rough priority order:
 
    Recommend the conservative path first — it captures real merchant-known data without faking precision the multi-rate path would also be needed for. Multi-rate is a separate, larger initiative.
 
-8. **Restructure return-policy emission to match merchant model** — the merchant has ONE store-wide return policy (configured once in plugin settings); per-product variance is just the "final sale" flag (no returns on this product). Right emission shape:
-   - **Always emit** the standard policy at `Organization.hasMerchantReturnPolicy` (homepage `OnlineBusiness` block) — single canonical store-wide commitment. ✓ **Implemented in #337 phase 1.**
-   - ~~**Emit at `Offer.hasMerchantReturnPolicy` only when the product overrides**~~ — **ruled out.** The original phase 2 idea was to skip per-Offer emission when it would duplicate the Org-level block (i.e. for non-final-sale products), letting Schema.org's inheritance rule make Org-level the default. Reconsidered: per-Offer emission today is *already* override-aware (emits `MerchantReturnNotPermitted` for flagged products, store-wide policy for the rest), and the redundant emission for the common case is intentional defensive shape — consumers that don't implement the Org-level fallback correctly still get the right answer per-product. The markup-size win didn't justify the backward-compat risk.
-   - Both call sites share `build_return_policy_block()` (now `protected`), so the shapes stay identical for the same configuration.
+8. ~~**Restructure return-policy emission to match merchant model**~~ — **Shipped as Option A/B in [#520](https://github.com/Automattic/woocommerce-ai-storefront/pull/520).** Merchants now choose between Option A (direct return-policy link) and Option B (structured `MerchantReturnPolicy` block). Per-Offer emission remains override-aware (`MerchantReturnNotPermitted` for final-sale products, store-wide policy otherwise); both call sites share `build_return_policy_block()`.
 
-These can be filed as standalone issues; none are blocked by the current PR pipeline (#328 → ProductGroup work).
+These can be filed as standalone issues.
 
 ## Beyond the current types — Schema.org surfaces worth pursuing
 
