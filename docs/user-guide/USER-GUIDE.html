@@ -365,6 +365,36 @@
 <li><strong>Sitemap.</strong> WordPress core serves a sitemap at <code>/wp-sitemap.xml</code>. If you had submitted the SEO plugin&#39;s <code>/sitemap_index.xml</code> to Google Search Console, resubmit the core one.</li>
 </ul>
 <p>Keeping your SEO plugin is fine too — dismiss the notice and both keep working, with the minor duplicate-tag caveat noted in <a href="#known-compatibility-notes">§1</a>. The full side-by-side comparison is in the engineering doc <a href="../engineering/YOAST-COEXISTENCE.md"><code>YOAST-COEXISTENCE.md</code></a>.</p>
+<p><strong>Check your structured data and metadata with free tools.</strong> Once the plugin is live, confirm what search engines and AI assistants actually read from your pages. A single URL is enough to start: paste your shop or a product page into the first tool. If you also run another SEO plugin, these validators are where duplicate title, description, and social tags show up.</p>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>What it checks</th>
+<th>When to use</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong><a href="https://search.google.com/test/rich-results">Google Rich Results Test</a></strong></td>
+<td>Whether Google can read your product structured data (price, availability, brand, ratings) and which rich results the page qualifies for.</td>
+<td>Spot-check a product, category, or shop URL after setup or a large catalog change.</td>
+</tr>
+<tr>
+<td><strong><a href="https://validator.schema.org/">Schema.org Validator</a></strong></td>
+<td>The raw Schema.org JSON-LD on a page, vendor-neutral (no Google-specific rules).</td>
+<td>Confirm the markup itself is valid when a Google-specific warning is unclear.</td>
+</tr>
+<tr>
+<td><strong><a href="https://search.google.com/search-console/welcome">Google Search Console</a></strong></td>
+<td>Indexing coverage, structured-data reports, and where to resubmit your <code>/wp-sitemap.xml</code>.</td>
+<td>Ongoing monitoring of how Google sees your store.</td>
+</tr>
+<tr>
+<td><strong><a href="https://www.bing.com/webmasters/">Bing Webmaster Tools</a></strong></td>
+<td>Indexing and structured-data reports for Bing, which also powers ChatGPT Search and Microsoft Copilot.</td>
+<td>Ongoing monitoring of the Bing-backed AI assistants.</td>
+</tr>
+</tbody></table>
 <hr>
 <h2>5. Choose which products to expose</h2>
 <p>The <strong>Visibility</strong> tab controls what AI agents can see. Three modes:</p>
@@ -734,7 +764,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.24.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.26.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>

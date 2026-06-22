@@ -257,6 +257,15 @@ It also keeps two kinds of page out of search results automatically: products yo
 
 Keeping your SEO plugin is fine too — dismiss the notice and both keep working, with the minor duplicate-tag caveat noted in [§1](#known-compatibility-notes). The full side-by-side comparison is in the engineering doc [`YOAST-COEXISTENCE.md`](../engineering/YOAST-COEXISTENCE.md).
 
+**Check your structured data and metadata with free tools.** Once the plugin is live, confirm what search engines and AI assistants actually read from your pages. A single URL is enough to start: paste your shop or a product page into the first tool. If you also run another SEO plugin, these validators are where duplicate title, description, and social tags show up.
+
+| Tool | What it checks | When to use |
+|------|----------------|-------------|
+| **[Google Rich Results Test](https://search.google.com/test/rich-results)** | Whether Google can read your product structured data (price, availability, brand, ratings) and which rich results the page qualifies for. | Spot-check a product, category, or shop URL after setup or a large catalog change. |
+| **[Schema.org Validator](https://validator.schema.org/)** | The raw Schema.org JSON-LD on a page, vendor-neutral (no Google-specific rules). | Confirm the markup itself is valid when a Google-specific warning is unclear. |
+| **[Google Search Console](https://search.google.com/search-console/welcome)** | Indexing coverage, structured-data reports, and where to resubmit your `/wp-sitemap.xml`. | Ongoing monitoring of how Google sees your store. |
+| **[Bing Webmaster Tools](https://www.bing.com/webmasters/)** | Indexing and structured-data reports for Bing, which also powers ChatGPT Search and Microsoft Copilot. | Ongoing monitoring of the Bing-backed AI assistants. |
+
 ---
 
 ## 5. Choose which products to expose
