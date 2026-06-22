@@ -400,6 +400,62 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
+	 * Run $fn with WooPayments switched to $code, scoped to this in-process
+	 * Store API dispatch (Mechanism B, issue #517).
+	 *
+	 * Reproduces WCPay's own `?currency=` switch (MultiCurrency::init adds an
+	 * `override_selected_currency` filter for that path) but scoped to one
+	 * `rest_do_request()` instead of the whole request — and forces conversion
+	 * back ON, because for a non-Store-API REST outer request (our /wc/ucp/v1/
+	 * route) WCPay adds `should_convert_product_price => __return_false` +
+	 * `should_return_store_currency => __return_true`. Priority 99 beats
+	 * WCPay's init-time filters; all three are removed in `finally` so the
+	 * outer request and the next request in the same process are unaffected.
+	 *
+	 * No-op (runs $fn unchanged) when $code is null/empty or not ISO-4217.
+	 *
+	 * @param string|null $code Requested ISO-4217 currency.
+	 * @param callable    $fn   The dispatch to run.
+	 * @return mixed The return value of $fn.
+	 */
+	public static function with_active_currency( ?string $code, callable $fn ) {
+		$normalized = is_string( $code ) ? strtoupper( trim( $code ) ) : '';
+		if ( '' === $normalized || 1 !== preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return $fn();
+		}
+
+		$override = static function () use ( $normalized ) {
+			return $normalized;
+		};
+		add_filter( 'wcpay_multi_currency_override_selected_currency', $override, 99 );
+		add_filter( 'wcpay_multi_currency_should_convert_product_price', '__return_true', 99 );
+		add_filter( 'wcpay_multi_currency_should_return_store_currency', '__return_false', 99 );
+
+		// Explicitly switch WCPay's selected currency (non-persistent) so the
+		// response currency CODE follows too. The override filter alone
+		// converts the price AMOUNT but leaves the code at the store currency,
+		// because FrontendCurrencies reads the selected-currency object.
+		$mc    = null;
+		$prior = null;
+		if ( class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
+			$mc    = \WCPay\MultiCurrency\MultiCurrency::instance();
+			$prior = $mc->get_selected_currency()->get_code();
+			$mc->update_selected_currency( $normalized, false );
+		}
+
+		try {
+			return $fn();
+		} finally {
+			if ( null !== $mc && null !== $prior ) {
+				$mc->update_selected_currency( $prior, false );
+			}
+			remove_filter( 'wcpay_multi_currency_override_selected_currency', $override, 99 );
+			remove_filter( 'wcpay_multi_currency_should_convert_product_price', '__return_true', 99 );
+			remove_filter( 'wcpay_multi_currency_should_return_store_currency', '__return_false', 99 );
+		}
+	}
+
+	/**
 	 * Convert a minor-units amount from one currency to another using
 	 * WooPayments' exchange rates.
 	 *

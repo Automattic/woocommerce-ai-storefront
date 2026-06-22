@@ -1338,7 +1338,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// even when rest_do_request() throws. See WC_AI_Storefront_UCP_Store_API_Filter.
 		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$store_response = rest_do_request( $store_request );
+			$store_response = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				$request_currency,
+				static function () use ( $store_request ) {
+					return rest_do_request( $store_request );
+				}
+			);
 		} finally {
 			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
