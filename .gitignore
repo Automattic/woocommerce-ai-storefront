@@ -15,6 +15,11 @@ node_modules/
 .tools/
 release-staging/
 
+# Implementation plans are ephemeral working artifacts, not persisted docs.
+# Keep them in .claude/tmp/artifacts/ (also ignored). Design specs under
+# docs/superpowers/specs/ stay tracked as ADR-style rationale.
+/docs/superpowers/plans/
+
 # Local docker-compose overrides. Teammates can drop `.env` for port
 # overrides (e.g. `WP_PORT=8088`) or `docker-compose.override.yml` for
 # personal tweaks (xdebug, alternate PHP versions, custom mounts)
