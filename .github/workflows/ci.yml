@@ -104,7 +104,7 @@ jobs:
         run: composer install --no-interaction --prefer-dist
 
       - name: Run PHPStan
-        run: vendor/bin/phpstan analyse --memory-limit=1G --error-format=github
+        run: vendor/bin/phpstan analyse --memory-limit=2G --error-format=github
 
   i18n-check:
     # Regenerates the .pot translation template and fails the build if

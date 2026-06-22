@@ -163,6 +163,11 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$GLOBALS['_mc_test_double']     = null;
 		$GLOBALS['_mc_throw']           = false;
 		$GLOBALS['_mc_feature_enabled'] = true;
+		unset(
+			$GLOBALS['_mc_initial_selected'],
+			$GLOBALS['_mc_selected_currency'],
+			$GLOBALS['_mc_update_calls']
+		);
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -3917,24 +3922,33 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'Open continue_url', $bundle_errors[0]['content'] );
 	}
 
-	public function test_handle_checkout_sessions_passes_currency_param_to_store_api_during_line_item_fetch(): void {
-		// Agent sends context.currency: EUR. The Store API dispatch inside
-		// process_line_item must carry currency=EUR as a query param.
-		WC_AI_Storefront_Multi_Currency::reset_cache();
-		Functions\when( 'apply_filters' )->alias(
-			static function ( $hook, $value, ...$extras ) {
-				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
-					return array( 'USD', 'EUR' );
-				}
-				return $value;
-			}
+	public function test_handle_checkout_sessions_switches_currency_during_line_item_fetch(): void {
+		// Agent sends context.currency: EUR. Mechanism B (issue #517): the
+		// Store API dispatch inside process_line_item runs inside
+		// with_active_currency('EUR', ...) so WCPay's selected currency is EUR
+		// at dispatch time. The ineffective `currency` request param is no
+		// longer set.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
 		);
+		$GLOBALS['_mc_test_double']       = $mc;
+		$GLOBALS['_mc_feature_enabled']   = true;
+		$GLOBALS['_mc_initial_selected']  = 'USD';
+		$GLOBALS['_mc_selected_currency'] = 'USD';
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$captured_currency = null;
+		$selected_at_dispatch = null;
+		$captured_param       = 'NOT_READ';
 		Functions\when( 'rest_do_request' )->alias(
-			static function ( WP_REST_Request $req ) use ( &$captured_currency ) {
-				$captured_currency = $req->get_param( 'currency' );
-				$response = new \WP_REST_Response( array(
+			static function ( WP_REST_Request $req ) use ( &$selected_at_dispatch, &$captured_param ) {
+				$selected_at_dispatch = $GLOBALS['_mc_selected_currency'] ?? null;
+				$captured_param       = $req->get_param( 'currency' );
+				$response             = new \WP_REST_Response( array(
 					'id'             => 1,
 					'type'           => 'simple',
 					'is_in_stock'    => true,
@@ -3957,7 +3971,9 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_checkout_sessions_create( $request );
 
-		$this->assertSame( 'EUR', $captured_currency, 'Store API dispatch must carry currency=EUR query param' );
+		$this->assertSame( 'EUR', $selected_at_dispatch, 'WCPay selected currency must be EUR during the line-item Store API dispatch' );
+		$this->assertNull( $captured_param, 'the ineffective currency request param must no longer be set' );
+		$this->assertSame( 'USD', $GLOBALS['_mc_selected_currency'], 'selected currency restored after the handler' );
 	}
 
 	public function test_check_price_drift_compares_using_store_api_currency_param_response(): void {
@@ -4064,6 +4080,48 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			}
 		}
 		$this->assertTrue( $found, 'Drift warning must fire when EUR amounts differ' );
+	}
+
+	public function test_handle_checkout_sessions_emits_unsupported_warning_for_unaccepted_currency(): void {
+		// XYZ not accepted, non-base → line-item prices stayed base → the
+		// session must surface currency_conversion_unsupported (issue #517).
+		$GLOBALS['_mc_test_double'] = null;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( WP_REST_Request $req ) {
+				$response = new \WP_REST_Response( array(
+					'id'             => 1,
+					'type'           => 'simple',
+					'is_in_stock'    => true,
+					'is_purchasable' => true,
+					'prices'         => array( 'price' => '1999', 'currency_code' => 'USD', 'currency_minor_unit' => 2 ),
+				) );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
+		$request->set_body_params( array(
+			'context'    => array( 'currency' => 'XYZ' ),
+			'line_items' => array(
+				array( 'item' => array( 'id' => 'prod_1' ), 'quantity' => 1 ),
+			),
+		) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_checkout_sessions_create( $request );
+
+		$body  = $response->get_data();
+		$found = false;
+		foreach ( $body['messages'] ?? array() as $msg ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === ( $msg['code'] ?? null ) ) {
+				$found = true;
+			}
+		}
+		$this->assertTrue( $found, 'unaccepted currency must emit currency_conversion_unsupported on checkout-sessions' );
 	}
 
 }

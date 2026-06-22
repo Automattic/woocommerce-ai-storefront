@@ -21,10 +21,13 @@
  * all machine-readable surfaces (UCP manifest, JSON-LD, llms.txt) and
  * (b) stamping `?currency=XXX` on outbound buyer-facing URLs so the
  * WooPayments page handler switches the currency at render time.
- * Phase 2 (deferred) refers specifically to server-side price
- * computation inside UCP catalog responses — switching the WooCommerce
- * session currency before price lookup so the API returns prices in the
- * requested currency rather than the store base.
+ * Phase 2 (shipped; requires WooPayments >= 10.9) is server-side price
+ * computation inside UCP catalog/checkout responses: `with_active_currency()`
+ * switches WCPay's selected currency around each in-process Store-API
+ * dispatch so the API returns prices in the agent's requested currency
+ * (full WCPay conversion — rate + rounding + charm) rather than the store
+ * base. On WooPayments < 10.9 the switch is a safe no-op and prices stay
+ * base, matching pre-Phase-2 behaviour.
  *
  * @package WooCommerce_AI_Storefront
  * @since 0.17.0
@@ -265,6 +268,88 @@ class WC_AI_Storefront_Multi_Currency {
 		}
 
 		return add_query_arg( 'currency', $normalized, $url );
+	}
+
+	/**
+	 * Run $callback with WooPayments switched to $code, scoped to this in-process
+	 * Store API dispatch (issue #517; requires WooPayments >= 10.9).
+	 *
+	 * Reproduces WCPay's own `?currency=` switch (MultiCurrency::init adds an
+	 * `override_selected_currency` filter for that path) but scoped to one
+	 * `rest_do_request()` instead of the whole request — and forces conversion
+	 * back ON, because for a non-Store-API REST outer request (our /wc/ucp/v1/
+	 * route) WCPay adds `should_convert_product_price => __return_false` +
+	 * `should_return_store_currency => __return_true`. Priority 99 beats
+	 * WCPay's init-time filters; all three are removed in `finally` so the
+	 * outer request and the next request in the same process are unaffected.
+	 *
+	 * No-op (runs $callback unchanged, no currency switch) when $code is:
+	 *   - null, empty, or not a valid ISO-4217 code; OR
+	 *   - the WooCommerce base currency (base prices are already correct); OR
+	 *   - not in get_accepted_currencies() (the store doesn't accept it, so we
+	 *     must not silently present a converted price — the catalog/checkout
+	 *     handler surfaces a currency_conversion_unsupported warning instead).
+	 *
+	 * The switch therefore fires only for an accepted, non-base currency.
+	 *
+	 * @param string|null $code Requested ISO-4217 currency.
+	 * @param callable    $callback   The dispatch to run.
+	 * @return mixed The return value of $callback.
+	 */
+	public static function with_active_currency( ?string $code, callable $callback ) {
+		$normalized = is_string( $code ) ? strtoupper( trim( $code ) ) : '';
+		if ( '' === $normalized || 1 !== preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
+			return $callback();
+		}
+
+		// No-op for the base currency — base prices are already correct, and a
+		// switch would needlessly re-register WCPay's conversion hooks.
+		$base = function_exists( 'get_woocommerce_currency' )
+			? strtoupper( (string) get_woocommerce_currency() )
+			: 'USD';
+		if ( $normalized === $base ) {
+			return $callback();
+		}
+
+		// No-op when the store doesn't accept this currency. Switching anyway
+		// would return a converted price the merchant never opted into; the
+		// caller surfaces a currency_conversion_unsupported warning instead.
+		if ( ! in_array( $normalized, self::get_accepted_currencies(), true ) ) {
+			return $callback();
+		}
+
+		// Non-static closure (no `static` keyword): some WP hook-introspection
+		// paths reject binding to a static closure on PHP 8.5+/9. The method is
+		// static so there is no $this to leak.
+		$override = function () use ( $normalized ) {
+			return $normalized;
+		};
+		add_filter( 'wcpay_multi_currency_override_selected_currency', $override, 99 );
+		add_filter( 'wcpay_multi_currency_should_convert_product_price', '__return_true', 99 );
+		add_filter( 'wcpay_multi_currency_should_return_store_currency', '__return_false', 99 );
+
+		// Explicitly switch WCPay's selected currency (non-persistent) so the
+		// response currency CODE follows too. The override filter alone
+		// converts the price AMOUNT but leaves the code at the store currency,
+		// because FrontendCurrencies reads the selected-currency object.
+		$mc    = null;
+		$prior = null;
+		if ( class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
+			$mc    = \WCPay\MultiCurrency\MultiCurrency::instance();
+			$prior = $mc->get_selected_currency()->get_code();
+			$mc->update_selected_currency( $normalized, false );
+		}
+
+		try {
+			return $callback();
+		} finally {
+			if ( null !== $mc && null !== $prior ) {
+				$mc->update_selected_currency( $prior, false );
+			}
+			remove_filter( 'wcpay_multi_currency_override_selected_currency', $override, 99 );
+			remove_filter( 'wcpay_multi_currency_should_convert_product_price', '__return_true', 99 );
+			remove_filter( 'wcpay_multi_currency_should_return_store_currency', '__return_false', 99 );
+		}
 	}
 
 	/**

@@ -129,6 +129,11 @@ class WC_AI_Storefront {
 	 * Constructor.
 	 */
 	private function __construct() {
+		// Multi-currency catalog/checkout conversion (issue #517) is handled
+		// at dispatch time via WC_AI_Storefront_Multi_Currency::with_active_currency()
+		// wrapped around each in-process Store-API rest_do_request() — no
+		// early $_GET seed hook required. See the helper class for the seam.
+
 		// Rewrite rules, query vars, and cache invalidation register
 		// unconditionally so they exist before syndication is enabled.
 		// The serve callbacks check the enabled setting and return 404 if off.

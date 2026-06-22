@@ -43,8 +43,46 @@ if ( ! class_exists( '\WCPay\MultiCurrency\MultiCurrency' ) ) {
 		public function get_enabled_currencies() {
 			return array();
 		}
+
+		public static function instance() {
+			return new self();
+		}
+
+		public function get_selected_currency() {
+			$code = $GLOBALS['_mc_selected_currency'] ?? ( $GLOBALS['_mc_initial_selected'] ?? 'USD' );
+			return new WCPay_MultiCurrency_Currency_Stub( $code );
+		}
+
+		public function update_selected_currency( $code, $persist = true ) {
+			$GLOBALS['_mc_selected_currency'] = $code;
+			if ( ! isset( $GLOBALS['_mc_update_calls'] ) || ! is_array( $GLOBALS['_mc_update_calls'] ) ) {
+				$GLOBALS['_mc_update_calls'] = array();
+			}
+			$GLOBALS['_mc_update_calls'][] = array(
+				'code'    => $code,
+				'persist' => $persist,
+			);
+		}
 	}
 	class_alias( 'WCPay_MultiCurrency_MultiCurrency_Stub', '\WCPay\MultiCurrency\MultiCurrency' );
+}
+
+if ( ! class_exists( 'WCPay_MultiCurrency_Currency_Stub' ) ) {
+	/**
+	 * Minimal selected-currency object: only get_code() is read by the plugin.
+	 */
+	class WCPay_MultiCurrency_Currency_Stub {
+		/** @var string */
+		private $code;
+
+		public function __construct( $code ) {
+			$this->code = $code;
+		}
+
+		public function get_code() {
+			return $this->code;
+		}
+	}
 }
 
 if ( ! class_exists( '\WC_Payments_Features' ) ) {

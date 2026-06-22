@@ -972,8 +972,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		// Resolve the agent's requested presentment currency once. Used by
 		// the per-request context (so every downstream
-		// fetch_store_api_product() call carries currency=), the Store API
-		// search dispatch, and the product translator's URL stamping.
+		// fetch_store_api_product() call switches WCPay's selected currency
+		// via with_active_currency()), the Store API search dispatch, and the
+		// product translator's URL stamping.
 		$currency = self::get_currency_from_context( $params['context'] ?? null );
 
 		// Clear per-request memoization so a product fetched in a
@@ -1105,6 +1106,18 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		);
 
 		$messages = array_merge( $mapping_messages, $translated['variant_messages'] );
+
+		// Fallback signal (issue #517): if the agent requested a non-base
+		// currency the store doesn't accept, prices stayed in base — surface
+		// the currency_conversion_unsupported warning so the agent never gets
+		// base prices for a requested currency with no signal. Skipped above by
+		// map_ucp_search_to_store_api() unless a price filter was present; this
+		// covers the currency-only (no price filter) case.
+		$currency_warning = self::unsupported_currency_warning( $params['context'] ?? null );
+		if ( null !== $currency_warning && ! self::has_currency_warning( $messages ) ) {
+			$messages[] = $currency_warning;
+		}
+
 		if ( ! empty( $messages ) ) {
 			$body['messages'] = $messages;
 		}
@@ -1268,10 +1281,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @param string      $capability       UCP capability string for the error envelope.
 	 * @param string|null $request_currency Normalized ISO-4217 code from the
 	 *                                       agent's `context.currency`, or null when
-	 *                                       absent / malformed. Passed as the Store
-	 *                                       API native `currency` query param so
-	 *                                       WCPay returns prices in the requested
-	 *                                       currency (rate + rounding + charm).
+	 *                                       absent / malformed. Used as the
+	 *                                       with_active_currency() switch around the
+	 *                                       in-process Store-API dispatch so WCPay
+	 *                                       returns prices in the requested currency
+	 *                                       (rate + rounding + charm). No-op for
+	 *                                       null / base / unaccepted currency.
 	 * @return array{error: WP_REST_Response|null, wc_products: array, store_response: WP_REST_Response|null}
 	 */
 	private static function fetch_wc_products_for_search( array $store_params, string $capability, ?string $request_currency = null ): array {
@@ -1323,22 +1338,27 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$store_request->set_param( $k, $v );
 		}
 
-		// Pass the agent's requested currency to the Store API so WCPay's
-		// price-conversion hooks render product prices in the correct
-		// presentment currency (rate + rounding + charm per merchant settings).
-		// The Store API accepts a native `currency` query param and returns
-		// prices already converted — no WCPay filter override needed.
-		// No-op when $request_currency is null (single-currency stores or
-		// absent context.currency hint).
-		if ( null !== $request_currency ) {
-			$store_request->set_param( 'currency', $request_currency );
-		}
-
+		// Render the agent's requested presentment currency by switching WCPay's
+		// selected currency for the duration of the in-process Store-API
+		// dispatch (Mechanism B, issue #517; requires WooPayments >= 10.9).
+		// with_active_currency() applies WCPay's override + conversion filters
+		// and updates the selected-currency object so both the price AMOUNT and
+		// the currency CODE follow; a request-object `currency` param is
+		// ineffective here because WCPay reads its selected currency from the
+		// init-time `?currency=` switch, not from the inner request. The wrapper
+		// is a no-op when $request_currency is null, the base currency, or not
+		// in the accepted set, leaving prices in base.
+		//
 		// try/finally ensures the UCP dispatch depth counter is decremented
 		// even when rest_do_request() throws. See WC_AI_Storefront_UCP_Store_API_Filter.
 		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$store_response = rest_do_request( $store_request );
+			$store_response = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				$request_currency,
+				static function () use ( $store_request ) {
+					return rest_do_request( $store_request );
+				}
+			);
 		} finally {
 			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
@@ -2228,9 +2248,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		// Store the agent's requested currency on the request context so
-		// fetch_store_api_product() can pass it as the Store API native
-		// `currency` query param. The Store API returns prices already
-		// converted (rate + rounding + charm) when this param is present.
+		// fetch_store_api_product() switches WCPay's selected currency around
+		// each in-process Store-API dispatch (Mechanism B, issue #517; requires
+		// WooPayments >= 10.9), returning prices converted to the requested
+		// currency (rate + rounding + charm). No-op for null / base /
+		// unaccepted currency.
 		$request_currency = self::get_currency_from_context( $params['context'] ?? null );
 		$this->request_context->set_currency( $request_currency );
 
@@ -2627,6 +2649,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'products' => $products,
 		);
 
+		// Fallback signal (issue #517): non-base requested currency the store
+		// doesn't accept → prices stayed base → warn so the agent has a signal.
+		$currency_warning = self::unsupported_currency_warning( $params['context'] ?? null );
+		if ( null !== $currency_warning && ! self::has_currency_warning( $messages ) ) {
+			$messages[] = $currency_warning;
+		}
+
 		if ( ! empty( $messages ) ) {
 			$response_body['messages'] = $messages;
 		}
@@ -2884,10 +2913,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		// Store the agent's requested currency on the request context so
-		// fetch_store_api_product() passes it as the Store API native
-		// `currency` query param, returning prices already converted
-		// (rate + rounding + charm). Also used by process_line_item()
-		// for EUR-vs-EUR price drift comparison.
+		// fetch_store_api_product() switches WCPay's selected currency around
+		// each in-process Store-API dispatch (Mechanism B, issue #517; requires
+		// WooPayments >= 10.9), returning prices converted to the requested
+		// currency (rate + rounding + charm). Also used by process_line_item()
+		// for the EUR-vs-EUR expected_unit_price drift comparison. No-op for
+		// null / base / unaccepted currency.
 		$request_currency = self::get_currency_from_context( $context );
 		$this->request_context->set_currency( $request_currency );
 
@@ -3479,6 +3510,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'expires_at' => null,
 		];
 
+		// Fallback signal (issue #517): non-base requested currency the store
+		// doesn't accept → line-item prices stayed base → warn so the agent
+		// never gets base prices for a requested currency with no signal.
+		$currency_warning = self::unsupported_currency_warning( $context );
+		if ( null !== $currency_warning && ! self::has_currency_warning( $messages ) ) {
+			$messages[] = $currency_warning;
+		}
+
 		if ( ! empty( $messages ) ) {
 			$response_body['messages'] = $messages;
 		}
@@ -4031,10 +4070,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$request  = new WP_REST_Request( 'GET', '/wc/store/v1/products/' . $id );
 		$currency = $this->request_context->get_currency();
-		if ( null !== $currency ) {
-			$request->set_param( 'currency', $currency );
-		}
-		$response = rest_do_request( $request );
+
+		// Render the agent's requested presentment currency by switching WCPay's
+		// selected currency around this in-process dispatch (Mechanism B, issue
+		// #517; requires WooPayments >= 10.9). Used by both catalog/lookup
+		// (single + batch product fetch) and checkout-sessions line-item price
+		// fetch, which both route through this method. A request-object
+		// `currency` param is ineffective because WCPay reads its selected
+		// currency from the init-time `?currency=` switch, not the inner
+		// request; with_active_currency() is a no-op for null / base /
+		// unaccepted currency, leaving prices in base.
+		$response = WC_AI_Storefront_Multi_Currency::with_active_currency(
+			$currency,
+			static function () use ( $request ) {
+				return rest_do_request( $request );
+			}
+		);
 
 		// Three distinct failure modes collapse to a single `null`
 		// return (caller treats as "not found"), but each gets its
@@ -6240,6 +6291,74 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return null;
 		}
 		return $normalized;
+	}
+
+	/**
+	 * Build a `currency_conversion_unsupported` warning for a requested
+	 * currency the store can't present, or null when no warning is due.
+	 *
+	 * Returns a message when the agent's `context.currency` is a valid,
+	 * non-base ISO-4217 code that is NOT in
+	 * `WC_AI_Storefront_Multi_Currency::get_accepted_currencies()`. In that
+	 * case the catalog/checkout response stays base-priced (with_active_currency()
+	 * no-ops the switch), and this warning ensures agents never receive base
+	 * prices for a requested currency with no signal (issue #517).
+	 *
+	 * Returns null when the currency is absent, malformed, the base currency,
+	 * or accepted — those paths either need no signal or convert successfully.
+	 *
+	 * @param ?array $context The UCP request `context` object (or null).
+	 * @return array<string, string>|null Warning message, or null.
+	 */
+	private static function unsupported_currency_warning( ?array $context ): ?array {
+		$requested = self::get_currency_from_context( $context );
+		if ( null === $requested ) {
+			return null;
+		}
+
+		$base = function_exists( 'get_woocommerce_currency' )
+			? strtoupper( (string) get_woocommerce_currency() )
+			: 'USD';
+		if ( $requested === $base ) {
+			return null;
+		}
+
+		if ( in_array( $requested, WC_AI_Storefront_Multi_Currency::get_accepted_currencies(), true ) ) {
+			return null;
+		}
+
+		return array(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
+			'path'    => '$.context.currency',
+			'content' => sprintf(
+				/* translators: 1: agent-supplied currency, 2: store base currency. */
+				__( 'context.currency "%1$s" is not in the store\'s accepted-currencies set; prices are shown in the store currency "%2$s".', 'woocommerce-ai-storefront' ),
+				$requested,
+				$base
+			),
+		);
+	}
+
+	/**
+	 * Whether a message list already carries a
+	 * `currency_conversion_unsupported` warning.
+	 *
+	 * Prevents the catalog-level fallback warning from duplicating one the
+	 * price-filter mapping already emitted for the same request (issue #517).
+	 *
+	 * @param array<int, array<string, mixed>> $messages Message list.
+	 * @return bool
+	 */
+	private static function has_currency_warning( array $messages ): bool {
+		foreach ( $messages as $message ) {
+			if ( is_array( $message )
+				&& isset( $message['code'] )
+				&& WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === $message['code'] ) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
