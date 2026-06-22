@@ -330,6 +330,45 @@ class WC_AI_Storefront_Meta_Tags {
 		add_filter( 'document_title_parts', array( $this, 'filter_title_parts' ), 99 );
 		// Early in <head> so the description/OG/robots sit near the top.
 		add_action( 'wp_head', array( $this, 'render_head_tags' ), 5 );
+		// Avoid duplicate / conflicting tags from Jetpack on the commerce pages
+		// where we emit our own. Page-scoped via should_emit(); off commerce
+		// pages Jetpack keeps describing posts/pages we do not handle.
+		add_action( 'wp_head', array( $this, 'suppress_jetpack_open_graph' ), 1 );
+		add_filter( 'jetpack_seo_meta_tags', array( $this, 'suppress_jetpack_description' ) );
+	}
+
+	/**
+	 * Remove Jetpack's Open Graph tags on commerce pages where we emit our own.
+	 *
+	 * Runs at wp_head priority 1, before Jetpack's default-priority
+	 * `jetpack_og_tags`, so the removal is deterministic regardless of the
+	 * `jetpack_enable_open_graph` filter priorities Jetpack sets on
+	 * WordPress.com. No-op off commerce pages and when Jetpack is absent.
+	 */
+	public function suppress_jetpack_open_graph(): void {
+		if ( ! $this->should_emit() ) {
+			return;
+		}
+		if ( false !== has_action( 'wp_head', 'jetpack_og_tags' ) ) {
+			remove_action( 'wp_head', 'jetpack_og_tags' );
+		}
+	}
+
+	/**
+	 * Drop Jetpack SEO Tools' meta description on commerce pages where we emit
+	 * our own, leaving any other Jetpack meta (verification, robots) intact.
+	 *
+	 * Filters `jetpack_seo_meta_tags`. No-op off commerce pages and for
+	 * non-array input.
+	 *
+	 * @param mixed $meta Jetpack's name => content meta map.
+	 * @return mixed Filtered map.
+	 */
+	public function suppress_jetpack_description( $meta ) {
+		if ( is_array( $meta ) && $this->should_emit() ) {
+			unset( $meta['description'] );
+		}
+		return $meta;
 	}
 
 	/**

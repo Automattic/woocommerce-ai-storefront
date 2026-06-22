@@ -557,4 +557,40 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'Saltwarp', $og['og:title'] );
 	}
+
+	// --- Task 4: Jetpack suppression (#527) ---
+
+	public function test_suppress_jetpack_description_drops_only_description_on_commerce(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		$out = $this->meta->suppress_jetpack_description(
+			array( 'description' => 'dup', 'google-site-verification' => 'keep' )
+		);
+		$this->assertArrayNotHasKey( 'description', $out );
+		$this->assertSame( 'keep', $out['google-site-verification'] );
+	}
+
+	public function test_suppress_jetpack_description_noop_off_commerce(): void {
+		// All commerce conditionals default false in setUp().
+		$in = array( 'description' => 'keep' );
+		$this->assertSame( $in, $this->meta->suppress_jetpack_description( $in ) );
+	}
+
+	public function test_suppress_jetpack_description_passes_non_array(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		$this->assertNull( $this->meta->suppress_jetpack_description( null ) );
+	}
+
+	public function test_suppress_jetpack_open_graph_removes_action_on_commerce(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'has_action' )->justReturn( 10 );
+		Functions\expect( 'remove_action' )->once()->with( 'wp_head', 'jetpack_og_tags' );
+		$this->meta->suppress_jetpack_open_graph();
+	}
+
+	public function test_suppress_jetpack_open_graph_noop_off_commerce(): void {
+		// Not a commerce page (setUp defaults). remove_action must never fire.
+		Functions\when( 'has_action' )->justReturn( 10 );
+		Functions\expect( 'remove_action' )->never();
+		$this->meta->suppress_jetpack_open_graph();
+	}
 }
