@@ -129,6 +129,17 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= 0.26.0 - 2026-06-22 =
+**Added**
+* When an AI shopping assistant asks for prices in a specific currency, your catalog, product lookups, and agent checkout now return prices in that currency — using your store's full WooCommerce Payments conversion (exchange rate, rounding, and charm pricing), so the price matches what a shopper sees on the product page. Requires WooCommerce Payments 10.9 or later; on earlier versions prices stay in your store's base currency, exactly as before. If a currency your store doesn't accept is requested, prices stay in your base currency and the assistant is told the conversion wasn't applied, so it never quotes a base-currency price as if it had been converted.
+
+= 0.25.0 - 2026-06-21 =
+**Changed**
+* The return and refund policy setting in the Policies tab is now a single, clear choice: leave it unset, link to your returns page, or enter the details directly (return window, fees, and methods). Previously a returns-page link and the typed-in details could both be set and conflict, and a linked page would quietly drop your typed-in details from what AI assistants and Google read. Now you pick one option, and assistants and Google read it cleanly.
+
+**Fixed**
+* Your homepage and shop product lists now include each product's description and return policy in the structured data that AI assistants and Google read, matching your individual product pages. This clears two Google "missing field" recommendations ("description" and "return policy") on those lists.
+
 = 0.24.0 - 2026-06-20 =
 **Added**
 * Your store now creates its own search-engine and social-media metadata for product, category, and shop pages: page titles, meta descriptions, and link previews (Open Graph and Twitter), built automatically from your existing product information with no setup. Hidden products and internal search results are kept out of search engines.
