@@ -562,11 +562,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_suppress_jetpack_description_drops_only_description_on_commerce(): void {
 		Functions\when( 'is_product' )->justReturn( true );
+		// `robots` is the real co-key Jetpack puts in this map (noindex posts);
+		// it must survive while only `description` is dropped.
 		$out = $this->meta->suppress_jetpack_description(
-			array( 'description' => 'dup', 'google-site-verification' => 'keep' )
+			array( 'description' => 'dup', 'robots' => 'noindex' )
 		);
 		$this->assertArrayNotHasKey( 'description', $out );
-		$this->assertSame( 'keep', $out['google-site-verification'] );
+		$this->assertSame( 'noindex', $out['robots'] );
 	}
 
 	public function test_suppress_jetpack_description_noop_off_commerce(): void {
@@ -592,5 +594,64 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'has_action' )->justReturn( 10 );
 		Functions\expect( 'remove_action' )->never();
 		$this->meta->suppress_jetpack_open_graph();
+	}
+
+	// --- Review follow-ups (#529): edge-case hardening ---
+
+	public function test_og_locale_defaults_to_en_us_when_locale_empty(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( '' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'en_US', $og['og:locale'] );
+	}
+
+	public function test_og_locale_normalizes_hyphen_form(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( 'pt-BR' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'pt_BR', $og['og:locale'] );
+	}
+
+	public function test_archive_og_image_skips_broken_logo_and_uses_icon(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		// Logo ID set, but the attachment URL is missing → fall through to icon.
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( false );
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://shop.test/icon.png' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/icon.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_omitted_when_no_default_available(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		// No configured default (setUp pass-through), no logo, no icon.
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertArrayNotHasKey( 'og:image', $og );
 	}
 }

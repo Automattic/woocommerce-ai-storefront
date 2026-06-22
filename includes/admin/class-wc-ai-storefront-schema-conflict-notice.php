@@ -57,14 +57,9 @@ class WC_AI_Storefront_Schema_Conflict_Notice {
 			return;
 		}
 
-		// Only deactivate-able plugins belong in the deactivate nudge; skip
-		// auto-handled ones (e.g. Jetpack, whose overlap we suppress ourselves).
-		$plugins = array_filter(
-			WC_AI_Storefront_Seo_Plugin_Detector::detect(),
-			static function ( $plugin ) {
-				return empty( $plugin['handled'] );
-			}
-		);
+		// Only deactivate-able plugins belong in the deactivate nudge; auto-handled
+		// ones (e.g. Jetpack, whose overlap we suppress ourselves) are excluded.
+		$plugins = WC_AI_Storefront_Seo_Plugin_Detector::deactivatable();
 		$labels  = implode( ', ', array_column( $plugins, 'label' ) );
 		$nonce   = wp_create_nonce( self::AJAX_ACTION );
 		$doc_url = 'https://github.com/Automattic/woocommerce-ai-storefront/blob/main/docs/engineering/YOAST-COEXISTENCE.md';

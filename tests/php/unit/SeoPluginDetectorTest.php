@@ -84,4 +84,19 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 		// Jetpack alone is auto-handled, so it is NOT a deactivate-able conflict.
 		$this->assertFalse( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
 	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_deactivatable_excludes_handled_but_keeps_real_conflicts(): void {
+		// Jetpack (handled) + Rank Math (deactivate-able) both present.
+		define( 'JETPACK__VERSION', '13.0-test' );
+		define( 'RANK_MATH_VERSION', '1.0.0-test' );
+		$slugs = array_column( WC_AI_Storefront_Seo_Plugin_Detector::deactivatable(), 'slug' );
+		$this->assertContains( 'rankmath', $slugs );
+		$this->assertNotContains( 'jetpack', $slugs );
+		// A real deactivate-able conflict still exists.
+		$this->assertTrue( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
+	}
 }

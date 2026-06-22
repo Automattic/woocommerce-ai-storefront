@@ -4,7 +4,7 @@
 
 **Goal:** Stop our metadata layer from duplicating/conflicting with Jetpack's Open Graph + SEO meta description on commerce pages (GitHub #527), by first making our own OG output correct and complete, then suppressing Jetpack's overlapping tags page-scoped.
 
-**Architecture:** All emission logic lives in `WC_AI_Storefront_Meta_Tags`. We add `og:locale`, an archive `og:image` fallback chain, and a front-page brand `og:title`, so our OG set is complete; then we page-scope-suppress Jetpack's `jetpack_og_tags` (via `remove_action` at `wp_head` priority 1) and its SEO `description` (via the `jetpack_seo_meta_tags` filter) only when `should_emit()` is true. The detector learns Jetpack but marks it auto-handled so the deactivate notice never nags about it.
+**Architecture:** All emission logic lives in `WC_AI_Storefront_Meta_Tags`. We add `og:locale`, an archive `og:image` fallback chain, and a front-page brand `og:title`, so our OG set is complete; then we page-scope-suppress Jetpack's `jetpack_og_tags` (via `remove_action` at `wp_head` priority 9 — after Jetpack's priority-1 lazy loader, before its priority-10 emit) and its SEO `description` (via the `jetpack_seo_meta_tags` filter) only when `should_emit()` is true. The detector learns Jetpack but marks it auto-handled so the deactivate notice never nags about it.
 
 **Tech Stack:** PHP 8.1+, WordPress/WooCommerce hooks, PHPUnit + Brain Monkey + Mockery (unit, WP functions stubbed).
 
@@ -367,9 +367,9 @@ git commit -m "fix(meta): brand og:title when shop archive is the front page (#5
 - Test: `tests/php/unit/MetaTagsTest.php`
 
 **Interfaces:**
-- Produces: `public function suppress_jetpack_open_graph(): void` (hooked `wp_head` priority 1) and `public function suppress_jetpack_description( $meta )` (hooked `jetpack_seo_meta_tags` filter).
+- Produces: `public function suppress_jetpack_open_graph(): void` (hooked `wp_head` priority 9) and `public function suppress_jetpack_description( $meta )` (hooked `jetpack_seo_meta_tags` filter).
 
-**Why these seams (verified against the installed Jetpack):** Jetpack registers `add_action( 'wp_head', 'jetpack_og_tags' )` (default priority 10) in `functions.opengraph.php`; removing that action at `wp_head` priority 1 is deterministic and avoids the `jetpack_enable_open_graph` filter-priority dance Jetpack does on WordPress.com. Jetpack's SEO description is built in `Jetpack_SEO::meta_tags()` and passed through `apply_filters( 'jetpack_seo_meta_tags', $meta )` (key `description`) right before output, so unsetting that key drops only the description and leaves any verification/robots entries intact.
+**Why these seams (verified against the installed Jetpack):** Jetpack lazily registers `jetpack_og_tags` at the default `wp_head` priority 10 — but only from inside its own `check_open_graph` callback, which runs at `wp_head` priority 1 and `require`s `functions.opengraph.php`. So we remove the action at `wp_head` priority 9: strictly after Jetpack's priority-1 loader has registered it (so `has_action` sees it) and strictly before the priority-10 emit. Priority ordering is absolute, so this is independent of plugin load order; running at priority 1 (the same priority as Jetpack's loader) would instead be a registration-order race that can silently skip the removal. Jetpack's SEO description is built in `Jetpack_SEO::meta_tags()` and passed through `apply_filters( 'jetpack_seo_meta_tags', $meta )` (key `description`) right before output, so unsetting that key drops only the description and leaves Jetpack's `robots` entry intact (site-verification tags come from a different hook and are unaffected).
 
 - [ ] **Step 1: Write failing tests**
 
@@ -420,7 +420,7 @@ Expected: FAIL (methods undefined).
 		// Avoid duplicate / conflicting tags from Jetpack on the commerce pages
 		// where we emit our own. Page-scoped via should_emit(); off commerce
 		// pages Jetpack keeps describing posts/pages we do not handle.
-		add_action( 'wp_head', array( $this, 'suppress_jetpack_open_graph' ), 1 );
+		add_action( 'wp_head', array( $this, 'suppress_jetpack_open_graph' ), 9 );
 		add_filter( 'jetpack_seo_meta_tags', array( $this, 'suppress_jetpack_description' ) );
 ```
 
@@ -430,10 +430,13 @@ Add the two methods (after `render_head_tags()`):
 	/**
 	 * Remove Jetpack's Open Graph tags on commerce pages where we emit our own.
 	 *
-	 * Runs at wp_head priority 1, before Jetpack's default-priority
-	 * `jetpack_og_tags`, so the removal is deterministic regardless of the
-	 * `jetpack_enable_open_graph` filter priorities Jetpack sets on
-	 * WordPress.com. No-op off commerce pages and when Jetpack is absent.
+	 * Jetpack lazily registers `jetpack_og_tags` (default wp_head priority 10)
+	 * from inside its own `check_open_graph` callback at wp_head priority 1. We
+	 * run at priority 9 — after that priority-1 loader (so the action exists and
+	 * `has_action` sees it) and before the priority-10 emit. Deterministic by
+	 * priority ordering, independent of plugin load order; priority 1 (same as
+	 * Jetpack's loader) would be a registration-order race. No-op off commerce
+	 * pages and when Jetpack's OG output is disabled.
 	 */
 	public function suppress_jetpack_open_graph(): void {
 		if ( ! $this->should_emit() ) {

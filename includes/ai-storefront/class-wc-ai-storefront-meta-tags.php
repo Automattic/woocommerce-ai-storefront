@@ -333,17 +333,25 @@ class WC_AI_Storefront_Meta_Tags {
 		// Avoid duplicate / conflicting tags from Jetpack on the commerce pages
 		// where we emit our own. Page-scoped via should_emit(); off commerce
 		// pages Jetpack keeps describing posts/pages we do not handle.
-		add_action( 'wp_head', array( $this, 'suppress_jetpack_open_graph' ), 1 );
+		// Priority 9: see suppress_jetpack_open_graph() for why it must sit
+		// between Jetpack's wp_head:1 loader and its wp_head:10 emitter.
+		add_action( 'wp_head', array( $this, 'suppress_jetpack_open_graph' ), 9 );
 		add_filter( 'jetpack_seo_meta_tags', array( $this, 'suppress_jetpack_description' ) );
 	}
 
 	/**
 	 * Remove Jetpack's Open Graph tags on commerce pages where we emit our own.
 	 *
-	 * Runs at wp_head priority 1, before Jetpack's default-priority
-	 * `jetpack_og_tags`, so the removal is deterministic regardless of the
-	 * `jetpack_enable_open_graph` filter priorities Jetpack sets on
-	 * WordPress.com. No-op off commerce pages and when Jetpack is absent.
+	 * Jetpack lazily registers `jetpack_og_tags` (at the default wp_head
+	 * priority 10) from inside its own `check_open_graph` callback, which runs
+	 * at wp_head priority 1. We therefore run at priority 9 — strictly after
+	 * Jetpack's priority-1 loader (so `jetpack_og_tags` is already registered
+	 * and `has_action` sees it) and strictly before its priority-10 emit. This
+	 * is deterministic by priority ordering, independent of plugin load order;
+	 * running at priority 1 (same as Jetpack's loader) would be a registration-
+	 * order race that could silently skip the removal. No-op off commerce pages
+	 * and when Jetpack's OG output is disabled (then `jetpack_og_tags` is never
+	 * registered and there is nothing to remove).
 	 */
 	public function suppress_jetpack_open_graph(): void {
 		if ( ! $this->should_emit() ) {
@@ -356,7 +364,9 @@ class WC_AI_Storefront_Meta_Tags {
 
 	/**
 	 * Drop Jetpack SEO Tools' meta description on commerce pages where we emit
-	 * our own, leaving any other Jetpack meta (verification, robots) intact.
+	 * our own. Only the `description` key is removed; any other entry Jetpack
+	 * puts in this map (e.g. `robots` => `noindex`) is left untouched. Jetpack's
+	 * site-verification tags come from a separate hook and are unaffected.
 	 *
 	 * Filters `jetpack_seo_meta_tags`. No-op off commerce pages and for
 	 * non-array input.
@@ -476,7 +486,9 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( '' === $locale ) {
 			return 'en_US';
 		}
-		$parts = explode( '_', $locale );
+		// Normalize a BCP-47 hyphen form (e.g. a filtered `pt-BR`) to Open
+		// Graph's underscore form before stripping any WP variant suffix.
+		$parts = explode( '_', str_replace( '-', '_', $locale ) );
 		return isset( $parts[1] ) ? $parts[0] . '_' . $parts[1] : $parts[0];
 	}
 

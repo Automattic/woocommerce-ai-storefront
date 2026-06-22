@@ -70,16 +70,30 @@ class WC_AI_Storefront_Seo_Plugin_Detector {
 	}
 
 	/**
+	 * Detected overlapping SEO plugins the merchant could deactivate — i.e.
+	 * every entry that is NOT auto-handled. Auto-handled entries (e.g. Jetpack,
+	 * whose overlap we suppress ourselves) are excluded, so the deactivate
+	 * notice never names them.
+	 *
+	 * @return array<int,array{slug:string,label:string,handled?:bool}>
+	 */
+	public static function deactivatable(): array {
+		return array_values(
+			array_filter(
+				self::detect(),
+				static function ( $plugin ) {
+					return empty( $plugin['handled'] );
+				}
+			)
+		);
+	}
+
+	/**
 	 * Whether any deactivate-able (non auto-handled) overlapping SEO plugin is
 	 * present. Auto-handled entries (e.g. Jetpack, whose overlap we suppress
 	 * ourselves) do not count — we never nudge the merchant to remove them.
 	 */
 	public static function has_conflict(): bool {
-		foreach ( self::detect() as $plugin ) {
-			if ( empty( $plugin['handled'] ) ) {
-				return true;
-			}
-		}
-		return false;
+		return ! empty( self::deactivatable() );
 	}
 }
