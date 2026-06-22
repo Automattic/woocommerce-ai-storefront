@@ -494,4 +494,52 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'de_DE', $og['og:locale'] );
 	}
+
+	// --- Task 2: archive og:image fallback (#527) ---
+
+	public function test_archive_og_image_falls_back_to_site_logo(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://shop.test/logo.png' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/logo.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_falls_back_to_site_icon(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://shop.test/icon.png' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/icon.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_prefers_configured_default(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		// Override the pass-through apply_filters for the default-image hook only.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_og_default_image' === $hook ? 'https://shop.test/branded-og.png' : $value;
+			}
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/branded-og.png', $og['og:image'] );
+	}
 }

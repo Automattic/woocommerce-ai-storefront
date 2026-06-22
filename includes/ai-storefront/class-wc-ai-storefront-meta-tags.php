@@ -294,6 +294,16 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 		}
 
+		// No archive-specific image (shop never has one; a category may lack a
+		// thumbnail) → fall back to the site's default so the share card keeps
+		// an image even after we suppress Jetpack's auto-generated one.
+		if ( empty( $og['og:image'] ) ) {
+			$default_image = $this->archive_default_image();
+			if ( '' !== $default_image ) {
+				$og['og:image'] = $default_image;
+			}
+		}
+
 		// Fallback only when no branch set a URL — kept lazy so unit tests
 		// exercising the category/shop branches need not stub home_url().
 		if ( '' === $og['og:url'] && function_exists( 'home_url' ) ) {
@@ -368,6 +378,44 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			$this->print_meta( 'name', $name, $content, 'twitter:image' === $name );
 		}
+	}
+
+	/**
+	 * Default social image for an archive that has no image of its own.
+	 *
+	 * Order: a merchant/dev-configured default (filter), then the site logo
+	 * (Customizer custom_logo), then the site icon. Returns '' when none is
+	 * available. Keeps the shop/home share card from going imageless when we
+	 * suppress Jetpack's auto-generated Open Graph image.
+	 */
+	private function archive_default_image(): string {
+		/**
+		 * Filter the default Open Graph image URL for archive pages.
+		 *
+		 * @param string $url Default image URL. Empty string falls through to
+		 *                    the site logo, then the site icon.
+		 */
+		$configured = (string) apply_filters( 'wc_ai_storefront_og_default_image', '' );
+		if ( '' !== $configured ) {
+			return $configured;
+		}
+
+		$logo_id = function_exists( 'get_theme_mod' ) ? (int) get_theme_mod( 'custom_logo' ) : 0;
+		if ( $logo_id > 0 && function_exists( 'wp_get_attachment_image_url' ) ) {
+			$url = wp_get_attachment_image_url( $logo_id, 'full' );
+			if ( is_string( $url ) && '' !== $url ) {
+				return $url;
+			}
+		}
+
+		if ( function_exists( 'get_site_icon_url' ) ) {
+			$icon = (string) get_site_icon_url( 512 );
+			if ( '' !== $icon ) {
+				return $icon;
+			}
+		}
+
+		return '';
 	}
 
 	/**
