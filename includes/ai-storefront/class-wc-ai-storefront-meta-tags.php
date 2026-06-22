@@ -205,6 +205,7 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:description' => null === $description ? $this->build_description( $product ) : $description,
 			'og:url'         => get_permalink( $product->get_id() ),
 			'og:site_name'   => get_bloginfo( 'name' ),
+			'og:locale'      => $this->og_locale(),
 		);
 
 		$image = get_the_post_thumbnail_url( $product->get_id(), 'full' );
@@ -264,6 +265,7 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:site_name'   => $site,
 			'og:title'       => $site,
 			'og:url'         => '',
+			'og:locale'      => $this->og_locale(),
 		);
 
 		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
@@ -285,10 +287,27 @@ class WC_AI_Storefront_Meta_Tags {
 				}
 			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
-			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
-			if ( $shop_id > 0 ) {
+			$is_front_page = function_exists( 'is_front_page' ) && is_front_page();
+			$shop_id       = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			// When the shop archive is the site front page, the brand is the
+			// correct share headline; the bare "Shop" archive title is not.
+			if ( $is_front_page ) {
+				$og['og:title'] = $site;
+			} elseif ( $shop_id > 0 ) {
 				$og['og:title'] = get_the_title( $shop_id );
-				$og['og:url']   = get_permalink( $shop_id );
+			}
+			if ( $shop_id > 0 ) {
+				$og['og:url'] = get_permalink( $shop_id );
+			}
+		}
+
+		// No archive-specific image (shop never has one; a category may lack a
+		// thumbnail) → fall back to the site's default so the share card keeps
+		// an image even after we suppress Jetpack's auto-generated one.
+		if ( empty( $og['og:image'] ) ) {
+			$default_image = $this->archive_default_image();
+			if ( '' !== $default_image ) {
+				$og['og:image'] = $default_image;
 			}
 		}
 
@@ -311,6 +330,55 @@ class WC_AI_Storefront_Meta_Tags {
 		add_filter( 'document_title_parts', array( $this, 'filter_title_parts' ), 99 );
 		// Early in <head> so the description/OG/robots sit near the top.
 		add_action( 'wp_head', array( $this, 'render_head_tags' ), 5 );
+		// Avoid duplicate / conflicting tags from Jetpack on the commerce pages
+		// where we emit our own. Page-scoped via should_emit(); off commerce
+		// pages Jetpack keeps describing posts/pages we do not handle.
+		// Priority 9: see suppress_jetpack_open_graph() for why it must sit
+		// between Jetpack's wp_head:1 loader and its wp_head:10 emitter.
+		add_action( 'wp_head', array( $this, 'suppress_jetpack_open_graph' ), 9 );
+		add_filter( 'jetpack_seo_meta_tags', array( $this, 'suppress_jetpack_description' ) );
+	}
+
+	/**
+	 * Remove Jetpack's Open Graph tags on commerce pages where we emit our own.
+	 *
+	 * Jetpack lazily registers `jetpack_og_tags` (at the default wp_head
+	 * priority 10) from inside its own `check_open_graph` callback, which runs
+	 * at wp_head priority 1. We therefore run at priority 9 — strictly after
+	 * Jetpack's priority-1 loader (so `jetpack_og_tags` is already registered
+	 * and `has_action` sees it) and strictly before its priority-10 emit. This
+	 * is deterministic by priority ordering, independent of plugin load order;
+	 * running at priority 1 (same as Jetpack's loader) would be a registration-
+	 * order race that could silently skip the removal. No-op off commerce pages
+	 * and when Jetpack's OG output is disabled (then `jetpack_og_tags` is never
+	 * registered and there is nothing to remove).
+	 */
+	public function suppress_jetpack_open_graph(): void {
+		if ( ! $this->should_emit() ) {
+			return;
+		}
+		if ( false !== has_action( 'wp_head', 'jetpack_og_tags' ) ) {
+			remove_action( 'wp_head', 'jetpack_og_tags' );
+		}
+	}
+
+	/**
+	 * Drop Jetpack SEO Tools' meta description on commerce pages where we emit
+	 * our own. Only the `description` key is removed; any other entry Jetpack
+	 * puts in this map (e.g. `robots` => `noindex`) is left untouched. Jetpack's
+	 * site-verification tags come from a separate hook and are unaffected.
+	 *
+	 * Filters `jetpack_seo_meta_tags`. No-op off commerce pages and for
+	 * non-array input.
+	 *
+	 * @param mixed $meta Jetpack's name => content meta map.
+	 * @return mixed Filtered map.
+	 */
+	public function suppress_jetpack_description( $meta ) {
+		if ( is_array( $meta ) && $this->should_emit() ) {
+			unset( $meta['description'] );
+		}
+		return $meta;
 	}
 
 	/**
@@ -366,6 +434,62 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			$this->print_meta( 'name', $name, $content, 'twitter:image' === $name );
 		}
+	}
+
+	/**
+	 * Default social image for an archive that has no image of its own.
+	 *
+	 * Order: a merchant/dev-configured default (filter), then the site logo
+	 * (Customizer custom_logo), then the site icon. Returns '' when none is
+	 * available. Keeps the shop/home share card from going imageless when we
+	 * suppress Jetpack's auto-generated Open Graph image.
+	 */
+	private function archive_default_image(): string {
+		/**
+		 * Filter the default Open Graph image URL for archive pages.
+		 *
+		 * @param string $url Default image URL. Empty string falls through to
+		 *                    the site logo, then the site icon.
+		 */
+		$configured = (string) apply_filters( 'wc_ai_storefront_og_default_image', '' );
+		if ( '' !== $configured ) {
+			return $configured;
+		}
+
+		$logo_id = function_exists( 'get_theme_mod' ) ? (int) get_theme_mod( 'custom_logo' ) : 0;
+		if ( $logo_id > 0 && function_exists( 'wp_get_attachment_image_url' ) ) {
+			$url = wp_get_attachment_image_url( $logo_id, 'full' );
+			if ( is_string( $url ) && '' !== $url ) {
+				return $url;
+			}
+		}
+
+		if ( function_exists( 'get_site_icon_url' ) ) {
+			$icon = (string) get_site_icon_url( 512 );
+			if ( '' !== $icon ) {
+				return $icon;
+			}
+		}
+
+		return '';
+	}
+
+	/**
+	 * The current locale as an Open Graph `language_TERRITORY` value.
+	 *
+	 * WordPress locales like `de_DE_formal` carry a variant suffix Open Graph
+	 * does not accept, so we keep only the language and territory segments.
+	 * Defaults to `en_US` when the locale is unavailable.
+	 */
+	private function og_locale(): string {
+		$locale = function_exists( 'get_locale' ) ? (string) get_locale() : '';
+		if ( '' === $locale ) {
+			return 'en_US';
+		}
+		// Normalize a BCP-47 hyphen form (e.g. a filtered `pt-BR`) to Open
+		// Graph's underscore form before stripping any WP variant suffix.
+		$parts = explode( '_', str_replace( '-', '_', $locale ) );
+		return isset( $parts[1] ) ? $parts[0] . '_' . $parts[1] : $parts[0];
 	}
 
 	/**

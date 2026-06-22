@@ -25,6 +25,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product_category' )->justReturn( false );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'is_search' )->justReturn( false );
+		// Defaults for tags added in the Jetpack-coexistence work; falsy so
+		// existing assertions are unaffected. Tests opt in to real values.
+		Functions\when( 'is_front_page' )->justReturn( false );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
 		$this->meta = new WC_AI_Storefront_Meta_Tags();
 	}
 
@@ -442,5 +448,210 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '<meta name="robots" content="noindex,follow"', $html );
 		$this->assertStringNotContainsString( 'og:', $html );
 		$this->assertStringNotContainsString( 'name="description"', $html );
+	}
+
+	// --- Task 1: og:locale (#527) ---
+
+	public function test_og_tags_include_locale(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$product->shouldReceive( 'get_short_description' )->andReturn( 'A belt.' );
+		$product->shouldReceive( 'get_description' )->andReturn( '' );
+		$product->shouldReceive( 'get_id' )->andReturn( 10 );
+		$product->shouldReceive( 'is_purchasable' )->andReturn( false );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( '' );
+		$og = $this->meta->build_og_tags( $product );
+		$this->assertSame( 'en_US', $og['og:locale'] );
+	}
+
+	public function test_archive_og_tags_include_locale(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'en_US', $og['og:locale'] );
+	}
+
+	public function test_og_locale_normalizes_wp_variant(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( 'de_DE_formal' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'de_DE', $og['og:locale'] );
+	}
+
+	// --- Task 2: archive og:image fallback (#527) ---
+
+	public function test_archive_og_image_falls_back_to_site_logo(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://shop.test/logo.png' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/logo.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_falls_back_to_site_icon(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://shop.test/icon.png' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/icon.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_prefers_configured_default(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		// Override the pass-through apply_filters for the default-image hook only.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_og_default_image' === $hook ? 'https://shop.test/branded-og.png' : $value;
+			}
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/branded-og.png', $og['og:image'] );
+	}
+
+	// --- Task 3: front-page brand og:title (#527) ---
+
+	public function test_archive_og_title_is_brand_when_shop_is_front_page(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'is_front_page' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'Saltwarp', $og['og:title'] );
+	}
+
+	// --- Task 4: Jetpack suppression (#527) ---
+
+	public function test_suppress_jetpack_description_drops_only_description_on_commerce(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		// `robots` is the real co-key Jetpack puts in this map (noindex posts);
+		// it must survive while only `description` is dropped.
+		$out = $this->meta->suppress_jetpack_description(
+			array( 'description' => 'dup', 'robots' => 'noindex' )
+		);
+		$this->assertArrayNotHasKey( 'description', $out );
+		$this->assertSame( 'noindex', $out['robots'] );
+	}
+
+	public function test_suppress_jetpack_description_noop_off_commerce(): void {
+		// All commerce conditionals default false in setUp().
+		$in = array( 'description' => 'keep' );
+		$this->assertSame( $in, $this->meta->suppress_jetpack_description( $in ) );
+	}
+
+	public function test_suppress_jetpack_description_passes_non_array(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		$this->assertNull( $this->meta->suppress_jetpack_description( null ) );
+	}
+
+	public function test_suppress_jetpack_open_graph_removes_action_on_commerce(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'has_action' )->justReturn( 10 );
+		Functions\expect( 'remove_action' )->once()->with( 'wp_head', 'jetpack_og_tags' );
+		$this->meta->suppress_jetpack_open_graph();
+	}
+
+	public function test_suppress_jetpack_open_graph_noop_off_commerce(): void {
+		// Not a commerce page (setUp defaults). remove_action must never fire.
+		Functions\when( 'has_action' )->justReturn( 10 );
+		Functions\expect( 'remove_action' )->never();
+		$this->meta->suppress_jetpack_open_graph();
+	}
+
+	// --- Review follow-ups (#529): edge-case hardening ---
+
+	public function test_og_locale_defaults_to_en_us_when_locale_empty(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( '' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'en_US', $og['og:locale'] );
+	}
+
+	public function test_og_locale_normalizes_hyphen_form(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( 'pt-BR' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'pt_BR', $og['og:locale'] );
+	}
+
+	public function test_archive_og_image_skips_broken_logo_and_uses_icon(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		// Logo ID set, but the attachment URL is missing → fall through to icon.
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( false );
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://shop.test/icon.png' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/icon.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_omitted_when_no_default_available(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		// No configured default (setUp pass-through), no logo, no icon.
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertArrayNotHasKey( 'og:image', $og );
 	}
 }

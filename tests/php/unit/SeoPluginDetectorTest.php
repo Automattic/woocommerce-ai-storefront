@@ -70,4 +70,33 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 		$slugs = array_column( WC_AI_Storefront_Seo_Plugin_Detector::detect(), 'slug' );
 		$this->assertContains( 'yoast', $slugs );
 	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_detect_reports_jetpack_as_handled(): void {
+		define( 'JETPACK__VERSION', '13.0-test' );
+		$found   = WC_AI_Storefront_Seo_Plugin_Detector::detect();
+		$jetpack = array_values( array_filter( $found, static fn( $p ) => 'jetpack' === $p['slug'] ) );
+		$this->assertNotEmpty( $jetpack );
+		$this->assertTrue( ! empty( $jetpack[0]['handled'] ) );
+		// Jetpack alone is auto-handled, so it is NOT a deactivate-able conflict.
+		$this->assertFalse( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_deactivatable_excludes_handled_but_keeps_real_conflicts(): void {
+		// Jetpack (handled) + Rank Math (deactivate-able) both present.
+		define( 'JETPACK__VERSION', '13.0-test' );
+		define( 'RANK_MATH_VERSION', '1.0.0-test' );
+		$slugs = array_column( WC_AI_Storefront_Seo_Plugin_Detector::deactivatable(), 'slug' );
+		$this->assertContains( 'rankmath', $slugs );
+		$this->assertNotContains( 'jetpack', $slugs );
+		// A real deactivate-able conflict still exists.
+		$this->assertTrue( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
+	}
 }

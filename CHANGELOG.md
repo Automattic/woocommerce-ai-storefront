@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Fixes
+
+- **Single, correct Open Graph and meta description on commerce pages when Jetpack is active (#527).** On Jetpack-enabled stores (every WordPress.com / Atomic store) the plugin and Jetpack both emitted social/SEO tags on product, category, and shop pages, producing a duplicate `<meta name="description">` and duplicate — sometimes conflicting — Open Graph tags (e.g. `og:title` "Shop" vs the store brand). Bing Webmaster flagged the duplication.
+  - Our own archive Open Graph is completed first: adds `og:locale`, an `og:image` fallback (configured default via the new `wc_ai_storefront_og_default_image` filter → site logo → site icon), and uses the store brand for `og:title` when the shop archive is the site front page.
+  - Jetpack's overlapping output is then suppressed only on those commerce pages: its Open Graph block is removed (`wp_head` priority 9 — after Jetpack's priority-1 loader, before its priority-10 emit) and its SEO meta description dropped via the `jetpack_seo_meta_tags` filter. Off commerce pages Jetpack is untouched.
+  - The SEO-plugin detector now recognizes Jetpack as auto-handled, so the "deactivate your SEO plugin" notice never names it.
+
 ---
 
 ## [0.26.0] – 2026-06-22
