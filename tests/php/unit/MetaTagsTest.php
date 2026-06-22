@@ -25,6 +25,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product_category' )->justReturn( false );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'is_search' )->justReturn( false );
+		// Defaults for tags added in the Jetpack-coexistence work; falsy so
+		// existing assertions are unaffected. Tests opt in to real values.
+		Functions\when( 'is_front_page' )->justReturn( false );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
 		$this->meta = new WC_AI_Storefront_Meta_Tags();
 	}
 
@@ -442,5 +448,50 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '<meta name="robots" content="noindex,follow"', $html );
 		$this->assertStringNotContainsString( 'og:', $html );
 		$this->assertStringNotContainsString( 'name="description"', $html );
+	}
+
+	// --- Task 1: og:locale (#527) ---
+
+	public function test_og_tags_include_locale(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$product->shouldReceive( 'get_short_description' )->andReturn( 'A belt.' );
+		$product->shouldReceive( 'get_description' )->andReturn( '' );
+		$product->shouldReceive( 'get_id' )->andReturn( 10 );
+		$product->shouldReceive( 'is_purchasable' )->andReturn( false );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( '' );
+		$og = $this->meta->build_og_tags( $product );
+		$this->assertSame( 'en_US', $og['og:locale'] );
+	}
+
+	public function test_archive_og_tags_include_locale(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'en_US', $og['og:locale'] );
+	}
+
+	public function test_og_locale_normalizes_wp_variant(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( 'de_DE_formal' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'de_DE', $og['og:locale'] );
 	}
 }

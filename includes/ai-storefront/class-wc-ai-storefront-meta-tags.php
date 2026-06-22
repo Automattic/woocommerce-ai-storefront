@@ -205,6 +205,7 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:description' => null === $description ? $this->build_description( $product ) : $description,
 			'og:url'         => get_permalink( $product->get_id() ),
 			'og:site_name'   => get_bloginfo( 'name' ),
+			'og:locale'      => $this->og_locale(),
 		);
 
 		$image = get_the_post_thumbnail_url( $product->get_id(), 'full' );
@@ -264,6 +265,7 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:site_name'   => $site,
 			'og:title'       => $site,
 			'og:url'         => '',
+			'og:locale'      => $this->og_locale(),
 		);
 
 		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
@@ -366,6 +368,22 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			$this->print_meta( 'name', $name, $content, 'twitter:image' === $name );
 		}
+	}
+
+	/**
+	 * The current locale as an Open Graph `language_TERRITORY` value.
+	 *
+	 * WordPress locales like `de_DE_formal` carry a variant suffix Open Graph
+	 * does not accept, so we keep only the language and territory segments.
+	 * Defaults to `en_US` when the locale is unavailable.
+	 */
+	private function og_locale(): string {
+		$locale = function_exists( 'get_locale' ) ? (string) get_locale() : '';
+		if ( '' === $locale ) {
+			return 'en_US';
+		}
+		$parts = explode( '_', $locale );
+		return isset( $parts[1] ) ? $parts[0] . '_' . $parts[1] : $parts[0];
 	}
 
 	/**
