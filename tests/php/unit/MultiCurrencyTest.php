@@ -22,7 +22,6 @@ namespace {
 			parent::setUp();
 			Monkey\setUp();
 			WC_AI_Storefront_Multi_Currency::reset_cache();
-			WC_AI_Storefront_Multi_Currency::reset_seed_state();
 			$GLOBALS['_mc_test_double']     = null;
 			$GLOBALS['_mc_throw']           = false;
 			$GLOBALS['_mc_feature_enabled'] = true;
@@ -59,10 +58,6 @@ namespace {
 			$GLOBALS['_mc_throw']           = false;
 			$GLOBALS['_mc_feature_enabled'] = true;
 			unset( $GLOBALS['_mc_test_filters'] );
-			// Ensure any seeded request state is cleaned up even if a test forgets tearDownSeedState().
-			WC_AI_Storefront_Multi_Currency::restore_request_currency();
-			WC_AI_Storefront_Multi_Currency::reset_seed_state();
-			unset( $_GET['currency'], $_REQUEST['currency'] );
 			Monkey\tearDown();
 			parent::tearDown();
 		}
@@ -532,107 +527,218 @@ namespace {
 		}
 
 		// ------------------------------------------------------------------
-		// seed_request_currency_from_body — Mechanism-A spike (#517)
+		// with_active_currency — dispatch-time switch (Mechanism B, #517)
 		// ------------------------------------------------------------------
 
-		protected function tearDownSeedState(): void {
-			WC_AI_Storefront_Multi_Currency::restore_request_currency();
-			WC_AI_Storefront_Multi_Currency::reset_seed_state();
-			unset( $_GET['currency'], $_REQUEST['currency'] );
+		/**
+		 * Configure the WCPay mock so $codes count as accepted currencies,
+		 * with USD as the base. Resets the selected-currency + update-call
+		 * tracking globals.
+		 *
+		 * @param array<int, string> $codes Enabled currency codes (assoc keys
+		 *                                   are what get_accepted_currencies reads).
+		 */
+		private function configureAcceptedCurrencies( array $codes ): void {
+			$enabled = array();
+			foreach ( $codes as $c ) {
+				$enabled[ $c ] = (object) array();
+			}
+			$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+			$mc->shouldReceive( 'get_enabled_currencies' )->andReturn( $enabled );
+			$GLOBALS['_mc_test_double']       = $mc;
+			$GLOBALS['_mc_feature_enabled']   = true;
+			$GLOBALS['_mc_initial_selected']  = 'USD';
+			$GLOBALS['_mc_selected_currency'] = 'USD';
+			$GLOBALS['_mc_update_calls']      = array();
+			WC_AI_Storefront_Multi_Currency::reset_cache();
 		}
 
-		public function test_seed_request_currency_from_body_sets_get_currency_for_valid_code(): void {
-			unset( $_GET['currency'], $_REQUEST['currency'] );
+		public function test_with_active_currency_switches_for_accepted_non_base_code(): void {
+			$this->configureAcceptedCurrencies( array( 'CAD' ) );
 
-			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
-				json_encode( array( 'context' => array( 'currency' => 'CAD' ) ) )
+			// All three WCPay override filters must be added at priority 99
+			// then removed in finally.
+			Functions\expect( 'add_filter' )
+				->with( 'wcpay_multi_currency_override_selected_currency', \Mockery::type( 'callable' ), 99 )
+				->once();
+			Functions\expect( 'add_filter' )
+				->with( 'wcpay_multi_currency_should_convert_product_price', '__return_true', 99 )
+				->once();
+			Functions\expect( 'add_filter' )
+				->with( 'wcpay_multi_currency_should_return_store_currency', '__return_false', 99 )
+				->once();
+			Functions\expect( 'remove_filter' )
+				->with( 'wcpay_multi_currency_override_selected_currency', \Mockery::type( 'callable' ), 99 )
+				->once();
+			Functions\expect( 'remove_filter' )
+				->with( 'wcpay_multi_currency_should_convert_product_price', '__return_true', 99 )
+				->once();
+			Functions\expect( 'remove_filter' )
+				->with( 'wcpay_multi_currency_should_return_store_currency', '__return_false', 99 )
+				->once();
+
+			$ran = false;
+			$out = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'CAD',
+				static function () use ( &$ran ) {
+					$ran = true;
+					return 'result';
+				}
 			);
 
-			$this->assertSame( 'CAD', $_GET['currency'] );
-			$this->assertSame( 'CAD', $_REQUEST['currency'] );
+			$this->assertTrue( $ran, 'callback must run' );
+			$this->assertSame( 'result', $out, 'callback return value must propagate' );
 
-			$this->tearDownSeedState();
+			// update_selected_currency called to switch to CAD then restore USD,
+			// both non-persistent.
+			$this->assertSame(
+				array(
+					array(
+						'code'    => 'CAD',
+						'persist' => false,
+					),
+					array(
+						'code'    => 'USD',
+						'persist' => false,
+					),
+				),
+				$GLOBALS['_mc_update_calls'],
+				'must switch to CAD then restore the prior selected currency, both non-persistent'
+			);
 		}
 
-		public function test_seed_request_currency_from_body_normalizes_lowercase_to_uppercase(): void {
-			unset( $_GET['currency'], $_REQUEST['currency'] );
+		public function test_with_active_currency_noop_for_base_currency(): void {
+			$this->configureAcceptedCurrencies( array( 'CAD' ) );
 
-			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
-				json_encode( array( 'context' => array( 'currency' => 'cad' ) ) )
+			// No filters added when the requested code is the base currency.
+			Functions\expect( 'add_filter' )->never();
+			Functions\expect( 'remove_filter' )->never();
+
+			$out = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'USD',
+				static function () {
+					return 'base';
+				}
 			);
 
-			$this->assertSame( 'CAD', $_GET['currency'] );
-
-			$this->tearDownSeedState();
+			$this->assertSame( 'base', $out );
+			$this->assertSame( array(), $GLOBALS['_mc_update_calls'], 'no currency switch for base currency' );
 		}
 
-		public function test_seed_request_currency_from_body_missing_context_currency_does_not_set_get(): void {
-			unset( $_GET['currency'], $_REQUEST['currency'] );
+		public function test_with_active_currency_noop_for_unaccepted_currency(): void {
+			// CAD accepted, JPY is not.
+			$this->configureAcceptedCurrencies( array( 'CAD' ) );
 
-			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
-				json_encode( array( 'some_key' => 'some_value' ) )
+			Functions\expect( 'add_filter' )->never();
+			Functions\expect( 'remove_filter' )->never();
+
+			$out = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'JPY',
+				static function () {
+					return 'unaccepted';
+				}
 			);
 
-			$this->assertArrayNotHasKey( 'currency', $_GET );
-
-			$this->tearDownSeedState();
+			$this->assertSame( 'unaccepted', $out );
+			$this->assertSame( array(), $GLOBALS['_mc_update_calls'], 'no switch for an unaccepted currency' );
 		}
 
-		public function test_seed_request_currency_from_body_non_iso_code_does_not_set_get(): void {
-			unset( $_GET['currency'], $_REQUEST['currency'] );
+		public function test_with_active_currency_noop_for_null_code(): void {
+			$this->configureAcceptedCurrencies( array( 'CAD' ) );
 
-			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
-				json_encode( array( 'context' => array( 'currency' => 'gibberish' ) ) )
+			Functions\expect( 'add_filter' )->never();
+
+			$out = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				null,
+				static function () {
+					return 'null';
+				}
 			);
 
-			$this->assertArrayNotHasKey( 'currency', $_GET );
-
-			$this->tearDownSeedState();
+			$this->assertSame( 'null', $out );
+			$this->assertSame( array(), $GLOBALS['_mc_update_calls'] );
 		}
 
-		public function test_seed_request_currency_from_body_empty_body_does_not_set_get(): void {
-			unset( $_GET['currency'], $_REQUEST['currency'] );
+		public function test_with_active_currency_noop_for_malformed_code(): void {
+			$this->configureAcceptedCurrencies( array( 'CAD' ) );
 
-			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body( '' );
+			Functions\expect( 'add_filter' )->never();
 
-			$this->assertArrayNotHasKey( 'currency', $_GET );
-
-			$this->tearDownSeedState();
-		}
-
-		public function test_seed_request_currency_from_body_restores_prior_get_currency_after_restore(): void {
-			$_GET['currency']     = 'USD';
-			$_REQUEST['currency'] = 'USD';
-
-			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
-				json_encode( array( 'context' => array( 'currency' => 'CAD' ) ) )
+			$out = WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'gibberish',
+				static function () {
+					return 'malformed';
+				}
 			);
 
-			$this->assertSame( 'CAD', $_GET['currency'], 'Should be overwritten to CAD' );
-
-			WC_AI_Storefront_Multi_Currency::restore_request_currency();
-
-			$this->assertSame( 'USD', $_GET['currency'], 'Should be restored to prior USD' );
-			$this->assertSame( 'USD', $_REQUEST['currency'], 'Should be restored to prior USD' );
-
-			$this->tearDownSeedState();
+			$this->assertSame( 'malformed', $out );
+			$this->assertSame( array(), $GLOBALS['_mc_update_calls'] );
 		}
 
-		public function test_seed_request_currency_from_body_restores_absent_key_when_no_prior_currency(): void {
-			unset( $_GET['currency'], $_REQUEST['currency'] );
+		public function test_with_active_currency_restores_currency_when_callback_throws(): void {
+			$this->configureAcceptedCurrencies( array( 'CAD' ) );
 
-			WC_AI_Storefront_Multi_Currency::seed_request_currency_from_body(
-				json_encode( array( 'context' => array( 'currency' => 'CAD' ) ) )
+			// Filters still added + removed even though the callback throws.
+			Functions\expect( 'add_filter' )->times( 3 );
+			Functions\expect( 'remove_filter' )->times( 3 );
+
+			$threw = false;
+			try {
+				WC_AI_Storefront_Multi_Currency::with_active_currency(
+					'CAD',
+					static function () {
+						throw new \RuntimeException( 'dispatch blew up' );
+					}
+				);
+			} catch ( \RuntimeException $e ) {
+				$threw = true;
+			}
+
+			$this->assertTrue( $threw, 'exception must propagate' );
+			// The selected currency must be restored to USD even on throw.
+			$this->assertSame( 'USD', $GLOBALS['_mc_selected_currency'], 'currency restored in finally' );
+			$last = end( $GLOBALS['_mc_update_calls'] );
+			$this->assertSame( 'USD', $last['code'], 'last switch restores the prior currency' );
+		}
+
+		public function test_with_active_currency_no_state_leak_between_calls(): void {
+			$this->configureAcceptedCurrencies( array( 'CAD' ) );
+
+			Functions\when( 'add_filter' )->justReturn( true );
+			Functions\when( 'remove_filter' )->justReturn( true );
+
+			// First call switches + restores.
+			WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'CAD',
+				static function () {
+					return null;
+				}
+			);
+			$this->assertSame( 'USD', $GLOBALS['_mc_selected_currency'], 'restored after first call' );
+
+			// Second call in the same process starts clean and restores again.
+			$GLOBALS['_mc_update_calls'] = array();
+			WC_AI_Storefront_Multi_Currency::with_active_currency(
+				'CAD',
+				static function () {
+					return null;
+				}
 			);
 
-			$this->assertSame( 'CAD', $_GET['currency'] );
-
-			WC_AI_Storefront_Multi_Currency::restore_request_currency();
-
-			$this->assertArrayNotHasKey( 'currency', $_GET, 'Key should be absent after restore' );
-			$this->assertArrayNotHasKey( 'currency', $_REQUEST, 'Key should be absent after restore' );
-
-			$this->tearDownSeedState();
+			$this->assertSame(
+				array(
+					array(
+						'code'    => 'CAD',
+						'persist' => false,
+					),
+					array(
+						'code'    => 'USD',
+						'persist' => false,
+					),
+				),
+				$GLOBALS['_mc_update_calls'],
+				'second call switches from the clean USD baseline, proving no leak'
+			);
 		}
 
 	}

@@ -349,6 +349,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$GLOBALS['_mc_test_double']     = null;
 		$GLOBALS['_mc_throw']           = false;
 		$GLOBALS['_mc_feature_enabled'] = true;
+		unset(
+			$GLOBALS['_mc_initial_selected'],
+			$GLOBALS['_mc_selected_currency'],
+			$GLOBALS['_mc_update_calls']
+		);
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -1629,6 +1634,22 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// noise the agent can't act on — no bounds got skipped, so
 		// there's nothing to convert or drop. The mismatch check runs
 		// only when at least one bound would otherwise be applied.
+		//
+		// EUR is configured as accepted here so the catalog-level fallback
+		// warning (issue #517, which fires for an UNACCEPTED non-base
+		// currency) does not apply — isolating the price-filter-specific
+		// behaviour under test.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double']     = $mc;
+		$GLOBALS['_mc_feature_enabled'] = true;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+
 		$no_op_price_payloads = [
 			[],
 			[ 'min' => 'cheap' ],
@@ -2861,24 +2882,33 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'currency=', $body['products'][0]['url'] );
 	}
 
-	public function test_handle_catalog_search_passes_currency_param_to_store_api_when_context_currency_set(): void {
-		// Agent sends context.currency: EUR. The Store API dispatch must carry
-		// currency=EUR as a query param on the outgoing WP_REST_Request.
-		WC_AI_Storefront_Multi_Currency::reset_cache();
-		Functions\when( 'apply_filters' )->alias(
-			static function ( $hook, $value, ...$extras ) {
-				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
-					return array( 'USD', 'EUR' );
-				}
-				return $value;
-			}
+	public function test_handle_catalog_search_switches_wcpay_currency_during_dispatch_when_context_currency_set(): void {
+		// Agent sends context.currency: EUR. Mechanism B (issue #517): the
+		// Store API dispatch runs inside with_active_currency('EUR', ...) so
+		// WCPay's selected currency is EUR at dispatch time. A request-object
+		// `currency` param is NO LONGER set — WCPay reads its selected
+		// currency, not the inner request param.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
 		);
+		$GLOBALS['_mc_test_double']       = $mc;
+		$GLOBALS['_mc_feature_enabled']   = true;
+		$GLOBALS['_mc_initial_selected']  = 'USD';
+		$GLOBALS['_mc_selected_currency'] = 'USD';
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$captured_currency = null;
+		$captured_param       = 'NOT_READ';
+		$selected_at_dispatch = null;
 		Functions\when( 'rest_do_request' )->alias(
-			static function ( WP_REST_Request $req ) use ( &$captured_currency ) {
-				$captured_currency = $req->get_param( 'currency' );
-				$response = new \WP_REST_Response( array() );
+			static function ( WP_REST_Request $req ) use ( &$captured_param, &$selected_at_dispatch ) {
+				$captured_param       = $req->get_param( 'currency' );
+				$selected_at_dispatch = $GLOBALS['_mc_selected_currency'] ?? null;
+				$response             = new \WP_REST_Response( array() );
 				$response->set_status( 200 );
 				return $response;
 			}
@@ -2890,18 +2920,32 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search( $request );
 
-		$this->assertSame( 'EUR', $captured_currency, 'Store API dispatch must carry currency=EUR query param' );
+		$this->assertNull( $captured_param, 'the ineffective currency request param must no longer be set' );
+		$this->assertSame( 'EUR', $selected_at_dispatch, 'WCPay selected currency must be EUR during the Store API dispatch' );
+		$this->assertSame( 'USD', $GLOBALS['_mc_selected_currency'], 'selected currency must be restored after dispatch' );
 	}
 
-	public function test_handle_catalog_search_omits_currency_param_when_context_currency_absent(): void {
-		// No context.currency — the Store API dispatch must NOT carry a currency param.
+	public function test_handle_catalog_search_no_currency_switch_when_context_currency_absent(): void {
+		// No context.currency — no switch happens; selected currency stays base.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double']       = $mc;
+		$GLOBALS['_mc_feature_enabled']   = true;
+		$GLOBALS['_mc_initial_selected']  = 'USD';
+		$GLOBALS['_mc_selected_currency'] = 'USD';
 		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$captured_currency = 'NOT_SET';
+		$selected_at_dispatch = null;
 		Functions\when( 'rest_do_request' )->alias(
-			static function ( WP_REST_Request $req ) use ( &$captured_currency ) {
-				$captured_currency = $req->get_param( 'currency' );
-				$response = new \WP_REST_Response( array() );
+			static function ( WP_REST_Request $req ) use ( &$selected_at_dispatch ) {
+				$selected_at_dispatch = $GLOBALS['_mc_selected_currency'] ?? null;
+				$response             = new \WP_REST_Response( array() );
 				$response->set_status( 200 );
 				return $response;
 			}
@@ -2913,31 +2957,34 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search( $request );
 
-		$this->assertNull( $captured_currency, 'Store API dispatch must not carry a currency param when none was requested' );
+		$this->assertSame( 'USD', $selected_at_dispatch, 'no currency switch when none was requested' );
 	}
 
-	public function test_handle_catalog_search_passes_currency_param_to_variation_dispatches(): void {
+	public function test_handle_catalog_search_switches_currency_for_variation_dispatches(): void {
 		// Regression test: catalog/search resets request_context at handler entry.
-		// Before the fix, set_currency() was never called for this handler, so
-		// variation fetches (single-item route) silently carried no currency param —
-		// only the list dispatch did. Every fetch_store_api_product() call must carry
-		// currency=EUR when the agent sent context.currency: EUR.
-		WC_AI_Storefront_Multi_Currency::reset_cache();
-		Functions\when( 'apply_filters' )->alias(
-			static function ( $hook, $value, ...$extras ) {
-				if ( 'wc_ai_storefront_accepted_currencies' === $hook ) {
-					return array( 'USD', 'EUR' );
-				}
-				return $value;
-			}
+		// set_currency() runs for this handler, so the list dispatch AND every
+		// per-variation fetch_store_api_product() call run inside
+		// with_active_currency('EUR', ...) — selected currency is EUR at every
+		// dispatch when the agent sent context.currency: EUR.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'EUR' => new \stdClass(),
+			)
 		);
+		$GLOBALS['_mc_test_double']       = $mc;
+		$GLOBALS['_mc_feature_enabled']   = true;
+		$GLOBALS['_mc_initial_selected']  = 'USD';
+		$GLOBALS['_mc_selected_currency'] = 'USD';
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$captured = array(); // route => currency param value
+		$captured = array(); // route => selected currency during dispatch
 		Functions\when( 'rest_do_request' )->alias(
 			static function ( WP_REST_Request $req ) use ( &$captured ) {
-				$route    = $req->get_route();
-				$currency = $req->get_param( 'currency' );
-				$captured[ $route ] = $currency;
+				$route              = $req->get_route();
+				$captured[ $route ] = $GLOBALS['_mc_selected_currency'] ?? null;
 
 				if ( '/wc/store/v1/products' === $route ) {
 					$response = new \WP_REST_Response( array(
@@ -2982,13 +3029,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search( $request );
 
-		// Every dispatch — list and per-variation — must carry currency=EUR.
+		// Every dispatch — list and per-variation — must run with EUR selected.
 		$this->assertNotEmpty( $captured, 'Expected at least one Store API dispatch' );
 		foreach ( $captured as $route => $currency ) {
 			$this->assertSame(
 				'EUR',
 				$currency,
-				"Store API dispatch to $route must carry currency=EUR"
+				"Store API dispatch to $route must run with WCPay selected currency EUR"
 			);
 		}
 		// Confirm we actually exercised the variation routes, not just the list.
@@ -3159,5 +3206,113 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotNull( $found, 'Conversion-failed warning must be emitted when WCPay throws' );
 		$this->assertNull( $captured_params['min_price'], 'min_price must NOT reach the Store API on conversion failure' );
 		$this->assertNull( $captured_params['max_price'], 'max_price must NOT reach the Store API on conversion failure' );
+	}
+
+	// ------------------------------------------------------------------
+	// Multi-currency dispatch seam (issue #517)
+	// ------------------------------------------------------------------
+
+	public function test_catalog_search_runs_dispatch_through_currency_seam_for_accepted_currency(): void {
+		// CAD accepted, USD base. The dispatch must run inside
+		// with_active_currency('CAD', ...) so WCPay's selected currency is
+		// CAD at the moment rest_do_request fires.
+		$mc = \Mockery::mock( '\WCPay\MultiCurrency\MultiCurrency' );
+		$mc->shouldReceive( 'get_enabled_currencies' )->andReturn(
+			array(
+				'USD' => new \stdClass(),
+				'CAD' => new \stdClass(),
+			)
+		);
+		$GLOBALS['_mc_test_double']       = $mc;
+		$GLOBALS['_mc_feature_enabled']   = true;
+		$GLOBALS['_mc_initial_selected']  = 'USD';
+		$GLOBALS['_mc_selected_currency'] = 'USD';
+		$GLOBALS['_mc_update_calls']      = array();
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$selected_at_dispatch = null;
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) use ( &$selected_at_dispatch ) {
+				$selected_at_dispatch = $GLOBALS['_mc_selected_currency'] ?? null;
+				$response             = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params( array( 'context' => array( 'currency' => 'CAD' ) ) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$controller->handle_catalog_search( $request );
+
+		$this->assertSame( 'CAD', $selected_at_dispatch, 'WCPay selected currency must be CAD during the Store API dispatch' );
+		$this->assertSame( 'USD', $GLOBALS['_mc_selected_currency'], 'selected currency must be restored to USD after dispatch' );
+	}
+
+	public function test_catalog_search_emits_unsupported_warning_for_unaccepted_currency_without_price_filter(): void {
+		// XYZ not accepted, no price filter present. The catalog-level
+		// fallback (issue #517) must still emit the warning so the agent
+		// knows prices stayed in base.
+		$GLOBALS['_mc_test_double'] = null;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) {
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params( array( 'context' => array( 'currency' => 'XYZ' ) ) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search( $request );
+
+		$body  = $response->get_data();
+		$found = false;
+		foreach ( $body['messages'] ?? array() as $msg ) {
+			if (
+				'warning' === ( $msg['type'] ?? null )
+				&& WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === ( $msg['code'] ?? null )
+			) {
+				$found = true;
+			}
+		}
+		$this->assertTrue( $found, 'unaccepted currency must emit currency_conversion_unsupported even with no price filter' );
+	}
+
+	public function test_catalog_search_no_currency_warning_for_base_currency(): void {
+		// Base currency requested → no switch, no warning.
+		$GLOBALS['_mc_test_double'] = null;
+		WC_AI_Storefront_Multi_Currency::reset_cache();
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		Functions\when( 'rest_do_request' )->alias(
+			static function ( $req ) {
+				$response = new \WP_REST_Response( array() );
+				$response->set_status( 200 );
+				return $response;
+			}
+		);
+
+		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
+		$request->set_body_params( array( 'context' => array( 'currency' => 'USD' ) ) );
+
+		$controller = new WC_AI_Storefront_UCP_REST_Controller();
+		$response   = $controller->handle_catalog_search( $request );
+
+		$body  = $response->get_data();
+		$found = false;
+		foreach ( $body['messages'] ?? array() as $msg ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED === ( $msg['code'] ?? null ) ) {
+				$found = true;
+			}
+		}
+		$this->assertFalse( $found, 'base currency must not emit a currency_conversion_unsupported warning' );
 	}
 }
