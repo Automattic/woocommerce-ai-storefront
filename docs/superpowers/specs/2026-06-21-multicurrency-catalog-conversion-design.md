@@ -1,7 +1,7 @@
 # Multi-currency: convert UCP catalog/checkout prices to the requested currency (Phase 2 completion)
 
 - **Date:** 2026-06-21
-- **Status:** Draft — pending review
+- **Status:** Shipped — Mechanism B confirmed working on WCPay 10.9 (live spike on saltwarp.shop). The dispatch-time `with_active_currency()` switch is implemented around every price-returning in-process Store-API dispatch (catalog/search, catalog/lookup single + batch, checkout-sessions line items); per-currency cache keys + the unaccepted-currency fallback warning are in place.
 - **Issue:** #517
 - **Depends on:** WooPayments **>= 10.9** (the Store-API currency fix; confirmed working on saltwarp.shop 10.9 RC).
 - **Target:** 0.25.0 (minor).
@@ -33,16 +33,18 @@ So WCPay 10.9 is required and confirmed working; the remaining defect is plugin-
 
 On WCPay >= 10.9 with multi-currency enabled, UCP `catalog/search`, `catalog/lookup` (single + batch), and `checkout-sessions` line-item prices are returned in the agent's `context.currency` when that currency is in `accepted_currencies` — with WCPay's full conversion (rate + rounding + charm), matching the buyer-facing PDP. When the currency is base, absent, or not accepted, prices stay in base and an explicit `currency_conversion_unsupported`-style signal is surfaced (no silent base-for-requested).
 
-## The key uncertainty (drives a spike-first plan)
+## The key uncertainty — RESOLVED (Mechanism B confirmed)
 
-The proven-working path (evidence row 1) is: **`$_GET['currency']` is set before WCPay's `init`-time switcher runs**, which makes WCPay register its currency switch + price-conversion hooks for the request, so the inner Store API `rest_do_request` inherits the converted currency.
+The proven-working reference path (evidence row 1) is: **`$_GET['currency']` is set before WCPay's `init`-time switcher runs**, so WCPay registers its currency switch + price-conversion hooks and the inner Store API `rest_do_request` inherits the converted currency.
 
-The exact, reliable way to reproduce that from the plugin is the open question, because the agent sends `context.currency` in the **POST body** (parsed at REST routing, *after* WCPay's `init` switcher). Two candidate mechanisms:
+The open question was how to reproduce that from the plugin, since the agent sends `context.currency` in the **POST body** (parsed *after* WCPay's `init` switcher). Two candidate mechanisms were considered:
 
-- **A — Early `$_GET` seed (matches the proven path).** On an early hook (before WCPay's `init`-priority currency switch), detect a UCP catalog/checkout request by path, read `context.currency` from `php://input` (JSON bodies are re-readable, so WP REST's later read is unaffected), validate it, and set `$_GET['currency']` (+ `$_REQUEST`). WCPay then runs its normal `?currency=` path — the exact path proven to convert. Restore `$_GET` after the request.
-- **B — Dispatch-time active-currency switch.** Wrap the inner `rest_do_request` in `WC_AI_Storefront_Multi_Currency::with_active_currency($code, $fn)`: `update_selected_currency($code)` + override the disable filters (`should_convert_product_price → true`, `should_return_store_currency → false`), restore in `finally`. Cleaner code, but **unproven** — WCPay may not register its price-conversion hooks (FrontendPrices) for a UCP request, in which case switching the selected currency mid-request won't convert.
+- **A — Early `$_GET` seed.** Read `context.currency` from `php://input` on `init:1` and set `$_GET['currency']` before WCPay's `init:10` switcher. **Tried and abandoned — it did NOT work:** the seed runs too late / the proven `?currency=` page-load path is not the same path a REST dispatch takes, so the inner dispatch still returned base prices. The dead code + its tests have been removed.
+- **B — Dispatch-time active-currency switch. CONFIRMED WORKING (WCPay 10.9, live on saltwarp.shop).** Wrap the inner `rest_do_request` in `WC_AI_Storefront_Multi_Currency::with_active_currency($code, $fn)`: add the `wcpay_multi_currency_override_selected_currency` filter (priority 99) + `should_convert_product_price => __return_true` + `should_return_store_currency => __return_false`, **and** call `update_selected_currency($code, false)**, all restored in `finally`.
 
-**Decision: the implementation plan's first task is a spike on saltwarp.shop** (the only reachable 10.9 store) that empirically determines which mechanism converts, then the rest of the build is implemented around the locked mechanism. We cannot unit-test WCPay's internal conversion path, and we cannot run plugin code on saltwarp except by deploying a branch — so this de-risks everything downstream.
+**Key finding:** the override filter alone is **not sufficient** — it converts the price *amount* but the response's currency *code* stays at the store base, because WCPay's FrontendCurrencies reads the **selected-currency object**, not the override filter. `update_selected_currency($code, false)` (non-persistent) is therefore **required in addition to** the override filter so both the amount and the code follow the requested currency. Live test: `catalog/search` body `context.currency=CAD` → CAD amount + CAD code; EUR → EUR; USD/none → base; unaccepted currency → base + warning; no state leak across requests.
+
+WCPay's internal conversion path is not unit-testable (mocked in unit tests); the live spike is the integration oracle and it passed.
 
 ## Architecture
 
