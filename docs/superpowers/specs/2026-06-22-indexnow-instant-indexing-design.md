@@ -150,3 +150,10 @@ Unit tests (PHPUnit, HTTP mocked via the existing test patterns):
 
 - Exact debounce window (start at 60s; validate it survives a bulk import without tripping `429`).
 - Whether a shared "is this product publicly discoverable" predicate already exists to reuse for the exclusion filter, or one should be extracted from the feed / JSON-LD code.
+
+## References
+
+- IndexNow protocol overview: <https://www.indexnow.org/index>
+- IndexNow documentation (request format, key file, bulk submission): <https://www.indexnow.org/documentation>
+- Participating search engines (live registry): <https://www.indexnow.org/searchengines.json>
+- Shared submission endpoint: `https://api.indexnow.org/indexnow` (propagates to all participants).
