@@ -24,18 +24,26 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Per-request product cache for UCP REST controller handlers.
  *
- * Keyed on integer WC product ID. A `null` value is a valid cached
- * result (meaning "product not found / out of scope"), distinguished
- * from a cache miss via the separate `$has_key` map — this prevents
- * repeated lookups of out-of-scope or non-existent products from
- * re-dispatching inner `rest_do_request` calls.
+ * Keyed on `currency|id` (the resolved presentment currency plus the
+ * integer WC product ID). A `null` value is a valid cached result
+ * (meaning "product not found / out of scope"), distinguished from a
+ * cache miss via the separate `$has_key` map — this prevents repeated
+ * lookups of out-of-scope or non-existent products from re-dispatching
+ * inner `rest_do_request` calls.
+ *
+ * The currency is part of the key (issue #517) because the cached body
+ * carries currency-converted prices: a product fetched in CAD must never
+ * satisfy a later USD lookup of the same ID. In practice the currency is
+ * set once per handler entry, so the key prefix is constant within a
+ * request; embedding it is defence-in-depth against a future code path
+ * that switches currency mid-request.
  */
 final class WC_AI_Storefront_UCP_Request_Context {
 
 	/**
-	 * Cache storage: int id => ?array product data.
+	 * Cache storage: "currency|id" => ?array product data.
 	 *
-	 * @var array<int, ?array<string, mixed>>
+	 * @var array<string, ?array<string, mixed>>
 	 */
 	private array $product_cache = array();
 
@@ -44,7 +52,7 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	 * ones). Separates "cache hit with null" from "cache miss" so
 	 * repeated 404 lookups don't re-dispatch.
 	 *
-	 * @var array<int, bool>
+	 * @var array<string, bool>
 	 */
 	private array $product_cache_has_key = array();
 
@@ -52,12 +60,28 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	 * The validated ISO-4217 currency code for the current request,
 	 * or null when no currency hint was supplied by the agent.
 	 * Set once per handler entry via set_currency(); read by
-	 * fetch_store_api_product() to pass the native Store API
-	 * `currency` query param.
+	 * fetch_store_api_product() to switch WCPay's selected currency
+	 * for the in-process dispatch, and folded into the product cache
+	 * key so converted bodies don't cross currencies.
 	 *
 	 * @var string|null
 	 */
 	private ?string $currency = null;
+
+	/**
+	 * Build the per-currency cache key for a product ID.
+	 *
+	 * Folds the resolved presentment currency into the key so a body
+	 * fetched under one currency can't satisfy a lookup under another.
+	 * A null currency (no hint / base) collapses to a stable `base`
+	 * prefix.
+	 *
+	 * @param int $id WC product ID.
+	 * @return string Composite cache key.
+	 */
+	private function cache_key( int $id ): string {
+		return ( null !== $this->currency ? $this->currency : 'base' ) . '|' . $id;
+	}
 
 	/**
 	 * Return the cached product data for the given WC product ID.
@@ -70,7 +94,8 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	 *                                   cached "not found / out of scope".
 	 */
 	public function get_product( int $id ): ?array {
-		return isset( $this->product_cache[ $id ] ) ? $this->product_cache[ $id ] : null;
+		$key = $this->cache_key( $id );
+		return isset( $this->product_cache[ $key ] ) ? $this->product_cache[ $key ] : null;
 	}
 
 	/**
@@ -82,7 +107,7 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	 * @return bool
 	 */
 	public function has_product( int $id ): bool {
-		return isset( $this->product_cache_has_key[ $id ] );
+		return isset( $this->product_cache_has_key[ $this->cache_key( $id ) ] );
 	}
 
 	/**
@@ -95,8 +120,9 @@ final class WC_AI_Storefront_UCP_Request_Context {
 	 * @param ?array<string, mixed>     $product Product data or null.
 	 */
 	public function set_product( int $id, ?array $product ): void {
-		$this->product_cache[ $id ]         = $product;
-		$this->product_cache_has_key[ $id ] = true;
+		$key                                 = $this->cache_key( $id );
+		$this->product_cache[ $key ]         = $product;
+		$this->product_cache_has_key[ $key ] = true;
 	}
 
 	/**
