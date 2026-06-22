@@ -271,7 +271,7 @@ class WC_AI_Storefront_Multi_Currency {
 	}
 
 	/**
-	 * Run $fn with WooPayments switched to $code, scoped to this in-process
+	 * Run $callback with WooPayments switched to $code, scoped to this in-process
 	 * Store API dispatch (issue #517; requires WooPayments >= 10.9).
 	 *
 	 * Reproduces WCPay's own `?currency=` switch (MultiCurrency::init adds an
@@ -283,7 +283,7 @@ class WC_AI_Storefront_Multi_Currency {
 	 * WCPay's init-time filters; all three are removed in `finally` so the
 	 * outer request and the next request in the same process are unaffected.
 	 *
-	 * No-op (runs $fn unchanged, no currency switch) when $code is:
+	 * No-op (runs $callback unchanged, no currency switch) when $code is:
 	 *   - null, empty, or not a valid ISO-4217 code; OR
 	 *   - the WooCommerce base currency (base prices are already correct); OR
 	 *   - not in get_accepted_currencies() (the store doesn't accept it, so we
@@ -293,13 +293,13 @@ class WC_AI_Storefront_Multi_Currency {
 	 * The switch therefore fires only for an accepted, non-base currency.
 	 *
 	 * @param string|null $code Requested ISO-4217 currency.
-	 * @param callable    $fn   The dispatch to run.
-	 * @return mixed The return value of $fn.
+	 * @param callable    $callback   The dispatch to run.
+	 * @return mixed The return value of $callback.
 	 */
-	public static function with_active_currency( ?string $code, callable $fn ) {
+	public static function with_active_currency( ?string $code, callable $callback ) {
 		$normalized = is_string( $code ) ? strtoupper( trim( $code ) ) : '';
 		if ( '' === $normalized || 1 !== preg_match( '/^[A-Z]{3}$/', $normalized ) ) {
-			return $fn();
+			return $callback();
 		}
 
 		// No-op for the base currency — base prices are already correct, and a
@@ -308,14 +308,14 @@ class WC_AI_Storefront_Multi_Currency {
 			? strtoupper( (string) get_woocommerce_currency() )
 			: 'USD';
 		if ( $normalized === $base ) {
-			return $fn();
+			return $callback();
 		}
 
 		// No-op when the store doesn't accept this currency. Switching anyway
 		// would return a converted price the merchant never opted into; the
 		// caller surfaces a currency_conversion_unsupported warning instead.
 		if ( ! in_array( $normalized, self::get_accepted_currencies(), true ) ) {
-			return $fn();
+			return $callback();
 		}
 
 		// Non-static closure (no `static` keyword): some WP hook-introspection
@@ -341,7 +341,7 @@ class WC_AI_Storefront_Multi_Currency {
 		}
 
 		try {
-			return $fn();
+			return $callback();
 		} finally {
 			if ( null !== $mc && null !== $prior ) {
 				$mc->update_selected_currency( $prior, false );
