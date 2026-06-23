@@ -1,0 +1,4 @@
+[    1827ms] [INFO] [WooCommerce] Dependency detection enabled. Warnings will be shown for scripts that access wc.* globals without proper dependencies. @ https://saltwarp.shop/product/half-zip-hoodie/:6
+[    2142ms] [LOG] JQMIGRATE: Migrate is installed, version 3.4.1 @ https://saltwarp.shop/wp-includes/js/jquery/jquery-migrate.min.js?m=1686289764:1
+[    2626ms] [WARNING] [WooCommerce] Script "WCPAY_WOOPAY_EXPRESS_BUTTON" accessed wc.wcSettings without declaring "wc-settings" as a dependency. Add "wc-settings" to the script's dependencies array. @ https://saltwarp.shop/product/half-zip-hoodie/:6
+[    3351ms] [LOG] JQMIGRATE: Migrate is installed, version 3.4.1 @ https://pay.woo.com/_static/??-eJzTLy/QTc7PK0nNK9HPKtYvyinRLSjKr6jUyyrW0QfKZeYl55SmpBaDJLMKS1OLKqGUXm5mHkFFurmZ6UWJJalQxfa5tobmRgamxgZmFpZZACbyLJI=:203

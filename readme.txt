@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.26.0
+Stable tag: 0.27.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,13 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.27.0 - 2026-06-22 =
+**New**
+* Instant indexing: when you add or change a product, category, or your shop page, your store notifies IndexNow so Bing-powered AI assistants (ChatGPT Search, Microsoft Copilot) re-crawl it quickly. On by default once AI Storefront is enabled; nothing to configure.
+
+**Fixed**
+* On stores running Jetpack (including WordPress.com and Atomic), your product, category, and shop pages no longer emit duplicate or conflicting descriptions and social-share tags. AI Storefront now provides a single correct set and defers to Jetpack on every other page.
 
 = 0.26.0 - 2026-06-22 =
 **Added**

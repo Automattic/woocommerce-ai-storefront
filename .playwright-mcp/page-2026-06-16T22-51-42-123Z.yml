@@ -1,0 +1,357 @@
+- generic [ref=e5]:
+  - navigation "Main" [ref=e7]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - link "Perplexity" [ref=e11] [cursor=pointer]:
+          - /url: /
+          - img "Perplexity" [ref=e14]
+        - button "Collapse sidebar" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+      - generic [ref=e23]:
+        - generic [ref=e26]:
+          - link "New" [ref=e27] [cursor=pointer]:
+            - /url: /
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+              - generic:
+                - generic:
+                  - generic: New
+                - generic: ⌘K
+        - generic [ref=e30]:
+          - link "Computer" [ref=e31] [cursor=pointer]:
+            - /url: /computer/tasks
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Computer":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Computer
+        - generic [ref=e35]:
+          - link "Spaces" [ref=e36] [cursor=pointer]:
+            - /url: /spaces
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Spaces":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Spaces
+        - generic [ref=e40]:
+          - link "Artifacts" [ref=e41] [cursor=pointer]:
+            - /url: /computer/artifacts
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Artifacts":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Artifacts
+        - generic [ref=e45]:
+          - link "Customize" [ref=e46] [cursor=pointer]:
+            - /url: /computer/connectors
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Customize":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Customize
+        - generic [ref=e48]:
+          - generic [ref=e50]:
+            - link "History" [ref=e51] [cursor=pointer]:
+              - /url: /library
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - button "Collapse History" [expanded]:
+                      - generic:
+                        - img
+                  - generic:
+                    - img
+                - generic:
+                  - generic:
+                    - generic: History
+          - generic [ref=e53]:
+            - generic [ref=e54]:
+              - link "find me a hoodie on saltwarp.shop" [ref=e55] [cursor=pointer]:
+                - /url: /search/3e537d26-271e-4b24-8f71-614bdb1cf904
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: find me a hoodie on saltwarp.shop
+            - generic [ref=e56]:
+              - link "what products does saltwarp.shop sell ?" [ref=e57] [cursor=pointer]:
+                - /url: /search/fa208ec8-ab74-43ac-ae60-697406a590d5
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: what products does saltwarp.shop sell ?
+            - generic [ref=e58]:
+              - link "find me a hoodies on saltwarp.shop" [ref=e59] [cursor=pointer]:
+                - /url: /search/10664923-ae47-4e92-9c72-d3ea274acb39
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: find me a hoodies on saltwarp.shop
+            - generic [ref=e60]:
+              - link "Find me a hoodie on saltwarp.shop/shop" [ref=e61] [cursor=pointer]:
+                - /url: /search/f6d93845-80ac-43a9-adf5-d7a703daec15
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Find me a hoodie on saltwarp.shop/shop
+            - generic [ref=e62]:
+              - link "find me a hoodies on saltwarp.shop" [ref=e63] [cursor=pointer]:
+                - /url: /search/97769346-9c12-4b9a-ae6c-a7438f59b4b2
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: find me a hoodies on saltwarp.shop
+            - generic [ref=e64]:
+              - link "I looking to buy a hoodie from https://piero-aisf.jurassic.tube" [ref=e65] [cursor=pointer]:
+                - /url: /search/deaf0110-c2b8-48ce-8fd0-6134e7861a39
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: I looking to buy a hoodie from https://piero-aisf.jurassic.tube
+            - generic [ref=e66]:
+              - link "find me a hoodies on saltwarp.shop" [ref=e67] [cursor=pointer]:
+                - /url: /search/4dad1ff7-ee97-4927-bdb6-56985f77f230
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: find me a hoodies on saltwarp.shop
+            - generic [ref=e68]:
+              - link "Find me hoodies from saltwarp" [ref=e69] [cursor=pointer]:
+                - /url: /search/c32164e1-46e0-49a0-a07a-d8560f6c0bbf
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: Find me hoodies from saltwarp
+            - generic [ref=e70]:
+              - link "I'm hearing about a new online clothing brand called saltwarp that has outdoor clothing. What kind o" [ref=e71] [cursor=pointer]:
+                - /url: /search/b7b30637-edbc-4478-a8d4-94bacdebe88c
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: I'm hearing about a new online clothing brand called saltwarp that has outdoor clothing. What kind o
+            - generic [ref=e72]:
+              - link "what products are on pierorocca.com" [ref=e73] [cursor=pointer]:
+                - /url: /search/7c708792-ac39-45a4-8374-406592742132
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: what products are on pierorocca.com
+            - generic [ref=e74]:
+              - link "I want to shop for a new shirt" [ref=e75] [cursor=pointer]:
+                - /url: /search/c63893c4-927a-4c59-b20b-937118a96ad6
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: I want to shop for a new shirt
+            - generic [ref=e76]:
+              - 'link "What does Piero''s Fashion House sell? URL: pierorocca.com" [ref=e77] [cursor=pointer]':
+                - /url: /search/5b02ba9f-f68a-4db9-913d-74e6066ff1bb
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: "What does Piero's Fashion House sell? URL: pierorocca.com"
+            - generic [ref=e78]:
+              - link "I own pierorocca.com and i'm trying to test my ucp endpoint and llms.txt files for readability and c" [ref=e79] [cursor=pointer]:
+                - /url: /search/62efde57-2a48-40b8-b56e-12ec70cd4969
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: I own pierorocca.com and i'm trying to test my ucp endpoint and llms.txt files for readability and c
+            - generic [ref=e80]:
+              - 'link "analyze this UCP file: { \"ucp\": { \"version\": \"2026-04-08\", \"services\": {" [ref=e81] [cursor=pointer]':
+                - /url: /search/044bed36-4bca-4e65-84cd-8077b9c492ac
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: "analyze this UCP file: { \"ucp\": { \"version\": \"2026-04-08\", \"services\": {"
+            - generic [ref=e82]:
+              - link "I'm testing my UCP setup on my store pierorocca.com try reading the robots.tx, llms.txt, and the UCP" [ref=e83] [cursor=pointer]:
+                - /url: /search/7e7ca521-baac-4717-8ca7-6b35c4345ef0
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: I'm testing my UCP setup on my store pierorocca.com try reading the robots.tx, llms.txt, and the UCP
+            - generic [ref=e84]:
+              - link "can you read the robots.txt file on pierorocca.com" [ref=e85] [cursor=pointer]:
+                - /url: /search/3bfa723c-c7e0-426c-950b-8ab19f41b581
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: can you read the robots.txt file on pierorocca.com
+            - generic [ref=e86]:
+              - link "pierorocca.com" [ref=e87] [cursor=pointer]:
+                - /url: /search/2e55ef71-5545-4beb-a918-c014e91b7f28
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: pierorocca.com
+            - generic [ref=e88]:
+              - link "what products can I find on pierorocca.com" [ref=e89] [cursor=pointer]:
+                - /url: /search/dee9d752-b6d9-435b-b1d4-1edf41225cbd
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: what products can I find on pierorocca.com
+            - generic [ref=e90]:
+              - link "find me a hat from pierorocca.com" [ref=e91] [cursor=pointer]:
+                - /url: /search/c072c03b-1b47-4280-a70c-bab682507d2a
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: find me a hat from pierorocca.com
+            - generic [ref=e92]:
+              - link "I want to start a new business online. What's the best way to get started?" [ref=e93] [cursor=pointer]:
+                - /url: /search/606fa5fb-d02d-4343-a3c4-9ba8ded0c2b2
+              - generic:
+                - generic:
+                  - generic:
+                    - generic:
+                      - generic: I want to start a new business online. What's the best way to get started?
+      - generic [ref=e96]:
+        - button "Upgrade plan" [ref=e101] [cursor=pointer]:
+          - img [ref=e103]
+          - generic [ref=e105]: Upgrade plan
+        - generic [ref=e110] [cursor=pointer]:
+          - button "Profile avatar Piero Rocca" [ref=e112]:
+            - generic [ref=e119]:
+              - img "Profile avatar" [ref=e124]
+              - generic [ref=e126]: Piero Rocca
+          - button "Notifications" [ref=e135]:
+            - img [ref=e138]
+  - main [ref=e142]:
+    - generic [ref=e144]:
+      - generic [ref=e145]:
+        - link "Discover" [ref=e146] [cursor=pointer]:
+          - /url: /discover
+          - generic [ref=e147]: Discover
+        - link "Finance" [ref=e148] [cursor=pointer]:
+          - /url: /finance
+          - generic [ref=e149]: Finance
+        - link "Health" [ref=e150] [cursor=pointer]:
+          - /url: /health
+          - generic [ref=e151]: Health
+        - link "Academic" [ref=e152] [cursor=pointer]:
+          - /url: /academic
+          - generic [ref=e153]: Academic
+        - link "Patents" [ref=e154] [cursor=pointer]:
+          - /url: /patents
+          - generic [ref=e155]: Patents
+      - button "Free plan Upgrade" [ref=e158] [cursor=pointer]:
+        - generic [ref=e160]:
+          - text: Free plan
+          - generic [ref=e161]: ·
+          - text: Upgrade
+      - generic [ref=e163]:
+        - button "Scheduled" [ref=e164] [cursor=pointer]:
+          - img [ref=e167]
+        - 'button "Use incognito: create anonymous sessions that aren''t saved to your history and expire after 24 hours" [ref=e170] [cursor=pointer]':
+          - img [ref=e173]
+      - generic [ref=e180]:
+        - generic:
+          - generic:
+            - img "Perplexity" [ref=e183]
+            - generic:
+              - generic:
+                - generic:
+                  - img
+                - generic:
+                  - img "Perplexity Computer"
+        - generic [ref=e194]:
+          - generic [ref=e196]:
+            - textbox [ref=e197]:
+              - paragraph [ref=e198]
+            - generic:
+              - generic: Type / for search modes
+          - generic [ref=e200]:
+            - button "Add files or tools" [ref=e201] [cursor=pointer]:
+              - img [ref=e204]
+            - generic [ref=e207]:
+              - button "Search" [pressed] [ref=e210] [cursor=pointer]:
+                - img [ref=e212]
+                - generic [ref=e214]:
+                  - text: Search
+                  - img [ref=e217]
+              - button "Computer" [ref=e222] [cursor=pointer]:
+                - img [ref=e224]
+                - generic [ref=e226]: Computer
+          - generic [ref=e227]:
+            - button "Model" [ref=e229] [cursor=pointer]:
+              - generic [ref=e230]: Model
+              - img [ref=e232]
+            - button "Dictation" [ref=e236] [cursor=pointer]:
+              - img [ref=e239]
+            - button "Use voice mode" [ref=e242] [cursor=pointer]:
+              - img [ref=e245]
+        - generic [ref=e250]:
+          - generic [ref=e252]:
+            - button "Build a website" [ref=e253] [cursor=pointer]:
+              - img [ref=e255]
+              - generic [ref=e257]: Build a website
+            - button "Research a market" [ref=e258] [cursor=pointer]:
+              - img [ref=e260]
+              - generic [ref=e262]: Research a market
+            - button "Create a spreadsheet" [ref=e263] [cursor=pointer]:
+              - img [ref=e265]
+              - generic [ref=e267]: Create a spreadsheet
+            - button "Automate a workflow" [ref=e268] [cursor=pointer]:
+              - img [ref=e270]
+              - generic [ref=e272]: Automate a workflow
+            - button "Run a final pass" [ref=e273] [cursor=pointer]:
+              - img [ref=e275]
+              - generic [ref=e277]: Run a final pass
+            - button "Build a Chief of Staff" [ref=e278] [cursor=pointer]:
+              - img [ref=e280]
+              - generic [ref=e282]: Build a Chief of Staff
+          - button "Shuffle starter cards" [ref=e284] [cursor=pointer]:
+            - img [ref=e287]

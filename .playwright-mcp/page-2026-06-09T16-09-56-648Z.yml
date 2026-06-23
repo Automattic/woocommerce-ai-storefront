@@ -1,0 +1,167 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation "Toolbar":
+      - menu:
+        - group [ref=e3]:
+          - menuitem "About WordPress" [ref=e4]:
+            - generic [ref=e6]: About WordPress
+      - menu [ref=e7]:
+        - group [ref=e8]:
+          - menuitem "Jetpack Beta" [ref=e9]:
+            - img [ref=e11]
+            - generic [ref=e13]: Jetpack
+            - text: Beta
+        - group [ref=e14]:
+          - menuitem "Notifications" [ref=e15] [cursor=pointer]:
+            - generic [ref=e16]: Notifications
+        - group [ref=e17]:
+          - menuitem "Search" [ref=e18]:
+            - generic [ref=e19]:
+              - textbox "Search" [ref=e20] [cursor=pointer]
+              - generic [ref=e21]: Search
+        - group [ref=e22]:
+          - menuitem "Debug" [ref=e23]
+  - link "Skip to content" [ref=e24] [cursor=pointer]:
+    - /url: "#wp--skip-link--target"
+  - generic [ref=e25]:
+    - banner [ref=e26]:
+      - paragraph [ref=e28]: Free shipping on all orders over $100.
+      - generic [ref=e30]:
+        - heading "Saltwarp" [level=1] [ref=e31]:
+          - link "Saltwarp" [ref=e32] [cursor=pointer]:
+            - /url: https://saltwarp.shop
+        - generic [ref=e33]:
+          - navigation "Menu" [ref=e34]:
+            - list [ref=e39]:
+              - listitem [ref=e40]:
+                - link "Privacy Policy" [ref=e41] [cursor=pointer]:
+                  - /url: https://saltwarp.shop/policy-page/
+              - listitem [ref=e42]:
+                - link "Terms and Conditions" [ref=e43] [cursor=pointer]:
+                  - /url: https://saltwarp.shop/terms-page/
+              - listitem [ref=e44]:
+                - link "Refund and Returns Policy" [ref=e45] [cursor=pointer]:
+                  - /url: https://saltwarp.shop/refund_returns/
+              - listitem [ref=e46]:
+                - link "Contact Us" [ref=e47] [cursor=pointer]:
+                  - /url: "#"
+          - link "Login" [ref=e49] [cursor=pointer]:
+            - /url: https://saltwarp.shop/my-account/
+            - img [ref=e50]
+          - combobox [ref=e55]:
+            - option "🇺🇸 $ USD" [selected]
+            - option "🇩🇿 د.ج DZD"
+            - option "🇨🇦 $ CAD"
+            - option "🇩🇰 kr. DKK"
+            - option "🇪🇺 € EUR"
+            - option "🇭🇰 $ HKD"
+            - option "🇮🇳 ₹ INR"
+            - option "🇯🇵 ¥ JPY"
+            - option "🇳🇿 $ NZD"
+            - option "🇳🇴 kr NOK"
+            - option "🇵🇱 zł PLN"
+            - option "🇬🇧 £ GBP"
+            - option "🇸🇪 kr SEK"
+          - 'button "Number of items in the cart: 0" [ref=e57]':
+            - img [ref=e59]
+    - main [ref=e64]:
+      - generic [ref=e65]:
+        - heading "404" [level=2] [ref=e66]
+        - paragraph [ref=e67]: This page could not be found. Maybe try a search?
+        - search [ref=e68]:
+          - generic [ref=e69]: Search
+          - generic [ref=e70]:
+            - searchbox "Search" [ref=e71]
+            - button "Search" [ref=e72] [cursor=pointer]:
+              - img [ref=e73]
+    - contentinfo [ref=e76]:
+      - generic [ref=e78]:
+        - generic [ref=e79]:
+          - heading "Need help?" [level=4] [ref=e80]
+          - navigation [ref=e81]:
+            - list [ref=e82]:
+              - listitem [ref=e83]:
+                - link "Privacy Policy" [ref=e84] [cursor=pointer]:
+                  - /url: https://saltwarp.shop/policy-page/
+              - listitem [ref=e85]:
+                - link "Terms and Conditions" [ref=e86] [cursor=pointer]:
+                  - /url: https://saltwarp.shop/terms-page/
+              - listitem [ref=e87]:
+                - link "Refund and Returns Policy" [ref=e88] [cursor=pointer]:
+                  - /url: https://saltwarp.shop/refund_returns/
+              - listitem [ref=e89]:
+                - link "Contact Us" [ref=e90] [cursor=pointer]:
+                  - /url: "#"
+        - generic [ref=e91]:
+          - heading "Get in touch" [level=4] [ref=e92]
+          - paragraph [ref=e93]:
+            - text: 123 Example St, San Francisco,
+            - text: CA 12345-6789
+          - paragraph [ref=e94]:
+            - link "contact@example.com" [ref=e95] [cursor=pointer]:
+              - /url: "#"
+          - paragraph [ref=e96]: 0123-456-7890
+        - generic [ref=e97]:
+          - heading "Follow us" [level=4] [ref=e98]
+          - list [ref=e99]:
+            - listitem [ref=e100]:
+              - link "Facebook" [ref=e101] [cursor=pointer]:
+                - /url: https://facebook.com/
+                - img [ref=e102]
+                - generic [ref=e104]: Facebook
+            - listitem [ref=e105]:
+              - link "Instagram" [ref=e106] [cursor=pointer]:
+                - /url: https://instagram.com/
+                - img [ref=e107]
+                - generic [ref=e109]: Instagram
+            - listitem [ref=e110]:
+              - link "Twitter" [ref=e111] [cursor=pointer]:
+                - /url: https://twitter.com/
+                - img [ref=e112]
+                - generic [ref=e114]: Twitter
+            - listitem [ref=e115]:
+              - link "YouTube" [ref=e116] [cursor=pointer]:
+                - /url: https://youtube.com/
+                - img [ref=e117]
+                - generic [ref=e119]: YouTube
+            - listitem [ref=e120]:
+              - link "Pinterest" [ref=e121] [cursor=pointer]:
+                - /url: https://pinterest.com/
+                - img [ref=e122]
+                - generic [ref=e124]: Pinterest
+        - generic [ref=e125]:
+          - heading "Subscribe to newsletter" [level=4] [ref=e126]
+          - generic [ref=e130]:
+            - paragraph [ref=e131]:
+              - generic [ref=e132]: Type your email…
+              - textbox "Type your email…" [ref=e133] [cursor=pointer]
+            - paragraph [ref=e134]:
+              - button "Subscribe" [ref=e135] [cursor=pointer]
+      - generic [ref=e137]:
+        - paragraph [ref=e138]:
+          - link "Saltwarp" [ref=e139] [cursor=pointer]:
+            - /url: https://saltwarp.shop
+        - paragraph [ref=e140]:
+          - text: Proudly powered by
+          - link "WordPress" [ref=e141] [cursor=pointer]:
+            - /url: https://wordpress.org
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - button:
+              - img
+            - generic:
+              - generic:
+                - paragraph:
+                  - strong: Your cart is currently empty!
+                - generic:
+                  - link:
+                    - /url: https://saltwarp.shop/
+                    - generic: Start shopping
+  - generic [ref=e143]: PROXIED V2
+  - text:   
+  - status [ref=e144]
+  - iframe [ref=e145]:
+    

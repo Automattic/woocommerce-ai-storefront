@@ -1,0 +1,340 @@
+- generic [active] [ref=e1]:
+  - link "Skip to content" [ref=e2] [cursor=pointer]:
+    - /url: "#wp--skip-link--target"
+  - generic [ref=e3]:
+    - banner [ref=e4]:
+      - generic [ref=e7]:
+        - paragraph [ref=e8]:
+          - link "WC AI Storefront Dev" [ref=e9] [cursor=pointer]:
+            - /url: http://localhost:8030
+        - generic [ref=e10]:
+          - navigation [ref=e11]:
+            - list [ref=e16]:
+              - list [ref=e17]:
+                - listitem [ref=e18]:
+                  - link "Cart" [ref=e19] [cursor=pointer]:
+                    - /url: http://localhost:8030/cart/
+                - listitem [ref=e20]:
+                  - link "Checkout" [ref=e21] [cursor=pointer]:
+                    - /url: http://localhost:8030/checkout/
+                - listitem [ref=e22]:
+                  - link "My account" [ref=e23] [cursor=pointer]:
+                    - /url: http://localhost:8030/my-account/
+                - listitem [ref=e24]:
+                  - link "Sample Page" [ref=e25] [cursor=pointer]:
+                    - /url: http://localhost:8030/sample-page/
+                - listitem [ref=e26]:
+                  - link "Shop" [ref=e27] [cursor=pointer]:
+                    - /url: http://localhost:8030/shop/
+          - link "Login" [ref=e29] [cursor=pointer]:
+            - /url: http://localhost:8030/my-account/
+            - img [ref=e30]
+          - 'button "Number of items in the cart: 0" [ref=e34]':
+            - img [ref=e36]
+    - main [ref=e41]:
+      - navigation "Breadcrumb" [ref=e43]:
+        - link "Home" [ref=e44] [cursor=pointer]:
+          - /url: http://localhost:8030
+        - text: / Shop
+      - heading "Shop" [level=1] [ref=e45]
+      - generic [ref=e46]:
+        - status [ref=e48]: Showing 1–16 of 17 results
+        - combobox "Shop order" [ref=e51]:
+          - option "Default sorting" [selected]
+          - option "Sort by popularity"
+          - option "Sort by average rating"
+          - option "Sort by latest"
+          - 'option "Sort by price: low to high"'
+          - 'option "Sort by price: high to low"'
+      - generic [ref=e52]:
+        - list [ref=e53]:
+          - listitem [ref=e54]:
+            - link "Album" [ref=e56] [cursor=pointer]:
+              - /url: http://localhost:8030/product/album/
+              - img "Album" [ref=e57]
+            - heading "Album" [level=2] [ref=e59]:
+              - link "Album" [ref=e60] [cursor=pointer]:
+                - /url: http://localhost:8030/product/album/
+            - generic [ref=e64]: $15.00
+            - 'button "Add to cart: “Album”" [ref=e66] [cursor=pointer]':
+              - generic [ref=e67]: Add to cart
+          - listitem [ref=e68]:
+            - link "Beanie Product on sale" [ref=e70] [cursor=pointer]:
+              - /url: http://localhost:8030/product/beanie/
+              - img "Beanie" [ref=e71]
+              - generic [ref=e73]:
+                - text: Sale
+                - generic [ref=e74]: Product on sale
+            - heading "Beanie" [level=2] [ref=e75]:
+              - link "Beanie" [ref=e76] [cursor=pointer]:
+                - /url: http://localhost:8030/product/beanie/
+            - generic [ref=e78]:
+              - deletion [ref=e79]:
+                - generic [ref=e81]: $20.00
+              - generic [ref=e82]: "Original price was: $20.00."
+              - insertion [ref=e83]:
+                - generic [ref=e85]: $18.00
+              - generic [ref=e86]: "Current price is: $18.00."
+            - 'button "Add to cart: “Beanie”" [ref=e88] [cursor=pointer]':
+              - generic [ref=e89]: Add to cart
+          - listitem [ref=e90]:
+            - link "Beanie with Logo Product on sale" [ref=e92] [cursor=pointer]:
+              - /url: http://localhost:8030/product/beanie-with-logo/
+              - img "Beanie with Logo" [ref=e93]
+              - generic [ref=e95]:
+                - text: Sale
+                - generic [ref=e96]: Product on sale
+            - heading "Beanie with Logo" [level=2] [ref=e97]:
+              - link "Beanie with Logo" [ref=e98] [cursor=pointer]:
+                - /url: http://localhost:8030/product/beanie-with-logo/
+            - generic [ref=e100]:
+              - deletion [ref=e101]:
+                - generic [ref=e103]: $20.00
+              - generic [ref=e104]: "Original price was: $20.00."
+              - insertion [ref=e105]:
+                - generic [ref=e107]: $18.00
+              - generic [ref=e108]: "Current price is: $18.00."
+            - 'button "Add to cart: “Beanie with Logo”" [ref=e110] [cursor=pointer]':
+              - generic [ref=e111]: Add to cart
+          - listitem [ref=e112]:
+            - link "Belt Product on sale" [ref=e114] [cursor=pointer]:
+              - /url: http://localhost:8030/product/belt/
+              - img "Belt" [ref=e115]
+              - generic [ref=e117]:
+                - text: Sale
+                - generic [ref=e118]: Product on sale
+            - heading "Belt" [level=2] [ref=e119]:
+              - link "Belt" [ref=e120] [cursor=pointer]:
+                - /url: http://localhost:8030/product/belt/
+            - generic [ref=e122]:
+              - deletion [ref=e123]:
+                - generic [ref=e125]: $65.00
+              - generic [ref=e126]: "Original price was: $65.00."
+              - insertion [ref=e127]:
+                - generic [ref=e129]: $55.00
+              - generic [ref=e130]: "Current price is: $55.00."
+            - 'button "Add to cart: “Belt”" [ref=e132] [cursor=pointer]':
+              - generic [ref=e133]: Add to cart
+          - listitem [ref=e134]:
+            - link "Cap Product on sale" [ref=e136] [cursor=pointer]:
+              - /url: http://localhost:8030/product/cap/
+              - img "Cap" [ref=e137]
+              - generic [ref=e139]:
+                - text: Sale
+                - generic [ref=e140]: Product on sale
+            - heading "Cap" [level=2] [ref=e141]:
+              - link "Cap" [ref=e142] [cursor=pointer]:
+                - /url: http://localhost:8030/product/cap/
+            - generic [ref=e144]:
+              - deletion [ref=e145]:
+                - generic [ref=e147]: $18.00
+              - generic [ref=e148]: "Original price was: $18.00."
+              - insertion [ref=e149]:
+                - generic [ref=e151]: $16.00
+              - generic [ref=e152]: "Current price is: $16.00."
+            - 'button "Add to cart: “Cap”" [ref=e154] [cursor=pointer]':
+              - generic [ref=e155]: Add to cart
+          - listitem [ref=e156]:
+            - link "Hoodie Product on sale" [ref=e158] [cursor=pointer]:
+              - /url: http://localhost:8030/product/hoodie/
+              - img "Hoodie" [ref=e159]
+              - generic [ref=e161]:
+                - text: Sale
+                - generic [ref=e162]: Product on sale
+            - heading "Hoodie" [level=2] [ref=e163]:
+              - link "Hoodie" [ref=e164] [cursor=pointer]:
+                - /url: http://localhost:8030/product/hoodie/
+            - generic [ref=e166]:
+              - generic [ref=e168]: $42.00
+              - text: –
+              - generic [ref=e170]: $45.00
+              - generic [ref=e171]: "Price range: $42.00 through $45.00"
+            - link "Select options for “Hoodie”" [ref=e173] [cursor=pointer]:
+              - /url: http://localhost:8030/product/hoodie/
+              - generic [ref=e174]: Select options
+          - listitem [ref=e175]:
+            - link "Hoodie with Logo" [ref=e177] [cursor=pointer]:
+              - /url: http://localhost:8030/product/hoodie-with-logo/
+              - img "Hoodie with Logo" [ref=e178]
+            - heading "Hoodie with Logo" [level=2] [ref=e180]:
+              - link "Hoodie with Logo" [ref=e181] [cursor=pointer]:
+                - /url: http://localhost:8030/product/hoodie-with-logo/
+            - generic [ref=e185]: $45.00
+            - 'button "Add to cart: “Hoodie with Logo”" [ref=e187] [cursor=pointer]':
+              - generic [ref=e188]: Add to cart
+          - listitem [ref=e189]:
+            - link "Hoodie with Zipper" [ref=e191] [cursor=pointer]:
+              - /url: http://localhost:8030/product/hoodie-with-zipper/
+              - img "Hoodie with Zipper" [ref=e192]
+            - heading "Hoodie with Zipper" [level=2] [ref=e194]:
+              - link "Hoodie with Zipper" [ref=e195] [cursor=pointer]:
+                - /url: http://localhost:8030/product/hoodie-with-zipper/
+            - generic [ref=e199]: $45.00
+            - 'button "Add to cart: “Hoodie with Zipper”" [ref=e201] [cursor=pointer]':
+              - generic [ref=e202]: Add to cart
+          - listitem [ref=e203]:
+            - link "Logo Collection Product on sale" [ref=e205] [cursor=pointer]:
+              - /url: http://localhost:8030/product/logo-collection/
+              - img "Logo Collection" [ref=e206]
+              - generic [ref=e208]:
+                - text: Sale
+                - generic [ref=e209]: Product on sale
+            - heading "Logo Collection" [level=2] [ref=e210]:
+              - link "Logo Collection" [ref=e211] [cursor=pointer]:
+                - /url: http://localhost:8030/product/logo-collection/
+            - generic [ref=e213]:
+              - generic [ref=e215]: $18.00
+              - text: –
+              - generic [ref=e217]: $45.00
+              - generic [ref=e218]: "Price range: $18.00 through $45.00"
+            - link "View products in the “Logo Collection” group" [ref=e220] [cursor=pointer]:
+              - /url: http://localhost:8030/product/logo-collection/
+              - generic [ref=e221]: View products
+          - listitem [ref=e222]:
+            - link "Long Sleeve Tee" [ref=e224] [cursor=pointer]:
+              - /url: http://localhost:8030/product/long-sleeve-tee/
+              - img "Long Sleeve Tee" [ref=e225]
+            - heading "Long Sleeve Tee" [level=2] [ref=e227]:
+              - link "Long Sleeve Tee" [ref=e228] [cursor=pointer]:
+                - /url: http://localhost:8030/product/long-sleeve-tee/
+            - generic [ref=e232]: $25.00
+            - 'button "Add to cart: “Long Sleeve Tee”" [ref=e234] [cursor=pointer]':
+              - generic [ref=e235]: Add to cart
+          - listitem [ref=e236]:
+            - link "Polo" [ref=e238] [cursor=pointer]:
+              - /url: http://localhost:8030/product/polo/
+              - img "Polo" [ref=e239]
+            - heading "Polo" [level=2] [ref=e241]:
+              - link "Polo" [ref=e242] [cursor=pointer]:
+                - /url: http://localhost:8030/product/polo/
+            - generic [ref=e246]: $20.00
+            - 'button "Add to cart: “Polo”" [ref=e248] [cursor=pointer]':
+              - generic [ref=e249]: Add to cart
+          - listitem [ref=e250]:
+            - link "Single Product on sale" [ref=e252] [cursor=pointer]:
+              - /url: http://localhost:8030/product/single/
+              - img "Single" [ref=e253]
+              - generic [ref=e255]:
+                - text: Sale
+                - generic [ref=e256]: Product on sale
+            - heading "Single" [level=2] [ref=e257]:
+              - link "Single" [ref=e258] [cursor=pointer]:
+                - /url: http://localhost:8030/product/single/
+            - generic [ref=e260]:
+              - deletion [ref=e261]:
+                - generic [ref=e263]: $3.00
+              - generic [ref=e264]: "Original price was: $3.00."
+              - insertion [ref=e265]:
+                - generic [ref=e267]: $2.00
+              - generic [ref=e268]: "Current price is: $2.00."
+            - 'button "Add to cart: “Single”" [ref=e270] [cursor=pointer]':
+              - generic [ref=e271]: Add to cart
+          - listitem [ref=e272]:
+            - link "Sunglasses" [ref=e274] [cursor=pointer]:
+              - /url: http://localhost:8030/product/sunglasses/
+              - img "Sunglasses" [ref=e275]
+            - heading "Sunglasses" [level=2] [ref=e277]:
+              - link "Sunglasses" [ref=e278] [cursor=pointer]:
+                - /url: http://localhost:8030/product/sunglasses/
+            - generic [ref=e282]: $90.00
+            - 'button "Add to cart: “Sunglasses”" [ref=e284] [cursor=pointer]':
+              - generic [ref=e285]: Add to cart
+          - listitem [ref=e286]:
+            - link "T-Shirt" [ref=e288] [cursor=pointer]:
+              - /url: http://localhost:8030/product/t-shirt/
+              - img "T-Shirt" [ref=e289]
+            - heading "T-Shirt" [level=2] [ref=e291]:
+              - link "T-Shirt" [ref=e292] [cursor=pointer]:
+                - /url: http://localhost:8030/product/t-shirt/
+            - generic [ref=e296]: $18.00
+            - 'button "Add to cart: “T-Shirt”" [ref=e298] [cursor=pointer]':
+              - generic [ref=e299]: Add to cart
+          - listitem [ref=e300]:
+            - link "T-Shirt with Logo" [ref=e302] [cursor=pointer]:
+              - /url: http://localhost:8030/product/t-shirt-with-logo/
+              - img "T-Shirt with Logo" [ref=e303]
+            - heading "T-Shirt with Logo" [level=2] [ref=e305]:
+              - link "T-Shirt with Logo" [ref=e306] [cursor=pointer]:
+                - /url: http://localhost:8030/product/t-shirt-with-logo/
+            - generic [ref=e310]: $18.00
+            - 'button "Add to cart: “T-Shirt with Logo”" [ref=e312] [cursor=pointer]':
+              - generic [ref=e313]: Add to cart
+          - listitem [ref=e314]:
+            - link "V-Neck T-Shirt" [ref=e316] [cursor=pointer]:
+              - /url: http://localhost:8030/product/v-neck-t-shirt/
+              - img "V-Neck T-Shirt" [ref=e317]
+            - heading "V-Neck T-Shirt" [level=2] [ref=e319]:
+              - link "V-Neck T-Shirt" [ref=e320] [cursor=pointer]:
+                - /url: http://localhost:8030/product/v-neck-t-shirt/
+            - generic [ref=e322]:
+              - generic [ref=e324]: $15.00
+              - text: –
+              - generic [ref=e326]: $20.00
+              - generic [ref=e327]: "Price range: $15.00 through $20.00"
+            - link "Select options for “V-Neck T-Shirt”" [ref=e329] [cursor=pointer]:
+              - /url: http://localhost:8030/product/v-neck-t-shirt/
+              - generic [ref=e330]: Select options
+        - navigation "Pagination" [ref=e331]:
+          - generic [ref=e332]:
+            - text: "1"
+            - link "Page 2" [ref=e333] [cursor=pointer]:
+              - /url: http://localhost:8030/shop/page/2/
+              - text: "2"
+          - link "Next Page" [ref=e334] [cursor=pointer]:
+            - /url: http://localhost:8030/shop/page/2/
+    - contentinfo [ref=e335]:
+      - generic [ref=e337]:
+        - generic [ref=e338]:
+          - heading "WC AI Storefront Dev" [level=2] [ref=e341]:
+            - link "WC AI Storefront Dev" [ref=e342] [cursor=pointer]:
+              - /url: http://localhost:8030
+          - generic [ref=e343]:
+            - navigation "2" [ref=e344]:
+              - list [ref=e345]:
+                - listitem [ref=e346]:
+                  - link "Blog" [ref=e347] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e348]:
+                  - link "About" [ref=e349] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e350]:
+                  - link "FAQs" [ref=e351] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e352]:
+                  - link "Authors" [ref=e353] [cursor=pointer]:
+                    - /url: "#"
+            - navigation "3" [ref=e354]:
+              - list [ref=e355]:
+                - listitem [ref=e356]:
+                  - link "Events" [ref=e357] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e358]:
+                  - link "Shop" [ref=e359] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e360]:
+                  - link "Patterns" [ref=e361] [cursor=pointer]:
+                    - /url: "#"
+                - listitem [ref=e362]:
+                  - link "Themes" [ref=e363] [cursor=pointer]:
+                    - /url: "#"
+        - generic [ref=e365]:
+          - paragraph [ref=e366]: Twenty Twenty-Five
+          - paragraph [ref=e367]:
+            - text: Designed with
+            - link "WordPress" [ref=e368] [cursor=pointer]:
+              - /url: https://wordpress.org
+  - generic:
+    - generic:
+      - generic:
+        - generic:
+          - generic:
+            - button:
+              - img
+            - generic:
+              - generic:
+                - paragraph:
+                  - strong: Your cart is currently empty!
+                - generic:
+                  - link:
+                    - /url: http://localhost:8030/shop/
+                    - generic: Start shopping

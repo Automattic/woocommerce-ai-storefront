@@ -1,0 +1,81 @@
+- generic [ref=e3]:
+  - generic "I'm still here, thanks for your patience!" [ref=e170]
+  - generic [ref=e5]:
+    - navigation "Sidebar" [ref=e7]:
+      - img
+      - button [ref=e8]
+      - generic:
+        - generic:
+          - generic:
+            - generic:
+              - generic:
+                - heading "Copilot" [level=2]
+                - link "Go to Copilot home page" [ref=e9] [cursor=pointer]:
+                  - img [ref=e10]
+      - generic [ref=e18]:
+        - generic [ref=e19]:
+          - button "Open sidebar" [ref=e22]:
+            - img [ref=e26]
+          - button "New chat" [ref=e29] [cursor=pointer]:
+            - img [ref=e33]
+        - generic [ref=e36]:
+          - generic [ref=e37]:
+            - generic [ref=e38]:
+              - button "Library" [ref=e39] [cursor=pointer]
+              - generic:
+                - img
+            - generic [ref=e42]:
+              - button "Tasks Preview" [ref=e44] [cursor=pointer]:
+                - img [ref=e47]
+              - generic [ref=e49]:
+                - button "Projects" [ref=e50] [cursor=pointer]
+                - generic:
+                  - img
+            - list [ref=e55]:
+              - listitem [ref=e56]:
+                - link "Discover" [ref=e57] [cursor=pointer]:
+                  - /url: /discover
+                  - img [ref=e61]
+              - listitem
+              - listitem [ref=e63]:
+                - link "Imagine" [ref=e64] [cursor=pointer]:
+                  - /url: /imagine
+                  - img [ref=e68]
+              - listitem [ref=e70]:
+                - link "Experiments" [ref=e71] [cursor=pointer]:
+                  - /url: /labs
+                  - img [ref=e75]
+          - tablist [ref=e77]:
+            - tab "Profile image" [ref=e78] [cursor=pointer]:
+              - img "Profile image" [ref=e82]
+    - main [ref=e83]:
+      - generic [ref=e175]:
+        - generic [ref=e179]:
+          - generic [ref=e182]: Today
+          - article "You said Copy message Look at the online store at saltwarp.shop. What hoodies do they sell? List each hoodie with its price and the available colors and sizes. Then explain how an AI shopping agent would check out / buy one on that store." [ref=e184]:
+            - generic [ref=e185]:
+              - heading "You said" [level=5] [ref=e186]
+              - generic [ref=e190]:
+                - group [ref=e191]:
+                  - button "Copy message" [ref=e193] [cursor=pointer]:
+                    - img [ref=e195]
+                - generic [ref=e197]: Look at the online store at saltwarp.shop. What hoodies do they sell? List each hoodie with its price and the available colors and sizes. Then explain how an AI shopping agent would check out / buy one on that store.
+          - article "Copilot said":
+            - heading "Copilot said" [level=6] [ref=e198]
+          - img [ref=e201]
+        - generic:
+          - generic:
+            - generic:
+              - img
+              - generic [ref=e212]:
+                - generic [ref=e220]:
+                  - generic [ref=e221]: Message Copilot
+                  - textbox "Message Copilot" [active] [ref=e222]
+                - generic [ref=e223]:
+                  - generic [ref=e224]:
+                    - button "Attach files, connect apps, or make something with Copilot." [ref=e227] [cursor=pointer]
+                    - button "Response mode, Smart" [ref=e230] [cursor=pointer]:
+                      - generic [ref=e231]: Smart
+                      - img [ref=e232]
+                  - button "Interrupt message" [ref=e235] [cursor=pointer]
+    - img
