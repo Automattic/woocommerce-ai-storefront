@@ -34,6 +34,7 @@ spl_autoload_register(
 			'WC_AI_Storefront_Logger'                 => '/ai-storefront/class-wc-ai-storefront-logger.php',
 			'WC_AI_Storefront_Multi_Currency'         => '/ai-storefront/class-wc-ai-storefront-multi-currency.php',
 			'WC_AI_Storefront_Handling_Time'          => '/ai-storefront/class-wc-ai-storefront-handling-time.php',
+			'WC_AI_Storefront_IndexNow'               => '/ai-storefront/class-wc-ai-storefront-indexnow.php',
 			'WC_AI_Storefront_Return_Policy'          => '/ai-storefront/class-wc-ai-storefront-return-policy.php',
 			'WC_AI_Storefront_Robots'                 => '/ai-storefront/class-wc-ai-storefront-robots.php',
 			'WC_AI_Storefront_Seo_Plugin_Detector'    => '/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php',

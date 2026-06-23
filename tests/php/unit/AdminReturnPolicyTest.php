@@ -34,6 +34,13 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			static fn( $v ) => max( 0, (int) $v )
 		);
 		Functions\when( 'current_user_can' )->justReturn( true );
+		// IndexNow key now lives in a dedicated option. Stub get_option so
+		// peek_key() (called by admin controller's get_settings()) works
+		// without a real DB. Returns '' (no key generated yet), which is the
+		// correct no-key-yet default for these return-policy tests.
+		Functions\when( 'get_option' )->alias(
+			static fn( $name, $default = '' ) => $default
+		);
 	}
 
 	protected function tearDown(): void {

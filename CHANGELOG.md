@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Features
+
+- **Instant indexing: catalog changes are pushed to IndexNow (#530).** When a product, category, or shop page changes, the affected URLs plus your AI-discovery surfaces (homepage, `/shop/`, `llms.txt`, `products.json`) are submitted to IndexNow, so Bing-backed AI assistants (ChatGPT Search, Microsoft Copilot, Amazonbot) re-crawl quickly. Google does not consume IndexNow, so this complements — not replaces — your existing Google structured data and sitemap.
+  - **Default on, gated behind AI syndication** and a new `indexnow_enabled` setting; the auto-generated key is served at a virtual `/{key}.txt` for ownership verification.
+  - **Debounced and batched:** changes are deduped and submitted in a single WP-Cron batch — no per-save HTTP, no editor latency, and a bulk import collapses into one submission per window.
+  - **Fail-safe:** unsupported responses are handled without retry storms; submission never blocks a save or surfaces to shoppers.
+
 ### Fixes
 
 - **Single, correct Open Graph and meta description on commerce pages when Jetpack is active (#527).** On Jetpack-enabled stores (every WordPress.com / Atomic store) the plugin and Jetpack both emitted social/SEO tags on product, category, and shop pages, producing a duplicate `<meta name="description">` and duplicate — sometimes conflicting — Open Graph tags (e.g. `og:title` "Shop" vs the store brand). Bing Webmaster flagged the duplication.

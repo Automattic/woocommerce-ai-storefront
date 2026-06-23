@@ -277,4 +277,76 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 			'explicit null'    => [ null ],
 		];
 	}
+
+	// ------------------------------------------------------------------
+	// indexnow_enabled sanitization — strict yes/no enum, default 'yes'
+	// (deferred from Task 1, closed by Task 6).
+	// ------------------------------------------------------------------
+	//
+	// Same safety-net contract as mcp_enabled / products_json_enabled:
+	// IndexNow is an opt-OUT toggle (default 'yes') gated by syndication.
+	// The round-trip test below is the specific regression pin that was
+	// deferred from Task 1 — it proves that setting indexnow_enabled='no'
+	// round-trips through update_settings() without being silently stripped
+	// from the persisted $clean array.
+
+	public function test_indexnow_enabled_present_in_defaults(): void {
+		WC_AI_Storefront::$test_settings = [];
+		$this->assertArrayHasKey( 'indexnow_enabled', WC_AI_Storefront::get_settings() );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
+	}
+
+	public function test_indexnow_enabled_round_trips_no(): void {
+		// Regression pin (deferred Task-1 finding): indexnow_enabled='no' must
+		// survive the production settings-update path unchanged. Prior to
+		// adding indexnow_enabled to the $clean array in update_settings(), a
+		// save would silently revert it to the get_settings() default 'yes'.
+		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => 'no' ] );
+		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
+	}
+
+	public function test_indexnow_enabled_yes_is_preserved(): void {
+		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => 'yes' ] );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
+	}
+
+	/**
+	 * Every malformed value must fall back to the default `'yes'`.
+	 * Mirrors the mcp_enabled / products_json_enabled provider.
+	 *
+	 * @dataProvider indexnow_enabled_invalid_value_provider
+	 */
+	public function test_indexnow_enabled_invalid_value_falls_back_to_yes( $value ): void {
+		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => $value ] );
+		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
+	}
+
+	public static function indexnow_enabled_invalid_value_provider(): array {
+		return [
+			'arbitrary string' => [ 'gibberish' ],
+			'boolean true'     => [ true ],
+			'integer 1'        => [ 1 ],
+			'string 1'         => [ '1' ],
+			'uppercase YES'    => [ 'YES' ],
+			'truthy text'      => [ 'true' ],
+			'explicit null'    => [ null ],
+		];
+	}
+
+	// ------------------------------------------------------------------
+	// indexnow_key isolation — update_settings() must NOT write the key
+	// ------------------------------------------------------------------
+	//
+	// The IndexNow key now lives in its own dedicated option
+	// (wc_ai_storefront_indexnow_key), not in SETTINGS_OPTION. Consequently
+	// update_settings() must not touch that option at all. This test asserts
+	// the isolation: calling update_settings([]) must leave the key option
+	// untouched (the stub's $test_settings never gains an indexnow_key key).
+
+	public function test_update_settings_does_not_write_indexnow_key(): void {
+		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::update_settings( [] );
+		$result = WC_AI_Storefront::get_settings();
+		$this->assertArrayNotHasKey( 'indexnow_key', $result );
+	}
 }

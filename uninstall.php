@@ -41,6 +41,10 @@ delete_option( 'wc_ai_storefront_version' );
 // prefix bumped on product/settings change). Single small integer row.
 delete_option( 'wc_ai_storefront_products_feed_version' );
 
+// IndexNow: generated key (hex string) and pending-URL queue.
+delete_option( 'wc_ai_storefront_indexnow_key' );
+delete_option( 'wc_ai_storefront_indexnow_pending' );
+
 /*
  * --------------------------------------------------------------------------
  * Transients
@@ -112,6 +116,7 @@ unset( $wc_ai_storefront_period );
 wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
 wp_clear_scheduled_hook( 'wc_ai_storefront_prune_crawl_log' );
 wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
+wp_clear_scheduled_hook( 'wc_ai_storefront_indexnow_flush' );
 
 /*
  * --------------------------------------------------------------------------
@@ -148,6 +153,8 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_option( 'wc_ai_storefront_settings' );
 			delete_option( 'wc_ai_storefront_version' );
 			delete_option( 'wc_ai_storefront_products_feed_version' );
+			delete_option( 'wc_ai_storefront_indexnow_key' );
+			delete_option( 'wc_ai_storefront_indexnow_pending' );
 			delete_transient( 'wc_ai_storefront_llms_txt' );
 			delete_transient( 'wc_ai_storefront_ucp' );
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
@@ -165,6 +172,7 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			wp_clear_scheduled_hook( 'wc_ai_storefront_warm_llms_txt_cache' );
 			wp_clear_scheduled_hook( 'wc_ai_storefront_prune_crawl_log' );
 			wp_clear_scheduled_hook( 'wc_ai_storefront_rollup_crawl_log' );
+			wp_clear_scheduled_hook( 'wc_ai_storefront_indexnow_flush' );
 
 			// Also purge prefix-keyed transient families for this site's table
 			// (host-keyed llms.txt + per-page archive ItemList JSON-LD +

@@ -128,6 +128,7 @@ function wc_ai_storefront_deactivate() {
 
 	// Clean up cache and scheduled events.
 	WC_AI_Storefront_Cache_Invalidator::deactivate();
+	WC_AI_Storefront_IndexNow::deactivate();
 	WC_AI_Storefront_Crawl_Logger::clear_crons();
 }
 register_deactivation_hook( __FILE__, 'wc_ai_storefront_deactivate' );
