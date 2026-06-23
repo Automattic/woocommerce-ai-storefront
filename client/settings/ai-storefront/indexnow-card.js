@@ -111,6 +111,7 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 	const enabled = settings.indexnow_enabled === 'yes';
 	const key = settings.indexnow_key || '';
 	const [ regenerating, setRegenerating ] = useState( false );
+	const [ submitting, setSubmitting ] = useState( false );
 	const [ error, setError ] = useState( '' );
 
 	const regenerate = async () => {
@@ -142,6 +143,27 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 			);
 		} finally {
 			setRegenerating( false );
+		}
+	};
+
+	const submitAll = async () => {
+		setSubmitting( true );
+		setError( '' );
+		try {
+			const res = await apiFetch( {
+				path: '/wc/v3/ai-storefront/admin/indexnow-submit-all',
+				method: 'POST',
+			} );
+			onChange( { indexnow_last_result: res.indexnow_last_result } );
+		} catch ( _e ) {
+			setError(
+				__(
+					'Could not submit the catalog. Please try again.',
+					'woocommerce-ai-storefront'
+				)
+			);
+		} finally {
+			setSubmitting( false );
 		}
 	};
 
@@ -242,6 +264,17 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 								Math.floor( Date.now() / 1000 )
 							) }
 						</p>
+						<Button
+							variant="secondary"
+							onClick={ submitAll }
+							isBusy={ submitting }
+							disabled={ submitting || ! key }
+						>
+							{ __(
+								'Submit entire catalog now',
+								'woocommerce-ai-storefront'
+							) }
+						</Button>
 					</div>
 				) }
 			</CardBody>

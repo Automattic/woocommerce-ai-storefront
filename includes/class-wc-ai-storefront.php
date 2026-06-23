@@ -751,8 +751,8 @@ class WC_AI_Storefront {
 		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
 		// Capture old indexnow_enabled BEFORE the write, so we can detect the
 		// not-'yes' → 'yes' transition for the first-enable seed (#540).
-		$old_indexnow = ( self::get_settings()['indexnow_enabled'] ?? 'no' );
 		$current      = self::get_settings();
+		$old_indexnow = ( $current['indexnow_enabled'] ?? 'no' );
 		$merged       = wp_parse_args( $settings, $current );
 
 		// Strict yes/no enum. Behavior depends on what the POST body
