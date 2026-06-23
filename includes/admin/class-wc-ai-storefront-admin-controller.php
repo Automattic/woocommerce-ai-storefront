@@ -391,6 +391,21 @@ class WC_AI_Storefront_Admin_Controller {
 				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
+
+		// IndexNow force-submit. POST-only; gathers every indexable product +
+		// category URL plus the discovery surfaces and submits them immediately.
+		// Returns the last_result so the React UI can display the outcome without
+		// a follow-up GET /settings. Capability-gated at manage_woocommerce,
+		// mirroring regenerate-indexnow-key above.
+		register_rest_route(
+			self::NAMESPACE,
+			'/indexnow-submit-all',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'indexnow_submit_all' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
 	}
 
 	/**
@@ -1555,6 +1570,23 @@ class WC_AI_Storefront_Admin_Controller {
 	public function regenerate_indexnow_key() {
 		$new_key = ( new WC_AI_Storefront_IndexNow() )->regenerate_key();
 		return new WP_REST_Response( array( 'indexnow_key' => $new_key ) );
+	}
+
+	/**
+	 * Force-submit the entire catalog to IndexNow.
+	 *
+	 * Gathers every indexable product + product-category URL plus the AI
+	 * discovery surfaces, enqueues them, and flushes immediately. Returns the
+	 * `last_result` so the React UI can display the outcome without a
+	 * follow-up GET /settings. Is a no-op (submit_all() short-circuits) when
+	 * IndexNow is disabled or syndication is off.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function indexnow_submit_all() {
+		$indexnow = new WC_AI_Storefront_IndexNow();
+		$indexnow->submit_all();
+		return new WP_REST_Response( array( 'indexnow_last_result' => $indexnow->last_result() ) );
 	}
 
 	/**

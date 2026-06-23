@@ -458,6 +458,74 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $this->controller->check_admin_permission() );
 	}
 
+	// --- Task #540: indexnow-submit-all route ---
+
+	public function test_indexnow_submit_all_route_is_registered_with_manage_woocommerce(): void {
+		$registered = array();
+		Functions\when( 'register_rest_route' )->alias(
+			static function ( $namespace, $route, $args ) use ( &$registered ) {
+				$registered[ $route ] = $args;
+				return true;
+			}
+		);
+		$controller = new WC_AI_Storefront_Admin_Controller();
+		$controller->register_routes();
+
+		$this->assertArrayHasKey( '/indexnow-submit-all', $registered );
+		$handler = $registered['/indexnow-submit-all'];
+		$this->assertSame( WP_REST_Server::CREATABLE, $handler['methods'] );
+		$this->assertSame(
+			array( $controller, 'check_admin_permission' ),
+			$handler['permission_callback']
+		);
+	}
+
+	public function test_indexnow_submit_all_returns_last_result(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+
+		// Option store for pending + key + last_result.
+		$store = array(
+			'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store ) {
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
+
+		// home_url() needed by surface_urls() and flush().
+		Functions\when( 'home_url' )->alias( static fn( $p = '/' ) => 'https://shop.test' . ( '' === $p ? '/' : $p ) );
+
+		// all_product_urls() and all_category_urls() — empty for simplicity.
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		Functions\when( 'get_terms' )->justReturn( array() );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+
+		// flush() will POST the surfaces (home/llms/products.json).
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 200 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+
+		$response = $this->controller->indexnow_submit_all();
+
+		$this->assertInstanceOf( 'WP_REST_Response', $response );
+		$data = $response->data;
+		$this->assertArrayHasKey( 'indexnow_last_result', $data );
+		// A successful flush records ok=true.
+		$this->assertTrue( $data['indexnow_last_result']['ok'] );
+	}
+
 	public function test_settings_route_wires_check_admin_permission_callback(): void {
 		// Verifies the registered route's permission_callback is
 		// actually our `check_admin_permission()` method, not the

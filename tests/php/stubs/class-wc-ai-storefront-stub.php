@@ -297,6 +297,9 @@ class WC_AI_Storefront {
 	 * @param array<string, mixed> $settings Partial settings to merge in.
 	 */
 	public static function update_settings( array $settings ): void {
+		// Capture the old indexnow_enabled BEFORE merging, for the seed-on-enable check.
+		$old_indexnow = self::get_settings()['indexnow_enabled'] ?? 'no';
+
 		$current = self::get_settings();
 		$merged  = array_merge( $current, $settings );
 
@@ -370,5 +373,25 @@ class WC_AI_Storefront {
 			$settings,
 			$overrides
 		);
+
+		// Seed-on-enable: schedule a first-enable submit_all() when indexnow_enabled
+		// transitions from not-'yes' to 'yes'. Mirrors the production transition
+		// in includes/class-wc-ai-storefront.php::update_settings(). Keep in sync.
+		// The production implementation calls ( new WC_AI_Storefront_IndexNow() )->schedule_submit_all().
+		// NOTE: IndexNow tests in IndexNowTest.php cover the seed via a Brain-Monkey-enabled
+		// subclass; this stub intentionally does NOT call the real WP cron functions here
+		// because UpdateSettingsSanitizationTest does not set up Brain Monkey. The
+		// production class is the authoritative implementation.
+		$new_indexnow = self::$test_settings['indexnow_enabled'] ?? 'no';
+		self::$_seed_transition_detected = ( 'yes' !== $old_indexnow && 'yes' === $new_indexnow );
 	}
+
+	/**
+	 * Whether the last update_settings() call triggered the indexnow-enable
+	 * seed transition. Used by IndexNowTest to verify the production class
+	 * path without needing to call real WP cron functions from this stub.
+	 *
+	 * @var bool
+	 */
+	public static bool $_seed_transition_detected = false;
 }

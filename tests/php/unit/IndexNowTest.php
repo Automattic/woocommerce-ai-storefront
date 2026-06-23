@@ -628,4 +628,142 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->assertGreaterThanOrEqual( $before, $recorded['time'] );
 		$this->assertLessThanOrEqual( $after, $recorded['time'] );
 	}
+
+	// --- Task #540: submit_all() + schedule_submit_all() + SUBMIT_ALL_HOOK ---
+
+	public function test_submit_all_noop_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		Functions\expect( 'wp_remote_post' )->never();
+		Functions\expect( 'update_option' )->never();
+		$this->indexnow->submit_all();
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_submit_all_gathers_product_category_and_surface_urls_and_posts(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+
+		// Option store for pending + key.
+		$store = array(
+			'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store ) {
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
+
+		// surface_urls() needs wc_get_page_id.
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 ); // skip shop URL.
+
+		// all_product_urls(): first page returns 1 product, second page 0 (stop).
+		$product = $this->indexable_product( 77 );
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( array $args ) use ( $product ) {
+				return 1 === $args['page'] ? array( $product ) : array();
+			}
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static function ( $id ) {
+				return 'https://shop.test/product/p' . $id . '/';
+			}
+		);
+
+		// all_category_urls(): one term.
+		$term             = new stdClass();
+		$term->term_id    = 5;
+		$term->name       = 'Gadgets';
+		$term->slug       = 'gadgets';
+		$term->count      = 3;
+		$term->parent     = 0;
+		$term->taxonomy   = 'product_cat';
+		$term->term_group = 0;
+		Functions\when( 'get_terms' )->justReturn( array( $term ) );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/gadgets/' );
+
+		// flush() will POST.
+		$posted = null;
+		Functions\when( 'wp_remote_post' )->alias(
+			function ( $url, $args ) use ( &$posted ) {
+				$posted = json_decode( $args['body'], true );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+
+		$this->indexnow->submit_all();
+
+		$this->assertNotNull( $posted, 'wp_remote_post should have been called' );
+		$url_list = $posted['urlList'] ?? array();
+		$this->assertContains( 'https://shop.test/', $url_list, 'home_url(/) should be in urlList' );
+		$this->assertContains( 'https://shop.test/product/p77/', $url_list, 'product permalink should be in urlList' );
+		$this->assertContains( 'https://shop.test/product-category/gadgets/', $url_list, 'category link should be in urlList' );
+
+		// last_result() should have recorded the count.
+		$result = $this->indexnow->last_result();
+		$this->assertNotEmpty( $result );
+		$this->assertSame( count( $url_list ), $result['count'] );
+	}
+
+	public function test_schedule_submit_all_schedules_hook_once(): void {
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\expect( 'wp_schedule_single_event' )->once()->andReturnUsing(
+			function ( $ts, $hook ) {
+				$this->assertSame( WC_AI_Storefront_IndexNow::SUBMIT_ALL_HOOK, $hook );
+				$this->assertGreaterThanOrEqual( time(), $ts );
+				return true;
+			}
+		);
+		$this->indexnow->schedule_submit_all();
+	}
+
+	public function test_schedule_submit_all_noop_when_already_scheduled(): void {
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 5 );
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->schedule_submit_all();
+	}
+
+	// --- Seed-on-enable: update_settings() no→yes transition (#540) ---
+	//
+	// The stub records the transition in $_seed_transition_detected (a flag) rather
+	// than calling real WP cron functions, because UpdateSettingsSanitizationTest
+	// does not set up Brain Monkey. The production path (production class
+	// WC_AI_Storefront::update_settings()) calls schedule_submit_all() directly;
+	// the tests below verify (a) the stub detects the transition correctly and
+	// (b) schedule_submit_all() itself behaves correctly (already covered above).
+
+	public function test_stub_detects_seed_transition_no_to_yes(): void {
+		WC_AI_Storefront::$_seed_transition_detected = false;
+		WC_AI_Storefront::$test_settings             = array( 'enabled' => 'yes', 'indexnow_enabled' => 'no' );
+		// Prevent unexpected-call errors for Brain Monkey WP presets not called here.
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'yes' ) );
+		$this->assertTrue( WC_AI_Storefront::$_seed_transition_detected );
+	}
+
+	public function test_stub_no_transition_when_already_yes(): void {
+		WC_AI_Storefront::$_seed_transition_detected = false;
+		WC_AI_Storefront::$test_settings             = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'yes' ) );
+		$this->assertFalse( WC_AI_Storefront::$_seed_transition_detected );
+	}
+
+	public function test_stub_no_transition_when_remains_no(): void {
+		WC_AI_Storefront::$_seed_transition_detected = false;
+		WC_AI_Storefront::$test_settings             = array( 'enabled' => 'yes', 'indexnow_enabled' => 'no' );
+		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'no' ) );
+		$this->assertFalse( WC_AI_Storefront::$_seed_transition_detected );
+	}
 }

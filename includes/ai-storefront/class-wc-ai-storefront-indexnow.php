@@ -53,6 +53,11 @@ class WC_AI_Storefront_IndexNow {
 	public const FLUSH_HOOK = 'wc_ai_storefront_indexnow_flush';
 
 	/**
+	 * Cron hook for the first-enable seed (submit_all on initial turn-on).
+	 */
+	public const SUBMIT_ALL_HOOK = 'wc_ai_storefront_indexnow_submit_all';
+
+	/**
 	 * Debounce window before a queued batch is flushed (seconds).
 	 */
 	private const FLUSH_DELAY = 60;
@@ -262,6 +267,114 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
+	 * Gather every indexable product + product-category URL plus the discovery
+	 * surfaces, enqueue them, and flush immediately. Used by the admin
+	 * "Submit entire catalog now" action and the first-enable seed (#540). Reuses
+	 * the enqueue() MAX_URLS cap: catalogs above that submit one batch (logged).
+	 */
+	public function submit_all(): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+		$urls = array_merge(
+			$this->surface_urls(),
+			$this->all_product_urls(),
+			$this->all_category_urls()
+		);
+		$this->enqueue( $urls );
+		$this->flush();
+	}
+
+	/**
+	 * Gather all published, indexable product URLs by paginating wc_get_products().
+	 *
+	 * Stops when a page returns fewer than 200 results OR the collected URL
+	 * count reaches MAX_URLS (enqueue() will cap the final set anyway, but
+	 * stopping early avoids iterating an arbitrarily large catalog just to
+	 * pass a truncated list to enqueue()).
+	 *
+	 * @return string[]
+	 */
+	private function all_product_urls(): array {
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return array();
+		}
+		$urls      = array();
+		$page      = 1;
+		$page_size = 200;
+		do {
+			$products = wc_get_products(
+				array(
+					'status' => 'publish',
+					'limit'  => $page_size,
+					'page'   => $page,
+					'return' => 'objects',
+				)
+			);
+			if ( ! is_array( $products ) ) {
+				break;
+			}
+			foreach ( $products as $product ) {
+				if ( ! $this->is_product_indexable( $product ) ) {
+					continue;
+				}
+				$permalink = get_permalink( $product->get_id() );
+				if ( is_string( $permalink ) && '' !== $permalink ) {
+					$urls[] = $permalink;
+				}
+				$url_count = count( $urls );
+				if ( $url_count >= self::MAX_URLS ) {
+					break 2;
+				}
+			}
+			$page_count = count( $products );
+			++$page;
+		} while ( $page_count >= $page_size );
+		return $urls;
+	}
+
+	/**
+	 * Gather all non-empty product-category URLs.
+	 *
+	 * @return string[]
+	 */
+	private function all_category_urls(): array {
+		if ( ! function_exists( 'get_terms' ) ) {
+			return array();
+		}
+		$terms = get_terms(
+			array(
+				'taxonomy'   => 'product_cat',
+				'hide_empty' => true,
+			)
+		);
+		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+			return array();
+		}
+		$urls = array();
+		foreach ( $terms as $term ) {
+			$link = get_term_link( $term );
+			if ( is_string( $link ) && '' !== $link ) {
+				$urls[] = $link;
+			}
+		}
+		return $urls;
+	}
+
+	/**
+	 * Schedule a single first-enable seed if one is not already pending.
+	 *
+	 * The +1-second delay ensures the cron fires AFTER the current request
+	 * completes (so is_enabled() is true at run time) while remaining
+	 * effectively immediate from the merchant's perspective.
+	 */
+	public function schedule_submit_all(): void {
+		if ( ! wp_next_scheduled( self::SUBMIT_ALL_HOOK ) ) {
+			wp_schedule_single_event( time() + 1, self::SUBMIT_ALL_HOOK );
+		}
+	}
+
+	/**
 	 * Register catalog-change hooks and the flush cron handler. Called only
 	 * when the feature is enabled (see WC_AI_Storefront::init_components()).
 	 */
@@ -275,6 +388,7 @@ class WC_AI_Storefront_IndexNow {
 		add_action( 'edited_product_cat', array( $this, 'on_term_change' ) );
 		add_action( 'delete_product_cat', array( $this, 'on_term_change' ) );
 		add_action( self::FLUSH_HOOK, array( $this, 'flush' ) );
+		add_action( self::SUBMIT_ALL_HOOK, array( $this, 'submit_all' ) );
 	}
 
 	/**
@@ -419,5 +533,6 @@ class WC_AI_Storefront_IndexNow {
 	 */
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( self::FLUSH_HOOK );
+		wp_clear_scheduled_hook( self::SUBMIT_ALL_HOOK );
 	}
 }

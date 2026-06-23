@@ -749,8 +749,11 @@ class WC_AI_Storefront {
 		// and the wp_cache_delete below has no practical effect.
 		self::$settings_cache = null;
 		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
-		$current = self::get_settings();
-		$merged  = wp_parse_args( $settings, $current );
+		// Capture old indexnow_enabled BEFORE the write, so we can detect the
+		// not-'yes' → 'yes' transition for the first-enable seed (#540).
+		$old_indexnow = ( self::get_settings()['indexnow_enabled'] ?? 'no' );
+		$current      = self::get_settings();
+		$merged       = wp_parse_args( $settings, $current );
 
 		// Strict yes/no enum. Behavior depends on what the POST body
 		// contains AFTER the wp_parse_args merge above:
@@ -864,6 +867,14 @@ class WC_AI_Storefront {
 		// Bust the cache so the next get_settings() reads the fresh value.
 		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
 		wp_cache_delete( 'alloptions', 'options' );
+
+		// Seed-on-enable: schedule a first-enable submit_all() when indexnow_enabled
+		// transitions from not-'yes' to 'yes' (#540). submit_all() re-checks
+		// is_enabled() at run time, so a syndication-off store schedules a
+		// harmless no-op — no extra gating needed here.
+		if ( 'yes' !== $old_indexnow && 'yes' === $indexnow_enabled ) {
+			( new WC_AI_Storefront_IndexNow() )->schedule_submit_all();
+		}
 
 		return $result;
 	}
