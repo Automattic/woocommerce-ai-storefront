@@ -1,0 +1,117 @@
+- generic [ref=e5]:
+  - navigation "Main" [ref=e7]:
+    - generic [ref=e9]:
+      - generic [ref=e10]:
+        - link "Perplexity" [ref=e11] [cursor=pointer]:
+          - /url: /
+          - img "Perplexity" [ref=e14]
+        - button "Collapse sidebar" [ref=e17] [cursor=pointer]:
+          - img [ref=e18]
+      - generic [ref=e23]:
+        - generic [ref=e26]:
+          - link "New" [ref=e27] [cursor=pointer]:
+            - /url: /
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - img
+              - generic:
+                - generic:
+                  - generic: New
+                - generic: ⌘K
+        - generic [ref=e30]:
+          - link "Computer" [ref=e31] [cursor=pointer]:
+            - /url: /computer/tasks
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Computer":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Computer
+        - generic [ref=e35]:
+          - link "Spaces" [ref=e36] [cursor=pointer]:
+            - /url: /spaces
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Spaces":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Spaces
+        - generic [ref=e40]:
+          - link "Artifacts" [ref=e41] [cursor=pointer]:
+            - /url: /computer/artifacts
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Artifacts":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Artifacts
+        - generic [ref=e45]:
+          - link "Customize" [ref=e46] [cursor=pointer]:
+            - /url: /computer/connectors
+          - generic:
+            - generic:
+              - generic:
+                - generic:
+                  - button "Expand Customize":
+                    - generic:
+                      - img
+                - generic:
+                  - img
+              - generic:
+                - generic:
+                  - generic: Customize
+        - generic [ref=e48]:
+          - generic [ref=e50]:
+            - link "History" [ref=e51] [cursor=pointer]:
+              - /url: /library
+            - generic:
+              - generic:
+                - generic:
+                  - generic:
+                    - button "Collapse History" [expanded]:
+                      - generic:
+                        - img
+                  - generic:
+                    - img
+                - generic:
+                  - generic:
+                    - generic: History
+          - generic [ref=e54]: No recent sessions
+  - main [ref=e58]:
+    - generic [ref=e61]:
+      - link "Discover" [ref=e62] [cursor=pointer]:
+        - /url: /discover
+        - generic [ref=e63]: Discover
+      - link "Finance" [ref=e64] [cursor=pointer]:
+        - /url: /finance
+        - generic [ref=e65]: Finance
+      - link "Health" [ref=e66] [cursor=pointer]:
+        - /url: /health
+        - generic [ref=e67]: Health
+      - link "Academic" [ref=e68] [cursor=pointer]:
+        - /url: /academic
+        - generic [ref=e69]: Academic
+      - link "Patents" [ref=e70] [cursor=pointer]:
+        - /url: /patents
+        - generic [ref=e71]: Patents

@@ -1,0 +1,193 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - navigation "Toolbar":
+      - menu:
+        - group [ref=e3]:
+          - menuitem "About WordPress" [ref=e4]:
+            - generic [ref=e6]: About WordPress
+      - menu [ref=e7]:
+        - group [ref=e8]:
+          - menuitem "Jetpack Beta" [ref=e9]:
+            - img [ref=e11]
+            - generic [ref=e13]: Jetpack
+            - text: Beta
+        - group [ref=e14]:
+          - menuitem "Notifications" [ref=e15] [cursor=pointer]:
+            - generic [ref=e16]: Notifications
+        - group [ref=e17]:
+          - menuitem "Search" [ref=e18]:
+            - generic [ref=e19]:
+              - textbox "Search" [ref=e20] [cursor=pointer]
+              - generic [ref=e21]: Search
+        - group [ref=e22]:
+          - menuitem "Debug" [ref=e23]
+  - link "Skip to content" [ref=e24] [cursor=pointer]:
+    - /url: "#wp--skip-link--target"
+  - main [ref=e27]:
+    - navigation "Breadcrumb" [ref=e29]:
+      - link "Home" [ref=e30] [cursor=pointer]:
+        - /url: https://saltwarp.shop
+      - text: /
+      - link "Outerwear" [ref=e31] [cursor=pointer]:
+        - /url: https://saltwarp.shop/product-category/outerwear/
+      - text: /
+      - link "Coats & Jackets" [ref=e32] [cursor=pointer]:
+        - /url: https://saltwarp.shop/product-category/outerwear/coats-jackets/
+      - text: / Watch Jacket
+    - generic [ref=e33]:
+      - generic [ref=e36]:
+        - button "View full-screen image gallery" [ref=e37] [cursor=pointer]:
+          - img [ref=e39]
+        - link "Watch Jacket" [ref=e42] [cursor=pointer]:
+          - /url: https://i0.wp.com/saltwarp.shop/wp-content/uploads/2026/05/saltwarp-watch-jacket.jpg?fit=2000%2C3000&ssl=1
+          - img "Watch Jacket" [ref=e43]
+      - generic [ref=e44]:
+        - heading "Watch Jacket" [level=1] [ref=e45]
+        - generic [ref=e49]: $ 199.99
+        - iframe [ref=e53]:
+          
+        - paragraph
+        - paragraph [ref=e55]: 12oz waxed cotton canvas from Halley Stevensons. Develops its own patina.
+        - generic [ref=e56]:
+          - generic [ref=e57]:
+            - text: Color
+            - combobox "Color" [ref=e59]:
+              - option "Choose an option" [selected]
+              - option "Navy"
+              - option "Charcoal"
+              - option "Camel"
+            - text: Size
+            - combobox "Size" [ref=e61]:
+              - option "Choose an option" [selected]
+              - option "XS"
+              - option "S"
+              - option "M"
+              - option "L"
+              - option "XL"
+            - alert [ref=e62]
+            - generic [ref=e64]:
+              - generic [ref=e65]:
+                - generic [ref=e66]: Watch Jacket quantity
+                - spinbutton "Product quantity" [ref=e67]: "1"
+              - button "Add to cart" [ref=e68] [cursor=pointer]
+          - generic [ref=e69]:
+            - link "WooPay" [ref=e72] [cursor=pointer]:
+              - /url: https://pay.woo.com/woopay/
+              - img [ref=e74]
+            - iframe [ref=e77]:
+              
+        - generic [ref=e78]:
+          - generic [ref=e79]:
+            - generic [ref=e80]: "SKU: SW-OW-002"
+            - generic [ref=e81]:
+              - text: "Category:"
+              - link "Coats & Jackets" [ref=e82] [cursor=pointer]:
+                - /url: https://saltwarp.shop/product-category/outerwear/coats-jackets/
+            - generic [ref=e83]:
+              - text: "Tags:"
+              - link "cotton" [ref=e84] [cursor=pointer]:
+                - /url: https://saltwarp.shop/product-tag/cotton/
+              - text: ","
+              - link "Waxed cotton" [ref=e85] [cursor=pointer]:
+                - /url: https://saltwarp.shop/product-tag/waxed-cotton/
+          - generic [ref=e86]:
+            - text: "Brands:"
+            - link "Saltwarp" [ref=e87] [cursor=pointer]:
+              - /url: https://saltwarp.shop/brand/saltwarp/
+    - generic [ref=e89]:
+      - heading "Share this:" [level=3] [ref=e90]
+      - list [ref=e92]:
+        - listitem [ref=e93]:
+          - link "Share on X (Opens in new window)" [ref=e94] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/watch-jacket/?share=twitter&nb=1
+            - text:  X
+        - listitem [ref=e95]:
+          - link "Share on Facebook (Opens in new window)" [ref=e96] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/watch-jacket/?share=facebook&nb=1
+            - text:  Facebook
+        - listitem
+    - generic [ref=e99]:
+      - tablist [ref=e100]:
+        - tab "Description" [selected] [ref=e101] [cursor=pointer]
+        - tab "Additional information" [ref=e102] [cursor=pointer]
+        - tab "Reviews (0)" [ref=e103] [cursor=pointer]
+      - tabpanel "Description" [ref=e104]:
+        - paragraph [ref=e105]: 12oz waxed cotton canvas milled by Halley Stevensons in Scotland. Hip-length, snap-button placket, drawcord at the waist. No patches, no bellows pockets, no logos. Will develop its own patina with wear.
+        - generic [ref=e107]:
+          - heading "Share this:" [level=3] [ref=e108]
+          - list [ref=e110]:
+            - listitem [ref=e111]:
+              - link "Share on X (Opens in new window)" [ref=e112] [cursor=pointer]:
+                - /url: https://saltwarp.shop/product/watch-jacket/?share=twitter&nb=1
+                - text:  X
+            - listitem [ref=e113]:
+              - link "Share on Facebook (Opens in new window)" [ref=e114] [cursor=pointer]:
+                - /url: https://saltwarp.shop/product/watch-jacket/?share=facebook&nb=1
+                - text:  Facebook
+            - listitem
+        - generic [ref=e115]:
+          - heading "Like this:" [level=3] [ref=e116]
+          - iframe [ref=e117]:
+            - generic [ref=f33e3]:
+              - link "Like" [ref=f33e5] [cursor=pointer]:
+                - /url: "#"
+                - generic [ref=f33e6]: Like
+              - generic [ref=f33e7]: Be the first to like this.
+      - text:     
+    - generic [ref=e118]:
+      - heading "Best selling products" [level=2] [ref=e119]
+      - list [ref=e120]:
+        - listitem [ref=e121]:
+          - link "Product on sale Watch Cap" [ref=e123] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/watch-cap/
+            - generic [ref=e124]:
+              - text: Sale
+              - generic [ref=e125]: Product on sale
+            - img "Watch Cap" [ref=e126]
+          - heading "Watch Cap" [level=2] [ref=e128]:
+            - link "Watch Cap" [ref=e129] [cursor=pointer]:
+              - /url: https://saltwarp.shop/product/watch-cap/
+          - generic [ref=e131]:
+            - deletion [ref=e132]:
+              - generic [ref=e134]: $ 20.00
+            - generic [ref=e135]: "Original price was: $ 20.00."
+            - insertion [ref=e136]:
+              - generic [ref=e138]: $ 18.00
+            - generic [ref=e139]: "Current price is: $ 18.00."
+          - 'button "Add to cart: “Watch Cap”" [ref=e141] [cursor=pointer]':
+            - generic [ref=e142]: Add to cart
+        - listitem [ref=e143]:
+          - link "Watch Jacket" [ref=e145] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/watch-jacket/
+            - img "Watch Jacket" [ref=e146]
+          - heading "Watch Jacket" [level=2] [ref=e148]:
+            - link "Watch Jacket" [ref=e149] [cursor=pointer]:
+              - /url: https://saltwarp.shop/product/watch-jacket/
+          - generic [ref=e153]: $ 199.99
+          - link "Select options for “Watch Jacket”" [ref=e155] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/watch-jacket/
+            - generic [ref=e156]: Select options
+        - listitem [ref=e157]:
+          - link "Canvas Belt" [ref=e159] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/canvas-belt/
+            - img "Canvas Belt" [ref=e160]
+          - heading "Canvas Belt" [level=2] [ref=e162]:
+            - link "Canvas Belt" [ref=e163] [cursor=pointer]:
+              - /url: https://saltwarp.shop/product/canvas-belt/
+          - generic [ref=e167]: $ 45.99
+          - link "Select options for “Canvas Belt”" [ref=e169] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/canvas-belt/
+            - generic [ref=e170]: Select options
+        - listitem [ref=e171]:
+          - link "Wool Hat" [ref=e173] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/wool-hat/
+            - img "Wool Hat" [ref=e174]
+          - heading "Wool Hat" [level=2] [ref=e176]:
+            - link "Wool Hat" [ref=e177] [cursor=pointer]:
+              - /url: https://saltwarp.shop/product/wool-hat/
+          - generic [ref=e181]: $ 45.00
+          - link "Select options for “Wool Hat”" [ref=e183] [cursor=pointer]:
+            - /url: https://saltwarp.shop/product/wool-hat/
+            - generic [ref=e184]: Select options
+  - generic [ref=e187]: PROXIED V2
+  - text:   

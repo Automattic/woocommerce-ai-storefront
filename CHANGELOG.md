@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.27.0] – 2026-06-22
+
 ### Features
 
 - **Instant indexing: catalog changes are pushed to IndexNow (#530).** When a product, category, or shop page changes, the affected URLs plus your AI-discovery surfaces (homepage, `/shop/`, `llms.txt`, `products.json`) are submitted to IndexNow, so Bing-backed AI assistants (ChatGPT Search, Microsoft Copilot, Amazonbot) re-crawl quickly. Google does not consume IndexNow, so this complements — not replaces — your existing Google structured data and sitemap.
