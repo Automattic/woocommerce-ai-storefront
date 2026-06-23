@@ -112,18 +112,6 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 	const key = settings.indexnow_key || '';
 	const [ regenerating, setRegenerating ] = useState( false );
 	const [ error, setError ] = useState( '' );
-	const [ copied, setCopied ] = useState( false );
-
-	const copyKey = async () => {
-		try {
-			await window.navigator.clipboard.writeText( key );
-			setCopied( true );
-			window.setTimeout( () => setCopied( false ), 2000 );
-		} catch ( _e ) {
-			// Clipboard unavailable (e.g. insecure context); the key is
-			// visible above to copy manually, so fail silently.
-		}
-	};
 
 	const regenerate = async () => {
 		if (
@@ -175,7 +163,7 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 				</h3>
 				<p style={ muted }>
 					{ __(
-						'Submit catalog changes to the search engines that support IndexNow (Bing, Yandex, Seznam, Naver, Yep) the moment they happen, so they re-crawl in seconds instead of days. Faster indexing there helps keep your products current in AI-powered search results. Only public URLs are sent. Google does not use IndexNow.',
+						'Tell IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) the moment your catalog changes, so they re-crawl in seconds instead of days, keeping your products current in AI-powered search results. Only public URLs are sent; Google does not use IndexNow.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
@@ -221,26 +209,7 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 								</ExternalLink>
 							</div>
 						) }
-						<div
-							style={ {
-								marginTop: '8px',
-								display: 'flex',
-								gap: '8px',
-							} }
-						>
-							{ key && (
-								<Button variant="secondary" onClick={ copyKey }>
-									{ copied
-										? __(
-												'Copied',
-												'woocommerce-ai-storefront'
-										  )
-										: __(
-												'Copy',
-												'woocommerce-ai-storefront'
-										  ) }
-								</Button>
-							) }
+						<div style={ { marginTop: '8px' } }>
 							<Button
 								variant="secondary"
 								onClick={ regenerate }

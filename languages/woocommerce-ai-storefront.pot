@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-23T21:14:25+00:00\n"
+"POT-Creation-Date: 2026-06-23T21:23:05+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -1141,51 +1141,43 @@ msgstr ""
 msgid "Last attempt failed: HTTP %1$d · %2$s"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:132
+#: client/settings/ai-storefront/indexnow-card.js:120
 msgid "Regenerate the IndexNow key? Pending verifications for the old key will be invalidated."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:150
+#: client/settings/ai-storefront/indexnow-card.js:138
 msgid "Could not regenerate the key. Please try again."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:171
+#: client/settings/ai-storefront/indexnow-card.js:159
 msgid "Instant indexing (IndexNow)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:177
-msgid "Submit catalog changes to the search engines that support IndexNow (Bing, Yandex, Seznam, Naver, Yep) the moment they happen, so they re-crawl in seconds instead of days. Faster indexing there helps keep your products current in AI-powered search results. Only public URLs are sent. Google does not use IndexNow."
+#: client/settings/ai-storefront/indexnow-card.js:165
+msgid "Tell IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) the moment your catalog changes, so they re-crawl in seconds instead of days, keeping your products current in AI-powered search results. Only public URLs are sent; Google does not use IndexNow."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:183
+#: client/settings/ai-storefront/indexnow-card.js:171
 msgid "Notify search engines instantly (IndexNow)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:202
+#: client/settings/ai-storefront/indexnow-card.js:190
 msgid "Verification key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:209
+#: client/settings/ai-storefront/indexnow-card.js:197
 msgid "(not generated yet)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:217
+#: client/settings/ai-storefront/indexnow-card.js:205
 msgid "View key file"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:234
-msgid "Copied"
-msgstr ""
-
-#: client/settings/ai-storefront/indexnow-card.js:238
-msgid "Copy"
-msgstr ""
-
-#: client/settings/ai-storefront/indexnow-card.js:251
+#: client/settings/ai-storefront/indexnow-card.js:220
 msgid "Regenerate key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:255
+#: client/settings/ai-storefront/indexnow-card.js:224
 msgid "Generate key"
 msgstr ""
 
