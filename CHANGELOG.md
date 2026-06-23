@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.28.0] – 2026-06-23
+
 ### Features
 
 - **IndexNow settings, controls, and a "Submit entire catalog now" action (#534, #540).** The IndexNow integration added in 0.27.0 now has a Discovery-tab card: turn it on or off, view and regenerate the ownership key (with a link to the `/{key}.txt` verification file), and see the last submission result.
@@ -19,7 +23,7 @@
 
 ### Features
 
-- **Instant indexing: catalog changes are pushed to IndexNow (#530).** When a product, category, or shop page changes, the affected URLs plus your AI-discovery surfaces (homepage, `/shop/`, `llms.txt`, `products.json`) are submitted to IndexNow, so Bing-backed AI assistants (ChatGPT Search, Microsoft Copilot, Amazonbot) re-crawl quickly. Google does not consume IndexNow, so this complements — not replaces — your existing Google structured data and sitemap.
+- **Instant indexing: catalog changes are pushed to IndexNow (#530).** When a product, category, or shop page changes, the affected URLs plus your AI-discovery surfaces (homepage, `/shop/`, `llms.txt`, `products.json`) are submitted to IndexNow, so participating search engines (Bing, Yandex, Seznam, Naver, Yep) re-crawl quickly, keeping the catalog current in AI-powered search results. Google does not consume IndexNow, so this complements (not replaces) your existing Google structured data and sitemap.
   - **Default on, gated behind AI syndication** and a new `indexnow_enabled` setting; the auto-generated key is served at a virtual `/{key}.txt` for ownership verification.
   - **Debounced and batched:** changes are deduped and submitted in a single WP-Cron batch — no per-save HTTP, no editor latency, and a bulk import collapses into one submission per window.
   - **Fail-safe:** unsupported responses are handled without retry storms; submission never blocks a save or surfaces to shoppers.
