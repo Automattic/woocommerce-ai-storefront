@@ -29,3 +29,8 @@ release-staging/
 
 # Subagent-driven-development scratch (briefs, reports, review packages).
 /.superpowers/
+
+# Playwright MCP scratch + macOS cruft (never track).
+.playwright-mcp/
+.DS_Store
+**/.DS_Store
