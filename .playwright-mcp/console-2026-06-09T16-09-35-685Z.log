@@ -1,5 +1,0 @@
-[    1803ms] [INFO] [WooCommerce] Dependency detection enabled. Warnings will be shown for scripts that access wc.* globals without proper dependencies. @ https://saltwarp.shop/shop/:6
-[    1972ms] [LOG] JQMIGRATE: Migrate is installed, version 3.4.1 @ https://saltwarp.shop/wp-includes/js/jquery/jquery-migrate.min.js?m=1686289764:1
-[    2062ms] [WARNING] [WooCommerce] Unregistered script "unknown" accessed wc.wcBlocksData. This script should be registered with wp_enqueue_script() and declare "wc-blocks-data-store" as a dependency. @ https://saltwarp.shop/shop/:6
-[    2659ms] [LOG] JQMIGRATE: Migrate is installed, version 3.4.1 @ https://pay.woo.com/_static/??-eJzTLy/QTc7PK0nNK9HPKtYvyinRLSjKr6jUyyrW0QfKZeYl55SmpBaDJLMKS1OLKqGUXm5mHkFFurmZ6UWJJalQxfa5tobmRgamxgZmFpZZACbyLJI=:203
-[    2797ms] [LOG] JQMIGRATE: Migrate is installed, version 3.4.1 @ https://pay.woo.com/_static/??-eJzTLy/QTc7PK0nNK9HPKtYvyinRLSjKr6jUyyrW0QfKZeYl55SmpBaDJLMKS1OLKqGUXm5mHkFFurmZ6UWJJalQxfa5tobmRgamxgZmFpZZACbyLJI=:203

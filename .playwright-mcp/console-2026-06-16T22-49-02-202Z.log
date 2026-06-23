@@ -1,2 +1,0 @@
-[   34869ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://t3.gstatic.com/faviconV2?client=SOCIAL&type=FAVICON&fallback_opts=TYPE,SIZE,URL&url=https://saltclothing.org&size=32:0
-[ 7922229ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_CLOSED @ https://chatgpt.com/backend-api/sentinel/heartbeat:0
