@@ -458,6 +458,18 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $this->controller->check_admin_permission() );
 	}
 
+	// B2b — capability name: changing the cap from manage_woocommerce to anything else fails this test.
+	public function test_check_admin_permission_uses_manage_woocommerce_cap(): void {
+		$cap_checked = null;
+		// Override the setUp `when` with a recording alias.
+		Functions\when( 'current_user_can' )->alias( static function ( $cap ) use ( &$cap_checked ) {
+			$cap_checked = $cap;
+			return true;
+		} );
+		$this->assertTrue( $this->controller->check_admin_permission() );
+		$this->assertSame( 'manage_woocommerce', $cap_checked );
+	}
+
 	// --- Task #540: indexnow-submit-all route ---
 
 	public function test_indexnow_submit_all_route_is_registered_with_manage_woocommerce(): void {

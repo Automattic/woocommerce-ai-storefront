@@ -269,8 +269,9 @@ class WC_AI_Storefront_IndexNow {
 	/**
 	 * Gather every indexable product + product-category URL plus the discovery
 	 * surfaces, enqueue them, and flush immediately. Used by the admin
-	 * "Submit entire catalog now" action and the first-enable seed (#540). Reuses
-	 * the enqueue() MAX_URLS cap: catalogs above that submit one batch (logged).
+	 * "Submit entire catalog now" action and the first-enable seed (#540). Catalogs
+	 * larger than MAX_URLS are truncated by enqueue() (which logs the drop) before
+	 * flush() sends the single batch.
 	 */
 	public function submit_all(): void {
 		if ( ! $this->is_enabled() ) {
@@ -291,7 +292,10 @@ class WC_AI_Storefront_IndexNow {
 	 * Stops when a page returns fewer than 200 results OR the collected URL
 	 * count reaches MAX_URLS (enqueue() will cap the final set anyway, but
 	 * stopping early avoids iterating an arbitrarily large catalog just to
-	 * pass a truncated list to enqueue()).
+	 * pass a truncated list to enqueue()). The MAX_URLS break counts
+	 * ACCEPTED/indexable URLs (post-filter), not raw fetched products, so a
+	 * store with many non-indexable products may paginate beyond MAX_URLS raw
+	 * results before the early-exit triggers.
 	 *
 	 * @return string[]
 	 */
@@ -370,7 +374,10 @@ class WC_AI_Storefront_IndexNow {
 	 */
 	public function schedule_submit_all(): void {
 		if ( ! wp_next_scheduled( self::SUBMIT_ALL_HOOK ) ) {
-			wp_schedule_single_event( time() + 1, self::SUBMIT_ALL_HOOK );
+			$scheduled = wp_schedule_single_event( time() + 1, self::SUBMIT_ALL_HOOK );
+			if ( false === $scheduled ) {
+				WC_AI_Storefront_Logger::debug( 'IndexNow: wp_schedule_single_event failed for %s', self::SUBMIT_ALL_HOOK );
+			}
 		}
 	}
 
@@ -526,10 +533,10 @@ class WC_AI_Storefront_IndexNow {
 	/**
 	 * Clean up on plugin deactivation.
 	 *
-	 * Clears the pending flush cron — any queued URLs are lost, which is
-	 * acceptable since a deactivating plugin should not schedule future work.
-	 * Option data (key + pending URLs) is intentionally left in place on
-	 * mere deactivation; only uninstall.php deletes them.
+	 * Clears both the debounced-flush cron (FLUSH_HOOK) and the first-enable seed
+	 * cron (SUBMIT_ALL_HOOK); queued URLs or a pending seed are dropped, acceptable
+	 * since a deactivating plugin should not schedule future work. Option data (key
+	 * + pending) is left in place; only uninstall.php deletes it.
 	 */
 	public static function deactivate(): void {
 		wp_clear_scheduled_hook( self::FLUSH_HOOK );

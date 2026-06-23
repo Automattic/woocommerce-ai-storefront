@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-23T21:45:24+00:00\n"
+"POT-Creation-Date: 2026-06-23T21:59:40+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -1185,7 +1185,7 @@ msgstr ""
 msgid "Generate key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:273
+#: client/settings/ai-storefront/indexnow-card.js:277
 msgid "Submit entire catalog now"
 msgstr ""
 

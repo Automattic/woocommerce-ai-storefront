@@ -1585,7 +1585,12 @@ class WC_AI_Storefront_Admin_Controller {
 	 */
 	public function indexnow_submit_all() {
 		$indexnow = new WC_AI_Storefront_IndexNow();
-		$indexnow->submit_all();
+		try {
+			$indexnow->submit_all();
+		} catch ( \Throwable $e ) {
+			WC_AI_Storefront_Logger::debug( 'IndexNow submit_all exception: %s', $e->getMessage() );
+			return new WP_REST_Response( array( 'message' => 'IndexNow submission failed.' ), 500 );
+		}
 		return new WP_REST_Response( array( 'indexnow_last_result' => $indexnow->last_result() ) );
 	}
 

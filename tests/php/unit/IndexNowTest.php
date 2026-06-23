@@ -639,6 +639,14 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->addToAssertionCount( 1 );
 	}
 
+	public function test_submit_all_noop_when_indexnow_toggle_off(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'no' );
+		Functions\expect( 'wp_remote_post' )->never();
+		Functions\expect( 'update_option' )->never();
+		$this->indexnow->submit_all();
+		$this->addToAssertionCount( 1 );
+	}
+
 	public function test_submit_all_gathers_product_category_and_surface_urls_and_posts(): void {
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
 
@@ -732,6 +740,78 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 5 );
 		Functions\expect( 'wp_schedule_single_event' )->never();
 		$this->indexnow->schedule_submit_all();
+	}
+
+	// B2a — deactivate() clears BOTH cron hooks.
+	public function test_deactivate_clears_both_flush_and_submit_all_hooks(): void {
+		Functions\expect( 'wp_clear_scheduled_hook' )
+			->once()->with( WC_AI_Storefront_IndexNow::FLUSH_HOOK );
+		Functions\expect( 'wp_clear_scheduled_hook' )
+			->once()->with( WC_AI_Storefront_IndexNow::SUBMIT_ALL_HOOK );
+		WC_AI_Storefront_IndexNow::deactivate();
+	}
+
+	// B2c — all_product_urls(): wc_get_products returns false (non-array) on first page.
+	public function test_submit_all_handles_non_array_wc_get_products(): void {
+		Functions\when( 'wc_get_products' )->justReturn( false );
+		// surface_urls() needs these helpers.
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		Functions\when( 'get_terms' )->justReturn( array() );
+		// Still expect enqueue+flush with just the surface URLs.
+		$store  = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
+		$posted = null;
+		Functions\when( 'get_option' )->alias( function ( $n, $d = false ) use ( &$store ) {
+			return $store[ $n ] ?? $d;
+		} );
+		Functions\when( 'update_option' )->alias( function ( $n, $v ) use ( &$store ) {
+			$store[ $n ] = $v;
+			return true;
+		} );
+		Functions\when( 'delete_option' )->alias( function ( $n ) use ( &$store ) {
+			unset( $store[ $n ] );
+			return true;
+		} );
+		Functions\when( 'wp_remote_post' )->alias( function ( $url, $args ) use ( &$posted ) {
+			$posted = json_decode( $args['body'], true );
+			return array( 'response' => array( 'code' => 200 ) );
+		} );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		$this->indexnow->submit_all();
+		// POST still fires with at least the home surface URL; no crash.
+		$this->assertNotNull( $posted );
+		$this->assertContains( 'https://shop.test/', $posted['urlList'] );
+	}
+
+	// B2d — all_category_urls(): get_terms returns WP_Error — contributes nothing, no crash.
+	public function test_submit_all_handles_wp_error_from_get_terms(): void {
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		Functions\when( 'get_terms' )->justReturn( new WP_Error( 'invalid_taxonomy', 'Invalid taxonomy.' ) );
+		$store  = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
+		$posted = null;
+		Functions\when( 'get_option' )->alias( function ( $n, $d = false ) use ( &$store ) {
+			return $store[ $n ] ?? $d;
+		} );
+		Functions\when( 'update_option' )->alias( function ( $n, $v ) use ( &$store ) {
+			$store[ $n ] = $v;
+			return true;
+		} );
+		Functions\when( 'delete_option' )->alias( function ( $n ) use ( &$store ) {
+			unset( $store[ $n ] );
+			return true;
+		} );
+		Functions\when( 'wp_remote_post' )->alias( function ( $url, $args ) use ( &$posted ) {
+			$posted = json_decode( $args['body'], true );
+			return array( 'response' => array( 'code' => 200 ) );
+		} );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		$this->indexnow->submit_all();
+		// POST fires with surfaces only (WP_Error contributes no category URLs).
+		$this->assertNotNull( $posted );
+		// Verify no category URL leaked in (only surface URLs: home, llms.txt, products.json).
+		foreach ( $posted['urlList'] as $url ) {
+			$this->assertStringNotContainsString( 'product-category', $url );
+		}
 	}
 
 	// --- Seed-on-enable: update_settings() no→yes transition (#540) ---

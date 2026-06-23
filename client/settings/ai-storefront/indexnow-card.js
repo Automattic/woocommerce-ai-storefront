@@ -268,7 +268,11 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 							variant="secondary"
 							onClick={ submitAll }
 							isBusy={ submitting }
-							disabled={ submitting || ! key }
+							disabled={
+								submitting ||
+								! key ||
+								settings.enabled !== 'yes'
+							}
 						>
 							{ __(
 								'Submit entire catalog now',

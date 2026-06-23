@@ -378,10 +378,12 @@ class WC_AI_Storefront {
 		// transitions from not-'yes' to 'yes'. Mirrors the production transition
 		// in includes/class-wc-ai-storefront.php::update_settings(). Keep in sync.
 		// The production implementation calls ( new WC_AI_Storefront_IndexNow() )->schedule_submit_all().
-		// NOTE: IndexNow tests in IndexNowTest.php cover the seed via a Brain-Monkey-enabled
-		// subclass; this stub intentionally does NOT call the real WP cron functions here
-		// because UpdateSettingsSanitizationTest does not set up Brain Monkey. The
-		// production class is the authoritative implementation.
+		// NOTE: The production wiring (3 lines in the real update_settings()) is covered by
+		// inspection + the schedule_submit_all() unit tests in IndexNowTest.php, which run
+		// inside Brain Monkey setUp. The $_seed_transition_detected flag below covers the
+		// no->'yes' transition logic without calling real WP cron functions; this stub
+		// intentionally avoids them because UpdateSettingsSanitizationTest does not set
+		// up Brain Monkey. The production class is the authoritative implementation.
 		$new_indexnow = self::$test_settings['indexnow_enabled'] ?? 'no';
 		self::$_seed_transition_detected = ( 'yes' !== $old_indexnow && 'yes' === $new_indexnow );
 	}
