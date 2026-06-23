@@ -95,9 +95,9 @@ class WC_AI_Storefront {
 				// reads this with the same `'yes' ===` strictness as the
 				// production gate. See the stub doc (lines 8–12) on drift.
 				'products_json_enabled'    => 'yes',
-				// Mirror production default. IndexNow is opt-out (default
-				// 'yes') gated by syndication. See the stub doc on drift.
-				'indexnow_enabled'         => 'yes',
+				// Mirror production default. IndexNow is opt-in (default
+				// 'no') gated by syndication. See the stub doc on drift.
+				'indexnow_enabled'         => 'no',
 			],
 			self::$test_settings
 		);
@@ -297,6 +297,9 @@ class WC_AI_Storefront {
 	 * @param array<string, mixed> $settings Partial settings to merge in.
 	 */
 	public static function update_settings( array $settings ): void {
+		// Capture the old indexnow_enabled BEFORE merging, for the seed-on-enable check.
+		$old_indexnow = self::get_settings()['indexnow_enabled'] ?? 'no';
+
 		$current = self::get_settings();
 		$merged  = array_merge( $current, $settings );
 
@@ -338,12 +341,12 @@ class WC_AI_Storefront {
 			$sanitized_products_json_enabled = 'yes';
 		}
 
-		// Mirror production: strict yes/no enum, default `'yes'`, anything
-		// else falls back to `'yes'`. See
+		// Mirror production: strict yes/no enum, default `'no'`, anything
+		// else falls back to `'no'`. See
 		// `includes/class-wc-ai-storefront.php::update_settings()`.
-		$sanitized_indexnow_enabled = $merged['indexnow_enabled'] ?? 'yes';
+		$sanitized_indexnow_enabled = $merged['indexnow_enabled'] ?? 'no';
 		if ( ! in_array( $sanitized_indexnow_enabled, [ 'yes', 'no' ], true ) ) {
-			$sanitized_indexnow_enabled = 'yes';
+			$sanitized_indexnow_enabled = 'no';
 		}
 
 		$overrides = [
@@ -370,5 +373,27 @@ class WC_AI_Storefront {
 			$settings,
 			$overrides
 		);
+
+		// Seed-on-enable: schedule a first-enable submit_all() when indexnow_enabled
+		// transitions from not-'yes' to 'yes'. Mirrors the production transition
+		// in includes/class-wc-ai-storefront.php::update_settings(). Keep in sync.
+		// The production implementation calls ( new WC_AI_Storefront_IndexNow() )->schedule_submit_all().
+		// NOTE: The production wiring (3 lines in the real update_settings()) is covered by
+		// inspection + the schedule_submit_all() unit tests in IndexNowTest.php, which run
+		// inside Brain Monkey setUp. The $_seed_transition_detected flag below covers the
+		// no->'yes' transition logic without calling real WP cron functions; this stub
+		// intentionally avoids them because UpdateSettingsSanitizationTest does not set
+		// up Brain Monkey. The production class is the authoritative implementation.
+		$new_indexnow = self::$test_settings['indexnow_enabled'] ?? 'no';
+		self::$_seed_transition_detected = ( 'yes' !== $old_indexnow && 'yes' === $new_indexnow );
 	}
+
+	/**
+	 * Whether the last update_settings() call triggered the indexnow-enable
+	 * seed transition. Used by IndexNowTest to verify the production class
+	 * path without needing to call real WP cron functions from this stub.
+	 *
+	 * @var bool
+	 */
+	public static bool $_seed_transition_detected = false;
 }

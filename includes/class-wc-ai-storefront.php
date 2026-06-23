@@ -85,12 +85,12 @@ class WC_AI_Storefront {
 			// Lets a merchant keep syndication on while opting out of the
 			// Shopify-compat surface specifically.
 			'products_json_enabled'    => 'yes',
-			// IndexNow instant-indexing toggle. Default `'yes'` (opt-out) so
-			// catalog changes are submitted to Bing/Yandex/etc. out of the box
-			// once syndication itself is on. The change-hooks ALSO require
-			// `enabled === 'yes'` (gated by `init_components()`), so this toggle
-			// only takes effect when syndication is active.
-			'indexnow_enabled'         => 'yes',
+			// IndexNow instant-indexing toggle. Default `'no'` (opt-in) so
+			// nothing is submitted to Bing/Yandex/etc. until the merchant turns
+			// it on. The change-hooks ALSO require `enabled === 'yes'` (gated by
+			// `init_components()`), so this toggle only takes effect when
+			// syndication is active.
+			'indexnow_enabled'         => 'no',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — merchants
@@ -749,8 +749,11 @@ class WC_AI_Storefront {
 		// and the wp_cache_delete below has no practical effect.
 		self::$settings_cache = null;
 		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
-		$current = self::get_settings();
-		$merged  = wp_parse_args( $settings, $current );
+		// Capture old indexnow_enabled BEFORE the write, so we can detect the
+		// not-'yes' → 'yes' transition for the first-enable seed (#540).
+		$current      = self::get_settings();
+		$old_indexnow = ( $current['indexnow_enabled'] ?? 'no' );
+		$merged       = wp_parse_args( $settings, $current );
 
 		// Strict yes/no enum. Behavior depends on what the POST body
 		// contains AFTER the wp_parse_args merge above:
@@ -798,13 +801,13 @@ class WC_AI_Storefront {
 		}
 
 		// IndexNow instant-indexing toggle. Same strict yes/no enum +
-		// resolve-once pattern as `$mcp_enabled` above. Default `'yes'`
-		// (opt-out) — the change-hooks also require `enabled === 'yes'`
+		// resolve-once pattern as `$mcp_enabled` above. Default `'no'`
+		// (opt-in) — the change-hooks also require `enabled === 'yes'`
 		// (gated by `init_components()`), so this only matters once
 		// syndication is on.
-		$indexnow_enabled = $merged['indexnow_enabled'] ?? 'yes';
+		$indexnow_enabled = $merged['indexnow_enabled'] ?? 'no';
 		if ( ! in_array( $indexnow_enabled, [ 'yes', 'no' ], true ) ) {
-			$indexnow_enabled = 'yes';
+			$indexnow_enabled = 'no';
 		}
 
 		// Map legacy mode aliases to their canonical form. Old stores may
@@ -864,6 +867,14 @@ class WC_AI_Storefront {
 		// Bust the cache so the next get_settings() reads the fresh value.
 		wp_cache_delete( self::SETTINGS_OPTION, 'options' );
 		wp_cache_delete( 'alloptions', 'options' );
+
+		// Seed-on-enable: schedule a first-enable submit_all() when indexnow_enabled
+		// transitions from not-'yes' to 'yes' (#540). submit_all() re-checks
+		// is_enabled() at run time, so a syndication-off store schedules a
+		// harmless no-op — no extra gating needed here.
+		if ( 'yes' !== $old_indexnow && 'yes' === $indexnow_enabled ) {
+			( new WC_AI_Storefront_IndexNow() )->schedule_submit_all();
+		}
 
 		return $result;
 	}

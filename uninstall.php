@@ -41,9 +41,10 @@ delete_option( 'wc_ai_storefront_version' );
 // prefix bumped on product/settings change). Single small integer row.
 delete_option( 'wc_ai_storefront_products_feed_version' );
 
-// IndexNow: generated key (hex string) and pending-URL queue.
+// IndexNow: generated key (hex string), pending-URL queue, and last flush result.
 delete_option( 'wc_ai_storefront_indexnow_key' );
 delete_option( 'wc_ai_storefront_indexnow_pending' );
+delete_option( 'wc_ai_storefront_indexnow_last_result' );
 
 /*
  * --------------------------------------------------------------------------
@@ -155,6 +156,7 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_option( 'wc_ai_storefront_products_feed_version' );
 			delete_option( 'wc_ai_storefront_indexnow_key' );
 			delete_option( 'wc_ai_storefront_indexnow_pending' );
+			delete_option( 'wc_ai_storefront_indexnow_last_result' );
 			delete_transient( 'wc_ai_storefront_llms_txt' );
 			delete_transient( 'wc_ai_storefront_ucp' );
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );

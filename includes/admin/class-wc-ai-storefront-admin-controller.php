@@ -391,6 +391,21 @@ class WC_AI_Storefront_Admin_Controller {
 				'permission_callback' => array( $this, 'check_admin_permission' ),
 			)
 		);
+
+		// IndexNow force-submit. POST-only; gathers every indexable product +
+		// category URL plus the discovery surfaces and submits them immediately.
+		// Returns the last_result so the React UI can display the outcome without
+		// a follow-up GET /settings. Capability-gated at manage_woocommerce,
+		// mirroring regenerate-indexnow-key above.
+		register_rest_route(
+			self::NAMESPACE,
+			'/indexnow-submit-all',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'indexnow_submit_all' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
 	}
 
 	/**
@@ -430,8 +445,10 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function get_settings() {
-		$settings                 = WC_AI_Storefront::get_settings();
-		$settings['indexnow_key'] = ( new WC_AI_Storefront_IndexNow() )->peek_key();
+		$settings                         = WC_AI_Storefront::get_settings();
+		$indexnow                         = new WC_AI_Storefront_IndexNow();
+		$settings['indexnow_key']         = $indexnow->peek_key();
+		$settings['indexnow_last_result'] = $indexnow->last_result();
 		return new WP_REST_Response( $settings );
 	}
 
@@ -1553,6 +1570,28 @@ class WC_AI_Storefront_Admin_Controller {
 	public function regenerate_indexnow_key() {
 		$new_key = ( new WC_AI_Storefront_IndexNow() )->regenerate_key();
 		return new WP_REST_Response( array( 'indexnow_key' => $new_key ) );
+	}
+
+	/**
+	 * Force-submit the entire catalog to IndexNow.
+	 *
+	 * Gathers every indexable product + product-category URL plus the AI
+	 * discovery surfaces, enqueues them, and flushes immediately. Returns the
+	 * `last_result` so the React UI can display the outcome without a
+	 * follow-up GET /settings. Is a no-op (submit_all() short-circuits) when
+	 * IndexNow is disabled or syndication is off.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function indexnow_submit_all() {
+		$indexnow = new WC_AI_Storefront_IndexNow();
+		try {
+			$indexnow->submit_all();
+		} catch ( \Throwable $e ) {
+			WC_AI_Storefront_Logger::debug( 'IndexNow submit_all exception: %s', $e->getMessage() );
+			return new WP_REST_Response( array( 'message' => 'IndexNow submission failed.' ), 500 );
+		}
+		return new WP_REST_Response( array( 'indexnow_last_result' => $indexnow->last_result() ) );
 	}
 
 	/**

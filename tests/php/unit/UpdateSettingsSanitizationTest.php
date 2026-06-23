@@ -279,12 +279,12 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// indexnow_enabled sanitization — strict yes/no enum, default 'yes'
+	// indexnow_enabled sanitization — strict yes/no enum, default 'no'
 	// (deferred from Task 1, closed by Task 6).
 	// ------------------------------------------------------------------
 	//
 	// Same safety-net contract as mcp_enabled / products_json_enabled:
-	// IndexNow is an opt-OUT toggle (default 'yes') gated by syndication.
+	// IndexNow is an opt-IN toggle (default 'no') gated by syndication.
 	// The round-trip test below is the specific regression pin that was
 	// deferred from Task 1 — it proves that setting indexnow_enabled='no'
 	// round-trips through update_settings() without being silently stripped
@@ -293,7 +293,7 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	public function test_indexnow_enabled_present_in_defaults(): void {
 		WC_AI_Storefront::$test_settings = [];
 		$this->assertArrayHasKey( 'indexnow_enabled', WC_AI_Storefront::get_settings() );
-		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
+		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
 	}
 
 	public function test_indexnow_enabled_round_trips_no(): void {
@@ -311,14 +311,14 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Every malformed value must fall back to the default `'yes'`.
+	 * Every malformed value must fall back to the default `'no'`.
 	 * Mirrors the mcp_enabled / products_json_enabled provider.
 	 *
 	 * @dataProvider indexnow_enabled_invalid_value_provider
 	 */
-	public function test_indexnow_enabled_invalid_value_falls_back_to_yes( $value ): void {
+	public function test_indexnow_enabled_invalid_value_falls_back_to_no( $value ): void {
 		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => $value ] );
-		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
+		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
 	}
 
 	public static function indexnow_enabled_invalid_value_provider(): array {
