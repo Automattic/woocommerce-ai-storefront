@@ -85,6 +85,7 @@ class WC_AI_Storefront {
 			// Lets a merchant keep syndication on while opting out of the
 			// Shopify-compat surface specifically.
 			'products_json_enabled'    => 'yes',
+			'indexnow_enabled'         => 'yes',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — merchants
