@@ -430,8 +430,10 @@ class WC_AI_Storefront_Admin_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function get_settings() {
-		$settings                 = WC_AI_Storefront::get_settings();
-		$settings['indexnow_key'] = ( new WC_AI_Storefront_IndexNow() )->peek_key();
+		$settings                         = WC_AI_Storefront::get_settings();
+		$indexnow                         = new WC_AI_Storefront_IndexNow();
+		$settings['indexnow_key']         = $indexnow->peek_key();
+		$settings['indexnow_last_result'] = $indexnow->last_result();
 		return new WP_REST_Response( $settings );
 	}
 

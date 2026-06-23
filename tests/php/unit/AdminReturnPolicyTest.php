@@ -436,6 +436,16 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// IndexNow integration (Task 3)
+	// ------------------------------------------------------------------
+
+	public function test_get_settings_exposes_indexnow_last_result(): void {
+		$response = $this->controller->get_settings();
+		$data     = $response->get_data();
+		$this->assertArrayHasKey( 'indexnow_last_result', $data );
+	}
+
+	// ------------------------------------------------------------------
 	// Authorization (Finding #7 — wiring + capability)
 	// ------------------------------------------------------------------
 
