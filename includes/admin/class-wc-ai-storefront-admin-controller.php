@@ -418,20 +418,19 @@ class WC_AI_Storefront_Admin_Controller {
 	 * Returns the persisted settings merged with the current IndexNow key so
 	 * the React UI can display it without a separate request.
 	 *
-	 * `indexnow_key` is read directly from the settings array rather than via
-	 * `get_key()` to avoid triggering key-generation (and the `get_option()`
-	 * call inside `regenerate_key()`) on every GET request. The key is
-	 * generated on-demand: a merchant who has never rotated their key will see
-	 * an empty string here until they load the admin page and trigger the first
-	 * key generation via the POST /regenerate-indexnow-key endpoint. If the
-	 * UI wants to display a key immediately on first load it should call
+	 * `indexnow_key` is read via `peek_key()` (which reads the dedicated
+	 * KEY_OPTION without generating a new key) rather than `get_key()`, to
+	 * avoid triggering key-generation on every GET request. A merchant who has
+	 * never rotated their key will see an empty string here until they trigger
+	 * the first key generation via POST /regenerate-indexnow-key. If the UI
+	 * wants to display a key immediately on first load it should call
 	 * POST /regenerate-indexnow-key once when the value is empty.
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function get_settings() {
 		$settings                 = WC_AI_Storefront::get_settings();
-		$settings['indexnow_key'] = (string) ( $settings['indexnow_key'] ?? '' );
+		$settings['indexnow_key'] = ( new WC_AI_Storefront_IndexNow() )->peek_key();
 		return new WP_REST_Response( $settings );
 	}
 

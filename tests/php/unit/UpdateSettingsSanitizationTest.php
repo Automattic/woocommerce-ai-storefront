@@ -334,29 +334,19 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
-	// indexnow_key persistence — generated state must survive a save
+	// indexnow_key isolation — update_settings() must NOT write the key
 	// ------------------------------------------------------------------
 	//
-	// The IndexNow key is written by WC_AI_Storefront_IndexNow::regenerate_key()
-	// into the SETTINGS_OPTION alongside every other setting. Because
-	// update_settings() rebuilds $clean from a strict whitelist, any key
-	// NOT in that whitelist is silently dropped on the next admin save.
-	// The fix carries `indexnow_key` forward from the merged array so the
-	// generated state is never erased by an unrelated settings change.
-	// This test must FAIL without that carry-forward line and PASS with it.
+	// The IndexNow key now lives in its own dedicated option
+	// (wc_ai_storefront_indexnow_key), not in SETTINGS_OPTION. Consequently
+	// update_settings() must not touch that option at all. This test asserts
+	// the isolation: calling update_settings([]) must leave the key option
+	// untouched (the stub's $test_settings never gains an indexnow_key key).
 
-	public function test_indexnow_key_survives_settings_save(): void {
-		// Seed a known key into stored settings (simulates what
-		// regenerate_key() would have written).
-		WC_AI_Storefront::$test_settings = [
-			'indexnow_key' => 'xyzzy123fakekey',
-		];
-
-		// Perform an unrelated settings change — IndexNow key should survive.
-		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => 'no' ] );
-
+	public function test_update_settings_does_not_write_indexnow_key(): void {
+		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::update_settings( [] );
 		$result = WC_AI_Storefront::get_settings();
-		$this->assertArrayHasKey( 'indexnow_key', $result );
-		$this->assertSame( 'xyzzy123fakekey', $result['indexnow_key'] );
+		$this->assertArrayNotHasKey( 'indexnow_key', $result );
 	}
 }

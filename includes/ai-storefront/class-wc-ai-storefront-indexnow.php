@@ -23,9 +23,14 @@ class WC_AI_Storefront_IndexNow {
 	private const ENDPOINT = 'https://api.indexnow.org/indexnow';
 
 	/**
-	 * Settings key holding the generated IndexNow key.
+	 * Dedicated option holding the generated IndexNow key.
+	 *
+	 * Stored separately from SETTINGS_OPTION so a settings save never
+	 * erases or carries forward the key, and there is no stale-cache risk
+	 * from regenerate_key() updating the option while a static $settings_cache
+	 * still holds the old value.
 	 */
-	private const KEY_SETTING = 'indexnow_key';
+	private const KEY_OPTION = 'wc_ai_storefront_indexnow_key';
 
 	/**
 	 * Option holding the deduped pending-URL set between debounce windows.
@@ -63,10 +68,13 @@ class WC_AI_Storefront_IndexNow {
 
 	/**
 	 * The IndexNow key, generating and persisting one on first use.
+	 *
+	 * Reads from the dedicated KEY_OPTION (not from SETTINGS_OPTION) so a
+	 * settings save never erases the key, and there is no stale-cache risk
+	 * from the static $settings_cache that WC_AI_Storefront maintains.
 	 */
 	public function get_key(): string {
-		$settings = WC_AI_Storefront::get_settings();
-		$key      = (string) ( $settings[ self::KEY_SETTING ] ?? '' );
+		$key = (string) get_option( self::KEY_OPTION, '' );
 		if ( '' !== $key ) {
 			return $key;
 		}
@@ -74,24 +82,33 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
-	 * Generate a fresh key, persist it, and return it.
+	 * Return the stored key WITHOUT generating one if absent.
+	 *
+	 * Used by the settings GET payload to expose the current key to the React
+	 * UI without triggering key-generation on every read request.
+	 */
+	public function peek_key(): string {
+		return (string) get_option( self::KEY_OPTION, '' );
+	}
+
+	/**
+	 * Generate a fresh key, persist it to the dedicated option, and return it.
+	 *
+	 * Writes only to KEY_OPTION — never touches SETTINGS_OPTION — so there is
+	 * no read-modify-write of the settings blob and no $settings_cache concern.
 	 */
 	public function regenerate_key(): string {
-		$key      = bin2hex( random_bytes( 16 ) ); // 32 lowercase hex chars.
-		$settings = get_option( WC_AI_Storefront::SETTINGS_OPTION, array() );
-		if ( ! is_array( $settings ) ) {
-			$settings = array();
-		}
-		$settings[ self::KEY_SETTING ] = $key;
-		update_option( WC_AI_Storefront::SETTINGS_OPTION, $settings );
+		$key = bin2hex( random_bytes( 16 ) ); // 32 lowercase hex chars.
+		update_option( self::KEY_OPTION, $key );
 		return $key;
 	}
 
 	/**
-	 * Register the {key}.txt rewrite rule. The hex-only pattern cannot shadow
-	 * robots.txt / llms.txt / ads.txt (those names contain non-hex letters);
+	 * Register the {key}.txt rewrite rule. The pattern matches IndexNow's key
+	 * charset (hex + dash, case-insensitive) and cannot shadow robots.txt /
+	 * llms.txt / ads.txt (those names include letters outside [a-fA-F0-9-]);
 	 * serve_key_file() additionally requires an exact match against the stored
-	 * key, so even another hex *.txt request 404s.
+	 * key, so even another matching *.txt request 404s.
 	 */
 	public function add_rewrite_rules(): void {
 		add_rewrite_rule( '^([a-fA-F0-9-]{8,128})\.txt$', 'index.php?' . self::KEY_QUERY_VAR . '=$matches[1]', 'top' );
@@ -117,7 +134,8 @@ class WC_AI_Storefront_IndexNow {
 		if ( '' === $requested ) {
 			return;
 		}
-		if ( ! $this->is_enabled() || ! hash_equals( $this->get_key(), $requested ) ) {
+		$key = $this->get_key();
+		if ( ! $this->is_enabled() || ! hash_equals( $key, $requested ) ) {
 			status_header( 404 );
 			$this->terminate();
 			return;
@@ -125,7 +143,7 @@ class WC_AI_Storefront_IndexNow {
 		header( 'Content-Type: text/plain; charset=utf-8' );
 		header( 'X-Content-Type-Options: nosniff' );
 		status_header( 200 );
-		echo $this->get_key(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- hex key, no escaping needed
+		echo $key; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- hex key, no escaping needed
 		$this->terminate();
 	}
 

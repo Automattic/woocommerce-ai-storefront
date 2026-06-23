@@ -39,23 +39,64 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_key_generates_and_persists_hex_key(): void {
-		$stored = null;
-		Functions\when( 'get_option' )->justReturn( array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes' ) );
+		$stored_key  = null;
+		$option_name = null;
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) {
+				// Dedicated key option is empty — triggers generation.
+				if ( 'wc_ai_storefront_indexnow_key' === $name ) {
+					return '';
+				}
+				return $default;
+			}
+		);
 		Functions\expect( 'update_option' )->once()->andReturnUsing(
-			function ( $name, $value ) use ( &$stored ) {
-				$stored = $value['indexnow_key'] ?? null;
+			function ( $name, $value ) use ( &$stored_key, &$option_name ) {
+				$option_name = $name;
+				$stored_key  = $value;
 				return true;
 			}
 		);
 		$key = $this->indexnow->get_key();
 		$this->assertMatchesRegularExpression( '/^[a-f0-9]{32}$/', $key );
-		$this->assertSame( $key, $stored );
+		$this->assertSame( 'wc_ai_storefront_indexnow_key', $option_name );
+		$this->assertSame( $key, $stored_key );
 	}
 
 	public function test_get_key_returns_existing_without_regenerating(): void {
-		WC_AI_Storefront::$test_settings['indexnow_key'] = 'abc123abc123abc123abc123abc12300';
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) {
+				if ( 'wc_ai_storefront_indexnow_key' === $name ) {
+					return 'abc123abc123abc123abc123abc12300';
+				}
+				return $default;
+			}
+		);
 		Functions\expect( 'update_option' )->never();
 		$this->assertSame( 'abc123abc123abc123abc123abc12300', $this->indexnow->get_key() );
+	}
+
+	public function test_peek_key_returns_stored_value_without_generating(): void {
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) {
+				if ( 'wc_ai_storefront_indexnow_key' === $name ) {
+					return 'peek000peek000peek000peek000peek0';
+				}
+				return $default;
+			}
+		);
+		Functions\expect( 'update_option' )->never();
+		$this->assertSame( 'peek000peek000peek000peek000peek0', $this->indexnow->peek_key() );
+	}
+
+	public function test_peek_key_returns_empty_string_when_unset(): void {
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) {
+				return $default; // nothing stored
+			}
+		);
+		Functions\expect( 'update_option' )->never();
+		$this->assertSame( '', $this->indexnow->peek_key() );
 	}
 
 	public function test_is_enabled_requires_both_flags(): void {
@@ -68,11 +109,15 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_serve_key_file_outputs_key_on_match(): void {
-		WC_AI_Storefront::$test_settings['indexnow_key'] = 'abcabcabcabcabcabcabcabcabcabc99';
-		Functions\when( 'get_option' )->justReturn(
-			array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'indexnow_key' => 'abcabcabcabcabcabcabcabcabcabc99' )
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) {
+				if ( 'wc_ai_storefront_indexnow_key' === $name ) {
+					return 'abcabcabcabcabcabcabcabcabc99';
+				}
+				return $default;
+			}
 		);
-		Functions\when( 'get_query_var' )->justReturn( 'abcabcabcabcabcabcabcabcabcabc99' );
+		Functions\when( 'get_query_var' )->justReturn( 'abcabcabcabcabcabcabcabcabc99' );
 		Functions\expect( 'status_header' )->once()->with( 200 );
 		ob_start();
 		try {
@@ -80,13 +125,17 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		} catch ( \WC_AI_Storefront_IndexNow_Exit $e ) {
 			// serve_key_file() calls $this->terminate() which throws in tests.
 		}
-		$this->assertSame( 'abcabcabcabcabcabcabcabcabcabc99', ob_get_clean() );
+		$this->assertSame( 'abcabcabcabcabcabcabcabcabc99', ob_get_clean() );
 	}
 
 	public function test_serve_key_file_404_on_mismatch(): void {
-		WC_AI_Storefront::$test_settings['indexnow_key'] = 'realkeyrealkeyrealkeyrealkey0001';
-		Functions\when( 'get_option' )->justReturn(
-			array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'indexnow_key' => 'realkeyrealkeyrealkeyrealkey0001' )
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) {
+				if ( 'wc_ai_storefront_indexnow_key' === $name ) {
+					return 'realkeyrealkeyrealkeyrealkey0001';
+				}
+				return $default;
+			}
 		);
 		Functions\when( 'get_query_var' )->justReturn( 'gibberishgibberishgibberish00000' );
 		Functions\expect( 'status_header' )->once()->with( 404 );
@@ -275,14 +324,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_flush_posts_payload_with_host_key_and_urls(): void {
-		// Provide the IndexNow key in test_settings so get_key() returns it directly
-		// without calling regenerate_key() (which would call update_option).
-		WC_AI_Storefront::$test_settings = array(
-			'enabled'        => 'yes',
-			'indexnow_enabled' => 'yes',
-			'indexnow_key'   => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		$store = array(
+			'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ),
+			'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
 		);
-		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
 		Functions\when( 'get_option' )->alias(
 			static function ( $n, $d = false ) use ( &$store ) {
 				return $store[ $n ] ?? $d;
@@ -318,8 +363,8 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_flush_noop_when_queue_empty(): void {
 		Functions\when( 'get_option' )->alias(
-			static fn( $n, $d = false ) => WC_AI_Storefront::SETTINGS_OPTION === $n
-				? array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' )
+			static fn( $n, $d = false ) => 'wc_ai_storefront_indexnow_key' === $n
+				? 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0'
 				: ( $d )
 		);
 		Functions\when( 'delete_option' )->justReturn( true );
@@ -329,14 +374,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_flush_requeues_and_reschedules_on_429(): void {
-		// Provide the IndexNow key in test_settings so get_key() returns it directly
-		// without calling regenerate_key() (which would call update_option).
-		WC_AI_Storefront::$test_settings = array(
-			'enabled'          => 'yes',
-			'indexnow_enabled' => 'yes',
-			'indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		$store = array(
+			'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ),
+			'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
 		);
-		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
 		Functions\when( 'get_option' )->alias(
 			static function ( $n, $d = false ) use ( &$store ) {
 				return $store[ $n ] ?? $d;
@@ -363,14 +404,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_flush_drops_without_requeue_on_403(): void {
-		// Provide the IndexNow key in test_settings so get_key() returns it directly
-		// without calling regenerate_key() (which would call update_option).
-		WC_AI_Storefront::$test_settings = array(
-			'enabled'          => 'yes',
-			'indexnow_enabled' => 'yes',
-			'indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		$store = array(
+			'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ),
+			'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
 		);
-		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
 		Functions\when( 'get_option' )->alias(
 			static function ( $n, $d = false ) use ( &$store ) {
 				return $store[ $n ] ?? $d;
