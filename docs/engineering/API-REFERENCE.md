@@ -839,6 +839,56 @@ Aggregated crawler-visibility stats for the Discovery tab. Reads from the summar
 
 `rollup_interval` is the validated cron recurrence slug currently in use: one of `"hourly"` (default), `"twicedaily"`, or `"daily"`. This is the value returned by `WC_AI_Storefront_Crawl_Logger::get_effective_rollup_interval()` — the same logic used by `schedule_crons()`. Like `raw_event_count`, this field is **not cached** in the transient — it's injected live on every response (cache-hit and fresh paths alike) so a `wc_ai_storefront_rollup_interval` filter change is reflected on the very next request. Clients use this to render a specific subtitle ("Updated hourly.", "Updated every 12 hours.", "Updated daily.") rather than a generic fallback.
 
+### `POST /regenerate-indexnow-key`
+
+Generates a new IndexNow ownership key and persists it, replacing the existing one. The old key file path (`/{old_key}.txt`) immediately returns 404; the new key is served at `/{new_key}.txt`.
+
+**Permission:** `manage_woocommerce`.
+
+**Body:** none.
+
+**Response:**
+
+```json
+{
+  "indexnow_key": "a1b2c3d4e5f6789012345678901234ab"
+}
+```
+
+`indexnow_key` is the new key string (a 32-character lowercase hex token). The key file is served publicly at `https://your-store.com/{indexnow_key}.txt` (plain text, the key value only, HTTP 200 with no redirect). Engines fetch that file to confirm site ownership before trusting submissions.
+
+### `POST /indexnow-submit-all`
+
+Enqueues an immediate WP-Cron job that submits every published product URL, every published category URL, and the discovery surfaces (homepage, `/shop/`, `/llms.txt`, `/products.json`) to IndexNow. Returns the last-submission result after the job completes (synchronous in the sense that the REST handler waits for the cron job's immediate dispatch, then reads the stored result). This is the same action triggered by the "Submit entire catalog now" button on the Discovery tab and by the automatic first-enable seed.
+
+**Permission:** `manage_woocommerce`.
+
+**Body:** none.
+
+**Response:**
+
+```json
+{
+  "indexnow_last_result": {
+    "time": "2026-06-23T14:07:02Z",
+    "count": 62,
+    "code": 200,
+    "ok": true
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `time` | string | ISO 8601 UTC timestamp of the submission. |
+| `count` | int | Number of URLs included in the submission batch. |
+| `code` | int | HTTP response code returned by the IndexNow endpoint. `200` = accepted and key validated; `202` = accepted, key validation pending; `4xx`/`5xx` = error. |
+| `ok` | bool | `true` when `code` is 200 or 202 (submission reached the engine); `false` on network or server error. |
+
+### `GET /{key}.txt` (public key file)
+
+Not an Admin REST route — served via a rewrite rule at the virtual path `/{key}.txt`, where `{key}` is the stored `indexnow_key` option value. Returns the key as plain text (`text/plain`) with HTTP 200 and no redirect. Engines fetch this to complete ownership verification after a submission. Returns 404 for any path that does not match the current key.
+
 ---
 
 ## See also

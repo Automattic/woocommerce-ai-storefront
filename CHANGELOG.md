@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Docs
+
+- **User guide + API reference now document IndexNow.** Added §6 "Instant indexing (IndexNow)" subsection to the User Guide (opt-in toggle, verification key, Submit entire catalog now, status line, engine list with Google caveat) plus a §10 troubleshooting entry for HTTP 202 / key-validation issues. Added IndexNow admin routes (`POST /regenerate-indexnow-key`, `POST /indexnow-submit-all`, `GET /{key}.txt`) to the API Reference.
+
 ---
 
 ## [0.28.1] – 2026-06-23
