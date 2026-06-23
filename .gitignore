@@ -26,3 +26,6 @@ release-staging/
 # without committing those to the shared compose file.
 /.env
 /docker-compose.override.yml
+
+# Subagent-driven-development scratch (briefs, reports, review packages).
+/.superpowers/
