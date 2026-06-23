@@ -329,11 +329,13 @@ class WC_AI_Storefront_IndexNow {
 		$response = wp_remote_post(
 			self::ENDPOINT,
 			array(
-				'timeout'   => 5,
-				'blocking'  => true,
-				'headers'   => array( 'Content-Type' => 'application/json; charset=utf-8' ),
-				'body'      => wp_json_encode( $body ),
-				'sslverify' => ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
+				'timeout'  => 5,
+				'blocking' => true,
+				'headers'  => array( 'Content-Type' => 'application/json; charset=utf-8' ),
+				'body'     => wp_json_encode( $body ),
+				// TLS verification left at WordPress's default (on). The endpoint
+				// is a fixed public HTTPS API with a valid certificate, so there
+				// is never a reason to disable it here.
 			)
 		);
 
