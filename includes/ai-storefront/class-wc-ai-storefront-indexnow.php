@@ -160,6 +160,23 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
+	 * Skip WordPress's canonical trailing-slash redirect for the key-file
+	 * request. IndexNow validators fetch the key at the exact `/{key}.txt`
+	 * URL; on trailing-slash-permalink sites (the WordPress default) WP would
+	 * otherwise 301 it to `/{key}.txt/` and key validation would fail. Mirrors
+	 * the llms.txt / UCP / products.json rewrite endpoints. See issue #542.
+	 *
+	 * @param string|false $redirect_url Candidate canonical URL.
+	 * @return string|false False to skip the redirect, else the URL unchanged.
+	 */
+	public function suppress_canonical_redirect( $redirect_url ) {
+		if ( '' !== (string) get_query_var( self::KEY_QUERY_VAR ) ) {
+			return false;
+		}
+		return $redirect_url;
+	}
+
+	/**
 	 * Terminate the request. Isolated so unit tests can intercept it instead of
 	 * killing the test process.
 	 *

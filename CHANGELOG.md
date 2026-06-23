@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixes
+
+- **IndexNow key file now serves directly, so submissions actually validate (#542).** On sites with trailing-slash permalinks (the WordPress default), the `/{key}.txt` ownership file was 301-redirected to `/{key}.txt/`. IndexNow validators fetch the exact `/{key}.txt` and don't follow that redirect, so key validation never completed and submitted URLs were silently dropped (the submission stays at HTTP 202 "validation pending"). The key file now returns a 200 at `/{key}.txt`, matching the llms.txt / UCP / products.json endpoints.
+
 ---
 
 ## [0.28.0] – 2026-06-23

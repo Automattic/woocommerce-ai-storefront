@@ -846,4 +846,27 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'no' ) );
 		$this->assertFalse( WC_AI_Storefront::$_seed_transition_detected );
 	}
+
+	// --- Canonical-redirect suppression for the key file (#542). IndexNow
+	// validators fetch the exact /{key}.txt; without this, trailing-slash
+	// permalink sites 301 it to /{key}.txt/ and validation fails. ---
+
+	public function test_canonical_redirect_suppressed_for_key_file(): void {
+		Functions\when( 'get_query_var' )->alias(
+			static fn( $var ) => 'wc_ai_storefront_indexnow_key' === $var
+				? 'abc123abc123abc123abc123abc12300'
+				: ''
+		);
+		$this->assertFalse(
+			$this->indexnow->suppress_canonical_redirect( 'https://example.com/abc123abc123abc123abc123abc12300.txt/' )
+		);
+	}
+
+	public function test_canonical_redirect_untouched_when_key_var_not_set(): void {
+		Functions\when( 'get_query_var' )->justReturn( '' );
+		$this->assertSame(
+			'https://example.com/some-page/',
+			$this->indexnow->suppress_canonical_redirect( 'https://example.com/some-page/' )
+		);
+	}
 }
