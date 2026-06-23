@@ -18,6 +18,9 @@ describe( 'formatIndexNowStatus', () => {
 		expect( formatIndexNowStatus( undefined, now ) ).toBe(
 			'No submissions yet.'
 		);
+		// PHP's empty array() JSON-encodes to [], which is the actual wire
+		// value for "never submitted" — pin it, not just {} / undefined.
+		expect( formatIndexNowStatus( [], now ) ).toBe( 'No submissions yet.' );
 	} );
 	it( 'reports a successful submission', () => {
 		expect(
