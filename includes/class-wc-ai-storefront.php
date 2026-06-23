@@ -336,6 +336,7 @@ class WC_AI_Storefront {
 		add_filter( 'redirect_canonical', [ $llms_txt, 'suppress_canonical_redirect' ], 10, 1 );
 		add_filter( 'redirect_canonical', [ $ucp, 'suppress_canonical_redirect' ], 10, 1 );
 		add_filter( 'redirect_canonical', [ $products_feed, 'suppress_canonical_redirect' ], 10, 1 );
+		add_filter( 'redirect_canonical', [ $indexnow, 'suppress_canonical_redirect' ], 10, 1 );
 
 		// Flush rewrite rules and bust content caches when needed:
 		//
