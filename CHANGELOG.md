@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Features
+
+- **IndexNow settings, controls, and a "Submit entire catalog now" action (#534, #540).** The IndexNow integration added in 0.27.0 now has a Discovery-tab card: turn it on or off, view and regenerate the ownership key (with a link to the `/{key}.txt` verification file), and see the last submission result.
+  - **Now opt-in:** IndexNow defaults to off and is enabled from the new card (it was on-by-default in 0.27.0).
+  - **Force-submit + first-enable seed:** a "Submit entire catalog now" button, plus an automatic seed when you first enable it, pushes every published product and category URL at once, so a new or freshly-imported store gets indexed right away instead of waiting for the change feed.
+  - **Accurate scope:** the card names the engines that actually consume IndexNow (Bing, Yandex, Seznam, Naver, Yep); Google does not.
+
 ### Fixes
 
 - **Category and product pages always emit a meta description again (#537).** The 0.27.0 Jetpack-coexistence fix suppressed Jetpack's description on commerce pages, but pages whose source text was empty (a category with no term description, a product with no short or long description) were then left with no `<meta name="description">` and no `og:description` at all. Bing Webmaster flagged the missing descriptions on category pages.
