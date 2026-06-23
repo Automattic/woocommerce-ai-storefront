@@ -206,6 +206,7 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_product' )->justReturn( $this->indexable_product( 42 ) );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
 		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
 		$this->indexnow->on_product_change( 42 );
 		$this->assertContains( 'https://shop.test/product/x/', $captured );
 		$this->assertContains( 'https://shop.test/llms.txt', $captured );
@@ -216,6 +217,60 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'update_option' )->never();
 		Functions\expect( 'wp_schedule_single_event' )->never();
 		$this->indexnow->on_product_change( 42 );
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_on_product_removed_enqueues_permalink_unconditionally(): void {
+		$captured = array();
+		$store    = array();
+		Functions\when( 'get_option' )->alias( static fn( $n, $d = false ) => $store[ $n ] ?? $d );
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store, &$captured ) {
+				$store[ $n ] = $v;
+				$captured    = $v;
+				return true;
+			}
+		);
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 30 );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/removed/' );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		$this->indexnow->on_product_removed( 99 );
+		$this->assertContains( 'https://shop.test/product/removed/', $captured );
+		$this->assertContains( 'https://shop.test/llms.txt', $captured );
+	}
+
+	public function test_on_product_removed_noop_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		Functions\expect( 'update_option' )->never();
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->on_product_removed( 99 );
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_on_term_change_enqueues_term_link_and_surfaces(): void {
+		$captured = array();
+		$store    = array();
+		Functions\when( 'get_option' )->alias( static fn( $n, $d = false ) => $store[ $n ] ?? $d );
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store, &$captured ) {
+				$store[ $n ] = $v;
+				$captured    = $v;
+				return true;
+			}
+		);
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 30 );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/gadgets/' );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		$this->indexnow->on_term_change( 7 );
+		$this->assertContains( 'https://shop.test/product-category/gadgets/', $captured );
+		$this->assertContains( 'https://shop.test/llms.txt', $captured );
+	}
+
+	public function test_on_term_change_noop_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		Functions\expect( 'update_option' )->never();
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->on_term_change( 7 );
 		$this->addToAssertionCount( 1 );
 	}
 }
