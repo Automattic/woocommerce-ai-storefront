@@ -90,7 +90,7 @@ class WC_AI_Storefront {
 			// once syndication itself is on. The change-hooks ALSO require
 			// `enabled === 'yes'` (gated by `init_components()`), so this toggle
 			// only takes effect when syndication is active.
-			'indexnow_enabled'         => 'yes',
+			'indexnow_enabled'         => 'no',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
 			// `unconfigured` mode emits NO policy block — merchants
@@ -798,13 +798,13 @@ class WC_AI_Storefront {
 		}
 
 		// IndexNow instant-indexing toggle. Same strict yes/no enum +
-		// resolve-once pattern as `$mcp_enabled` above. Default `'yes'`
-		// (opt-out) — the change-hooks also require `enabled === 'yes'`
+		// resolve-once pattern as `$mcp_enabled` above. Default `'no'`
+		// (opt-in) — the change-hooks also require `enabled === 'yes'`
 		// (gated by `init_components()`), so this only matters once
 		// syndication is on.
-		$indexnow_enabled = $merged['indexnow_enabled'] ?? 'yes';
+		$indexnow_enabled = $merged['indexnow_enabled'] ?? 'no';
 		if ( ! in_array( $indexnow_enabled, [ 'yes', 'no' ], true ) ) {
-			$indexnow_enabled = 'yes';
+			$indexnow_enabled = 'no';
 		}
 
 		// Map legacy mode aliases to their canonical form. Old stores may

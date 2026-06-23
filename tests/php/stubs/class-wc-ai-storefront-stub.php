@@ -95,9 +95,9 @@ class WC_AI_Storefront {
 				// reads this with the same `'yes' ===` strictness as the
 				// production gate. See the stub doc (lines 8–12) on drift.
 				'products_json_enabled'    => 'yes',
-				// Mirror production default. IndexNow is opt-out (default
-				// 'yes') gated by syndication. See the stub doc on drift.
-				'indexnow_enabled'         => 'yes',
+				// Mirror production default. IndexNow is opt-in (default
+				// 'no') gated by syndication. See the stub doc on drift.
+				'indexnow_enabled'         => 'no',
 			],
 			self::$test_settings
 		);
@@ -338,12 +338,12 @@ class WC_AI_Storefront {
 			$sanitized_products_json_enabled = 'yes';
 		}
 
-		// Mirror production: strict yes/no enum, default `'yes'`, anything
-		// else falls back to `'yes'`. See
+		// Mirror production: strict yes/no enum, default `'no'`, anything
+		// else falls back to `'no'`. See
 		// `includes/class-wc-ai-storefront.php::update_settings()`.
-		$sanitized_indexnow_enabled = $merged['indexnow_enabled'] ?? 'yes';
+		$sanitized_indexnow_enabled = $merged['indexnow_enabled'] ?? 'no';
 		if ( ! in_array( $sanitized_indexnow_enabled, [ 'yes', 'no' ], true ) ) {
-			$sanitized_indexnow_enabled = 'yes';
+			$sanitized_indexnow_enabled = 'no';
 		}
 
 		$overrides = [
