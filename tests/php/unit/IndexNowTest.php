@@ -273,4 +273,92 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->indexnow->on_term_change( 7 );
 		$this->addToAssertionCount( 1 );
 	}
+
+	public function test_flush_posts_payload_with_host_key_and_urls(): void {
+		// Provide the IndexNow key in test_settings so get_key() returns it directly
+		// without calling regenerate_key() (which would call update_option).
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'indexnow_enabled' => 'yes',
+			'indexnow_key'   => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		);
+		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		$posted = null;
+		Functions\expect( 'wp_remote_post' )->once()->andReturnUsing(
+			function ( $url, $args ) use ( &$posted ) {
+				$posted = array( 'url' => $url, 'body' => json_decode( $args['body'], true ) );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
+		// is_wp_error() and wp_parse_url() are defined in stubs.php before Patchwork
+		// loads, so they cannot be redefined via Brain Monkey. The stubs work correctly:
+		// is_wp_error() returns false for plain arrays; wp_parse_url() extracts the host.
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		$this->indexnow->flush();
+		$this->assertSame( 'https://api.indexnow.org/indexnow', $posted['url'] );
+		$this->assertSame( 'shop.test', $posted['body']['host'] );
+		$this->assertSame( 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0', $posted['body']['key'] );
+		$this->assertSame( array( 'https://shop.test/a' ), $posted['body']['urlList'] );
+	}
+
+	public function test_flush_noop_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		Functions\when( 'get_option' )->justReturn( array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) ) );
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\expect( 'wp_remote_post' )->never();
+		$this->indexnow->flush();
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_flush_noop_when_queue_empty(): void {
+		Functions\when( 'get_option' )->alias(
+			static fn( $n, $d = false ) => WC_AI_Storefront::SETTINGS_OPTION === $n
+				? array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' )
+				: ( $d )
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\expect( 'wp_remote_post' )->never();
+		$this->indexnow->flush();
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_flush_requeues_and_reschedules_on_429(): void {
+		// Provide the IndexNow key in test_settings so get_key() returns it directly
+		// without calling regenerate_key() (which would call update_option).
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'yes',
+			'indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		);
+		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		$requeued = null;
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$requeued ) {
+				if ( 'wc_ai_storefront_indexnow_pending' === $n ) {
+					$requeued = $v;
+				}
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		// wp_parse_url() and is_wp_error() are defined in stubs.php before Patchwork
+		// loads and cannot be redefined. The stubs work correctly for these inputs.
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 429 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 429 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\expect( 'wp_schedule_single_event' )->once()->andReturn( true );
+		$this->indexnow->flush();
+		$this->assertSame( array( 'https://shop.test/a' ), $requeued );
+	}
 }

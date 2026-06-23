@@ -345,6 +345,15 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			$this->external_url = $url;
 		}
 
+		/**
+		 * Post status of the product. Declared so PHPStan resolves the
+		 * `get_status()` call in `WC_AI_Storefront_IndexNow::is_product_indexable()`.
+		 * Tests override via Mockery (`shouldReceive('get_status')->andReturn('publish')`).
+		 */
+		public function get_status(): string {
+			return 'publish';
+		}
+
 		public function is_purchasable(): bool {
 			return true;
 		}

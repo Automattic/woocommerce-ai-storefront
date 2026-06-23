@@ -287,4 +287,57 @@ class WC_AI_Storefront_IndexNow {
 			wp_schedule_single_event( time() + self::FLUSH_DELAY, self::FLUSH_HOOK );
 		}
 	}
+
+	/**
+	 * Cron handler: submit the pending batch to IndexNow. Gated on is_enabled().
+	 * 429/transport errors re-queue with a fresh debounce; 403/422 are logged
+	 * and dropped (retrying a structurally invalid request will not help).
+	 */
+	public function flush(): void {
+		if ( ! $this->is_enabled() ) {
+			$this->take_pending(); // clear; we are not submitting.
+			return;
+		}
+		$urls = $this->take_pending();
+		if ( empty( $urls ) ) {
+			return;
+		}
+
+		$body     = array(
+			'host'    => (string) wp_parse_url( home_url( '/' ), PHP_URL_HOST ),
+			'key'     => $this->get_key(),
+			'urlList' => array_values( $urls ),
+		);
+		$response = wp_remote_post(
+			self::ENDPOINT,
+			array(
+				'timeout'   => 5,
+				'blocking'  => true,
+				'headers'   => array( 'Content-Type' => 'application/json; charset=utf-8' ),
+				'body'      => wp_json_encode( $body ),
+				'sslverify' => ! ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
+			)
+		);
+
+		if ( is_wp_error( $response ) ) {
+			WC_AI_Storefront_Logger::debug( 'IndexNow transport error: %s — re-queuing %d URLs', $response->get_error_message(), count( $urls ) );
+			$this->enqueue( $urls );
+			$this->schedule_flush();
+			return;
+		}
+
+		$code = (int) wp_remote_retrieve_response_code( $response );
+		if ( 200 === $code || 202 === $code ) {
+			WC_AI_Storefront_Logger::debug( 'IndexNow submitted %d URLs (HTTP %d)', count( $urls ), $code );
+			return;
+		}
+		if ( 429 === $code ) {
+			WC_AI_Storefront_Logger::debug( 'IndexNow rate-limited (429) — re-queuing %d URLs', count( $urls ) );
+			$this->enqueue( $urls );
+			$this->schedule_flush();
+			return;
+		}
+		// 403 (key not served), 422 (host/schema mismatch), or other: log + drop.
+		WC_AI_Storefront_Logger::debug( 'IndexNow submission failed (HTTP %d) — dropping %d URLs. If 403, the {key}.txt rewrite may need flushing.', $code, count( $urls ) );
+	}
 }
