@@ -2,8 +2,9 @@
  * Discovery-tab card: Instant indexing (IndexNow).
  *
  * Lets the merchant turn IndexNow on/off, see and regenerate the ownership
- * key, and read the last submission result. Submits public URLs to IndexNow
- * (Bing/ChatGPT Search/Copilot/Amazonbot); Google does not consume IndexNow.
+ * key, and read the last submission result. When enabled, the plugin submits
+ * public URLs to IndexNow (Bing/ChatGPT Search/Copilot/Amazonbot) from the
+ * server-side flush cron, not from this card; Google does not consume IndexNow.
  */
 
 import { useState } from '@wordpress/element';
@@ -102,8 +103,8 @@ export function formatIndexNowStatus( lastResult, nowSeconds ) {
  * @param {Object}   props.settings   Plugin settings.
  * @param {Function} props.onChange   Settings updater.
  * @param {string}   props.keyFileUrl Public URL of the `{key}.txt` ownership
- *                                    file ('' until a key exists / endpoints
- *                                    load).
+ *                                    file ('' until a key exists AND endpoints
+ *                                    load; the link is also gated on the key).
  * @return {JSX.Element} Card.
  */
 export function IndexNowCard( { settings, onChange, keyFileUrl } ) {

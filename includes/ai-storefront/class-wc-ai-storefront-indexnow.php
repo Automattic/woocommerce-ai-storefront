@@ -352,10 +352,15 @@ class WC_AI_Storefront_IndexNow {
 	 */
 	public function flush(): void {
 		if ( ! $this->is_enabled() ) {
+			// Disabled mid-flight: drop the pending batch without recording a
+			// result. The status line reflects only actual submissions, so it
+			// intentionally keeps showing the prior outcome here. Do NOT add a
+			// record_result() call: it would report a phantom attempt.
 			$this->take_pending(); // clear; we are not submitting.
 			return;
 		}
 		$urls = $this->take_pending();
+		// Empty queue: nothing was attempted, so leave the last result as-is.
 		if ( empty( $urls ) ) {
 			return;
 		}

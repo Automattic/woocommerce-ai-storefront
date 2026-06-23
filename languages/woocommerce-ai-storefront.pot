@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-23T18:57:53+00:00\n"
+"POT-Creation-Date: 2026-06-23T20:49:49+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -740,7 +740,7 @@ msgstr ""
 
 #: client/settings/ai-storefront/ai-orders-table.js:367
 #: client/settings/ai-storefront/ai-orders-table.js:652
-#: client/settings/ai-storefront/endpoint-info.js:1824
+#: client/settings/ai-storefront/endpoint-info.js:1825
 msgid "Status"
 msgstr ""
 
@@ -904,284 +904,284 @@ msgstr ""
 msgid "Search queries from AI agents will appear here."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1738
+#: client/settings/ai-storefront/endpoint-info.js:1739
 msgid "AI agent access"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1747
+#: client/settings/ai-storefront/endpoint-info.js:1748
 msgid "How AI agents find and interact with your site."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1757
+#: client/settings/ai-storefront/endpoint-info.js:1758
 msgid "Discovery endpoints"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1769
+#: client/settings/ai-storefront/endpoint-info.js:1770
 msgid "These endpoints are automatically available when AI Storefront is enabled."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1790
+#: client/settings/ai-storefront/endpoint-info.js:1791
 msgid "Reachability is checked from your browser."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1804
+#: client/settings/ai-storefront/endpoint-info.js:1805
 msgid "AI Storefront is currently disabled. Enable it in the Overview tab to activate these endpoints."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1815
+#: client/settings/ai-storefront/endpoint-info.js:1816
 msgid "Endpoint"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1821
+#: client/settings/ai-storefront/endpoint-info.js:1822
 msgid "URL"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1830
+#: client/settings/ai-storefront/endpoint-info.js:1831
 msgid "Purpose"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1859
+#: client/settings/ai-storefront/endpoint-info.js:1860
 msgid "Machine-readable store guide for AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1884
+#: client/settings/ai-storefront/endpoint-info.js:1885
 msgid "Universal Commerce Protocol: declares capabilities"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1909
+#: client/settings/ai-storefront/endpoint-info.js:1910
 msgid "AI-crawler allow-list (Allow/Disallow directives appended to your site’s robots.txt)"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1936
+#: client/settings/ai-storefront/endpoint-info.js:1937
 msgid "Structured commerce API for AI agents: catalog search, lookup, and checkout sessions"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1959
+#: client/settings/ai-storefront/endpoint-info.js:1960
 msgid "One or more endpoints are not reachable. If you just upgraded the plugin, try Settings → Permalinks → Save Changes to flush rewrite rules, then click Re-check."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1987
+#: client/settings/ai-storefront/endpoint-info.js:1988
 msgid "Re-check"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:1999
+#: client/settings/ai-storefront/endpoint-info.js:2000
 msgid "Allowed AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2011
+#: client/settings/ai-storefront/endpoint-info.js:2012
 msgid "Control which AI agents are allowed to discover your store via robots.txt."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2037
+#: client/settings/ai-storefront/endpoint-info.js:2038
 msgid "Agentic browsers like ChatGPT Atlas and Perplexity Comet browse as standard Chrome and cannot be managed here. They have no robots.txt user-agent token."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2050
+#: client/settings/ai-storefront/endpoint-info.js:2051
 msgid "Googlebot and Bingbot are included here for AI discoverability (AI Overviews, Copilot). Their general search crawl behavior is also managed by WordPress core and your SEO plugin."
 msgstr ""
 
 #. translators: %1$d: number of allowed AI agents, %2$d: total AI agents
-#: client/settings/ai-storefront/endpoint-info.js:2107
+#: client/settings/ai-storefront/endpoint-info.js:2108
 #, js-format
 msgid "Allowed AI agents: %1$d of %2$d"
 msgstr ""
 
 #. translators: %1$d: allowed count, %2$d: total count
-#: client/settings/ai-storefront/endpoint-info.js:2117
+#: client/settings/ai-storefront/endpoint-info.js:2118
 #, js-format
 msgid "%1$d of %2$d"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2134
-#: client/settings/ai-storefront/endpoint-info.js:2311
+#: client/settings/ai-storefront/endpoint-info.js:2135
+#: client/settings/ai-storefront/endpoint-info.js:2312
 #: client/settings/ai-storefront/product-selection.js:2023
 msgid "Select all"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2166
-#: client/settings/ai-storefront/endpoint-info.js:2351
+#: client/settings/ai-storefront/endpoint-info.js:2167
+#: client/settings/ai-storefront/endpoint-info.js:2352
 msgid "Clear"
 msgstr ""
 
 #. translators: %1$d: allowed count, %2$d: total count
-#: client/settings/ai-storefront/endpoint-info.js:2262
+#: client/settings/ai-storefront/endpoint-info.js:2263
 #, js-format
 msgid "%1$d/%2$d"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2414
+#: client/settings/ai-storefront/endpoint-info.js:2415
 msgid "Other AI agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2427
+#: client/settings/ai-storefront/endpoint-info.js:2428
 msgid "When checked, unrecognized AI agents (brands not matched to a known crawler) can access your store."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2433
+#: client/settings/ai-storefront/endpoint-info.js:2434
 msgid "Allow agents not on the list"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2457
+#: client/settings/ai-storefront/endpoint-info.js:2458
 msgid "When checked, agents can also reach the same catalog and checkout capabilities over MCP, a JSON-RPC transport, alongside the REST endpoints."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2463
+#: client/settings/ai-storefront/endpoint-info.js:2464
 msgid "Enable MCP transport for agents"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2483
+#: client/settings/ai-storefront/endpoint-info.js:2484
 msgid "Lets AI assistants that probe the common /products.json endpoint find your catalog. The data is already public via your storefront."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2489
+#: client/settings/ai-storefront/endpoint-info.js:2490
 msgid "Serve a catalog feed at /products.json"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2533
+#: client/settings/ai-storefront/endpoint-info.js:2534
 msgid "Rate limits"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2542
+#: client/settings/ai-storefront/endpoint-info.js:2543
 msgid "Control how frequently AI agents can query your store. Higher limits allow faster product discovery but use more server resources."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2563
+#: client/settings/ai-storefront/endpoint-info.js:2564
 msgid "Recommended"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2568
+#: client/settings/ai-storefront/endpoint-info.js:2569
 msgid "Works well for most stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2575
+#: client/settings/ai-storefront/endpoint-info.js:2576
 msgid "Conservative"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2580
+#: client/settings/ai-storefront/endpoint-info.js:2581
 msgid "Shared hosting or low-traffic stores."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2587
+#: client/settings/ai-storefront/endpoint-info.js:2588
 msgid "Generous"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2592
+#: client/settings/ai-storefront/endpoint-info.js:2593
 msgid "High-traffic stores on dedicated hosting."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2599
+#: client/settings/ai-storefront/endpoint-info.js:2600
 msgid "Custom"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2607
+#: client/settings/ai-storefront/endpoint-info.js:2608
 msgid "Set your own requests-per-minute cap."
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2698
+#: client/settings/ai-storefront/endpoint-info.js:2699
 msgid "Requests per minute"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2730
+#: client/settings/ai-storefront/endpoint-info.js:2731
 msgid "/ min"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2792
+#: client/settings/ai-storefront/endpoint-info.js:2793
 #: client/settings/ai-storefront/policies-tab.js:1419
 #: client/settings/ai-storefront/product-selection.js:1926
 msgid "Saving…"
 msgstr ""
 
-#: client/settings/ai-storefront/endpoint-info.js:2793
+#: client/settings/ai-storefront/endpoint-info.js:2794
 #: client/settings/ai-storefront/policies-tab.js:1420
 #: client/settings/ai-storefront/product-selection.js:1927
 msgid "Save changes"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:30
+#: client/settings/ai-storefront/indexnow-card.js:31
 msgid "just now"
 msgstr ""
 
 #. translators: %d: number of minutes.
-#: client/settings/ai-storefront/indexnow-card.js:35
+#: client/settings/ai-storefront/indexnow-card.js:36
 #, js-format
 msgid "%dm ago"
 msgstr ""
 
 #. translators: %d: number of hours.
-#: client/settings/ai-storefront/indexnow-card.js:42
+#: client/settings/ai-storefront/indexnow-card.js:43
 #, js-format
 msgid "%dh ago"
 msgstr ""
 
 #. translators: %d: number of days.
-#: client/settings/ai-storefront/indexnow-card.js:48
+#: client/settings/ai-storefront/indexnow-card.js:49
 #, js-format
 msgid "%dd ago"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:62
+#: client/settings/ai-storefront/indexnow-card.js:63
 msgid "No submissions yet."
 msgstr ""
 
 #. translators: 1: URL count, 2: HTTP code, 3: relative time.
-#: client/settings/ai-storefront/indexnow-card.js:68
+#: client/settings/ai-storefront/indexnow-card.js:69
 #, js-format
 msgid "Last submitted: %1$d URL(s) · HTTP %2$d · %3$s"
 msgstr ""
 
 #. translators: %s: relative time.
-#: client/settings/ai-storefront/indexnow-card.js:80
+#: client/settings/ai-storefront/indexnow-card.js:81
 #, js-format
 msgid "Last attempt failed: connection error · %s"
 msgstr ""
 
 #. translators: 1: HTTP code, 2: relative time.
-#: client/settings/ai-storefront/indexnow-card.js:89
+#: client/settings/ai-storefront/indexnow-card.js:90
 #, js-format
 msgid "Last attempt failed: HTTP %1$d · %2$s"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:131
+#: client/settings/ai-storefront/indexnow-card.js:132
 msgid "Regenerate the IndexNow key? Pending verifications for the old key will be invalidated."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:149
+#: client/settings/ai-storefront/indexnow-card.js:150
 msgid "Could not regenerate the key. Please try again."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:170
+#: client/settings/ai-storefront/indexnow-card.js:171
 msgid "Notify search engines the moment your catalog changes, so Bing-backed AI assistants (ChatGPT Search, Microsoft Copilot, Amazonbot) re-crawl quickly. Only public URLs are sent. Google does not use IndexNow."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:176
+#: client/settings/ai-storefront/indexnow-card.js:177
 msgid "Notify search engines instantly (IndexNow)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:195
+#: client/settings/ai-storefront/indexnow-card.js:196
 msgid "Verification key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:202
+#: client/settings/ai-storefront/indexnow-card.js:203
 msgid "(not generated yet)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:210
+#: client/settings/ai-storefront/indexnow-card.js:211
 msgid "View key file"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:227
+#: client/settings/ai-storefront/indexnow-card.js:228
 msgid "Copied"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:231
+#: client/settings/ai-storefront/indexnow-card.js:232
 msgid "Copy"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:244
+#: client/settings/ai-storefront/indexnow-card.js:245
 msgid "Regenerate key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:248
+#: client/settings/ai-storefront/indexnow-card.js:249
 msgid "Generate key"
 msgstr ""
 

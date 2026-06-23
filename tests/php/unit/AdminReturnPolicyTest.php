@@ -443,6 +443,9 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$response = $this->controller->get_settings();
 		$data     = $response->get_data();
 		$this->assertArrayHasKey( 'indexnow_last_result', $data );
+		// With no flush yet, last_result() returns array() — pin that wire
+		// value (PHP json_encodes it to [], which the JS status helper expects).
+		$this->assertSame( array(), $data['indexnow_last_result'] );
 	}
 
 	// ------------------------------------------------------------------

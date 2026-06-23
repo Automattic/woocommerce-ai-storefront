@@ -9,6 +9,14 @@ describe( 'formatRelativeAge', () => {
 		expect( formatRelativeAge( 7200 ) ).toBe( '2h ago' );
 		expect( formatRelativeAge( 172800 ) ).toBe( '2d ago' );
 	} );
+	it( 'handles the exact cutoff boundaries (strict < comparisons)', () => {
+		expect( formatRelativeAge( 59 ) ).toBe( 'just now' );
+		expect( formatRelativeAge( 60 ) ).toBe( '1m ago' );
+		expect( formatRelativeAge( 3599 ) ).toBe( '59m ago' );
+		expect( formatRelativeAge( 3600 ) ).toBe( '1h ago' );
+		expect( formatRelativeAge( 86399 ) ).toBe( '23h ago' );
+		expect( formatRelativeAge( 86400 ) ).toBe( '1d ago' );
+	} );
 } );
 
 describe( 'formatIndexNowStatus', () => {

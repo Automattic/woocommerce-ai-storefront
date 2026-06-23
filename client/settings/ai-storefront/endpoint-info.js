@@ -1663,7 +1663,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 		settings.allowed_crawlers || KNOWN_CRAWLERS.map( ( c ) => c.id );
 	// Public URL of the IndexNow `{key}.txt` ownership file, derived from the
 	// (server-built, authoritative) robots.txt URL so it stays correct on
-	// subdirectory installs. '' until a key exists or endpoints load.
+	// subdirectory installs. '' until a key exists, endpoints load, and the
+	// robots URL is available (any missing => falsy => the link is hidden).
 	const indexNowKeyBase =
 		endpoints.robots && endpoints.robots.replace( /robots\.txt$/, '' );
 	const indexNowKeyFileUrl =

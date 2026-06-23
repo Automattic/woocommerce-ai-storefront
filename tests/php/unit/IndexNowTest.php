@@ -385,10 +385,13 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		$requeued = null;
+		$recorded = null;
 		Functions\when( 'update_option' )->alias(
-			static function ( $n, $v ) use ( &$requeued ) {
+			static function ( $n, $v ) use ( &$requeued, &$recorded ) {
 				if ( 'wc_ai_storefront_indexnow_pending' === $n ) {
 					$requeued = $v;
+				} elseif ( 'wc_ai_storefront_indexnow_last_result' === $n ) {
+					$recorded = $v;
 				}
 				return true;
 			}
@@ -402,6 +405,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'wp_schedule_single_event' )->once()->andReturn( true );
 		$this->indexnow->flush();
 		$this->assertSame( array( 'https://shop.test/a' ), $requeued );
+		// record_result fired for the throttled batch: count, HTTP 429, not ok.
+		$this->assertNotNull( $recorded );
+		$this->assertSame( 1, $recorded['count'] );
+		$this->assertSame( 429, $recorded['code'] );
+		$this->assertFalse( $recorded['ok'] );
 	}
 
 	public function test_flush_drops_without_requeue_on_403(): void {
@@ -460,10 +468,13 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		$requeued = null;
+		$recorded = null;
 		Functions\when( 'update_option' )->alias(
-			static function ( $n, $v ) use ( &$requeued ) {
+			static function ( $n, $v ) use ( &$requeued, &$recorded ) {
 				if ( 'wc_ai_storefront_indexnow_pending' === $n ) {
 					$requeued = $v;
+				} elseif ( 'wc_ai_storefront_indexnow_last_result' === $n ) {
+					$recorded = $v;
 				}
 				return true;
 			}
@@ -476,6 +487,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'wp_schedule_single_event' )->once()->andReturn( true );
 		$this->indexnow->flush();
 		$this->assertSame( array( 'https://shop.test/a' ), $requeued );
+		// record_result fired for the transport error: count, code 0, not ok.
+		$this->assertNotNull( $recorded );
+		$this->assertSame( 1, $recorded['count'] );
+		$this->assertSame( 0, $recorded['code'] );
+		$this->assertFalse( $recorded['ok'] );
 	}
 
 	public function test_flush_treats_202_as_success(): void {
@@ -489,10 +505,13 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		$requeued = null;
+		$recorded = null;
 		Functions\when( 'update_option' )->alias(
-			static function ( $n, $v ) use ( &$requeued ) {
+			static function ( $n, $v ) use ( &$requeued, &$recorded ) {
 				if ( 'wc_ai_storefront_indexnow_pending' === $n ) {
 					$requeued = $v;
+				} elseif ( 'wc_ai_storefront_indexnow_last_result' === $n ) {
+					$recorded = $v;
 				}
 				return true;
 			}
@@ -503,6 +522,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'wp_schedule_single_event' )->never();
 		$this->indexnow->flush();
 		$this->assertNull( $requeued );
+		// 202 is recorded as a success: count, HTTP 202, ok.
+		$this->assertNotNull( $recorded );
+		$this->assertSame( 1, $recorded['count'] );
+		$this->assertSame( 202, $recorded['code'] );
+		$this->assertTrue( $recorded['ok'] );
 	}
 
 	public function test_is_product_indexable_false_when_out_of_scope(): void {
