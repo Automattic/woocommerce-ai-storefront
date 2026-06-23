@@ -1661,6 +1661,15 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 			endpointStatus.robots === 'unreachable' );
 	const allowedCrawlers =
 		settings.allowed_crawlers || KNOWN_CRAWLERS.map( ( c ) => c.id );
+	// Public URL of the IndexNow `{key}.txt` ownership file, derived from the
+	// (server-built, authoritative) robots.txt URL so it stays correct on
+	// subdirectory installs. '' until a key exists or endpoints load.
+	const indexNowKeyBase =
+		endpoints.robots && endpoints.robots.replace( /robots\.txt$/, '' );
+	const indexNowKeyFileUrl =
+		settings.indexnow_key && indexNowKeyBase
+			? `${ indexNowKeyBase }${ settings.indexnow_key }.txt`
+			: '';
 
 	// Rate-limit state. `customOverride` is a local UI flag that lets
 	// the merchant see the custom RPM input even when their manually-
@@ -2495,7 +2504,11 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 				</CardBody>
 			</Card>
 
-			<IndexNowCard settings={ settings } onChange={ onChange } />
+			<IndexNowCard
+				settings={ settings }
+				onChange={ onChange }
+				keyFileUrl={ indexNowKeyFileUrl }
+			/>
 
 			{ /*
 				Rate Limits card. Placed after the Crawler Access card

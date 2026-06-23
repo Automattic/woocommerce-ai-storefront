@@ -13,6 +13,7 @@ import {
 	CheckboxControl,
 	Button,
 	Notice,
+	ExternalLink,
 } from '@wordpress/components';
 import apiFetch from '@wordpress/api-fetch';
 import { __, sprintf } from '@wordpress/i18n';
@@ -98,15 +99,30 @@ export function formatIndexNowStatus( lastResult, nowSeconds ) {
  * The IndexNow settings card.
  *
  * @param {Object}   props
- * @param {Object}   props.settings Plugin settings.
- * @param {Function} props.onChange Settings updater.
+ * @param {Object}   props.settings   Plugin settings.
+ * @param {Function} props.onChange   Settings updater.
+ * @param {string}   props.keyFileUrl Public URL of the `{key}.txt` ownership
+ *                                    file ('' until a key exists / endpoints
+ *                                    load).
  * @return {JSX.Element} Card.
  */
-export function IndexNowCard( { settings, onChange } ) {
+export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 	const enabled = settings.indexnow_enabled === 'yes';
 	const key = settings.indexnow_key || '';
 	const [ regenerating, setRegenerating ] = useState( false );
 	const [ error, setError ] = useState( '' );
+	const [ copied, setCopied ] = useState( false );
+
+	const copyKey = async () => {
+		try {
+			await window.navigator.clipboard.writeText( key );
+			setCopied( true );
+			window.setTimeout( () => setCopied( false ), 2000 );
+		} catch ( _e ) {
+			// Clipboard unavailable (e.g. insecure context); the key is
+			// visible above to copy manually, so fail silently.
+		}
+	};
 
 	const regenerate = async () => {
 		if (
@@ -188,7 +204,36 @@ export function IndexNowCard( { settings, onChange } ) {
 									'woocommerce-ai-storefront'
 								) }
 						</code>
-						<div style={ { marginTop: '8px' } }>
+						{ key && keyFileUrl && (
+							<div style={ { marginTop: '4px' } }>
+								<ExternalLink href={ keyFileUrl }>
+									{ __(
+										'View key file',
+										'woocommerce-ai-storefront'
+									) }
+								</ExternalLink>
+							</div>
+						) }
+						<div
+							style={ {
+								marginTop: '8px',
+								display: 'flex',
+								gap: '8px',
+							} }
+						>
+							{ key && (
+								<Button variant="secondary" onClick={ copyKey }>
+									{ copied
+										? __(
+												'Copied',
+												'woocommerce-ai-storefront'
+										  )
+										: __(
+												'Copy',
+												'woocommerce-ai-storefront'
+										  ) }
+								</Button>
+							) }
 							<Button
 								variant="secondary"
 								onClick={ regenerate }
