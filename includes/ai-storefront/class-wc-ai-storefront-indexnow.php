@@ -86,4 +86,56 @@ class WC_AI_Storefront_IndexNow {
 		update_option( WC_AI_Storefront::SETTINGS_OPTION, $settings );
 		return $key;
 	}
+
+	/**
+	 * Register the {key}.txt rewrite rule. The hex-only pattern cannot shadow
+	 * robots.txt / llms.txt / ads.txt (those names contain non-hex letters);
+	 * serve_key_file() additionally requires an exact match against the stored
+	 * key, so even another hex *.txt request 404s.
+	 */
+	public function add_rewrite_rules(): void {
+		add_rewrite_rule( '^([a-fA-F0-9-]{8,128})\.txt$', 'index.php?' . self::KEY_QUERY_VAR . '=$matches[1]', 'top' );
+	}
+
+	/**
+	 * Register the {key}.txt query var.
+	 *
+	 * @param array $vars Query vars.
+	 * @return array
+	 */
+	public function add_query_vars( array $vars ): array {
+		$vars[] = self::KEY_QUERY_VAR;
+		return $vars;
+	}
+
+	/**
+	 * Serve the IndexNow key file at /{key}.txt when the request matches the
+	 * stored key and the feature is enabled. No-op for unrelated requests.
+	 */
+	public function serve_key_file(): void {
+		$requested = (string) get_query_var( self::KEY_QUERY_VAR );
+		if ( '' === $requested ) {
+			return;
+		}
+		if ( ! $this->is_enabled() || ! hash_equals( $this->get_key(), $requested ) ) {
+			status_header( 404 );
+			$this->terminate();
+			return;
+		}
+		header( 'Content-Type: text/plain; charset=utf-8' );
+		header( 'X-Content-Type-Options: nosniff' );
+		status_header( 200 );
+		echo $this->get_key(); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- hex key, no escaping needed
+		$this->terminate();
+	}
+
+	/**
+	 * Terminate the request. Isolated so unit tests can intercept it instead of
+	 * killing the test process.
+	 *
+	 * @codeCoverageIgnore
+	 */
+	protected function terminate(): void {
+		exit;
+	}
 }

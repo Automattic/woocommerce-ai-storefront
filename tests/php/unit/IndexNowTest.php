@@ -9,6 +9,11 @@ use Brain\Monkey;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
+if ( ! class_exists( 'WC_AI_Storefront_IndexNow_Exit' ) ) {
+	// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- test double
+	class WC_AI_Storefront_IndexNow_Exit extends \RuntimeException {}
+}
+
 class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
@@ -20,7 +25,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'home_url' )->alias( static fn( $p = '/' ) => 'https://shop.test' . ( '' === $p ? '/' : $p ) );
-		$this->indexnow = new WC_AI_Storefront_IndexNow();
+		$this->indexnow = new class() extends WC_AI_Storefront_IndexNow {
+			protected function terminate(): void {
+				throw new \WC_AI_Storefront_IndexNow_Exit();
+			}
+		};
 	}
 
 	protected function tearDown(): void {
@@ -56,5 +65,42 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $this->indexnow->is_enabled() );
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes' );
 		$this->assertTrue( $this->indexnow->is_enabled() );
+	}
+
+	public function test_serve_key_file_outputs_key_on_match(): void {
+		WC_AI_Storefront::$test_settings['indexnow_key'] = 'abcabcabcabcabcabcabcabcabcabc99';
+		Functions\when( 'get_option' )->justReturn(
+			array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'indexnow_key' => 'abcabcabcabcabcabcabcabcabcabc99' )
+		);
+		Functions\when( 'get_query_var' )->justReturn( 'abcabcabcabcabcabcabcabcabcabc99' );
+		Functions\expect( 'status_header' )->once()->with( 200 );
+		ob_start();
+		try {
+			$this->indexnow->serve_key_file();
+		} catch ( \WC_AI_Storefront_IndexNow_Exit $e ) {
+			// serve_key_file() calls $this->terminate() which throws in tests.
+		}
+		$this->assertSame( 'abcabcabcabcabcabcabcabcabcabc99', ob_get_clean() );
+	}
+
+	public function test_serve_key_file_404_on_mismatch(): void {
+		WC_AI_Storefront::$test_settings['indexnow_key'] = 'realkeyrealkeyrealkeyrealkey0001';
+		Functions\when( 'get_option' )->justReturn(
+			array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'indexnow_key' => 'realkeyrealkeyrealkeyrealkey0001' )
+		);
+		Functions\when( 'get_query_var' )->justReturn( 'gibberishgibberishgibberish00000' );
+		Functions\expect( 'status_header' )->once()->with( 404 );
+		try {
+			$this->indexnow->serve_key_file();
+		} catch ( \WC_AI_Storefront_IndexNow_Exit $e ) {
+			$this->addToAssertionCount( 1 );
+		}
+	}
+
+	public function test_serve_key_file_noop_when_no_query_var(): void {
+		Functions\when( 'get_query_var' )->justReturn( '' );
+		Functions\expect( 'status_header' )->never();
+		$this->indexnow->serve_key_file(); // returns without terminating
+		$this->addToAssertionCount( 1 );
 	}
 }
