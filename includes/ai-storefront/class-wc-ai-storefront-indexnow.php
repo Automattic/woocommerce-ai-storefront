@@ -138,4 +138,69 @@ class WC_AI_Storefront_IndexNow {
 	protected function terminate(): void {
 		exit;
 	}
+
+	/**
+	 * The AI-discovery surface URLs submitted on any catalog change.
+	 *
+	 * @return string[]
+	 */
+	public function surface_urls(): array {
+		$urls    = array( home_url( '/' ), home_url( '/llms.txt' ), home_url( '/products.json' ) );
+		$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+		if ( $shop_id > 0 ) {
+			$shop = get_permalink( $shop_id );
+			if ( is_string( $shop ) && '' !== $shop ) {
+				$urls[] = $shop;
+			}
+		}
+		return $urls;
+	}
+
+	/**
+	 * Whether a product's URL should be advertised to IndexNow: published, not
+	 * catalog-hidden (we noindex those), and within the syndication scope.
+	 *
+	 * @param WC_Product $product Product.
+	 */
+	public function is_product_indexable( $product ): bool {
+		if ( ! $product || 'publish' !== $product->get_status() ) {
+			return false;
+		}
+		if ( 'hidden' === $product->get_catalog_visibility() ) {
+			return false;
+		}
+		return WC_AI_Storefront::is_product_syndicated( $product );
+	}
+
+	/**
+	 * Add URLs to the deduped pending set.
+	 *
+	 * @param string[] $urls URLs to enqueue.
+	 */
+	public function enqueue( array $urls ): void {
+		if ( empty( $urls ) ) {
+			return;
+		}
+		$pending = get_option( self::PENDING_OPTION, array() );
+		if ( ! is_array( $pending ) ) {
+			$pending = array();
+		}
+		$merged = array_values( array_unique( array_merge( $pending, array_values( $urls ) ) ) );
+		if ( count( $merged ) > self::MAX_URLS ) {
+			WC_AI_Storefront_Logger::debug( 'IndexNow pending set capped at %d URLs (dropped %d)', self::MAX_URLS, count( $merged ) - self::MAX_URLS );
+			$merged = array_slice( $merged, 0, self::MAX_URLS );
+		}
+		update_option( self::PENDING_OPTION, $merged );
+	}
+
+	/**
+	 * Read and clear the pending set.
+	 *
+	 * @return string[]
+	 */
+	public function take_pending(): array {
+		$pending = get_option( self::PENDING_OPTION, array() );
+		delete_option( self::PENDING_OPTION );
+		return is_array( $pending ) ? array_values( $pending ) : array();
+	}
 }

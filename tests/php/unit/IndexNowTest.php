@@ -103,4 +103,66 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->indexnow->serve_key_file(); // returns without terminating
 		$this->addToAssertionCount( 1 );
 	}
+
+	public function test_surface_urls_includes_home_shop_llms_and_feed(): void {
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		$urls = $this->indexnow->surface_urls();
+		$this->assertContains( 'https://shop.test/', $urls );
+		$this->assertContains( 'https://shop.test/shop/', $urls );
+		$this->assertContains( 'https://shop.test/llms.txt', $urls );
+		$this->assertContains( 'https://shop.test/products.json', $urls );
+	}
+
+	public function test_is_product_indexable_true_for_published_visible_syndicated(): void {
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		$product->shouldReceive( 'get_status' )->andReturn( 'publish' );
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		// is_product_syndicated() is a static on WC_AI_Storefront; settings mode 'all' => true.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+		$this->assertTrue( $this->indexnow->is_product_indexable( $product ) );
+	}
+
+	public function test_is_product_indexable_false_for_hidden_or_draft(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+		$draft = \Mockery::mock( 'WC_Product' );
+		$draft->shouldReceive( 'get_id' )->andReturn( 42 );
+		$draft->shouldReceive( 'get_status' )->andReturn( 'draft' );
+		$draft->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		$this->assertFalse( $this->indexnow->is_product_indexable( $draft ) );
+
+		$hidden = \Mockery::mock( 'WC_Product' );
+		$hidden->shouldReceive( 'get_id' )->andReturn( 43 );
+		$hidden->shouldReceive( 'get_status' )->andReturn( 'publish' );
+		$hidden->shouldReceive( 'get_catalog_visibility' )->andReturn( 'hidden' );
+		$this->assertFalse( $this->indexnow->is_product_indexable( $hidden ) );
+	}
+
+	public function test_enqueue_dedupes_and_take_pending_clears(): void {
+		$store = array();
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = false ) use ( &$store ) {
+				return $store[ $name ] ?? $default;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $name, $value ) use ( &$store ) {
+				$store[ $name ] = $value;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			static function ( $name ) use ( &$store ) {
+				unset( $store[ $name ] );
+				return true;
+			}
+		);
+		$this->indexnow->enqueue( array( 'https://shop.test/a', 'https://shop.test/b' ) );
+		$this->indexnow->enqueue( array( 'https://shop.test/b', 'https://shop.test/c' ) );
+		$pending = $this->indexnow->take_pending();
+		sort( $pending );
+		$this->assertSame( array( 'https://shop.test/a', 'https://shop.test/b', 'https://shop.test/c' ), $pending );
+		$this->assertSame( array(), $this->indexnow->take_pending() ); // cleared
+	}
 }
