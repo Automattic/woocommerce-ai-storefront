@@ -85,11 +85,11 @@ class WC_AI_Storefront {
 			// Lets a merchant keep syndication on while opting out of the
 			// Shopify-compat surface specifically.
 			'products_json_enabled'    => 'yes',
-			// IndexNow instant-indexing toggle. Default `'yes'` (opt-out) so
-			// catalog changes are submitted to Bing/Yandex/etc. out of the box
-			// once syndication itself is on. The change-hooks ALSO require
-			// `enabled === 'yes'` (gated by `init_components()`), so this toggle
-			// only takes effect when syndication is active.
+			// IndexNow instant-indexing toggle. Default `'no'` (opt-in) so
+			// nothing is submitted to Bing/Yandex/etc. until the merchant turns
+			// it on. The change-hooks ALSO require `enabled === 'yes'` (gated by
+			// `init_components()`), so this toggle only takes effect when
+			// syndication is active.
 			'indexnow_enabled'         => 'no',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
