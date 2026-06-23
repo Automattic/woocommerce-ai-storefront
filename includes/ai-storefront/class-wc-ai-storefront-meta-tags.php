@@ -54,8 +54,11 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Build the meta description for a product, auto-derived from core fields.
 	 *
+	 * Short description, then long description; falls back to "{name} at {store}"
+	 * when neither has text, so the page always carries a description.
+	 *
 	 * @param WC_Product $product Product to derive from.
-	 * @return string Cleaned, truncated description; '' when no source text.
+	 * @return string Cleaned, truncated description (non-empty when the product has a name).
 	 */
 	public function build_description( $product ): string {
 		$candidates = array(
@@ -69,6 +72,26 @@ class WC_AI_Storefront_Meta_Tags {
 			if ( '' !== $text ) {
 				$description = $this->truncate( $text, self::DESCRIPTION_MAX );
 				break;
+			}
+		}
+
+		if ( '' === $description ) {
+			// No authored short/long description: fall back to the product
+			// name so the page always carries one. Required because we
+			// suppress Jetpack's description on commerce pages (see
+			// suppress_jetpack_description()) and would otherwise leave none.
+			$name = (string) $product->get_name();
+			if ( '' !== $name ) {
+				$store    = (string) get_bloginfo( 'name' );
+				$fallback = '' !== $store
+					? sprintf(
+						/* translators: 1: product name, 2: store name. */
+						__( '%1$s at %2$s.', 'woocommerce-ai-storefront' ),
+						$name,
+						$store
+					)
+					: $name;
+				$description = $this->truncate( $this->clean_text( $fallback ), self::DESCRIPTION_MAX );
 			}
 		}
 
@@ -108,10 +131,11 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Build the meta description for the current archive (category or shop).
 	 *
-	 * Category → the term's description. Shop → the shop page content, falling
-	 * back to the store tagline. Cleaned/truncated like the product path.
+	 * Category → the term's description, falling back to a generated
+	 * "Shop {category} at {store}". Shop → the shop page content, falling back
+	 * to the store tagline. Cleaned/truncated like the product path.
 	 *
-	 * @return string Cleaned, truncated description; '' when no source text.
+	 * @return string Cleaned, truncated description (non-empty on category/shop pages).
 	 */
 	public function build_archive_description(): string {
 		$raw    = '';
@@ -122,6 +146,25 @@ class WC_AI_Storefront_Meta_Tags {
 			$source = $term;
 			if ( is_object( $term ) && isset( $term->description ) ) {
 				$raw = (string) $term->description;
+			}
+			if ( '' === trim( $raw ) && is_object( $term ) && isset( $term->name ) ) {
+				// No authored term description: emit a category-specific
+				// fallback so the page always carries one. Required because we
+				// suppress Jetpack's description on commerce pages (see
+				// suppress_jetpack_description()) and would otherwise leave none.
+				$store = (string) get_bloginfo( 'name' );
+				$raw   = '' !== $store
+					? sprintf(
+						/* translators: 1: product category name, 2: store name. */
+						__( 'Shop %1$s at %2$s.', 'woocommerce-ai-storefront' ),
+						(string) $term->name,
+						$store
+					)
+					: sprintf(
+						/* translators: %s: product category name. */
+						__( 'Shop %s.', 'woocommerce-ai-storefront' ),
+						(string) $term->name
+					);
 			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
 			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;

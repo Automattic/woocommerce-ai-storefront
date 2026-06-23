@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Fixes
+
+- **Category and product pages always emit a meta description again (#537).** The 0.27.0 Jetpack-coexistence fix suppressed Jetpack's description on commerce pages, but pages whose source text was empty (a category with no term description, a product with no short or long description) were then left with no `<meta name="description">` and no `og:description` at all. Bing Webmaster flagged the missing descriptions on category pages.
+  - Categories now fall back to a generated "Shop {category} at {store}." description; products fall back to "{product} at {store}." when they have no authored description.
+  - The shop page is unchanged (it already fell back to the store tagline).
+
 ---
 
 ## [0.27.0] – 2026-06-22
