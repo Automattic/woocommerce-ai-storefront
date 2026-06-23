@@ -38,6 +38,11 @@ class WC_AI_Storefront_IndexNow {
 	private const PENDING_OPTION = 'wc_ai_storefront_indexnow_pending';
 
 	/**
+	 * Option holding the last flush outcome, for the settings UI status line.
+	 */
+	private const LAST_RESULT_OPTION = 'wc_ai_storefront_indexnow_last_result';
+
+	/**
 	 * Query var for the virtual {key}.txt route.
 	 */
 	private const KEY_QUERY_VAR = 'wc_ai_storefront_indexnow_key';
@@ -228,6 +233,35 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
+	 * The last flush outcome, or array() when there has been none.
+	 *
+	 * @return array{time?:int,count?:int,code?:int,ok?:bool}
+	 */
+	public function last_result(): array {
+		$result = get_option( self::LAST_RESULT_OPTION, array() );
+		return is_array( $result ) ? $result : array();
+	}
+
+	/**
+	 * Persist the outcome of the batch just submitted.
+	 *
+	 * @param int  $count Number of URLs in the batch.
+	 * @param int  $code  HTTP status (0 for a transport error).
+	 * @param bool $ok    Whether the submission was accepted (200/202).
+	 */
+	private function record_result( int $count, int $code, bool $ok ): void {
+		update_option(
+			self::LAST_RESULT_OPTION,
+			array(
+				'time'  => time(),
+				'count' => $count,
+				'code'  => $code,
+				'ok'    => $ok,
+			)
+		);
+	}
+
+	/**
 	 * Register catalog-change hooks and the flush cron handler. Called only
 	 * when the feature is enabled (see WC_AI_Storefront::init_components()).
 	 */
@@ -346,6 +380,7 @@ class WC_AI_Storefront_IndexNow {
 
 		if ( is_wp_error( $response ) ) {
 			WC_AI_Storefront_Logger::debug( 'IndexNow transport error: %s — re-queuing %d URLs', $response->get_error_message(), count( $urls ) );
+			$this->record_result( count( $urls ), 0, false );
 			$this->enqueue( $urls );
 			$this->schedule_flush();
 			return;
@@ -354,16 +389,19 @@ class WC_AI_Storefront_IndexNow {
 		$code = (int) wp_remote_retrieve_response_code( $response );
 		if ( 200 === $code || 202 === $code ) {
 			WC_AI_Storefront_Logger::debug( 'IndexNow submitted %d URLs (HTTP %d)', count( $urls ), $code );
+			$this->record_result( count( $urls ), $code, true );
 			return;
 		}
 		if ( 429 === $code ) {
 			WC_AI_Storefront_Logger::debug( 'IndexNow rate-limited (429) — re-queuing %d URLs', count( $urls ) );
+			$this->record_result( count( $urls ), 429, false );
 			$this->enqueue( $urls );
 			$this->schedule_flush();
 			return;
 		}
 		// 403 (key not served), 422 (host/schema mismatch), or other: log + drop.
 		WC_AI_Storefront_Logger::debug( 'IndexNow submission failed (HTTP %d) — dropping %d URLs. If 403, the {key}.txt rewrite may need flushing.', $code, count( $urls ) );
+		$this->record_result( count( $urls ), $code, false );
 	}
 
 	/**

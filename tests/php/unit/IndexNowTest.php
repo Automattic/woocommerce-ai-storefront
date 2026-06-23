@@ -334,6 +334,7 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'update_option' )->justReturn( true );
 		$posted = null;
 		Functions\expect( 'wp_remote_post' )->once()->andReturnUsing(
 			function ( $url, $args ) use ( &$posted ) {
@@ -538,5 +539,69 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		} catch ( \WC_AI_Storefront_IndexNow_Exit $e ) {
 			$this->addToAssertionCount( 1 );
 		}
+	}
+
+	// --- Task 2: last_result tracking (#534) ---
+
+	public function test_last_result_empty_when_unset(): void {
+		// `false` (the raw get_option miss) exercises the is_array() guard.
+		Functions\when( 'get_option' )->justReturn( false );
+		$this->assertSame( array(), $this->indexnow->last_result() );
+	}
+
+	public function test_flush_records_success_result(): void {
+		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a', 'https://shop.test/b' ) );
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		$recorded = null;
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$recorded ) {
+				if ( 'wc_ai_storefront_indexnow_last_result' === $n ) { $recorded = $v; }
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 200 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		// time() is a PHP internal Patchwork can't redefine here, so bracket the
+		// flush and assert the stamp is the real current time, not 0/omitted.
+		$before = time();
+		$this->indexnow->flush();
+		$after = time();
+		$this->assertSame( 2, $recorded['count'] );
+		$this->assertSame( 200, $recorded['code'] );
+		$this->assertTrue( $recorded['ok'] );
+		$this->assertGreaterThanOrEqual( $before, $recorded['time'] );
+		$this->assertLessThanOrEqual( $after, $recorded['time'] );
+	}
+
+	public function test_flush_records_failure_result_on_403(): void {
+		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		$recorded = null;
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$recorded ) {
+				if ( 'wc_ai_storefront_indexnow_last_result' === $n ) { $recorded = $v; }
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 403 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 403 );
+		$before = time();
+		$this->indexnow->flush();
+		$after = time();
+		$this->assertSame( 1, $recorded['count'] );
+		$this->assertSame( 403, $recorded['code'] );
+		$this->assertFalse( $recorded['ok'] );
+		$this->assertGreaterThanOrEqual( $before, $recorded['time'] );
+		$this->assertLessThanOrEqual( $after, $recorded['time'] );
 	}
 }
