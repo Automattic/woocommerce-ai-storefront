@@ -85,6 +85,11 @@ class WC_AI_Storefront {
 			// Lets a merchant keep syndication on while opting out of the
 			// Shopify-compat surface specifically.
 			'products_json_enabled'    => 'yes',
+			// IndexNow instant-indexing toggle. Default `'yes'` (opt-out) so
+			// catalog changes are submitted to Bing/Yandex/etc. out of the box
+			// once syndication itself is on. The change-hooks ALSO require
+			// `enabled === 'yes'` (gated by `init_components()`), so this toggle
+			// only takes effect when syndication is active.
 			'indexnow_enabled'         => 'yes',
 			// Return/refund policy exposed to AI agents at the
 			// Offer level via `hasMerchantReturnPolicy`. Default
@@ -195,6 +200,15 @@ class WC_AI_Storefront {
 			return;
 		}
 
+		// IndexNow: change-hooks are gated on syndication being enabled. The
+		// {key}.txt rewrite rule/query-var/serve-callback are registered
+		// unconditionally in register_rewrite_rules() so the key file is
+		// reachable even before the feature toggle is on.
+		$indexnow = new WC_AI_Storefront_IndexNow();
+		if ( $indexnow->is_enabled() ) {
+			$indexnow->init();
+		}
+
 		// Discovery Layer.
 		// Note: llms.txt and UCP rewrite rules are registered unconditionally
 		// in register_rewrite_rules(). Here we only init the remaining components.
@@ -270,19 +284,23 @@ class WC_AI_Storefront {
 		$llms_txt      = new WC_AI_Storefront_Llms_Txt();
 		$ucp           = new WC_AI_Storefront_Ucp();
 		$products_feed = new WC_AI_Storefront_Products_Feed();
+		$indexnow      = new WC_AI_Storefront_IndexNow();
 
 		// Register rewrite rules on init (plugins_loaded fires before init).
 		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
 		add_action( 'init', [ $ucp, 'add_rewrite_rules' ] );
 		add_action( 'init', [ $products_feed, 'add_rewrite_rules' ] );
+		add_action( 'init', [ $indexnow, 'add_rewrite_rules' ] );
 
 		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
 		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
 		add_filter( 'query_vars', [ $products_feed, 'add_query_vars' ] );
+		add_filter( 'query_vars', [ $indexnow, 'add_query_vars' ] );
 		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
 		// /agents.md is a byte-identical mirror of /llms.txt (same
 		// generator, same cache) — registered on the same hook.
 		add_action( 'template_redirect', [ $llms_txt, 'serve_agents_md' ] );
+		add_action( 'template_redirect', [ $indexnow, 'serve_key_file' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
 		add_action( 'template_redirect', [ $ucp, 'serve_opensearch_xml' ] );
 		// Shopify-compatible /products.json + /collections/all/products.json
@@ -779,6 +797,16 @@ class WC_AI_Storefront {
 			$products_json_enabled = 'yes';
 		}
 
+		// IndexNow instant-indexing toggle. Same strict yes/no enum +
+		// resolve-once pattern as `$mcp_enabled` above. Default `'yes'`
+		// (opt-out) — the change-hooks also require `enabled === 'yes'`
+		// (gated by `init_components()`), so this only matters once
+		// syndication is on.
+		$indexnow_enabled = $merged['indexnow_enabled'] ?? 'yes';
+		if ( ! in_array( $indexnow_enabled, [ 'yes', 'no' ], true ) ) {
+			$indexnow_enabled = 'yes';
+		}
+
 		// Map legacy mode aliases to their canonical form. Old stores may
 		// have 'categories', 'tags', or 'brands' saved before the unified
 		// by_taxonomy mode was introduced; this normalizes them at write
@@ -825,6 +853,8 @@ class WC_AI_Storefront {
 			'mcp_enabled'              => $mcp_enabled,
 			// See `$products_json_enabled` resolution above the array literal.
 			'products_json_enabled'    => $products_json_enabled,
+			// See `$indexnow_enabled` resolution above the array literal.
+			'indexnow_enabled'         => $indexnow_enabled,
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.

@@ -92,6 +92,13 @@ class WC_AI_Storefront_Admin_Controller {
 							'type' => 'string',
 							'enum' => array( 'yes', 'no' ),
 						),
+						// IndexNow instant-indexing toggle. Yes/no enum
+						// mirroring `mcp_enabled`. Sanitization lives in
+						// `WC_AI_Storefront::update_settings()`.
+						'indexnow_enabled'         => array(
+							'type' => 'string',
+							'enum' => array( 'yes', 'no' ),
+						),
 						// Return policy schema is intentionally type-only:
 						// no `enum`, no `minimum/maximum`. The canonical
 						// validation/normalization rules live in
@@ -369,6 +376,21 @@ class WC_AI_Storefront_Admin_Controller {
 				),
 			)
 		);
+
+		// IndexNow key regeneration. POST-only; returns the fresh key so the
+		// React UI can display it immediately without a follow-up GET.
+		// The {key}.txt rewrite rule is pattern-based, so no rewrite flush is
+		// needed after a key rotation — the new key is served on the next
+		// request that matches the hex-pattern rule.
+		register_rest_route(
+			self::NAMESPACE,
+			'/regenerate-indexnow-key',
+			array(
+				'methods'             => WP_REST_Server::CREATABLE,
+				'callback'            => array( $this, 'regenerate_indexnow_key' ),
+				'permission_callback' => array( $this, 'check_admin_permission' ),
+			)
+		);
 	}
 
 	/**
@@ -393,10 +415,24 @@ class WC_AI_Storefront_Admin_Controller {
 	/**
 	 * Get settings.
 	 *
+	 * Returns the persisted settings merged with the current IndexNow key so
+	 * the React UI can display it without a separate request.
+	 *
+	 * `indexnow_key` is read directly from the settings array rather than via
+	 * `get_key()` to avoid triggering key-generation (and the `get_option()`
+	 * call inside `regenerate_key()`) on every GET request. The key is
+	 * generated on-demand: a merchant who has never rotated their key will see
+	 * an empty string here until they load the admin page and trigger the first
+	 * key generation via the POST /regenerate-indexnow-key endpoint. If the
+	 * UI wants to display a key immediately on first load it should call
+	 * POST /regenerate-indexnow-key once when the value is empty.
+	 *
 	 * @return WP_REST_Response
 	 */
 	public function get_settings() {
-		return new WP_REST_Response( WC_AI_Storefront::get_settings() );
+		$settings                 = WC_AI_Storefront::get_settings();
+		$settings['indexnow_key'] = (string) ( $settings['indexnow_key'] ?? '' );
+		return new WP_REST_Response( $settings );
 	}
 
 	/**
@@ -408,7 +444,7 @@ class WC_AI_Storefront_Admin_Controller {
 	public function update_settings( $request ) {
 		$data = array();
 
-		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'mcp_enabled', 'return_policy', 'handling_time' );
+		$fields = array( 'enabled', 'product_selection_mode', 'selected_categories', 'selected_tags', 'selected_brands', 'selected_products', 'rate_limit_rpm', 'allowed_crawlers', 'allow_unknown_ucp_agents', 'mcp_enabled', 'indexnow_enabled', 'return_policy', 'handling_time' );
 		foreach ( $fields as $field ) {
 			$value = $request->get_param( $field );
 			if ( null !== $value ) {
@@ -1498,6 +1534,25 @@ class WC_AI_Storefront_Admin_Controller {
 		$data['raw_event_count'] = $raw_event_count;
 
 		return new WP_REST_Response( $data );
+	}
+
+	/**
+	 * Regenerate the IndexNow key and return the fresh value.
+	 *
+	 * The {key}.txt rewrite rule is pattern-based (matches any hex string of
+	 * the right length), so no rewrite flush is needed after rotation — the
+	 * new key file is served immediately on the next matching request.
+	 *
+	 * `regenerate_key()` calls `update_option()` directly (bypassing
+	 * `update_settings()`) so it can store the key without clobbering the
+	 * rest of the settings. The response carries the fresh key directly, so
+	 * the React UI does not need to issue a follow-up GET /settings to read it.
+	 *
+	 * @return WP_REST_Response
+	 */
+	public function regenerate_indexnow_key() {
+		$new_key = ( new WC_AI_Storefront_IndexNow() )->regenerate_key();
+		return new WP_REST_Response( array( 'indexnow_key' => $new_key ) );
 	}
 
 	/**
