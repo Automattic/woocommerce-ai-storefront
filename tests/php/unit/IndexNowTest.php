@@ -447,4 +447,96 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->indexnow->flush();
 		$this->addToAssertionCount( 1 );
 	}
+
+	public function test_flush_requeues_and_reschedules_on_transport_error(): void {
+		$store = array(
+			'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ),
+			'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		$requeued = null;
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$requeued ) {
+				if ( 'wc_ai_storefront_indexnow_pending' === $n ) {
+					$requeued = $v;
+				}
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		// is_wp_error() in stubs.php checks instanceof WP_Error.
+		$wp_error = new WP_Error( 'http_request_failed', 'cURL error 28: Connection timed out' );
+		Functions\when( 'wp_remote_post' )->justReturn( $wp_error );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\expect( 'wp_schedule_single_event' )->once()->andReturn( true );
+		$this->indexnow->flush();
+		$this->assertSame( array( 'https://shop.test/a' ), $requeued );
+	}
+
+	public function test_flush_treats_202_as_success(): void {
+		$store = array(
+			'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ),
+			'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		$requeued = null;
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$requeued ) {
+				if ( 'wc_ai_storefront_indexnow_pending' === $n ) {
+					$requeued = $v;
+				}
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 202 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 202 );
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->flush();
+		$this->assertNull( $requeued );
+	}
+
+	public function test_is_product_indexable_false_when_out_of_scope(): void {
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => array( 999 ), // different ID — product 42 is not in scope
+		);
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		$product->shouldReceive( 'get_status' )->andReturn( 'publish' );
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		$this->assertFalse( $this->indexnow->is_product_indexable( $product ) );
+	}
+
+	public function test_serve_key_file_does_not_mint_key_when_no_key_exists(): void {
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = '' ) {
+				// KEY_OPTION returns empty — no key persisted yet.
+				if ( 'wc_ai_storefront_indexnow_key' === $name ) {
+					return '';
+				}
+				return $default;
+			}
+		);
+		Functions\when( 'get_query_var' )->justReturn( 'abcabcabcabcabcabcabcabcabc99' );
+		// Feature is enabled — the empty-key guard must still fire before
+		// is_enabled() is even checked, and must NOT trigger key generation.
+		Functions\expect( 'update_option' )->never();
+		Functions\expect( 'status_header' )->once()->with( 404 );
+		try {
+			$this->indexnow->serve_key_file();
+		} catch ( \WC_AI_Storefront_IndexNow_Exit $e ) {
+			$this->addToAssertionCount( 1 );
+		}
+	}
 }

@@ -5,7 +5,7 @@
  * On catalog change, submits affected URLs plus the AI-discovery surfaces to
  * IndexNow (Bing/Yandex/Seznam/Naver/Yep/Internet Archive/Amazonbot), so the
  * Bing-backed AI assistants re-crawl quickly. Google does not consume IndexNow.
- * See docs/superpowers/specs/2026-06-22-indexnow-instant-indexing-design.md.
+ * See issue #530.
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -104,11 +104,13 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
-	 * Register the {key}.txt rewrite rule. The pattern matches IndexNow's key
-	 * charset (hex + dash, case-insensitive) and cannot shadow robots.txt /
-	 * llms.txt / ads.txt (those names include letters outside [a-fA-F0-9-]);
-	 * serve_key_file() additionally requires an exact match against the stored
-	 * key, so even another matching *.txt request 404s.
+	 * Register the {key}.txt rewrite rule. The pattern covers the keys THIS
+	 * plugin generates (lowercase hex) and also tolerates uppercase and dashes,
+	 * but does NOT cover all of IndexNow's allowed charset (a-zA-Z0-9-).
+	 * It cannot shadow robots.txt / llms.txt / ads.txt (those names include
+	 * letters outside [a-fA-F0-9-]); serve_key_file() additionally requires
+	 * an exact match against the stored key, so even another matching *.txt
+	 * request 404s.
 	 */
 	public function add_rewrite_rules(): void {
 		add_rewrite_rule( '^([a-fA-F0-9-]{8,128})\.txt$', 'index.php?' . self::KEY_QUERY_VAR . '=$matches[1]', 'top' );
@@ -134,8 +136,8 @@ class WC_AI_Storefront_IndexNow {
 		if ( '' === $requested ) {
 			return;
 		}
-		$key = $this->get_key();
-		if ( ! $this->is_enabled() || ! hash_equals( $key, $requested ) ) {
+		$key = $this->peek_key();
+		if ( '' === $key || ! $this->is_enabled() || ! hash_equals( $key, $requested ) ) {
 			status_header( 404 );
 			$this->terminate();
 			return;
@@ -181,7 +183,10 @@ class WC_AI_Storefront_IndexNow {
 	 * @param WC_Product $product Product.
 	 */
 	public function is_product_indexable( $product ): bool {
-		if ( ! $product || 'publish' !== $product->get_status() ) {
+		if ( ! $product instanceof WC_Product ) {
+			return false;
+		}
+		if ( 'publish' !== $product->get_status() ) {
 			return false;
 		}
 		if ( 'hidden' === $product->get_catalog_visibility() ) {
@@ -359,5 +364,17 @@ class WC_AI_Storefront_IndexNow {
 		}
 		// 403 (key not served), 422 (host/schema mismatch), or other: log + drop.
 		WC_AI_Storefront_Logger::debug( 'IndexNow submission failed (HTTP %d) — dropping %d URLs. If 403, the {key}.txt rewrite may need flushing.', $code, count( $urls ) );
+	}
+
+	/**
+	 * Clean up on plugin deactivation.
+	 *
+	 * Clears the pending flush cron — any queued URLs are lost, which is
+	 * acceptable since a deactivating plugin should not schedule future work.
+	 * Option data (key + pending URLs) is intentionally left in place on
+	 * mere deactivation; only uninstall.php deletes them.
+	 */
+	public static function deactivate(): void {
+		wp_clear_scheduled_hook( self::FLUSH_HOOK );
 	}
 }

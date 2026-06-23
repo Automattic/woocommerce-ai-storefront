@@ -381,7 +381,7 @@ class WC_AI_Storefront_Admin_Controller {
 		// React UI can display it immediately without a follow-up GET.
 		// The {key}.txt rewrite rule is pattern-based, so no rewrite flush is
 		// needed after a key rotation — the new key is served on the next
-		// request that matches the hex-pattern rule.
+		// request that matches the IndexNow key charset rule (hex + dash, case-insensitive).
 		register_rest_route(
 			self::NAMESPACE,
 			'/regenerate-indexnow-key',
@@ -421,9 +421,10 @@ class WC_AI_Storefront_Admin_Controller {
 	 * `indexnow_key` is read via `peek_key()` (which reads the dedicated
 	 * KEY_OPTION without generating a new key) rather than `get_key()`, to
 	 * avoid triggering key-generation on every GET request. A merchant who has
-	 * never rotated their key will see an empty string here until they trigger
-	 * the first key generation via POST /regenerate-indexnow-key. If the UI
-	 * wants to display a key immediately on first load it should call
+	 * never triggered key generation will see an empty
+	 * string here. A key is first generated on the initial catalog-change
+	 * flush, a matching {key}.txt request, or via POST /regenerate-indexnow-key.
+	 * If the UI wants to display a key immediately on first load it should call
 	 * POST /regenerate-indexnow-key once when the value is empty.
 	 *
 	 * @return WP_REST_Response
