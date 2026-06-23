@@ -203,4 +203,88 @@ class WC_AI_Storefront_IndexNow {
 		delete_option( self::PENDING_OPTION );
 		return is_array( $pending ) ? array_values( $pending ) : array();
 	}
+
+	/**
+	 * Register catalog-change hooks and the flush cron handler. Called only
+	 * when the feature is enabled (see WC_AI_Storefront::init_components()).
+	 */
+	public function init(): void {
+		add_action( 'woocommerce_update_product', array( $this, 'on_product_change' ) );
+		add_action( 'woocommerce_new_product', array( $this, 'on_product_change' ) );
+		add_action( 'woocommerce_product_set_stock_status', array( $this, 'on_product_change' ) );
+		add_action( 'woocommerce_trash_product', array( $this, 'on_product_removed' ) );
+		add_action( 'woocommerce_delete_product', array( $this, 'on_product_removed' ) );
+		add_action( 'created_product_cat', array( $this, 'on_term_change' ) );
+		add_action( 'edited_product_cat', array( $this, 'on_term_change' ) );
+		add_action( 'delete_product_cat', array( $this, 'on_term_change' ) );
+		add_action( self::FLUSH_HOOK, array( $this, 'flush' ) );
+	}
+
+	/**
+	 * A product was created/updated/restocked: enqueue its URL (when indexable)
+	 * plus the AI surfaces, then schedule a flush.
+	 *
+	 * @param int $product_id Product ID.
+	 */
+	public function on_product_change( $product_id ): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+		$urls    = $this->surface_urls();
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $product_id ) : null;
+		if ( $product && $this->is_product_indexable( $product ) ) {
+			$permalink = get_permalink( $product->get_id() );
+			if ( is_string( $permalink ) && '' !== $permalink ) {
+				$urls[] = $permalink;
+			}
+		}
+		$this->enqueue( $urls );
+		$this->schedule_flush();
+	}
+
+	/**
+	 * A product was trashed/deleted: submit its URL unconditionally (so engines
+	 * re-crawl and de-index) plus the AI surfaces.
+	 *
+	 * @param int $product_id Product ID.
+	 */
+	public function on_product_removed( $product_id ): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+		$urls      = $this->surface_urls();
+		$permalink = get_permalink( (int) $product_id );
+		if ( is_string( $permalink ) && '' !== $permalink ) {
+			$urls[] = $permalink;
+		}
+		$this->enqueue( $urls );
+		$this->schedule_flush();
+	}
+
+	/**
+	 * A product category changed: enqueue its term URL plus the AI surfaces.
+	 *
+	 * @param int $term_id Term ID.
+	 */
+	public function on_term_change( $term_id ): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+		$urls = $this->surface_urls();
+		$link = get_term_link( (int) $term_id, 'product_cat' );
+		if ( is_string( $link ) && '' !== $link ) {
+			$urls[] = $link;
+		}
+		$this->enqueue( $urls );
+		$this->schedule_flush();
+	}
+
+	/**
+	 * Schedule a single debounced flush if one is not already pending.
+	 */
+	public function schedule_flush(): void {
+		if ( ! wp_next_scheduled( self::FLUSH_HOOK ) ) {
+			wp_schedule_single_event( time() + self::FLUSH_DELAY, self::FLUSH_HOOK );
+		}
+	}
 }

@@ -165,4 +165,57 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( array( 'https://shop.test/a', 'https://shop.test/b', 'https://shop.test/c' ), $pending );
 		$this->assertSame( array(), $this->indexnow->take_pending() ); // cleared
 	}
+
+	private function indexable_product( int $id ): \Mockery\MockInterface {
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( $id );
+		$p->shouldReceive( 'get_status' )->andReturn( 'publish' );
+		$p->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		return $p;
+	}
+
+	public function test_schedule_flush_guards_against_double_scheduling(): void {
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\expect( 'wp_schedule_single_event' )->once()->andReturnUsing(
+			function ( $ts, $hook ) {
+				$this->assertSame( WC_AI_Storefront_IndexNow::FLUSH_HOOK, $hook );
+				return true;
+			}
+		);
+		$this->indexnow->schedule_flush();
+	}
+
+	public function test_schedule_flush_noop_when_already_scheduled(): void {
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 30 );
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->schedule_flush();
+	}
+
+	public function test_on_product_change_enqueues_product_and_surfaces_when_indexable(): void {
+		$captured = array();
+		$store    = array();
+		Functions\when( 'get_option' )->alias( static fn( $n, $d = false ) => $store[ $n ] ?? $d );
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store, &$captured ) {
+				$store[ $n ] = $v;
+				$captured    = $v;
+				return true;
+			}
+		);
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 30 );
+		Functions\when( 'wc_get_product' )->justReturn( $this->indexable_product( 42 ) );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		$this->indexnow->on_product_change( 42 );
+		$this->assertContains( 'https://shop.test/product/x/', $captured );
+		$this->assertContains( 'https://shop.test/llms.txt', $captured );
+	}
+
+	public function test_on_product_change_skips_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		Functions\expect( 'update_option' )->never();
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->on_product_change( 42 );
+		$this->addToAssertionCount( 1 );
+	}
 }
