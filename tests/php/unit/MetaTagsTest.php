@@ -20,6 +20,8 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		// apply_filters returns the value it was given (pass-through).
 		Functions\when( 'apply_filters' )->returnArg( 2 );
+		// __() pass-through (returns the untranslated format string).
+		Functions\when( '__' )->returnArg();
 		// Default all commerce conditionals to false; tests opt in.
 		Functions\when( 'is_product' )->justReturn( false );
 		Functions\when( 'is_product_category' )->justReturn( false );
@@ -93,6 +95,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$product = \Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_short_description' )->andReturn( $overrides['short'] ?? '' );
 		$product->shouldReceive( 'get_description' )->andReturn( $overrides['long'] ?? '' );
+		$product->shouldReceive( 'get_name' )->andReturn( $overrides['name'] ?? 'Test Product' );
 		return $product;
 	}
 
@@ -119,11 +122,6 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'The long description.', $this->meta->build_description( $p ) );
 	}
 
-	public function test_description_empty_when_all_blank(): void {
-		Functions\when( 'strip_shortcodes' )->returnArg();
-		$p = $this->make_product( array( 'short' => '', 'long' => '' ) );
-		$this->assertSame( '', $this->meta->build_description( $p ) );
-	}
 
 	public function test_description_strips_html_and_shortcodes_and_collapses_whitespace(): void {
 		Functions\when( 'strip_shortcodes' )->alias(
@@ -420,7 +418,10 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'product:price:amount', $html );
 	}
 
-	public function test_render_omits_empty_og_description_for_descriptionless_product(): void {
+	public function test_render_emits_fallback_description_for_descriptionless_product(): void {
+		// A product with no short/long description still emits a non-empty
+		// description (and og:/twitter: description) via the name fallback (#537),
+		// because we suppress Jetpack's on commerce pages.
 		$this->stub_escapers();
 		Functions\when( 'is_product' )->justReturn( true );
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
@@ -434,8 +435,9 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		ob_start();
 		$this->meta->render_head_tags();
 		$html = ob_get_clean();
-		$this->assertStringNotContainsString( 'og:description', $html );
-		$this->assertStringNotContainsString( 'twitter:description', $html );
+		$this->assertStringContainsString( '<meta name="description" content="Canvas Belt at Saltwarp."', $html );
+		$this->assertStringContainsString( 'og:description', $html );
+		$this->assertStringContainsString( 'twitter:description', $html );
 	}
 
 	public function test_render_emits_noindex_only_for_product_search(): void {
@@ -653,5 +655,34 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertArrayNotHasKey( 'og:image', $og );
+	}
+
+	// --- Description fallbacks: never emit an empty description while we
+	// suppress Jetpack's (#537). ---
+
+	public function test_archive_description_category_falls_back_when_term_has_no_description(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => '' )
+		);
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		$desc = $this->meta->build_archive_description();
+		$this->assertNotSame( '', $desc );
+		$this->assertStringContainsString( 'Belts', $desc );
+		$this->assertStringContainsString( 'Saltwarp', $desc );
+	}
+
+	public function test_description_product_falls_back_to_name_when_blank(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_short_description' )->andReturn( '' );
+		$product->shouldReceive( 'get_description' )->andReturn( '' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$desc = $this->meta->build_description( $product );
+		$this->assertNotSame( '', $desc );
+		$this->assertStringContainsString( 'Canvas Belt', $desc );
+		$this->assertStringContainsString( 'Saltwarp', $desc );
 	}
 }
