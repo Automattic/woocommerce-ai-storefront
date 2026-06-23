@@ -3,9 +3,9 @@
  * IndexNow instant-indexing integration.
  *
  * On catalog change, submits affected URLs plus the AI-discovery surfaces to
- * IndexNow (Bing/Yandex/Seznam/Naver/Yep/Internet Archive/Amazonbot), so the
- * Bing-backed AI assistants re-crawl quickly. Google does not consume IndexNow.
- * See issue #530.
+ * IndexNow (Bing, Yandex, Seznam, Naver, Yep), so those engines re-crawl
+ * quickly and keep the catalog current in the AI-powered search results they
+ * back. Google does not consume IndexNow. See issue #530.
  *
  * @package WooCommerce_AI_Storefront
  */

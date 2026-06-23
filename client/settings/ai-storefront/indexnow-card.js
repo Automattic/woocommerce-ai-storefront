@@ -3,7 +3,7 @@
  *
  * Lets the merchant turn IndexNow on/off, see and regenerate the ownership
  * key, and read the last submission result. When enabled, the plugin submits
- * public URLs to IndexNow (Bing/ChatGPT Search/Copilot/Amazonbot) from the
+ * public URLs to IndexNow (Bing, Yandex, Seznam, Naver, Yep) from the
  * server-side flush cron, not from this card; Google does not consume IndexNow.
  */
 
@@ -167,9 +167,15 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 	return (
 		<Card style={ { marginTop: '32px' } }>
 			<CardBody>
+				<h3 style={ { margin: '0 0 8px', fontSize: '14px' } }>
+					{ __(
+						'Instant indexing (IndexNow)',
+						'woocommerce-ai-storefront'
+					) }
+				</h3>
 				<p style={ muted }>
 					{ __(
-						'Notify search engines the moment your catalog changes, so Bing-backed AI assistants (ChatGPT Search, Microsoft Copilot, Amazonbot) re-crawl quickly. Only public URLs are sent. Google does not use IndexNow.',
+						'Submit catalog changes to the search engines that support IndexNow (Bing, Yandex, Seznam, Naver, Yep) the moment they happen, so they re-crawl in seconds instead of days. Faster indexing there helps keep your products current in AI-powered search results. Only public URLs are sent. Google does not use IndexNow.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
