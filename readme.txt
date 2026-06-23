@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.27.0
+Stable tag: 0.28.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -129,9 +129,16 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 == Changelog ==
 
+= 0.28.0 - 2026-06-23 =
+**New**
+* IndexNow is now opt-in, with its own controls on the Discovery tab: turn it on, view and regenerate your verification key, see the last submission result, and push your whole catalog at once with "Submit entire catalog now" (also seeded automatically the first time you enable it). It notifies the engines that consume IndexNow (Bing, Yandex, Seznam, Naver, Yep); Google does not.
+
+**Fixed**
+* Category and product pages always include a meta description again. After the 0.27.0 Jetpack metadata fix, pages with no description text (a category with no description, a product with no short or long description) could be left with none; they now fall back to an auto-generated description.
+
 = 0.27.0 - 2026-06-22 =
 **New**
-* Instant indexing: when you add or change a product, category, or your shop page, your store notifies IndexNow so Bing-powered AI assistants (ChatGPT Search, Microsoft Copilot) re-crawl it quickly. On by default once AI Storefront is enabled; nothing to configure.
+* Instant indexing: when you add or change a product, category, or your shop page, your store notifies IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) so they re-crawl it quickly. On by default once AI Storefront is enabled; nothing to configure.
 
 **Fixed**
 * On stores running Jetpack (including WordPress.com and Atomic), your product, category, and shop pages no longer emit duplicate or conflicting descriptions and social-share tags. AI Storefront now provides a single correct set and defers to Jetpack on every other page.
