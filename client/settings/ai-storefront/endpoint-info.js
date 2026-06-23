@@ -13,6 +13,7 @@ import { __, sprintf, _n } from '@wordpress/i18n';
 import { STORE_NAME } from '../../data/ai-storefront/constants';
 import { colors, typography, radii, spacing } from './tokens';
 import { TabInputStyles } from './tab-input-styles';
+import { IndexNowCard } from './indexnow-card';
 
 const ENDPOINT_TAB_CLASS = 'ai-storefront-endpoint-tab';
 
@@ -2493,6 +2494,8 @@ const EndpointInfo = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 					</div>
 				</CardBody>
 			</Card>
+
+			<IndexNowCard settings={ settings } onChange={ onChange } />
 
 			{ /*
 				Rate Limits card. Placed after the Crawler Access card
