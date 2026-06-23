@@ -332,4 +332,31 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 			'explicit null'    => [ null ],
 		];
 	}
+
+	// ------------------------------------------------------------------
+	// indexnow_key persistence — generated state must survive a save
+	// ------------------------------------------------------------------
+	//
+	// The IndexNow key is written by WC_AI_Storefront_IndexNow::regenerate_key()
+	// into the SETTINGS_OPTION alongside every other setting. Because
+	// update_settings() rebuilds $clean from a strict whitelist, any key
+	// NOT in that whitelist is silently dropped on the next admin save.
+	// The fix carries `indexnow_key` forward from the merged array so the
+	// generated state is never erased by an unrelated settings change.
+	// This test must FAIL without that carry-forward line and PASS with it.
+
+	public function test_indexnow_key_survives_settings_save(): void {
+		// Seed a known key into stored settings (simulates what
+		// regenerate_key() would have written).
+		WC_AI_Storefront::$test_settings = [
+			'indexnow_key' => 'xyzzy123fakekey',
+		];
+
+		// Perform an unrelated settings change — IndexNow key should survive.
+		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => 'no' ] );
+
+		$result = WC_AI_Storefront::get_settings();
+		$this->assertArrayHasKey( 'indexnow_key', $result );
+		$this->assertSame( 'xyzzy123fakekey', $result['indexnow_key'] );
+	}
 }

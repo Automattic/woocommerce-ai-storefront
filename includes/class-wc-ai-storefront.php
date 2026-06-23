@@ -855,6 +855,13 @@ class WC_AI_Storefront {
 			'products_json_enabled'    => $products_json_enabled,
 			// See `$indexnow_enabled` resolution above the array literal.
 			'indexnow_enabled'         => $indexnow_enabled,
+			// Generated state: carry the existing key forward unchanged so
+			// a settings save never invalidates a key the IndexNow engine
+			// has already verified. The key is written only by
+			// `WC_AI_Storefront_IndexNow::regenerate_key()` — never from
+			// user input — so we pass it through as-is rather than
+			// sanitizing it as a user-supplied value.
+			'indexnow_key'             => (string) ( $merged['indexnow_key'] ?? '' ),
 		];
 
 		// Use autoload=true so the option is always in the alloptions cache.
