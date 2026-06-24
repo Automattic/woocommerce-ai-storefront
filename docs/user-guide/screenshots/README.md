@@ -11,7 +11,9 @@ The PNG files in this folder are referenced from [`USER-GUIDE.md`](../USER-GUIDE
 | `04-products-by-taxonomy.png` | **AI Storefront → Product Visibility** | "Products by category, tag, or brand" mode with category checkboxes and selected tokens visible. |
 | `05-products-selected.png` | Same screen | "Specific products only" mode with the product picker visible. |
 | `06-discovery-tab.png` | **AI Storefront → Discovery** | Crawler checkboxes (live browsing / training / test groups) and the rate-limit control. |
-| `07-policies-tab.png` | **AI Storefront → Policies** | Return & refund policy section: mode picker, policy page, fees, window, and return methods. |
+| `06c-indexnow.png` | **AI Storefront → Discovery** | The "Instant indexing (IndexNow)" card: toggle, verification key, View key file link, Regenerate, last-submission status, and "Submit entire catalog now". |
+| `06d-mcp.png` | **AI Storefront → Discovery** | The "Allowed AI agents" card's transport toggles: "Allow agents not on the list", "Enable MCP transport for agents", and "Serve a catalog feed at /products.json". |
+| `07-policies-tab.png` | **AI Storefront → Policies** | Return & refund policy section: the mode picker (Not configured / Link to a returns page / Specify the details here), returns-page dropdown, and the Shipping handling-time steppers. |
 | `07b-handling-time.png` | Same screen (scrolled) | Shipping section: min/max handling time steppers. |
 | `08-product-final-sale.png` | **Products → Edit a product → Inventory tab** | The Product Data box with the "AI: Final sale" checkbox visible at the bottom. |
 | `09-endpoints-info.png` | **AI Storefront → Discovery** | The "Discovery Endpoints" card listing `/llms.txt`, `/.well-known/ucp`, the UCP API base, and `/robots.txt`. |

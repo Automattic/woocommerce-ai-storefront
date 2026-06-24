@@ -484,6 +484,18 @@ Unchecking tells that crawler to stop. Most legitimate AI crawlers will respect 
 
 A toggle labeled **Other AI agents** controls whether unlisted crawlers can access your store. When checked, AI agents whose brand isn't in the list can access your store.
 
+### MCP server for shopping agents
+
+A toggle labeled **Enable MCP transport for agents** controls whether agents can reach your store's catalog and checkout capabilities over **MCP (Model Context Protocol)**, a JSON-RPC transport, alongside the REST endpoints. It is **on by default**.
+
+MCP is a structured way for AI assistants to call tools. With this on, an MCP-aware shopping agent can search your catalog, look up products, and begin a checkout handoff through the same operations the UCP REST API exposes, in the shape MCP clients expect. Nothing new about your catalog is exposed; the MCP surface respects your Visibility settings exactly like every other endpoint, and it is one more door into the same public product data.
+
+This is distinct from the WooCommerce-core MCP integration described in §5b. That one is **admin-side**: it lets *your own* AI assistant read and modify your store under your credentials. This toggle is the **public, shopper-facing** MCP server, which serves external shopping agents read-only catalog and checkout-handoff operations only, never your admin.
+
+Leave it on unless you have a reason to serve only REST. Turning it off makes the MCP endpoint unavailable; MCP-aware agents simply fall back to your REST endpoints, and no other surface is affected.
+
+![Discovery tab: MCP transport and product-feed toggles](screenshots/06d-mcp.png)
+
 ### Shopify-compatible product feed
 
 A toggle labeled **Serve a Shopify-compatible /products.json catalog feed** controls whether your store answers requests at `/products.json` (and the `/collections/all/products.json` alias). The same toggle also serves the scoped paths assistants drill into next: a single product at `/products/{handle}.json`, one category's products at `/collections/{handle}/products.json`, and your category list at `/collections.json`. It is **on by default**.
@@ -528,6 +540,8 @@ Stats update hourly, so today's AI traffic appears in the dashboard within an ho
 IndexNow is a protocol that lets you push URLs to search engines the moment your catalog changes — instead of waiting for those engines to crawl on their own schedule. When a product, category, or shop page changes, the plugin batches the affected URLs (plus your discovery surfaces: homepage, `/shop/`, `/llms.txt`, `/products.json`) and submits them in a single background request via WP-Cron. The engines that consume IndexNow are **Microsoft Bing, Yandex, Seznam, Naver, and Yep**. **Google does not use IndexNow** — it relies on sitemaps and its own crawl schedule — so this feature complements your existing structured data and sitemap rather than replacing them.
 
 This feature is **opt-in** and is disabled by default. To enable it, open the **Discovery** tab and find the **Instant indexing (IndexNow)** card, then toggle it on.
+
+![Instant indexing (IndexNow) card](screenshots/06c-indexnow.png)
 
 **Verification key.** IndexNow requires each site to prove ownership before engines trust its submissions. The plugin auto-generates a verification key and serves it at `https://your-store.com/{key}.txt`. The card shows the current key and offers a **Regenerate** button. The key is public-by-design (engines fetch it to confirm ownership), so you only need to regenerate it if a key was somehow leaked and you want to invalidate it — routine rotation is unnecessary.
 
