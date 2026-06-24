@@ -448,6 +448,24 @@ class AdminReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( array(), $data['indexnow_last_result'] );
 	}
 
+	public function test_get_settings_generates_key_when_indexnow_enabled(): void {
+		// Auto-generate on enable (#546): get_key() mints + persists when the
+		// dedicated KEY_OPTION is empty, so the card shows a key with no manual
+		// "Generate" step. The setUp get_option stub returns '' (no key yet).
+		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'yes' ) );
+		Functions\when( 'update_option' )->justReturn( true );
+		$data = $this->controller->get_settings()->get_data();
+		$this->assertMatchesRegularExpression( '/^[a-f0-9]{32}$/', $data['indexnow_key'] );
+	}
+
+	public function test_get_settings_does_not_mint_key_when_indexnow_disabled(): void {
+		// IndexNow off (default): peek_key() is read-only — never mint a key
+		// for a disabled feature.
+		Functions\expect( 'update_option' )->never();
+		$data = $this->controller->get_settings()->get_data();
+		$this->assertSame( '', $data['indexnow_key'] );
+	}
+
 	// ------------------------------------------------------------------
 	// Authorization (Finding #7 — wiring + capability)
 	// ------------------------------------------------------------------

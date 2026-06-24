@@ -433,21 +433,23 @@ class WC_AI_Storefront_Admin_Controller {
 	 * Returns the persisted settings merged with the current IndexNow key so
 	 * the React UI can display it without a separate request.
 	 *
-	 * `indexnow_key` is read via `peek_key()` (which reads the dedicated
-	 * KEY_OPTION without generating a new key) rather than `get_key()`, to
-	 * avoid triggering key-generation on every GET request. A merchant who has
-	 * never triggered key generation will see an empty
-	 * string here. A key is first generated on the initial catalog-change
-	 * flush, a matching {key}.txt request, or via POST /regenerate-indexnow-key.
-	 * If the UI wants to display a key immediately on first load it should call
-	 * POST /regenerate-indexnow-key once when the value is empty.
+	 * When IndexNow is enabled, `indexnow_key` is read via `get_key()`, which
+	 * generates and persists a key on first read so the settings card always
+	 * shows one (no manual "Generate" step). When IndexNow is off it uses
+	 * `peek_key()` (read-only, no minting), so a disabled feature never creates
+	 * a key. The merchant can still rotate the key via POST
+	 * /regenerate-indexnow-key. The public `{key}.txt` handler always uses
+	 * `peek_key()` and never mints for an anonymous request. See #546.
 	 *
 	 * @return WP_REST_Response
 	 */
 	public function get_settings() {
-		$settings                         = WC_AI_Storefront::get_settings();
-		$indexnow                         = new WC_AI_Storefront_IndexNow();
-		$settings['indexnow_key']         = $indexnow->peek_key();
+		$settings = WC_AI_Storefront::get_settings();
+		$indexnow = new WC_AI_Storefront_IndexNow();
+		// Generate on read only when enabled; never mint for a disabled feature.
+		$settings['indexnow_key']         = 'yes' === ( $settings['indexnow_enabled'] ?? 'no' )
+			? $indexnow->get_key()
+			: $indexnow->peek_key();
 		$settings['indexnow_last_result'] = $indexnow->last_result();
 		return new WP_REST_Response( $settings );
 	}
