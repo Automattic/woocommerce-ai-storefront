@@ -4,6 +4,10 @@
 
 - **IndexNow generates its verification key automatically when you enable it (#546).** Previously the card showed "(not generated yet)" until you clicked "Generate key"; enabling IndexNow now creates the key on the spot, so the card is ready to use immediately. The key is public-by-design (engines fetch it to confirm ownership), so there is nothing to defer. The Regenerate button still rotates it manually.
 
+### Docs
+
+- **User guide + API reference now document IndexNow.** Added §6 "Instant indexing (IndexNow)" subsection to the User Guide (opt-in toggle, verification key, Submit entire catalog now, status line, engine list with Google caveat) plus a §10 troubleshooting entry for HTTP 202 / key-validation issues. Added IndexNow admin routes (`POST /regenerate-indexnow-key`, `POST /indexnow-submit-all`, `GET /{key}.txt`) to the API Reference.
+
 ---
 
 ## [0.28.1] – 2026-06-23
