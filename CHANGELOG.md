@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.28.2] – 2026-06-23
+
 ### Features
 
 - **IndexNow generates its verification key automatically when you enable it (#546).** Previously the card showed "(not generated yet)" until you clicked "Generate key"; enabling IndexNow now creates the key on the spot, so the card is ready to use immediately. The key is public-by-design (engines fetch it to confirm ownership), so there is nothing to defer. The Regenerate button still rotates it manually.
