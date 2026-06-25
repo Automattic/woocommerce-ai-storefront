@@ -242,7 +242,7 @@ The plugin writes the everyday metadata search engines and social platforms read
 
 | Tag | What it is | Built from |
 |-----|-----------|-----------|
-| Page title (`<title>`) | The clickable headline in Google results and the browser tab | Product name, with your product brand appended when set |
+| Page title (`<title>`) | The clickable headline in Google results and the browser tab | Product name, with your product brand appended when it adds information. The brand is left off when it would just repeat — when it matches your store name, or the product name already contains it — so an in-house label reads "Camp Shirt – Saltwarp", not "Camp Shirt \| Saltwarp – Saltwarp" |
 | Meta description | The gray summary under the headline in search results | Product short description, then long description; category description; shop page content, then your store tagline |
 | Open Graph + Twitter tags | The image-and-title "link preview" when a page is shared on social or in chat | Product title, description, price, and featured image |
 

@@ -34,7 +34,7 @@ Yoast-stored data is **migration territory**, considered later — never a runti
 | **Reviews / aggregateRating** | Star rating + review text feeding review snippets | crawlers + agents | Authors it | Passes through WooCommerce core's (never authored here) | 🔴 Duplicated only because the Product node is |
 | **WebSite + SearchAction** | Site name + sitelinks search box | crawlers + agents | In its `@graph` | Emits its own node | 🟡 Both emit; independent |
 | **Store / Organization + `sameAs`** | Business identity + social profile links | crawlers + agents | In its `@graph` | Emits its own node; may read the SEO plugin's stored social handles as a fallback | 🟢 Plugin borrows values, no conflict |
-| **Meta title / description** | Blue headline + gray summary in search results | crawlers + humans | Owns | Self-emits on commerce pages (title enriched with brand; description derived from core fields) | 🟡 Title: this plugin wins via late filter priority (single tag, no dup). Description: transient duplicate until the SEO plugin is deactivated |
+| **Meta title / description** | Blue headline + gray summary in search results | crawlers + humans | Owns | Self-emits on commerce pages (product title enriched with brand, except where the brand would be redundant; description derived from core fields) | 🟡 Title: this plugin wins via late filter priority (single tag, no dup). Description: transient duplicate until the SEO plugin is deactivated |
 | **Open Graph / Twitter cards** | Image + title preview when a link is shared | humans | Owns | Self-emits on commerce pages | 🟡 Transient duplicate until the SEO plugin is deactivated |
 | **Canonical (`rel=canonical`)** | "This is the master URL" — dedupes `?utm=`/sort variants | crawlers | Owns | Emits no tag (uses canonical permalinks only as *data* in JSON-LD/checkout URLs) | 🟢 No overlap — different senses of "canonical" |
 | **robots-meta (indexing)** | "Should *this page* appear in search?" | crawlers | Owns (per-page UI) | Opinionated only: noindex for `catalog_visibility=hidden` products + internal shop search | 🟢 Minimal, complementary |
@@ -50,7 +50,7 @@ The single 🔴 is the real overlap: with both plugins active, two `Product` nod
 
 While both plugins are active, this plugin **always emits** on commerce pages — it never silently defers:
 
-- **`<title>`** — this plugin hooks `document_title_parts` at a late priority, so it wins. There is only one title tag, so there is no duplication.
+- **`<title>`** — this plugin hooks `document_title_parts` at a late priority, so it wins. There is only one title tag, so there is no duplication. On single products it appends the brand (`{name} | {brand}`), but suppresses that append when it would be redundant — case-insensitively, when the brand equals the store name (core already appends the site segment) or the product name already contains the brand. So an in-house-label store (`Camp Shirt` on the `Saltwarp` brand of the `Saltwarp` store) reads `Camp Shirt – Saltwarp`, not `Camp Shirt | Saltwarp – Saltwarp`. The brand still appears when it adds information (`Field Boot | Thornwick – Saltwarp`).
 - **Meta description, Open Graph, Twitter, robots** — these are additive `<head>` tags. Until the SEO plugin is deactivated, the page carries two of each. Search engines tolerate this (they pick one); validators flag it. The duplication is your cue to act — and the admin notice tells you so. This plugin does **not** reach into the other plugin to suppress its output.
 
 ## Pre-flight checklist — before deactivating your SEO plugin
