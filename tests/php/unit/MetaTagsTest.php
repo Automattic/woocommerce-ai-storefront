@@ -169,19 +169,94 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Curated leather goods.', $this->meta->build_archive_description() );
 	}
 
-	public function test_title_parts_appends_brand_on_product(): void {
+	public function test_title_parts_appends_brand_when_distinct(): void {
 		Functions\when( 'is_product' )->justReturn( true );
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
 		$product = \Mockery::mock( 'WC_Product' );
-		$product->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Field Boot' );
 		$product->shouldReceive( 'get_id' )->andReturn( 42 );
 		Functions\when( 'wc_get_product' )->justReturn( $product );
 		Functions\when( 'get_the_terms' )->justReturn(
-			array( (object) array( 'name' => 'Leather Co' ) )
+			array( (object) array( 'name' => 'Thornwick' ) )
 		);
 		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
-		$this->assertSame( 'Canvas Belt | Leather Co', $parts['title'] );
+		$this->assertSame( 'Field Boot | Thornwick', $parts['title'] );
 		$this->assertSame( 'Saltwarp', $parts['site'] );
+	}
+
+	public function test_title_parts_skips_brand_when_brand_equals_site(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Camp Shirt' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'Saltwarp' ) )
+		);
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$this->assertSame( 'Camp Shirt', $parts['title'] );
+	}
+
+	public function test_title_parts_skips_brand_when_name_contains_brand(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Saltwarp x Thornwick Tote' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'Thornwick' ) )
+		);
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$this->assertSame( 'Saltwarp x Thornwick Tote', $parts['title'] );
+	}
+
+	public function test_title_parts_brand_redundancy_is_case_insensitive(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Camp Shirt' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'saltwarp' ) ) // lower-case brand
+		);
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$this->assertSame( 'Camp Shirt', $parts['title'] );
+	}
+
+	public function test_title_parts_skips_brand_when_site_from_bloginfo_fallback(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Camp Shirt' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'Saltwarp' ) )
+		);
+		// No 'site' key — triggers the get_bloginfo() fallback path.
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old' ) );
+		$this->assertSame( 'Camp Shirt', $parts['title'] );
+		$this->assertStringNotContainsString( '| Saltwarp', $parts['title'] );
+	}
+
+	public function test_title_parts_skips_brand_when_name_starts_with_brand(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Saltwarp Tote' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'Saltwarp' ) )
+		);
+		// Distinct site so this exercises the substring path, not the brand==site path.
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Different Store' ) );
+		$this->assertSame( 'Saltwarp Tote', $parts['title'] );
+		$this->assertStringNotContainsString( '| Saltwarp', $parts['title'] );
 	}
 
 	public function test_title_parts_no_brand_when_absent(): void {
