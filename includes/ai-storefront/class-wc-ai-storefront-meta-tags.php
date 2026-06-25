@@ -204,7 +204,10 @@ class WC_AI_Storefront_Meta_Tags {
 				$title = $product->get_name();
 				$brand = $this->get_brand_name( $product );
 				if ( '' !== $brand ) {
-					$title .= ' | ' . $brand;
+					$site_name = (string) ( $parts['site'] ?? ( function_exists( 'get_bloginfo' ) ? get_bloginfo( 'name' ) : '' ) );
+					if ( ! $this->brand_is_redundant( $brand, $title, $site_name ) ) {
+						$title .= ' | ' . $brand;
+					}
 				}
 				$parts['title'] = $title;
 			}
@@ -230,6 +233,31 @@ class WC_AI_Storefront_Meta_Tags {
 			return (string) $terms[0]->name;
 		}
 		return '';
+	}
+
+	/**
+	 * Whether appending the brand to the title would be redundant.
+	 *
+	 * On in-house-label stores the brand equals the store name (core already
+	 * appends the site segment), and on collaboration products the brand is
+	 * already in the product name (e.g. "Saltwarp x Thornwick Tote"). In both
+	 * cases re-appending the brand only repeats a word already in the headline.
+	 * Comparison is case-insensitive.
+	 *
+	 * @param string $brand        Brand name (caller guarantees non-empty).
+	 * @param string $product_name Product name.
+	 * @param string $site_name    Store name (core's site title segment).
+	 * @return bool True when the brand should NOT be appended.
+	 */
+	private function brand_is_redundant( string $brand, string $product_name, string $site_name ): bool {
+		if ( '' === $brand ) {
+			return false;
+		}
+		$brand_lc = mb_strtolower( $brand );
+		if ( $brand_lc === mb_strtolower( $site_name ) ) {
+			return true;
+		}
+		return false !== mb_strpos( mb_strtolower( $product_name ), $brand_lc );
 	}
 
 	/**
