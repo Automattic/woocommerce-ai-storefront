@@ -226,6 +226,39 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Camp Shirt', $parts['title'] );
 	}
 
+	public function test_title_parts_skips_brand_when_site_from_bloginfo_fallback(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Camp Shirt' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'Saltwarp' ) )
+		);
+		// No 'site' key — triggers the get_bloginfo() fallback path.
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old' ) );
+		$this->assertSame( 'Camp Shirt', $parts['title'] );
+		$this->assertStringNotContainsString( '| Saltwarp', $parts['title'] );
+	}
+
+	public function test_title_parts_skips_brand_when_name_starts_with_brand(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_name' )->andReturn( 'Saltwarp Tote' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => 'Saltwarp' ) )
+		);
+		// Distinct site so this exercises the substring path, not the brand==site path.
+		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Different Store' ) );
+		$this->assertSame( 'Saltwarp Tote', $parts['title'] );
+		$this->assertStringNotContainsString( '| Saltwarp', $parts['title'] );
+	}
+
 	public function test_title_parts_no_brand_when_absent(): void {
 		Functions\when( 'is_product' )->justReturn( true );
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );

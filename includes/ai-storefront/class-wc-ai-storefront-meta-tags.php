@@ -248,7 +248,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * (e.g. "Arc" in "Arctic Parka") is also suppressed. This errs on the safe
 	 * side for a SERP headline — the only effect is a missing brand suffix on a
 	 * minority of products, never a wrong or duplicated one, and the brand is
-	 * still carried in the structured JSON-LD / Open Graph output.
+	 * still carried as a discrete `brand` field in the product JSON-LD output.
 	 *
 	 * @param string $brand        Brand name (caller guarantees non-empty).
 	 * @param string $product_name Product name.
@@ -256,9 +256,6 @@ class WC_AI_Storefront_Meta_Tags {
 	 * @return bool True when the brand should NOT be appended.
 	 */
 	private function brand_is_redundant( string $brand, string $product_name, string $site_name ): bool {
-		if ( '' === $brand ) {
-			return false;
-		}
 		$brand_lc = mb_strtolower( $brand );
 		if ( $brand_lc === mb_strtolower( $site_name ) ) {
 			return true;
