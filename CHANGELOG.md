@@ -1,11 +1,19 @@
 ## [Unreleased]
 
+---
+
+## [0.28.3] – 2026-06-25
+
 ### Fixes
 
 - **Product SEO titles no longer repeat the brand (#549).** On stores where the brand matches the store name, or the product name already contains the brand, the page `<title>` duplicated it — e.g. `Camp Shirt | Saltwarp – Saltwarp` and `Saltwarp x Thornwick Tote | Thornwick – Saltwarp`.
   - The brand is now appended only when it adds information: suppressed (case-insensitively) when it equals the store name or is already present in the product name.
   - Results become `Camp Shirt – Saltwarp` and `Saltwarp x Thornwick Tote – Saltwarp`; a genuinely distinct brand still appears, e.g. `Field Boot | Thornwick – Saltwarp`.
-  - Structured data is unchanged — the brand remains a separate field in the product JSON-LD and Open Graph output.
+  - Structured data is unchanged — the brand remains a separate field in the product JSON-LD.
+
+### Docs
+
+- **Documented the brand-redundancy title behavior (#551)** in the User Guide metadata table and the Yoast-coexistence reference.
 
 ---
 
