@@ -242,7 +242,13 @@ class WC_AI_Storefront_Meta_Tags {
 	 * appends the site segment), and on collaboration products the brand is
 	 * already in the product name (e.g. "Saltwarp x Thornwick Tote"). In both
 	 * cases re-appending the brand only repeats a word already in the headline.
-	 * Comparison is case-insensitive.
+	 *
+	 * The product-name test is a case-insensitive *substring* match, not a
+	 * word-boundary one: a brand that is a coincidental substring of the name
+	 * (e.g. "Arc" in "Arctic Parka") is also suppressed. This errs on the safe
+	 * side for a SERP headline — the only effect is a missing brand suffix on a
+	 * minority of products, never a wrong or duplicated one, and the brand is
+	 * still carried in the structured JSON-LD / Open Graph output.
 	 *
 	 * @param string $brand        Brand name (caller guarantees non-empty).
 	 * @param string $product_name Product name.
