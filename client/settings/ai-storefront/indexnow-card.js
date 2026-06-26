@@ -185,7 +185,7 @@ export function IndexNowCard( { settings, onChange, keyFileUrl } ) {
 				</h3>
 				<p style={ muted }>
 					{ __(
-						'Tell IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) the moment your catalog changes, so they re-crawl in seconds instead of days, keeping your products current in AI-powered search results. Only public URLs are sent; Google does not use IndexNow.',
+						'Tell IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) the moment your catalog changes, so they re-crawl promptly instead of waiting days or weeks for their next visit, keeping your products current in AI-powered search results. Only public URLs are sent; Google does not use IndexNow.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>

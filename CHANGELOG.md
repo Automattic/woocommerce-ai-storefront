@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixes
+
+- **Corrected the IndexNow card wording (#553).** The card no longer says engines "re-crawl in seconds." The instant part of IndexNow is the notification; the re-crawl is faster than waiting for an organic pass (days or weeks) but not literally seconds, and indexing is never guaranteed. The card now says engines "re-crawl promptly."
+
 ---
 
 ## [0.28.3] – 2026-06-25
@@ -43,7 +47,7 @@
 
 - **IndexNow settings, controls, and a "Submit entire catalog now" action (#534, #540).** The IndexNow integration added in 0.27.0 now has a Discovery-tab card: turn it on or off, view and regenerate the ownership key (with a link to the `/{key}.txt` verification file), and see the last submission result.
   - **Now opt-in:** IndexNow defaults to off and is enabled from the new card (it was on-by-default in 0.27.0).
-  - **Force-submit + first-enable seed:** a "Submit entire catalog now" button, plus an automatic seed when you first enable it, pushes every published product and category URL at once, so a new or freshly-imported store gets indexed right away instead of waiting for the change feed.
+  - **Force-submit + first-enable seed:** a "Submit entire catalog now" button, plus an automatic seed when you first enable it, pushes every published product and category URL at once, so a new or freshly-imported store gets its whole catalog submitted right away instead of waiting for the change feed.
   - **Accurate scope:** the card names the engines that actually consume IndexNow (Bing, Yandex, Seznam, Naver, Yep); Google does not.
 
 ### Fixes
