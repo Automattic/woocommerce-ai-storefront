@@ -3450,136 +3450,33 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		$currency       = get_woocommerce_currency();
 		$items          = array();
 		$effective_page = min( $per_page, 100 );
 		$position       = ( ( $paged - 1 ) * $effective_page ) + 1;
-
-		// Mirror the product page return policy into stub offers (#518).
-		$return_policy  = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
-			? $settings['return_policy']
-			: array( 'mode' => 'unconfigured' );
-		$base_location  = function_exists( 'wc_get_base_location' ) ? wc_get_base_location() : array();
-		$policy_country = is_array( $base_location ) ? (string) ( $base_location['country'] ?? '' ) : '';
 
 		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
 			}
 
-			$price     = $product->get_price();
-			$in_stock  = $product->is_in_stock();
-			$image_id  = $product->get_image_id();
-			$image_url = $image_id ? wp_get_attachment_url( $image_id ) : '';
+			$name = (string) $product->get_name();
+			$url  = (string) get_permalink( $product->get_id() );
 
-			$product_stub = array(
-				'@type' => 'Product',
-				'name'  => $product->get_name(),
-				'url'   => get_permalink( $product->get_id() ),
-			);
-
-			$sku = $product->get_sku();
-			if ( '' !== $sku ) {
-				$product_stub['sku'] = $sku;
+			// Summary-page carousel entry: position + name + url only. The
+			// product page this links to carries the full Product node (price,
+			// size/color, offers), so Google validates the product pages — not
+			// these list entries — and the archive list is never flagged for a
+			// missing product field. A ListItem with no resolvable name/url is a
+			// Google "Unnamed item" critical error, so skip rather than emit one.
+			if ( '' === $name || '' === $url ) {
+				continue;
 			}
 
-			// brand + gtin mirror the full product-page markup so the homepage
-			// list isn't flagged for missing recommended merchant-listing
-			// fields (#507). gtin from WC core's get_global_unique_id, stripped
-			// of non-digits (mirroring WC_Structured_Data::prepare_gtin) and
-			// validated against the same is_valid_gtin 8/12-14-digit regex, so
-			// the stub emits exactly what the product page does. brand from the
-			// first product_brand term, mirroring WC_Brands::add_structured_data.
-			// Both guarded — stores without GTINs / brands are unaffected.
-			$gtin = '';
-			if ( method_exists( $product, 'get_global_unique_id' ) ) {
-				$gtin = (string) preg_replace( '/[^0-9]/', '', (string) $product->get_global_unique_id() );
-			}
-			if ( 1 === preg_match( '/^(\d{8}|\d{12,14})$/', $gtin ) ) {
-				$product_stub['gtin'] = $gtin;
-			}
-
-			$brands = function_exists( 'get_the_terms' )
-				? get_the_terms( $product->get_id(), 'product_brand' )
-				: false;
-			if ( is_array( $brands ) && isset( $brands[0]->name ) && '' !== (string) $brands[0]->name ) {
-				$product_stub['brand'] = array(
-					'@type' => 'Brand',
-					'name'  => (string) $brands[0]->name,
-				);
-			}
-
-			// aggregateRating mirrors the product page (WC_Structured_Data):
-			// only when the product has ratings AND reviews are enabled. We
-			// add one guard WC core lacks — a positive average — so a
-			// malformed count-without-average can never emit an invalid
-			// `ratingValue: 0` that Google would flag (real WC ratings are
-			// 1-5, so a real count always implies a positive average). We
-			// never fabricate a rating, so a review-less product (or a store
-			// with reviews disabled) emits nothing. Individual review objects
-			// are intentionally omitted from the summary list (#510).
-			if (
-				$product->get_rating_count() > 0
-				&& (float) $product->get_average_rating() > 0
-				&& function_exists( 'wc_review_ratings_enabled' )
-				&& wc_review_ratings_enabled()
-			) {
-				$product_stub['aggregateRating'] = array(
-					'@type'       => 'AggregateRating',
-					'ratingValue' => (string) $product->get_average_rating(),
-					'reviewCount' => (int) $product->get_review_count(),
-				);
-			}
-
-			if ( '' !== $image_url ) {
-				$product_stub['image'] = $image_url;
-			}
-
-			// Mirror product-page description (#518 — same WC core strip/shortcode pattern).
-			$raw_description = (string) $product->get_short_description();
-			if ( '' === $raw_description ) {
-				$raw_description = (string) $product->get_description();
-			}
-			$description = trim( wp_strip_all_tags( do_shortcode( $raw_description ) ) );
-			if ( '' !== $description ) {
-				$product_stub['description'] = $description;
-			}
-
-			if ( '' !== (string) $price ) {
-				$product_stub['offers'] = array(
-					'@type'         => 'Offer',
-					'price'         => $price,
-					'priceCurrency' => $currency,
-					'availability'  => $in_stock
-						? 'https://schema.org/InStock'
-						: 'https://schema.org/OutOfStock',
-				);
-			}
-
-			// Mirror product-page return policy onto stub offer (#518).
-			if ( isset( $product_stub['offers'] ) ) {
-				$parent_id         = wp_get_post_parent_id( $product->get_id() );
-				$policy_product_id = $parent_id > 0 ? $parent_id : $product->get_id();
-				$policy_block      = $this->build_return_policy_block( $return_policy, $policy_country, $policy_product_id );
-				if ( null !== $policy_block ) {
-					$product_stub['offers']['hasMerchantReturnPolicy'] = $policy_block;
-				}
-			}
-
-			// All-in-one carousel ListItem: `position` + nested `item` only.
-			// Google's carousel spec (developers.google.com/search/docs/
-			// appearance/structured-data/carousel) defines two MUTUALLY
-			// EXCLUSIVE shapes — summary-page (`position` + `url`, no nested
-			// item) or all-in-one (`position` + nested `item`, NO ListItem-
-			// level url). A ListItem-level `url` makes Google read this as a
-			// summary entry, ignore the inline `item`, fail to resolve a name,
-			// and report a "Unnamed item" critical error. The nested
-			// `$product_stub` already carries name/url/sku/image/offers, so the
-			// ListItem-level name/url were pure duplication anyway.
 			$items[] = array(
 				'@type'    => 'ListItem',
 				'position' => $position++,
-				'item'     => $product_stub,
+				'name'     => $name,
+				'url'      => $url,
 			);
 		}
 
