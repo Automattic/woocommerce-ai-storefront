@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-06-25T20:27:28+00:00\n"
+"POT-Creation-Date: 2026-06-26T17:18:15+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -1176,7 +1176,7 @@ msgid "Instant indexing (IndexNow)"
 msgstr ""
 
 #: client/settings/ai-storefront/indexnow-card.js:187
-msgid "Tell IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) the moment your catalog changes, so they re-crawl in seconds instead of days, keeping your products current in AI-powered search results. Only public URLs are sent; Google does not use IndexNow."
+msgid "Tell IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) the moment your catalog changes, so they re-crawl promptly instead of waiting days or weeks for their next visit, keeping your products current in AI-powered search results. Only public URLs are sent; Google does not use IndexNow."
 msgstr ""
 
 #: client/settings/ai-storefront/indexnow-card.js:193
