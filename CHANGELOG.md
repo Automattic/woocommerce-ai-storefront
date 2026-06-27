@@ -7,6 +7,7 @@
 ### Fixes
 
 - **Corrected the IndexNow card wording (#553).** The card no longer says engines "re-crawl in seconds." The instant part of IndexNow is the notification; the re-crawl is faster than waiting for an organic pass (days or weeks) but not literally seconds, and indexing is never guaranteed. The card now says engines "re-crawl promptly."
+- **Return-policy selector no longer overflows the viewport on mobile (#552).** On narrow screens the return-mode and category segmented controls now wrap and stack vertically instead of running off the right edge.
 
 ---
 
