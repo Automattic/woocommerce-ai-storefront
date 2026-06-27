@@ -123,7 +123,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// is_front_page() === true), the product ItemList must still emit — the
 		// front page then carries BOTH the OnlineBusiness block (from
 		// output_store_jsonld()) AND this ItemList, so agents fetching the root
-		// get products + prices, not just navigational data.
+		// get product names + links, not just navigational data.
 		$this->enable_shop_page();
 		Functions\when( 'is_front_page' )->justReturn( true );
 
@@ -248,7 +248,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_products' )->justReturn( [ $this->make_product( 101, 'Field Boot' ) ] );
 
 		$output = $this->capture();
-		$data   = json_decode( trim( str_replace( [ '<script type="application/ld+json">', '</script>' ], '', $output ) ), true );
+		$data   = $this->decode_output( $output );
 		$entry  = $data['itemListElement'][0];
 
 		$this->assertSame( 'ListItem', $entry['@type'] );
@@ -511,14 +511,11 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$query_page  = null;
 		$written_key = null;
 		Functions\when( 'wc_get_products' )->alias(
-			static function ( $args ) use ( &$query_page ) {
+			function ( $args ) use ( &$query_page ) {
 				if ( isset( $args['page'] ) ) {
 					$query_page = $args['page'];
 				}
-				$p = Mockery::mock( 'WC_Product' );
-				$p->shouldReceive( 'get_id' )->andReturn( 40 );
-				$p->shouldReceive( 'get_name' )->andReturn( 'Page2 Hoodie' );
-				return [ $p ];
+				return [ $this->make_product( 40, 'Page2 Hoodie' ) ];
 			}
 		);
 		Functions\when( 'set_transient' )->alias(
@@ -534,6 +531,85 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 13, $data['itemListElement'][0]['position'] );
 		$this->assertSame( 2, $query_page, 'page number must thread into the product query' );
 		$this->assertStringEndsWith( '_2', (string) $written_key, 'cache key must carry the page number' );
+	}
+
+	// -------------------------------------------------------------------------
+	// Tag page: symmetric twin of the category-page test.
+	// -------------------------------------------------------------------------
+
+	public function test_itemlist_emitted_on_product_tag_page(): void {
+		$term          = new stdClass();
+		$term->term_id = 9;
+		$term->slug    = 'sale';
+		$term->name    = 'Sale';
+		$term->count   = 18; // total products with this tag (stored in term row).
+
+		Functions\when( 'is_product_tag' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn( $term );
+		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/product-tag/sale/' );
+		WC_AI_Storefront::$test_settings = [
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+		];
+
+		$product = $this->make_product( 5, 'Sale Hoodie' );
+		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+
+		$output = $this->capture();
+		$this->assertStringContainsString( 'ItemList', $output );
+
+		$data = $this->decode_output( $output );
+		// Summary-pointer entry: no nested item or offers.
+		$entry = $data['itemListElement'][0];
+		$this->assertSame( 'ListItem', $entry['@type'] );
+		$this->assertSame( 'Sale Hoodie', $entry['name'] );
+		$this->assertSame( 'https://example.com/?p=5', $entry['url'] );
+		$this->assertArrayNotHasKey( 'item', $entry );
+		// numberOfItems must be the term total (18), not just this page's count (1).
+		$this->assertSame( 18, $data['numberOfItems'] );
+		$this->assertSame( 'Sale', $data['name'] );
+		$this->assertSame( 'https://example.com/product-tag/sale/', $data['url'] );
+	}
+
+	// -------------------------------------------------------------------------
+	// Cache-hit path: encode failure on the cached array suppresses output.
+	// -------------------------------------------------------------------------
+
+	public function test_no_output_when_cache_hit_json_encoding_fails(): void {
+		// When get_transient() returns a valid cached array but wp_json_encode()
+		// subsequently returns false (e.g. the cached data contains malformed
+		// UTF-8), the cache-hit path must suppress the block entirely rather than
+		// emit an empty, invalid <script type="application/ld+json"></script> tag.
+		$cached = [
+			'@context'        => 'https://schema.org',
+			'@type'           => 'ItemList',
+			'numberOfItems'   => 1,
+			'itemListElement' => [
+				[
+					'@type'    => 'ListItem',
+					'position' => 1,
+					'name'     => 'Cached Hoodie',
+					'url'      => 'https://example.com/?p=5',
+				],
+			],
+		];
+
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'get_transient' )->justReturn( $cached );
+		Functions\when( 'wp_json_encode' )->justReturn( false );
+
+		$this->assertSame( '', $this->capture() );
+	}
+
+	// -------------------------------------------------------------------------
+	// Per-product skip: empty name is dropped (symmetric to empty-url test).
+	// -------------------------------------------------------------------------
+
+	public function test_product_without_name_is_skipped(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'get_permalink' )->justReturn( 'https://example.com/product/nameless/' );
+		Functions\when( 'wc_get_products' )->justReturn( [ $this->make_product( 103, '' ) ] );
+		$this->assertSame( '', $this->capture() ); // empty $items → no ItemList
 	}
 
 	public function test_positions_contiguous_when_a_product_is_filtered_out(): void {

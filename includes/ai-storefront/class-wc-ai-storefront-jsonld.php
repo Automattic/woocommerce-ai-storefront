@@ -3312,13 +3312,13 @@ class WC_AI_Storefront_JsonLd {
 	 *   - Shop front          is_shop() (incl. when the shop is the front page)
 	 *   - Category archives   is_product_category()
 	 *   - Tag archives        is_product_tag()
-	 *   - Search results      is_search() && function_exists( 'is_woocommerce' ) && is_woocommerce()
+	 *   - Search results      is_search() && 'product' === get_query_var( 'post_type' )
 	 *
-	 * Each itemListElement carries a ListItem with an inline Product stub
-	 * (name, SKU, URL, primary image, price, currency, availability) — enough
-	 * for an agent to present results without following individual product URLs.
-	 * Full Product enrichment (BuyAction, attributes, shipping, returns) lives
-	 * on the single-product page.
+	 * Each itemListElement is a summary-page ListItem: `position`, `name`, and
+	 * `url` only. The linked product page carries the full Product node (price,
+	 * offers, size/color, BuyAction, and every other enrichment), so Google
+	 * validates completeness on the product pages — not archive pages — and the
+	 * archive list is never flagged for missing product fields.
 	 *
 	 * Results are cached per [page_type]_[term_id|search_query]_[page_num]
 	 * (1-hour TTL). Cache is purged by WC_AI_Storefront_Cache_Invalidator on
@@ -3330,7 +3330,7 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		// Shop archive (incl. when the shop IS the front page): emit the product ItemList alongside the front page's OnlineBusiness block, so agents fetching the root get products + prices, not just navigational data.
+		// Shop archive (incl. when the shop IS the front page): emit the product ItemList alongside the front page's OnlineBusiness block, so agents fetching the root get product links, not just navigational data.
 		$on_shop     = function_exists( 'is_shop' ) && is_shop();
 		$on_category = function_exists( 'is_product_category' ) && is_product_category();
 		$on_tag      = function_exists( 'is_product_tag' ) && is_product_tag();
@@ -3469,6 +3469,13 @@ class WC_AI_Storefront_JsonLd {
 			// missing product field. A ListItem with no resolvable name/url is a
 			// Google "Unnamed item" critical error, so skip rather than emit one.
 			if ( '' === $name || '' === $url ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'ItemList JSON-LD: skipping product #%d — %s is empty.',
+						(int) $product->get_id(),
+						'' === $name ? 'name' : 'url'
+					)
+				);
 				continue;
 			}
 
