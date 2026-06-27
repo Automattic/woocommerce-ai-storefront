@@ -493,6 +493,50 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_itemlist_lists_main_query_rendered_products(): void {
+		// The visible page's products come from WP's main query (e.g. a block
+		// theme's Product Collection block rendering 12), which can differ from
+		// the posts_per_page option. The ItemList must follow the main query's
+		// posts, not a separate posts_per_page query (#559).
+		$this->enable_shop_page();
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => "https://example.com/product/{$id}/"
+		);
+
+		$rendered_a = $this->make_product( 201, 'Rendered A' );
+		$rendered_b = $this->make_product( 202, 'Rendered B' );
+		$post_a     = (object) array( 'ID' => 201 );
+		$post_b     = (object) array( 'ID' => 202 );
+
+		$mq              = Mockery::mock();
+		$mq->posts       = array( $post_a, $post_b );
+		$mq->found_posts = 38;
+		$mq->shouldReceive( 'get' )->with( 'posts_per_page' )->andReturn( 12 );
+
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $post ) => 201 === $post->ID ? $rendered_a : ( 202 === $post->ID ? $rendered_b : false )
+		);
+		// A separate posts_per_page query would surface this instead - it must not.
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->make_product( 999, 'Should Not Appear' ) ) );
+
+		$prev_query          = $GLOBALS['wp_query'] ?? null;
+		$GLOBALS['wp_query'] = $mq;
+		try {
+			$data = $this->decode_output( $this->capture() );
+		} finally {
+			if ( null === $prev_query ) {
+				unset( $GLOBALS['wp_query'] );
+			} else {
+				$GLOBALS['wp_query'] = $prev_query;
+			}
+		}
+
+		$names = array_column( $data['itemListElement'], 'name' );
+		$this->assertSame( array( 'Rendered A', 'Rendered B' ), $names );
+		$this->assertCount( 2, $data['itemListElement'] );
+		$this->assertSame( 38, $data['numberOfItems'] );
+	}
+
 	public function test_positions_offset_by_page_on_paged_archive(): void {
 		// On page 2 of a 12-per-page shop, the first item's position must be 13,
 		// not 1: position = ((paged - 1) * effective_page) + 1. The page number

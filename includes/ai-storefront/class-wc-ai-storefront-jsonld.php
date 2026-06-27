@@ -3445,7 +3445,31 @@ class WC_AI_Storefront_JsonLd {
 			}
 		}
 
-		$products = wc_get_products( $query_args );
+		// Prefer the products the page's main query actually rendered, so the
+		// list matches the visible page on ANY theme — a classic loop, a
+		// `loop_shop_per_page` filter, or a block theme's Product Collection
+		// block, whose per-page can differ from the site-wide `posts_per_page`
+		// option a standalone query would use (#559). Fall back to a direct
+		// query only when the main query exposes no posts.
+		$main_query = isset( $GLOBALS['wp_query'] ) ? $GLOBALS['wp_query'] : null;
+		$products   = array();
+		if ( $main_query && ! empty( $main_query->posts ) && is_array( $main_query->posts ) ) {
+			foreach ( $main_query->posts as $main_post ) {
+				$main_product = wc_get_product( $main_post );
+				if ( $main_product instanceof WC_Product ) {
+					$products[] = $main_product;
+				}
+			}
+			if ( is_callable( array( $main_query, 'get' ) ) ) {
+				$query_pp = (int) $main_query->get( 'posts_per_page' );
+				if ( $query_pp > 0 ) {
+					$per_page = $query_pp;
+				}
+			}
+		}
+		if ( empty( $products ) ) {
+			$products = wc_get_products( $query_args );
+		}
 		if ( empty( $products ) ) {
 			return;
 		}
