@@ -267,7 +267,7 @@
 <p>These tools are not officially affiliated with Automattic. URLs and capabilities may change over time. If any link is dead, the UCP spec page at <a href="https://ucp.dev/">https://ucp.dev/</a> will usually point at the current validator or playground.</p>
 <h3>4b. What the homepage publishes to AI agents</h3>
 <p>Your homepage now publishes your store&#39;s brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they&#39;re recommending the right store.</p>
-<p>If your homepage <em>is</em> your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list (titles, prices, availability) that <code>/shop/</code> does, so an agent that fetches only your root URL still sees products and prices, not just brand info. If your homepage is a separate landing page, only the brand details above are published there.</p>
+<p>If your homepage <em>is</em> your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list that <code>/shop/</code> does — each product&#39;s name and a link to its product page — so an agent that fetches only your root URL still sees your full product lineup and where to find each one. (Prices and full details live on the product pages themselves and in your machine-readable product feed, which the homepage points to.) If your homepage is a separate landing page, only the brand details above are published there.</p>
 <table>
 <thead>
 <tr>
@@ -782,7 +782,7 @@
 <li><strong>General WooCommerce support:</strong> <a href="https://woocommerce.com/support/">woocommerce.com/support</a> for questions about checkout, payments, taxes, shipping, or anything else WooCommerce-core-shaped.</li>
 </ul>
 <hr>
-<p><em>Covers AI Storefront 0.28.3. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
+<p><em>Covers AI Storefront 0.29.0. Screenshots are approximate; your store may look slightly different depending on theme and admin color scheme.</em></p>
 
 </body>
 </html>

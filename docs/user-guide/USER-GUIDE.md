@@ -211,7 +211,7 @@ These tools are not officially affiliated with Automattic. URLs and capabilities
 
 Your homepage now publishes your store's brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they're recommending the right store.
 
-If your homepage *is* your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list (titles, prices, availability) that `/shop/` does, so an agent that fetches only your root URL still sees products and prices, not just brand info. If your homepage is a separate landing page, only the brand details above are published there.
+If your homepage *is* your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list that `/shop/` does — each product's name and a link to its product page — so an agent that fetches only your root URL still sees your full product lineup and where to find each one. (Prices and full details live on the product pages themselves and in your machine-readable product feed, which the homepage points to.) If your homepage is a separate landing page, only the brand details above are published there.
 
 | Field | Source | Notes |
 |-------|--------|-------|
