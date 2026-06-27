@@ -123,6 +123,21 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_mismatch_branch_purges_archive_itemlist_cache(): void {
+		// A fix to ItemList generation logic (e.g. #559) must take effect on
+		// update, not after the 1-hour TTL — so the upgrade branch has to bust
+		// the ItemList cache family alongside the llms.txt / feed busts (#562).
+		$branch = $this->extract_version_mismatch_branch();
+
+		$this->assertStringContainsString(
+			'purge_archive_itemlist_cache',
+			$branch,
+			'Version-upgrade branch must call ' .
+			'WC_AI_Storefront_Cache_Invalidator::purge_archive_itemlist_cache() ' .
+			'so an ItemList generation fix is live on update (#562).'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// Helpers
 	// ------------------------------------------------------------------

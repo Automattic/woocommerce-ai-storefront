@@ -189,9 +189,11 @@ class WC_AI_Storefront_Cache_Invalidator {
 				$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
 			)
 		);
-		// Purge all paged archive ItemList transients (keyed per page-type /
-		// term / page-number — too many to register individually).
 		// phpcs:enable
+		// Purge all paged archive ItemList transients (keyed per page-type /
+		// term / page-number — too many to register individually). The wildcard
+		// $wpdb DELETE lives inside purge_archive_itemlist_cache(), which carries
+		// its own phpcs suppression.
 		self::purge_archive_itemlist_cache();
 
 		// Note: SITEMAP_CACHE_KEY is intentionally NOT busted here. The 24h
@@ -342,9 +344,14 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 *
 	 * Archive ItemList transients are keyed per page-type / term / page-number —
 	 * too many to register individually — so they are purged via a single DB
-	 * wildcard query.  The method is public and static so the version-upgrade
-	 * routine in WC_AI_Storefront can bust the family on a code update (#562)
-	 * the same way invalidate() does on product save.
+	 * wildcard query. Public and static so it can be called without a
+	 * WC_AI_Storefront_Cache_Invalidator instance — specifically the
+	 * version-upgrade routine in WC_AI_Storefront, which busts the family on a
+	 * code update (#562) so an ItemList generation fix takes effect on update.
+	 *
+	 * Only DB-backed transient rows are deleted; with a persistent object cache
+	 * (Redis/Memcached) the copies expire at their 1-hour TTL — the same
+	 * documented limitation invalidate() carries.
 	 *
 	 * After switch_to_blog() the global $wpdb->options already points to the
 	 * subsite's options table, so calling this method inside a switch_to_blog()
