@@ -189,16 +189,12 @@ class WC_AI_Storefront_Cache_Invalidator {
 				$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
 			)
 		);
-		// Purge all paged archive ItemList transients (keyed per page-type /
-		// term / page-number — too many to register individually).
-		$wpdb->query(
-			$wpdb->prepare(
-				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
-				$wpdb->esc_like( '_transient_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%',
-				$wpdb->esc_like( '_transient_timeout_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%'
-			)
-		);
 		// phpcs:enable
+		// Purge all paged archive ItemList transients (keyed per page-type /
+		// term / page-number — too many to register individually). The wildcard
+		// $wpdb DELETE lives inside purge_archive_itemlist_cache(), which carries
+		// its own phpcs suppression.
+		self::purge_archive_itemlist_cache();
 
 		// Note: SITEMAP_CACHE_KEY is intentionally NOT busted here. The 24h
 		// TTL on sitemap URL discovery exists to decouple expensive HTTP HEAD
@@ -241,14 +237,10 @@ class WC_AI_Storefront_Cache_Invalidator {
 								$wpdb->esc_like( '_transient_timeout_wc_ai_storefront_llms_txt_' ) . '%'
 							)
 						);
-						$wpdb->query(
-							$wpdb->prepare(
-								"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
-								$wpdb->esc_like( '_transient_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%',
-								$wpdb->esc_like( '_transient_timeout_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%'
-							)
-						);
 						// phpcs:enable
+						// After switch_to_blog() $wpdb->options points to the subsite's table,
+						// so purge_archive_itemlist_cache() deletes the right rows.
+						self::purge_archive_itemlist_cache();
 						foreach ( self::$registered_keys as $entry ) {
 							$key = self::resolve_key( $entry );
 							delete_transient( $key );
@@ -345,6 +337,38 @@ class WC_AI_Storefront_Cache_Invalidator {
 		$llms_txt = new WC_AI_Storefront_Llms_Txt();
 		$content  = $llms_txt->generate();
 		set_transient( WC_AI_Storefront_Llms_Txt::host_cache_key(), $content, HOUR_IN_SECONDS );
+	}
+
+	/**
+	 * Wildcard-delete the archive ItemList transient family for the current site.
+	 *
+	 * Archive ItemList transients are keyed per page-type / term / page-number —
+	 * too many to register individually — so they are purged via a single DB
+	 * wildcard query. Public and static so it can be called without a
+	 * WC_AI_Storefront_Cache_Invalidator instance — specifically the
+	 * version-upgrade routine in WC_AI_Storefront, which busts the family on a
+	 * code update (#562) so an ItemList generation fix takes effect on update.
+	 *
+	 * Only DB-backed transient rows are deleted; with a persistent object cache
+	 * (Redis/Memcached) the copies expire at their 1-hour TTL — the same
+	 * limitation the wildcard llms.txt delete in invalidate() carries.
+	 *
+	 * After switch_to_blog() the global $wpdb->options already points to the
+	 * subsite's options table, so calling this method inside a switch_to_blog()
+	 * block is safe and deletes the right rows for that subsite.
+	 */
+	public static function purge_archive_itemlist_cache(): void {
+		global $wpdb;
+
+		// phpcs:disable WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching, WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+		$wpdb->query(
+			$wpdb->prepare(
+				"DELETE FROM {$wpdb->options} WHERE option_name LIKE %s OR option_name LIKE %s",
+				$wpdb->esc_like( '_transient_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%',
+				$wpdb->esc_like( '_transient_timeout_' . WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX ) . '%'
+			)
+		);
+		// phpcs:enable
 	}
 
 	/**
