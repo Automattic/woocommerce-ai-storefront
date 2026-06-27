@@ -3383,7 +3383,7 @@ class WC_AI_Storefront_JsonLd {
 			}
 		}
 
-		// Query products for this page context.
+		// Prepare the fallback product-query args (used only when the main query yields no products).
 		$per_page   = (int) get_option( 'posts_per_page', 12 );
 		$query_args = array(
 			'status'  => 'publish',
@@ -3436,8 +3436,8 @@ class WC_AI_Storefront_JsonLd {
 		// Fall back to a count query when term->count isn't available
 		// (search + shop pages) or when $term was not resolved.
 		// Prefer wp_query->found_posts to avoid loading all IDs into memory.
+		$main_query = isset( $GLOBALS['wp_query'] ) ? $GLOBALS['wp_query'] : null;
 		if ( null === $total_products ) {
-			$main_query = isset( $GLOBALS['wp_query'] ) ? $GLOBALS['wp_query'] : null;
 			if ( $main_query && isset( $main_query->found_posts ) && $main_query->found_posts > 0 ) {
 				$total_products = (int) $main_query->found_posts;
 			} else {
@@ -3450,10 +3450,16 @@ class WC_AI_Storefront_JsonLd {
 		// `loop_shop_per_page` filter, or a block theme's Product Collection
 		// block, whose per-page can differ from the site-wide `posts_per_page`
 		// option a standalone query would use (#559). Fall back to a direct
-		// query only when the main query exposes no posts.
-		$main_query = isset( $GLOBALS['wp_query'] ) ? $GLOBALS['wp_query'] : null;
-		$products   = array();
-		if ( $main_query && ! empty( $main_query->posts ) && is_array( $main_query->posts ) ) {
+		// query only when the main query yields no WC_Product objects (no
+		// posts, or all posts are non-products).
+		//
+		// Note: this approach assumes the main query reflects the rendered
+		// products — true for the default Product Collection block (inherit-
+		// query ON, verified). A block with a custom non-inherited query is an
+		// edge case where the list will follow the archive query instead.
+		$products       = array();
+		$had_main_posts = $main_query && ! empty( $main_query->posts ) && is_array( $main_query->posts );
+		if ( $had_main_posts && function_exists( 'wc_get_product' ) ) {
 			foreach ( $main_query->posts as $main_post ) {
 				$main_product = wc_get_product( $main_post );
 				if ( $main_product instanceof WC_Product ) {
@@ -3462,12 +3468,21 @@ class WC_AI_Storefront_JsonLd {
 			}
 			if ( is_callable( array( $main_query, 'get' ) ) ) {
 				$query_pp = (int) $main_query->get( 'posts_per_page' );
+				// Exclude -1 (show-all): with -1, `paged` is always 1, so
+				// the position offset is unaffected — leave $per_page as-is.
 				if ( $query_pp > 0 ) {
 					$per_page = $query_pp;
 				}
 			}
 		}
 		if ( empty( $products ) ) {
+			if ( $had_main_posts ) {
+				// The main query had posts but none resolved to a WC_Product.
+				// The fallback re-queries — log so this silent mismatch is visible.
+				WC_AI_Storefront_Logger::debug(
+					'ItemList JSON-LD: main query had posts but none resolved to WC_Product; falling back to direct product query.'
+				);
+			}
 			$products = wc_get_products( $query_args );
 		}
 		if ( empty( $products ) ) {
