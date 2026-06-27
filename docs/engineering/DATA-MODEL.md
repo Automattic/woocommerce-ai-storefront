@@ -197,7 +197,7 @@ Cached archive `ItemList` blocks emitted by `WC_AI_Storefront_JsonLd::output_arc
 - **Key shapes:** `…itemlist_cat_<term_id>_<page>`, `…itemlist_tag_<term_id>_<page>`, `…itemlist_shop_<page>`. **Search pages are intentionally not cached** — a `…itemlist_search_<md5(query)>_<page>` key would have cardinality bounded only by the distinct `?s=` values unauthenticated visitors supply, which would flood `wp_options`; search blocks recompute fresh on every request instead (no read, no write).
 - **TTL:** 1 hour (`HOUR_IN_SECONDS`)
 - **Written by:** `output_archive_itemlist_jsonld()` for the shop / category / tag contexts only. An un-encodable payload (`wp_json_encode` returns `false`) is never written.
-- **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` via a `LIKE '_transient_<prefix>%' OR '_transient_timeout_<prefix>%'` wildcard delete (single-site and per-blog multisite paths) on any product or term change — the whole family is purged at once.
+- **Invalidated by:** `WC_AI_Storefront_Cache_Invalidator` via a `LIKE '_transient_<prefix>%' OR '_transient_timeout_<prefix>%'` wildcard delete (single-site and per-blog multisite paths) on any product or term change — the whole family is purged at once. Also purged on a plugin update, via `WC_AI_Storefront_Cache_Invalidator::purge_archive_itemlist_cache()` called from the version-upgrade routine, so a fix to ItemList generation takes effect on update rather than after the TTL (#562).
 - **Uninstall:** deleted by `uninstall.php` via the same prefix wildcard.
 
 ### `wc_ai_sf_pjson_{md5}` (keyspace family)
