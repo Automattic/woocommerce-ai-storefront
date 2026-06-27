@@ -493,6 +493,53 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_itemlist_lists_main_query_rendered_products(): void {
+		// The visible page's products come from WP's main query (e.g. a block
+		// theme's Product Collection block rendering 12), which can differ from
+		// the posts_per_page option. The ItemList must follow the main query's
+		// posts, not a separate posts_per_page query (#559).
+		$this->enable_shop_page();
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => "https://example.com/product/{$id}/"
+		);
+
+		$rendered_a = $this->make_product( 201, 'Rendered A' );
+		$rendered_b = $this->make_product( 202, 'Rendered B' );
+		$post_a     = (object) array( 'ID' => 201 );
+		$post_b     = (object) array( 'ID' => 202 );
+
+		$mq              = Mockery::mock();
+		$mq->posts       = array( $post_a, $post_b );
+		$mq->found_posts = 38;
+		$mq->shouldReceive( 'get' )->with( 'posts_per_page' )->andReturn( 12 );
+
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $post ) => 201 === $post->ID ? $rendered_a : ( 202 === $post->ID ? $rendered_b : false )
+		);
+		// A separate posts_per_page query would surface this instead - it must not.
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->make_product( 999, 'Should Not Appear' ) ) );
+
+		$prev_query          = $GLOBALS['wp_query'] ?? null;
+		$GLOBALS['wp_query'] = $mq;
+		try {
+			$data = $this->decode_output( $this->capture() );
+		} finally {
+			if ( null === $prev_query ) {
+				unset( $GLOBALS['wp_query'] );
+			} else {
+				$GLOBALS['wp_query'] = $prev_query;
+			}
+		}
+
+		$names = array_column( $data['itemListElement'], 'name' );
+		$this->assertSame( array( 'Rendered A', 'Rendered B' ), $names );
+		$this->assertCount( 2, $data['itemListElement'] );
+		$this->assertSame( 38, $data['numberOfItems'] );
+		// Position assertions: first item is 1, second item is 2.
+		$this->assertSame( 1, $data['itemListElement'][0]['position'] );
+		$this->assertSame( 2, $data['itemListElement'][1]['position'] );
+	}
+
 	public function test_positions_offset_by_page_on_paged_archive(): void {
 		// On page 2 of a 12-per-page shop, the first item's position must be 13,
 		// not 1: position = ((paged - 1) * effective_page) + 1. The page number
@@ -636,5 +683,119 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 1, $data['itemListElement'][0]['position'] );
 		$this->assertSame( 'Third', $data['itemListElement'][1]['name'] );
 		$this->assertSame( 2, $data['itemListElement'][1]['position'] );
+	}
+
+	// -------------------------------------------------------------------------
+	// Main-query / fallback path: explicit coverage added by review finding #7.
+	// -------------------------------------------------------------------------
+
+	public function test_explicit_fallback_when_main_query_absent(): void {
+		// When $GLOBALS['wp_query'] is absent (or its ->posts is empty), the
+		// method must fall back to wc_get_products() and use that result.
+		// This pins the fallback path explicitly rather than hitting it only
+		// as a side-effect of other tests.
+		$this->enable_shop_page();
+
+		$prev_query = $GLOBALS['wp_query'] ?? null;
+		unset( $GLOBALS['wp_query'] );
+
+		try {
+			$fallback_product = $this->make_product( 300, 'Fallback Hoodie' );
+			Functions\when( 'wc_get_products' )->justReturn( array( $fallback_product ) );
+
+			$data = $this->decode_output( $this->capture() );
+		} finally {
+			if ( null !== $prev_query ) {
+				$GLOBALS['wp_query'] = $prev_query;
+			}
+		}
+
+		$this->assertCount( 1, $data['itemListElement'] );
+		$this->assertSame( 'Fallback Hoodie', $data['itemListElement'][0]['name'] );
+	}
+
+	public function test_page2_offset_uses_main_query_per_page(): void {
+		// On page 2 of a shop with the main query reporting 16 products per page,
+		// the first item's position must be 17 ((2-1)*16 + 1 = 17) — the offset
+		// follows the main-query per-page, not the site-wide posts_per_page option.
+		$this->enable_shop_page();
+		Functions\when( 'get_query_var' )->alias(
+			static fn( $key, $default = '' ) => 'paged' === $key ? 2 : 0
+		);
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => "https://example.com/product/{$id}/"
+		);
+
+		$rendered = $this->make_product( 401, 'Page2 Product' );
+		$post_a   = (object) array( 'ID' => 401 );
+
+		$mq              = Mockery::mock();
+		$mq->posts       = array( $post_a );
+		$mq->found_posts = 32;
+		$mq->shouldReceive( 'get' )->with( 'posts_per_page' )->andReturn( 16 );
+
+		Functions\when( 'wc_get_product' )->alias(
+			static fn( $post ) => 401 === $post->ID ? $rendered : false
+		);
+
+		$prev_query          = $GLOBALS['wp_query'] ?? null;
+		$GLOBALS['wp_query'] = $mq;
+		try {
+			$data = $this->decode_output( $this->capture() );
+		} finally {
+			if ( null === $prev_query ) {
+				unset( $GLOBALS['wp_query'] );
+			} else {
+				$GLOBALS['wp_query'] = $prev_query;
+			}
+		}
+
+		// ( (2-1) * 16 ) + 1 = 17.
+		$this->assertSame( 17, $data['itemListElement'][0]['position'] );
+		$this->assertSame( 'Page2 Product', $data['itemListElement'][0]['name'] );
+	}
+
+	public function test_non_product_post_in_main_query_is_skipped(): void {
+		// When the main query contains a product post and a non-product post (e.g.
+		// a page or custom post type), wc_get_product() returns false for the
+		// non-product. Only the valid WC_Product must appear in the ItemList.
+		$this->enable_shop_page();
+		Functions\when( 'get_permalink' )->alias(
+			static fn( $id ) => "https://example.com/product/{$id}/"
+		);
+
+		$product_post     = (object) array( 'ID' => 501 );
+		$non_product_post = (object) array( 'ID' => 502 );
+		$real_product     = $this->make_product( 501, 'Real Product' );
+
+		$mq              = Mockery::mock();
+		$mq->posts       = array( $product_post, $non_product_post );
+		$mq->found_posts = 10;
+		$mq->shouldReceive( 'get' )->with( 'posts_per_page' )->andReturn( 12 );
+
+		Functions\when( 'wc_get_product' )->alias(
+			static function ( $post ) use ( $real_product ) {
+				// Return false for the non-product post (ID 502).
+				return 501 === $post->ID ? $real_product : false;
+			}
+		);
+		// Fallback must not be reached — a resolved product was found.
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->make_product( 999, 'Should Not Appear' ) ) );
+
+		$prev_query          = $GLOBALS['wp_query'] ?? null;
+		$GLOBALS['wp_query'] = $mq;
+		try {
+			$data = $this->decode_output( $this->capture() );
+		} finally {
+			if ( null === $prev_query ) {
+				unset( $GLOBALS['wp_query'] );
+			} else {
+				$GLOBALS['wp_query'] = $prev_query;
+			}
+		}
+
+		$this->assertCount( 1, $data['itemListElement'] );
+		$this->assertSame( 'Real Product', $data['itemListElement'][0]['name'] );
+		$this->assertSame( 1, $data['itemListElement'][0]['position'] );
 	}
 }
