@@ -112,6 +112,8 @@ function PoliciesTabStyles() {
 		<style>{ `
 			.${ SEG_CONTROL_CLASS } {
 				display: inline-flex;
+				max-width: 100%;
+				flex-wrap: wrap;
 				background: ${ colors.surfaceMuted };
 				border-radius: ${ radii.md };
 				padding: 2px;
@@ -141,6 +143,18 @@ function PoliciesTabStyles() {
 			.${ SEG_CONTROL_CLASS } button:focus-visible {
 				outline: 2px solid var(--wp-admin-theme-color, #2271b1);
 				outline-offset: 2px;
+			}
+			@media (max-width: 600px) {
+				.${ SEG_CONTROL_CLASS } {
+					display: flex;
+					flex-direction: column;
+					align-items: stretch;
+					width: 100%;
+				}
+				.${ SEG_CONTROL_CLASS } button {
+					text-align: center;
+					white-space: normal;
+				}
 			}
 			@media (forced-colors: active) {
 				.${ SEG_CONTROL_CLASS } button[aria-pressed="true"] {
