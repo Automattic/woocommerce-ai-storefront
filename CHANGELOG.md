@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Changed
+
+- **Archive product lists now link to product pages instead of embedding partial products (#556).** The shop, category, tag, and product-search `ItemList` JSON-LD switched from Google's all-in-one carousel (each entry embedded a partial `Product`) to the summary-page format (each entry is a `name` + `url` pointer to the product page). Google now validates the full product on each product page — which already carries `size`, `color`, price, and every other field — so archive pages are no longer flagged for missing recommended product fields. AI agents get catalog data from the `/products.json` feed and the UCP API (advertised in `llms.txt`), not the archive markup.
+
 ### Fixes
 
 - **Corrected the IndexNow card wording (#553).** The card no longer says engines "re-crawl in seconds." The instant part of IndexNow is the notification; the re-crawl is faster than waiting for an organic pass (days or weeks) but not literally seconds, and indexing is never guaranteed. The card now says engines "re-crawl promptly."
