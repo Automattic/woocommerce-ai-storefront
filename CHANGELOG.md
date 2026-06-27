@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.29.1] – 2026-06-26
+
 ### Fixes
 
 - **Archive product lists now match the theme's actual per-page (#559).** On block themes (the WooCommerce Product Collection block), the archive `ItemList` listed `posts_per_page` items — often fewer than the page renders (e.g. 10 listed vs 16 shown) — which violated Google's "list all items on the page" rule for the carousel. The list now follows the page's main query, so it reflects exactly the products shown, in order, on classic and block themes alike. (`numberOfItems` was already correct.)
