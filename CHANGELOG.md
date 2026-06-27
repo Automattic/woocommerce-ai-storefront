@@ -2,7 +2,7 @@
 
 ### Fixes
 
-- **Plugin updates now refresh the archive product-list cache (#562).**
+- **Plugin updates now refresh the archive `ItemList` cache (#562).**
   - The version-upgrade routine previously omitted the archive `ItemList` transient family, so a fix to ItemList generation (e.g. #559) kept serving stale output for up to the 1-hour TTL after an update.
   - The upgrade path now purges that cache alongside the existing llms.txt and feed-version busts, so corrected markup is live on the next request (DB-backed transients; a persistent object cache still expires at the 1-hour TTL).
 

@@ -351,7 +351,7 @@ class WC_AI_Storefront_Cache_Invalidator {
 	 *
 	 * Only DB-backed transient rows are deleted; with a persistent object cache
 	 * (Redis/Memcached) the copies expire at their 1-hour TTL — the same
-	 * documented limitation invalidate() carries.
+	 * limitation the wildcard llms.txt delete in invalidate() carries.
 	 *
 	 * After switch_to_blog() the global $wpdb->options already points to the
 	 * subsite's options table, so calling this method inside a switch_to_blog()
