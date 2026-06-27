@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+### Fixes
+
+- **Plugin updates now refresh the archive product-list cache immediately (#562).** The version-upgrade routine previously omitted the archive `ItemList` transient family, so a fix to ItemList generation (e.g. #559) would keep serving stale output for up to the 1-hour TTL after an update. The upgrade path now calls `WC_AI_Storefront_Cache_Invalidator::purge_archive_itemlist_cache()` alongside the existing llms.txt and feed-version busts, so corrected ItemList markup takes effect on the first request after the plugin update.
+
 ---
 
 ## [0.29.1] – 2026-06-26

@@ -383,13 +383,19 @@ class WC_AI_Storefront {
 			add_action( 'init', 'flush_rewrite_rules', 99 );
 
 			// Bust content caches on code updates so fixes to generation
-			// logic (e.g., entity encoding) take effect immediately.
+			// logic (e.g., entity encoding, archive ItemList shape) take
+			// effect immediately rather than waiting for their TTL.
 			// Uses host_cache_key() so the currently-serving Host gets
 			// fresh content immediately; other virtual-host entries
 			// expire at their natural 1-hour TTL.
 			delete_transient( WC_AI_Storefront_Llms_Txt::host_cache_key() );
 			// Legacy key — retained here for clean uninstall of pre-1.0 installs.
 			delete_transient( 'wc_ai_storefront_ucp' );
+
+			// Purge the archive ItemList transient family so a fix to ItemList
+			// generation logic (e.g. #559) takes effect on update instead of
+			// after up to the 1-hour TTL (#562).
+			WC_AI_Storefront_Cache_Invalidator::purge_archive_itemlist_cache();
 
 			// Orphan the Shopify-feed caches on a code update so a fix to the
 			// mapper (e.g. the base-currency price fix) doesn't keep serving

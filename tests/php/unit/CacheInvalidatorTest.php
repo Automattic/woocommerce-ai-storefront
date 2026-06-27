@@ -255,6 +255,50 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// purge_archive_itemlist_cache() (#562)
+	// ------------------------------------------------------------------
+
+	public function test_purge_archive_itemlist_cache_issues_wpdb_query_with_itemlist_prefix(): void {
+		// Verify that purge_archive_itemlist_cache() issues a $wpdb->query()
+		// whose esc_like arguments include the ITEMLIST_JSONLD_CACHE_PREFIX so
+		// both the _transient_ and _transient_timeout_ rows are targeted.
+		global $wpdb;
+		$wpdb          = Mockery::mock( 'wpdb' );
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static fn( $q ) => $q
+		);
+
+		$captured_args = array();
+		$wpdb->shouldReceive( 'esc_like' )->andReturnUsing(
+			static function ( $text ) use ( &$captured_args ) {
+				$captured_args[] = $text;
+				return addcslashes( (string) $text, '_%\\' );
+			}
+		);
+		$wpdb->shouldReceive( 'query' )
+			->once()
+			->andReturn( 0 );
+
+		WC_AI_Storefront_Cache_Invalidator::purge_archive_itemlist_cache();
+
+		// Both esc_like calls must include the ItemList prefix so the wildcard
+		// covers _transient_ and _transient_timeout_ rows.
+		$prefix = WC_AI_Storefront_JsonLd::ITEMLIST_JSONLD_CACHE_PREFIX;
+		$this->assertCount( 2, $captured_args, 'esc_like must be called exactly twice (once per pattern)' );
+		$this->assertStringContainsString(
+			$prefix,
+			$captured_args[0],
+			'First esc_like arg must contain ITEMLIST_JSONLD_CACHE_PREFIX'
+		);
+		$this->assertStringContainsString(
+			$prefix,
+			$captured_args[1],
+			'Second esc_like arg must contain ITEMLIST_JSONLD_CACHE_PREFIX'
+		);
+	}
+
+	// ------------------------------------------------------------------
 	// Wildcard DB delete for host-keyed transient variants (#152)
 	// ------------------------------------------------------------------
 
