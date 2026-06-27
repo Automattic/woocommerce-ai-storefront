@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.29.1
+Stable tag: 0.29.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.29.2 - 2026-06-26 =
+**Fixed**
+* After you update the plugin, your product-list structured data refreshes right away instead of possibly serving the previous version's output for up to an hour.
 
 = 0.29.1 - 2026-06-26 =
 **Fixed**

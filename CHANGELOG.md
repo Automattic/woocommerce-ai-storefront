@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.29.2] – 2026-06-26
+
 ### Fixes
 
 - **Plugin updates now refresh the archive `ItemList` cache (#562).**
