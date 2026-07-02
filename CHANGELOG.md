@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.30.0] – 2026-07-02
+
 ### Added
 
 - **Yahoo's Slurp crawler is now a recognized regional (Asia) crawler (#568).**
