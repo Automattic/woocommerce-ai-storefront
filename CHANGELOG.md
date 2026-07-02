@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Added
+
+- **Yahoo's Slurp crawler is now a recognized regional (Asia) crawler (#568).**
+  - Added to the `REGIONAL_CRAWLERS` allow-list (default-off, opt-in), since Yahoo's global web results are served by Bing (already covered by Bingbot) and Slurp's residual crawling is low-volume.
+  - Discovery stats roll Slurp traffic up under the "Yahoo" brand.
+
 ---
 
 ## [0.29.2] – 2026-06-26

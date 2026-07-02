@@ -334,6 +334,7 @@ class WC_AI_Storefront_Crawl_Logger {
 			// Regional.
 			'NaverBot'                   => 'Naver',
 			'PetalBot'                   => 'Petal',
+			'Slurp'                      => 'Yahoo',
 			'WRTNBot'                    => 'WRTN',
 			'YandexBot'                  => 'Yandex',
 			// Training.

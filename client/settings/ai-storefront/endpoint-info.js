@@ -661,6 +661,12 @@ const KNOWN_CRAWLERS = [
 		subgroup: 'regional_asia',
 	},
 	{
+		id: 'Slurp',
+		label: 'Slurp (Yahoo)',
+		category: 'regional',
+		subgroup: 'regional_asia',
+	},
+	{
 		id: 'WRTNBot',
 		label: 'WRTNBot (Wrtn / Korea)',
 		category: 'regional',

@@ -119,6 +119,10 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			'YouBot'          => 'You',
 			'Mistralai-User'  => 'Mistral',
 			'Diffbot'         => 'Diffbot',
+			// Regional: Slurp is Yahoo's crawler token; must roll up under
+			// 'Yahoo' rather than passing through as 'Slurp', or Yahoo
+			// traffic splits across two brand rows in Discovery stats.
+			'Slurp'           => 'Yahoo',
 			'UnknownBot'      => 'UnknownBot', // Unknown tokens pass through unchanged.
 		);
 
