@@ -450,6 +450,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'ERNIEBot',
 				'NaverBot',
 				'PetalBot',
+				'Slurp',
 				'WRTNBot',
 				'Yeti',
 				'YiyanBot',

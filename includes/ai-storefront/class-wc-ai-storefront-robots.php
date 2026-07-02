@@ -142,13 +142,18 @@ class WC_AI_Storefront_Robots {
 		// Daum/Kakao (Korea). PetalBot backs Huawei Petal Search + AI
 		// Assistant on hundreds of millions of devices. WRTNBot powers
 		// Wrtn ("the Korean ChatGPT"). coccocbot-web covers Coccoc
-		// browser + search (Vietnam).
+		// browser + search (Vietnam). Slurp is Yahoo's crawler —
+		// regional because global Yahoo web results are Bing-powered
+		// (Bingbot, already in LIVE_BROWSING_AGENTS) since 2009, so
+		// Slurp's remaining relevance is Yahoo Japan + proprietary
+		// verticals.
 		'Baiduspider',
 		'coccocbot-web',
 		'Daumoa',
 		'ERNIEBot',
 		'NaverBot',
 		'PetalBot',
+		'Slurp',
 		'WRTNBot',
 		'Yeti',
 		'YiyanBot',
@@ -304,6 +309,7 @@ class WC_AI_Storefront_Robots {
 		'ERNIEBot',
 		'NaverBot',
 		'PetalBot',
+		'Slurp',
 		'WRTNBot',
 		'Yeti',
 		'YiyanBot',
