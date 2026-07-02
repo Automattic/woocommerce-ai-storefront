@@ -662,7 +662,7 @@ const KNOWN_CRAWLERS = [
 	},
 	{
 		id: 'Slurp',
-		label: 'Slurp (Yahoo / Japan)',
+		label: 'Slurp (Yahoo)',
 		category: 'regional',
 		subgroup: 'regional_asia',
 	},
