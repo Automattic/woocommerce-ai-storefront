@@ -428,8 +428,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$url = $result['offers'][0]['checkoutPageURLTemplate'];
 		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
 		$this->assertStringContainsString( 'products=42:1', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
-		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
 	// ------------------------------------------------------------------
@@ -475,7 +475,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringNotContainsString( '&amp;', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
 	public function test_buyaction_url_contains_no_html_entities_for_grouped(): void {
@@ -487,7 +488,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringNotContainsString( '&amp;', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
 	public function test_offer_checkout_page_url_template_contains_no_html_entities_for_bundle(): void {
@@ -503,7 +505,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$url = $result['offers'][0]['checkoutPageURLTemplate'];
 		$this->assertStringNotContainsString( '&amp;', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
 	public function test_offer_checkout_page_url_template_contains_no_html_entities_for_grouped(): void {
@@ -519,7 +522,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$url = $result['offers'][0]['checkoutPageURLTemplate'];
 		$this->assertStringNotContainsString( '&amp;', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
 	// ------------------------------------------------------------------
@@ -554,11 +558,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringStartsWith( 'https://example.com/product/starter-kit/', $url );
 		$this->assertStringNotContainsString( '/checkout-link/', $url );
 		$this->assertStringNotContainsString( 'products=99:1', $url );
-		// UTM attribution still flows so the merchant can attribute the
-		// PDP visit to AI-routed traffic.
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
-		$this->assertStringContainsString( 'utm_medium=referral', $url );
-		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
+		// Bare URL (#574): the permalink carries no UTM params either.
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 		// Companion regression guard for the variation branch — see
 		// the BuyAction test above for why `ai_session_id` was dropped.
 		$this->assertStringNotContainsString( 'ai_session_id', $url );
@@ -580,8 +582,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringStartsWith( 'https://example.com/product/dinner-set/', $url );
 		$this->assertStringNotContainsString( '/checkout-link/', $url );
 		$this->assertStringNotContainsString( 'products=88:1', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
-		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
 	public function test_offer_checkout_page_url_template_uses_permalink_for_bundle(): void {
@@ -653,7 +655,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringContainsString( 'lang=en', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 		// One `?` only — the rest must be `&` separators.
 		$this->assertSame( 1, substr_count( $url, '?' ) );
 	}
