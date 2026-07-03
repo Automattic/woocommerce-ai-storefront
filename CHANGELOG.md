@@ -2,9 +2,9 @@
 
 ### Changed
 
-- **Checkout links in structured data are now bare URLs (#574).**
-  - `Offer.checkoutPageURLTemplate` and `BuyAction.urlTemplate` previously carried a `utm_source={agent_id}` placeholder plus attribution UTMs. When a search engine surfaced the checkout link to a human, the unsubstituted `{agent_id}` corrupted order attribution and mis-labeled the sale as an AI referral.
-  - Both now emit a bare `/checkout-link/?products=ID:1` (or the product permalink for bundle and grouped products), so WooCommerce records the real per-engine source (`Organic: Google`, `Referral: bing.com`). Agent attribution is unaffected: agents identify via the `UCP-Agent` header on `/checkout-sessions`, not this URL.
+- **Structured-data action URLs are now bare (#574).**
+  - `Offer.checkoutPageURLTemplate`, `BuyAction.urlTemplate`, and the homepage `SearchAction` target URL previously carried a `utm_source={agent_id}` placeholder plus attribution UTMs. When a search engine surfaced one of these to a human, the unsubstituted `{agent_id}` corrupted order attribution and mis-labeled the sale as an AI referral.
+  - The checkout links now emit a bare `/checkout-link/?products=ID:1` (or the product permalink for bundle and grouped products), and the homepage search action emits a bare `?s={search_term}&post_type=product` (keeping only the required search-term placeholder). WooCommerce then records the real per-engine source (`Organic: Google`, `Referral: bing.com`). Agent attribution is unaffected: agents identify via the `UCP-Agent` header on `/checkout-sessions`, not these URLs.
   - Orders that originated from a checkout link are flagged from WooCommerce's own landing-page data for future reporting.
 
 ---
