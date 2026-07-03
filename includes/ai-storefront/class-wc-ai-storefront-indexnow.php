@@ -284,11 +284,11 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
-	 * Gather every indexable product + product-category URL plus the discovery
-	 * surfaces, enqueue them, and flush immediately. Used by the admin
-	 * "Submit entire catalog now" action and the first-enable seed (#540). Catalogs
-	 * larger than MAX_URLS are truncated by enqueue() (which logs the drop) before
-	 * flush() sends the single batch.
+	 * Gather every indexable product, product-category, and product-brand URL
+	 * plus the discovery surfaces, enqueue them, and flush immediately. Used by
+	 * the admin "Submit entire catalog now" action and the first-enable seed
+	 * (#540). Catalogs larger than MAX_URLS are truncated by enqueue() (which
+	 * logs the drop) before flush() sends the single batch.
 	 */
 	public function submit_all(): void {
 		if ( ! $this->is_enabled() ) {

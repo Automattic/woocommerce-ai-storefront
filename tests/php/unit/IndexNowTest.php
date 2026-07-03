@@ -1046,4 +1046,42 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			$this->assertStringNotContainsString( '/brand/', $url );
 		}
 	}
+
+	public function test_init_registers_brand_term_hooks(): void {
+		// The three `*_product_brand` term hooks are the ONLY wiring that
+		// makes brand edits reach on_brand_change() in production — every
+		// other brand test calls on_brand_change() directly, so without
+		// this test a dropped `add_action` line or a typo (e.g.
+		// `edited_product_brands`, plural) would leave brand change-
+		// detection silently dead while the whole suite stays green. Assert
+		// each hook is registered exactly once, bound to on_brand_change.
+		// Mirrors the `expectAdded` pattern in UcpStoreApiPreGetPostsTest.
+		//
+		// A REAL instance is used here (not the setUp() anonymous subclass
+		// that overrides terminate()): init() never calls terminate(), and
+		// Brain Monkey's callback-argument matcher stringifies the callback
+		// via get_class(), which rejects an anonymous class's synthetic
+		// name. A named instance keeps the precise "bound to on_brand_change"
+		// assertion working.
+		$indexnow = new WC_AI_Storefront_IndexNow();
+
+		$binds_to_on_brand_change = static function ( $callback ) use ( $indexnow ): bool {
+			return is_array( $callback )
+				&& $callback[0] === $indexnow
+				&& 'on_brand_change' === $callback[1];
+		};
+
+		foreach ( array( 'created_product_brand', 'edited_product_brand', 'delete_product_brand' ) as $hook ) {
+			\Brain\Monkey\Actions\expectAdded( $hook )
+				->once()
+				->with( \Mockery::on( $binds_to_on_brand_change ) );
+		}
+
+		$indexnow->init();
+
+		// Brain Monkey verifies expectations during tearDown; PHPUnit
+		// doesn't count those as native assertions, so acknowledge them
+		// explicitly to avoid a "risky test" flag.
+		$this->addToAssertionCount( 3 );
+	}
 }
