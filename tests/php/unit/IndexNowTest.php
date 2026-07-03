@@ -869,4 +869,181 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			$this->indexnow->suppress_canonical_redirect( 'https://example.com/some-page/' )
 		);
 	}
+
+	// --- #569: brand archive URL support ---
+	//
+	// IndexNow submits products + product-category URLs but not brand
+	// (product_brand) archives. These tests mirror the category-parity
+	// behavior: enumeration via all_brand_urls(), inclusion in submit_all(),
+	// and per-term change detection via on_brand_change().
+
+	public function test_submit_all_includes_brand_urls(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+
+		$store = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
+		// get_option MUST capture $store by reference (`use ( &$store )`), not
+		// via an arrow fn — arrow functions capture by value, so a snapshot of
+		// the empty $store would be read back and enqueue()'s writes (which use
+		// &$store) would be invisible to take_pending(), emptying the queue.
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store ) {
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+
+		// get_terms() branches on taxonomy so category and brand return
+		// distinct terms — proving both taxonomies are queried.
+		$cat_term           = new stdClass();
+		$cat_term->term_id  = 5;
+		$cat_term->taxonomy = 'product_cat';
+		$brand_term           = new stdClass();
+		$brand_term->term_id  = 8;
+		$brand_term->taxonomy = 'product_brand';
+		Functions\when( 'get_terms' )->alias(
+			static function ( array $args ) use ( $cat_term, $brand_term ) {
+				if ( 'product_brand' === $args['taxonomy'] ) {
+					return array( $brand_term );
+				}
+				return array( $cat_term );
+			}
+		);
+		Functions\when( 'get_term_link' )->alias(
+			static function ( $term ) {
+				if ( is_object( $term ) && 'product_brand' === ( $term->taxonomy ?? '' ) ) {
+					return 'https://shop.test/brand/acme/';
+				}
+				return 'https://shop.test/product-category/gadgets/';
+			}
+		);
+
+		$posted = null;
+		Functions\when( 'wp_remote_post' )->alias(
+			function ( $url, $args ) use ( &$posted ) {
+				$posted = json_decode( $args['body'], true );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+
+		$this->indexnow->submit_all();
+
+		$url_list = $posted['urlList'] ?? array();
+		$this->assertContains( 'https://shop.test/brand/acme/', $url_list, 'brand archive link should be in urlList' );
+		$this->assertContains( 'https://shop.test/product-category/gadgets/', $url_list, 'category link should still be in urlList' );
+	}
+
+	public function test_all_brand_urls_returns_empty_on_wp_error(): void {
+		// A store without the product_brand taxonomy: get_terms() yields a
+		// WP_Error, which the is_wp_error() guard converts to no brand URLs.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+
+		$store = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
+		// get_option MUST capture $store by reference (`use ( &$store )`), not
+		// via an arrow fn — arrow functions capture by value, so a snapshot of
+		// the empty $store would be read back and enqueue()'s writes (which use
+		// &$store) would be invisible to take_pending(), emptying the queue.
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store ) {
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		// Both category and brand get_terms() return WP_Error (taxonomy absent).
+		Functions\when( 'get_terms' )->justReturn( new WP_Error( 'invalid_taxonomy', 'Invalid taxonomy.' ) );
+
+		$posted = null;
+		Functions\when( 'wp_remote_post' )->alias(
+			function ( $url, $args ) use ( &$posted ) {
+				$posted = json_decode( $args['body'], true );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+
+		$this->indexnow->submit_all();
+
+		$this->assertNotNull( $posted );
+		// No brand URL leaked in (WP_Error contributes nothing); only surfaces.
+		foreach ( $posted['urlList'] as $url ) {
+			$this->assertStringNotContainsString( '/brand/', $url );
+		}
+	}
+
+	public function test_on_brand_change_enqueues_term_link_and_surfaces(): void {
+		$captured = array();
+		$store    = array();
+		Functions\when( 'get_option' )->alias( static fn( $n, $d = false ) => $store[ $n ] ?? $d );
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store, &$captured ) {
+				$store[ $n ] = $v;
+				$captured    = $v;
+				return true;
+			}
+		);
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 30 );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/brand/acme/' );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		$this->indexnow->on_brand_change( 8 );
+		$this->assertContains( 'https://shop.test/brand/acme/', $captured );
+		$this->assertContains( 'https://shop.test/llms.txt', $captured );
+	}
+
+	public function test_on_brand_change_noop_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		Functions\expect( 'update_option' )->never();
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->on_brand_change( 8 );
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_on_brand_change_drops_wp_error_link(): void {
+		// get_term_link() returns WP_Error for an invalid term id; the
+		// is_string() guard drops it so no bad URL is enqueued (only surfaces).
+		$captured = array();
+		$store    = array();
+		Functions\when( 'get_option' )->alias( static fn( $n, $d = false ) => $store[ $n ] ?? $d );
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store, &$captured ) {
+				$store[ $n ] = $v;
+				$captured    = $v;
+				return true;
+			}
+		);
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 30 );
+		Functions\when( 'get_term_link' )->justReturn( new WP_Error( 'invalid_term', 'Empty Term.' ) );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		$this->indexnow->on_brand_change( 999 );
+		// Surfaces still enqueued, but no brand URL.
+		$this->assertContains( 'https://shop.test/llms.txt', $captured );
+		foreach ( $captured as $url ) {
+			$this->assertStringNotContainsString( '/brand/', $url );
+		}
+	}
 }

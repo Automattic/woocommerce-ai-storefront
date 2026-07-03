@@ -297,7 +297,8 @@ class WC_AI_Storefront_IndexNow {
 		$urls = array_merge(
 			$this->surface_urls(),
 			$this->all_product_urls(),
-			$this->all_category_urls()
+			$this->all_category_urls(),
+			$this->all_brand_urls()
 		);
 		$this->enqueue( $urls );
 		$this->flush();
@@ -383,6 +384,44 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
+	 * Gather all non-empty product-brand (`product_brand`) archive URLs.
+	 *
+	 * Mirrors all_category_urls(): brand archives are the same kind of
+	 * indexable taxonomy-term page as categories, and the same second-class
+	 * gap that affects the sitemap surface. `product_brand` is the
+	 * WooCommerce core brand taxonomy (WC 9.4+; also provided by brand
+	 * plugins). get_term_link() resolves the registered permalink base
+	 * automatically (`/brand/` or `/product-brand/`), so no base is
+	 * hardcoded. The is_wp_error() guard returns an empty array on stores
+	 * where the taxonomy is not registered (get_terms() yields a WP_Error),
+	 * so no separate taxonomy_exists() check is needed.
+	 *
+	 * @return string[]
+	 */
+	private function all_brand_urls(): array {
+		if ( ! function_exists( 'get_terms' ) ) {
+			return array();
+		}
+		$terms = get_terms(
+			array(
+				'taxonomy'   => 'product_brand',
+				'hide_empty' => true,
+			)
+		);
+		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+			return array();
+		}
+		$urls = array();
+		foreach ( $terms as $term ) {
+			$link = get_term_link( $term );
+			if ( is_string( $link ) && '' !== $link ) {
+				$urls[] = $link;
+			}
+		}
+		return $urls;
+	}
+
+	/**
 	 * Schedule a single first-enable seed if one is not already pending.
 	 *
 	 * The +1-second delay ensures the cron fires AFTER the current request
@@ -411,6 +450,14 @@ class WC_AI_Storefront_IndexNow {
 		add_action( 'created_product_cat', array( $this, 'on_term_change' ) );
 		add_action( 'edited_product_cat', array( $this, 'on_term_change' ) );
 		add_action( 'delete_product_cat', array( $this, 'on_term_change' ) );
+		// Brand (product_brand) archives — parallel to product_cat above.
+		// Registered unconditionally: on a store without the brand taxonomy
+		// these hooks simply never fire (no taxonomy_exists() gate, which
+		// would add a load-order dependency on WC registering the taxonomy
+		// before our init()).
+		add_action( 'created_product_brand', array( $this, 'on_brand_change' ) );
+		add_action( 'edited_product_brand', array( $this, 'on_brand_change' ) );
+		add_action( 'delete_product_brand', array( $this, 'on_brand_change' ) );
 		add_action( self::FLUSH_HOOK, array( $this, 'flush' ) );
 		add_action( self::SUBMIT_ALL_HOOK, array( $this, 'submit_all' ) );
 	}
@@ -467,6 +514,31 @@ class WC_AI_Storefront_IndexNow {
 		}
 		$urls = $this->surface_urls();
 		$link = get_term_link( (int) $term_id, 'product_cat' );
+		if ( is_string( $link ) && '' !== $link ) {
+			$urls[] = $link;
+		}
+		$this->enqueue( $urls );
+		$this->schedule_flush();
+	}
+
+	/**
+	 * A product brand changed: enqueue its term URL plus the AI surfaces.
+	 *
+	 * Thin per-taxonomy parallel of on_term_change(): WordPress fires term
+	 * hooks per-taxonomy (`edited_product_cat` vs `edited_product_brand` are
+	 * distinct actions), so each handler already knows its taxonomy from the
+	 * hook that called it — no runtime lookup, and the existing category path
+	 * is left untouched. get_term_link() returns a WP_Error (not a string)
+	 * for an invalid term/taxonomy, which the is_string() guard drops.
+	 *
+	 * @param int $term_id Term ID.
+	 */
+	public function on_brand_change( $term_id ): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+		$urls = $this->surface_urls();
+		$link = get_term_link( (int) $term_id, 'product_brand' );
 		if ( is_string( $link ) && '' !== $link ) {
 			$urls[] = $link;
 		}

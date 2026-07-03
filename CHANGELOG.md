@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Added
+
+- **IndexNow now submits product brand archive URLs (#569).**
+  - Brand (`product_brand`) archive pages were the one taxonomy IndexNow skipped: "Submit entire catalog now" gathered products and categories but not brands, and editing a brand never pinged search engines.
+  - Adds brand enumeration to the full-catalog submission and per-term change detection for `created`/`edited`/`delete` on `product_brand`, mirroring the existing category handling.
+  - Permalinks resolve through `get_term_link()`, so the correct registered base (`/brand/` or `/product-brand/`) is used automatically. Stores without the brand taxonomy are unaffected.
+
 ---
 
 ## [0.30.0] – 2026-07-02
