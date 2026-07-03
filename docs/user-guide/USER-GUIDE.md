@@ -161,7 +161,7 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 |-----|---------------------|
 | `https://your-store.com/llms.txt` | A plain-text Markdown document starting with `# Your Store Name`, with sections covering store identity (`## Store`), browse/search URLs (`## Browse`), top categories (`## Catalog`), shipping and returns (`## Shipping & Returns`), structured-data signposts, and agent-facing endpoints (`## For agents`). |
 | `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
-| `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. each with `Allow:` lines. |
+| `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. Each allowed crawler is welcomed to the whole store except cart, checkout, and account pages; unchecked crawlers get an explicit block. |
 | `https://your-store.com/opensearch.xml` | A small XML document starting with `<OpenSearchDescription>`. It tells AI agents and browsers how to search your products, pointing at both your product-search page and the catalog API. |
 | Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4b](#4b-what-the-homepage-publishes-to-ai-agents). |
 | Any product page → "View page source" | Search for `"@type":"Product"`. You should see product details like prices and (once you set one in [section 7](#7-set-your-store-policies)) return policy information. |
@@ -537,7 +537,7 @@ Stats update hourly, so today's AI traffic appears in the dashboard within an ho
 
 ### Instant indexing (IndexNow)
 
-IndexNow is a protocol that lets you push URLs to search engines the moment your catalog changes — instead of waiting for those engines to crawl on their own schedule. When a product, category, or shop page changes, the plugin batches the affected URLs (plus your discovery surfaces: homepage, `/shop/`, `/llms.txt`, `/products.json`) and submits them in a single background request via WP-Cron. The engines that consume IndexNow are **Microsoft Bing, Yandex, Seznam, Naver, and Yep**. **Google does not use IndexNow** — it relies on sitemaps and its own crawl schedule — so this feature complements your existing structured data and sitemap rather than replacing them.
+IndexNow is a protocol that lets you push URLs to search engines the moment your catalog changes — instead of waiting for those engines to crawl on their own schedule. When a product, category, brand, or shop page changes, the plugin batches the affected URLs (plus your discovery surfaces: homepage, `/shop/`, `/llms.txt`, `/products.json`) and submits them in a single background request via WP-Cron. The engines that consume IndexNow are **Microsoft Bing, Yandex, Seznam, Naver, and Yep**. **Google does not use IndexNow** — it relies on sitemaps and its own crawl schedule — so this feature complements your existing structured data and sitemap rather than replacing them.
 
 This feature is **opt-in** and is disabled by default. To enable it, open the **Discovery** tab and find the **Instant indexing (IndexNow)** card, then toggle it on.
 
@@ -545,7 +545,7 @@ This feature is **opt-in** and is disabled by default. To enable it, open the **
 
 **Verification key.** IndexNow requires each site to prove ownership before engines trust its submissions. The plugin auto-generates a verification key and serves it at `https://your-store.com/{key}.txt`. The card shows the current key and offers a **Regenerate** button. The key is public-by-design (engines fetch it to confirm ownership), so you only need to regenerate it if a key was somehow leaked and you want to invalidate it — routine rotation is unnecessary.
 
-**Submit entire catalog now.** The card includes a **Submit entire catalog now** button that pushes every published product and category URL — plus your discovery surfaces — in one go. The first time you enable IndexNow, the same seed happens automatically. Use this after importing a large batch of products or setting up a new store, so engines pick up your full catalog right away instead of waiting for individual changes to come through the change feed.
+**Submit entire catalog now.** The card includes a **Submit entire catalog now** button that pushes every published product, category, and brand URL — plus your discovery surfaces — in one go. The first time you enable IndexNow, the same seed happens automatically. Use this after importing a large batch of products or setting up a new store, so engines pick up your full catalog right away instead of waiting for individual changes to come through the change feed.
 
 **Status line.** Below the controls, a status line shows the outcome of the last submission, for example: "Last submitted: 62 URL(s) · HTTP 200 · 2m ago". An HTTP 200 means the submission was accepted and the key validated. An HTTP 202 means accepted but key validation is still pending (see [Troubleshooting](#10-troubleshooting) below).
 

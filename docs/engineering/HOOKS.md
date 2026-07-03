@@ -193,7 +193,7 @@ apply_filters( 'wc_ai_storefront_robots_txt', string $output, array $settings );
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `$output` | `string` | The full block of `User-agent: ... Allow: /` (or `Disallow: /`) lines for the configured AI crawlers. |
+| `$output` | `string` | The full block for the configured AI crawlers: each allowed bot's `User-agent:` group is a deny-list (`Disallow:` for cart/checkout/account) plus two defensive `Allow:` re-permits for the `/wp-json/` commerce endpoints; unchecked bots get an explicit `Disallow: /` opt-out block. |
 | `$settings` | `array` | The plugin's resolved settings. |
 
 **Returns:** modified `string`.
