@@ -278,8 +278,8 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Adds a BuyAction potentialAction pointing at the store checkout with
-	 * attribution placeholders.
+	 * Adds a BuyAction potentialAction pointing at the bare store-checkout
+	 * URL.
 	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
@@ -2142,20 +2142,14 @@ class WC_AI_Storefront_JsonLd {
 				'@type'       => 'SearchAction',
 				'target'      => array(
 					'@type'       => 'EntryPoint',
-					// Canonical UTM shape (0.5.0+) — see BuyAction
-					// urlTemplate above for rationale. The `utm_id`
-					// value comes from the constant rather than the
-					// literal string for the same drift-prevention
-					// reason documented at the BuyAction emit site.
-					'urlTemplate' => home_url(
-						// `woo_jsonld` (not `woo_ucp`): same reasoning
-						// as the BuyAction template — SearchAction is
-						// also JSON-LD, also consumed by crawlers and
-						// AI surfaces who never enter our UCP session
-						// flow. The channel-split needs both JSON-LD
-						// emission sites tagged consistently.
-						'/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=' . WC_AI_Storefront_Attribution::WOO_JSONLD_ID
-					),
+					// Bare target (no UTMs) — a human clicking through
+					// a sitelinks search box lands on a normal search
+					// results page, and if that visit later converts
+					// it is attributed natively by WooCommerce, same
+					// as any other organic visit. `{search_term}` is
+					// the only placeholder here, and it is required:
+					// a consumer MUST substitute it to run a search.
+					'urlTemplate' => home_url( '/?s={search_term}&post_type=product' ),
 				),
 				'query-input' => 'required name=search_term',
 			),

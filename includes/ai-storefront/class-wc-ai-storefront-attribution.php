@@ -190,8 +190,8 @@ class WC_AI_Storefront_Attribution {
 	 *     `/llms.txt`. Referral channel (joins `woo_jsonld`).
 	 *
 	 * UTM shape on `woo_llms` URLs intentionally omits `utm_source` —
-	 * unlike JSON-LD's `utm_source={agent_id}` placeholder, llms.txt
-	 * URLs are followed directly from the document at request time,
+	 * JSON-LD URLs are now bare (no UTMs at all), and llms.txt URLs
+	 * are followed directly from the document at request time,
 	 * so the actual referring domain populates `utm_source` from
 	 * `Referer` downstream. See `docs/engineering/ATTRIBUTION.md`'s
 	 * UTM-shape table.

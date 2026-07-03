@@ -4,7 +4,7 @@
  *
  * Focuses on `enhance_product_data()` — the filter that augments
  * WooCommerce's native product JSON-LD with fields that help AI
- * agents (BuyAction with attribution placeholders, inventory,
+ * agents (BuyAction with a bare checkout URL, inventory,
  * dimensions, attributes, shipping, returns).
  *
  * This class inserts data into HTML, so unit coverage is also a
@@ -562,7 +562,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// grouped parent has no SKU of its own — only its children do).
 	// `build_checkout_url_template()` falls back to the product permalink
 	// for these types so the buyer lands on the PDP where WC's existing
-	// bundle/grouped UI handles configuration. UTM attribution still flows.
+	// bundle/grouped UI handles configuration.
 	//
 	// The deterministic `/checkout/?add-to-cart=BUNDLE&bundle_quantity_…=…`
 	// shape used by the UCP REST `continue_url` is unsuitable here — it
@@ -1110,6 +1110,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$url = $entry['potentialAction']['target']['urlTemplate'];
 		$this->assertStringContainsString( 'products=999:1', $url );
 		$this->assertStringNotContainsString( 'products=100', $url );
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{', $url );
 	}
 
 	public function test_variant_entry_offer_carries_checkout_page_url_template_with_variation_id(): void {
@@ -1120,11 +1122,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
+		$url = $entry['potentialAction']['target']['urlTemplate'];
 		$this->assertSame(
-			$entry['potentialAction']['target']['urlTemplate'],
+			$url,
 			$entry['offers'][0]['checkoutPageURLTemplate'],
 			'Per-variant BuyAction URL and checkoutPageURLTemplate must match'
 		);
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{', $url );
 	}
 
 	public function test_variant_entry_omits_buy_action_and_url_template_when_unpurchasable(): void {
@@ -2090,19 +2095,17 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 	//
 	// The Store-level `output_store_jsonld()` emits a SearchAction
-	// urlTemplate that ALSO carries the canonical UTM shape (0.5.0+).
-	// Pre-this-test, only BuyAction's urlTemplate was pinned by tests
-	// — a refactor that reverted SearchAction to the legacy
-	// `utm_medium=ai_agent` shape would pass CI silently. This test
-	// captures stdout and asserts the canonical shape substrings on
-	// the SearchAction emission.
+	// target that is bare (no UTMs) — a human's sitelinks search that
+	// later converts is attributed natively by WooCommerce, same as
+	// any other organic visit. `{search_term}` is the only (required)
+	// placeholder: a consumer MUST substitute it to run a search.
 	//
 	// We assert substrings rather than parse the full JSON because
 	// `output_store_jsonld()` echoes a complete `<script type=...>`
 	// wrapper plus the JSON body; a substring check avoids brittle
 	// JSON-shape-decoding for what is effectively a regression guard.
 
-	public function test_searchaction_url_template_emits_canonical_utm_shape(): void {
+	public function test_searchaction_url_template_is_bare(): void {
 		// Capture the SearchAction urlTemplate by intercepting the
 		// `wc_ai_storefront_jsonld_store` filter that `output_store_jsonld()`
 		// applies to its `$store_data` array right before echoing.
@@ -2162,10 +2165,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $captured, 'wc_ai_storefront_jsonld_store filter should fire' );
 		$url = $captured['potentialAction']['target']['urlTemplate'];
 
-		$this->assertStringContainsString( 'utm_medium=referral', $url );
-		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
-		// Regression guard against the legacy shape leaking back in.
-		$this->assertStringNotContainsString( 'utm_medium=ai_agent', $url );
+		$this->assertStringContainsString( 's={search_term}', $url );
+		$this->assertStringContainsString( 'post_type=product', $url );
+		// Regression guard: no UTMs, no leftover attribution placeholder.
+		$this->assertStringNotContainsString( 'utm_', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
 	public function test_store_jsonld_hex_escapes_script_close_tag_in_taxonomy_names(): void {
@@ -3698,7 +3702,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * Capture the array passed through `wc_ai_storefront_jsonld_store`
 	 * during a call to `output_store_jsonld()`.
 	 *
-	 * Mirrors the pattern in `test_searchaction_url_template_emits_*`:
+	 * Mirrors the pattern in `test_searchaction_url_template_is_bare()`:
 	 * intercept the filter (the value is fully assembled when the
 	 * filter fires, so identity fields are visible there) and let
 	 * `output_store_jsonld()` echo into a buffer we discard.
