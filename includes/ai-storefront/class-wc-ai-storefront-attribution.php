@@ -159,18 +159,23 @@ class WC_AI_Storefront_Attribution {
 	 *
 	 *   - `WOO_JSONLD_ID` (`woo_jsonld`) — order originated from a
 	 *     JSON-LD scrape: an AI surface (search engine, AI overview,
-	 *     chat assistant) consumed our PotentialAction template,
-	 *     filled it in, and served the URL as a search result. The
-	 *     agent surfaced us; the user converted independently.
+	 *     chat assistant) consumed our PotentialAction template and
+	 *     served the URL. The agent surfaced us; the user converted
+	 *     independently.
 	 *
 	 * Both are AI-attributed, but the merchant-facing dashboard splits
 	 * them so investment in agent partnerships (a UCP-session signal)
 	 * vs. AI-discovery SEO (a JSON-LD signal) can be told apart.
 	 *
-	 * Transition note: existing crawler caches will keep emitting the
-	 * old `WOO_UCP_ID` from JSON-LD templates for ~2-6 weeks after
-	 * the template swap ships. During that window `woo_ucp` is mildly
-	 * over-reported. Accept the noise — see PR description.
+	 * Retention note (#574): the JSON-LD PotentialAction templates
+	 * (BuyAction / SearchAction / checkoutPageURLTemplate) no longer
+	 * emit `utm_id=woo_jsonld` — they are bare, so a human clicking a
+	 * search-surfaced link is attributed natively by WooCommerce
+	 * instead of being mislabeled as an AI referral. This constant is
+	 * retained because the STRICT gate still matches legacy orders that
+	 * captured `woo_jsonld` before the change, plus any crawler cache
+	 * still serving a pre-#574 templated URL during the transition
+	 * window. No live template emits it anymore.
 	 */
 	const WOO_JSONLD_ID = 'woo_jsonld';
 
@@ -190,8 +195,8 @@ class WC_AI_Storefront_Attribution {
 	 *     `/llms.txt`. Referral channel (joins `woo_jsonld`).
 	 *
 	 * UTM shape on `woo_llms` URLs intentionally omits `utm_source` —
-	 * unlike JSON-LD's `utm_source={agent_id}` placeholder, llms.txt
-	 * URLs are followed directly from the document at request time,
+	 * JSON-LD URLs are now bare (no UTMs at all), and llms.txt URLs
+	 * are followed directly from the document at request time,
 	 * so the actual referring domain populates `utm_source` from
 	 * `Referer` downstream. See `docs/engineering/ATTRIBUTION.md`'s
 	 * UTM-shape table.
@@ -206,6 +211,16 @@ class WC_AI_Storefront_Attribution {
 	 * @since 0.16.0
 	 */
 	const WOO_LLMS_ID = 'woo_llms';
+
+	/**
+	 * Order meta flag: the order's session landed on the /checkout-link/
+	 * Shareable-Checkout handler — i.e. it originated from a buy/checkout
+	 * link (JSON-LD checkoutPageURLTemplate / BuyAction) rather than a
+	 * regular product-page browse. Sourced from WooCommerce's native
+	 * session_entry meta so no new client-side capture is needed. Captured
+	 * for reporting; no dashboard consumes it yet (spec A3-minimal).
+	 */
+	const BUY_LINK_ORIGIN_META_KEY = '_wc_ai_storefront_buy_link_origin';
 
 	/**
 	 * Stamp our canonical attribution UTM shape onto a URL.
@@ -349,6 +364,12 @@ class WC_AI_Storefront_Attribution {
 
 		// Also capture from Store API / Blocks checkout.
 		add_action( 'woocommerce_store_api_checkout_order_processed', [ $this, 'capture_ai_attribution' ], 10, 1 );
+
+		// Flag orders whose session landed on the /checkout-link/ handler —
+		// recovers the "routed via our checkout link" signal now that
+		// JSON-LD checkout URLs are bare (see BUY_LINK_ORIGIN_META_KEY).
+		add_action( 'woocommerce_checkout_order_created', [ $this, 'stamp_buy_link_origin' ], 10, 1 );
+		add_action( 'woocommerce_store_api_checkout_order_processed', [ $this, 'stamp_buy_link_origin' ], 10, 1 );
 
 		// Display AI attribution data in admin order view.
 		add_action( 'woocommerce_admin_order_data_after_billing_address', [ $this, 'display_attribution_in_admin' ], 20, 1 );
@@ -704,6 +725,29 @@ class WC_AI_Storefront_Attribution {
 		 * @param string   $session_id      The AI session identifier.
 		 */
 		do_action( 'wc_ai_storefront_attribution_captured', $order, $canonical_agent, $session_id );
+	}
+
+	/**
+	 * Stamp BUY_LINK_ORIGIN_META_KEY = 'yes' when the order's session entry
+	 * URL is the /checkout-link/ handler. Reads WooCommerce core's
+	 * _wc_order_attribution_session_entry; additive and idempotent (only
+	 * ever sets 'yes', never unsets).
+	 *
+	 * @param WC_Order $order The order being attributed.
+	 */
+	public function stamp_buy_link_origin( $order ): void {
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+		$entry = (string) $order->get_meta( '_wc_order_attribution_session_entry' );
+		if ( '' === $entry ) {
+			return;
+		}
+		if ( false === strpos( $entry, '/checkout-link/' ) ) {
+			return;
+		}
+		$order->update_meta_data( self::BUY_LINK_ORIGIN_META_KEY, 'yes' );
+		$order->save();
 	}
 
 	/**

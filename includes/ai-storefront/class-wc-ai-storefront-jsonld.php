@@ -278,8 +278,8 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Adds a BuyAction potentialAction pointing at the store checkout with
-	 * attribution placeholders.
+	 * Adds a BuyAction potentialAction pointing at the bare store-checkout
+	 * URL.
 	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
@@ -299,107 +299,45 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Build the BuyAction / `Offer.checkoutPageURLTemplate` URL for a
-	 * product or variation, with the canonical UTM-attribution
-	 * placeholders so an AI agent or rich-result consumer can substitute
-	 * its identity at click time.
+	 * Build the checkout URL for a product or variation. Bare by design:
+	 * NO utm_* params. This value is emitted on BOTH BuyAction.urlTemplate
+	 * and Offer.checkoutPageURLTemplate, which search engines (Google's
+	 * crawled-checkout feature) surface to human shoppers. A UTM here would
+	 * (a) let a literal, unsubstituted {agent_id} land in order attribution,
+	 * (b) STRICT-fire capture_ai_attribution() on utm_id, mis-labeling a
+	 * human sale as an AI referral, and (c) override WooCommerce's native
+	 * Origin (Organic: Google / Referral: bing.com), which is computed from
+	 * the Referer whenever the URL carries no utm_* param. Agent attribution
+	 * does not rely on this URL: agents identify via the UCP-Agent header on
+	 * the /checkout-sessions path. Buy-link origin is captured separately
+	 * from WooCommerce's session_entry meta (see the attribution class).
 	 *
 	 * Two emission shapes, gated by WC product type:
+	 *   - Simple, variable, variation: WooCommerce Shareable Checkout URL
+	 *     ({home}/checkout-link/?products=ID:1) — resolves through WC's
+	 *     rewrite handler, adds the item, redirects to checkout.
+	 *   - Bundle, grouped: the product permalink. The ?products=ID:1
+	 *     shorthand cannot represent these (bundle needs per-item config;
+	 *     grouped parent has no SKU) — the buyer lands on the PDP where WC's
+	 *     configurator runs.
 	 *
-	 *   - **Simple, variable, variation** — WooCommerce Shareable Checkout
-	 *     form (`{home}/checkout-link/?products={id}:1&utm_*`). For
-	 *     variations the caller passes the variation product (so the
-	 *     specific SKU pre-selects in the cart); for simple/variable
-	 *     parents the product ID alone resolves correctly through WC's
-	 *     `/checkout-link/` rewrite handler.
-	 *   - **Bundle, grouped** — the product's permalink (`{permalink}?utm_*`).
-	 *     The `?products=ID:1` shorthand can't represent these:
-	 *     `/checkout-link/?products=BUNDLE_ID:1` would attempt to add the
-	 *     bundle parent without the per-bundled-item configuration WC
-	 *     requires; `?products=GROUPED_ID:1` would attempt to add the
-	 *     grouped UX-wrapper parent (which has no SKU or inventory of
-	 *     its own — only the children do). The deterministic
-	 *     `/checkout/?add-to-cart=BUNDLE&bundle_quantity_<bid>=…` form
-	 *     used by the UCP REST controller (`build_continue_url()`)
-	 *     would require child-resolution plumbing not present on the
-	 *     JSON-LD path, and would still fall back to the permalink for
-	 *     the configurable case (any optional bundled item or any
-	 *     variable child without bundle-author-set defaults). Permalink
-	 *     handles both the deterministic and configurable cases with
-	 *     one shape: the buyer lands on the merchant PDP where WC's
-	 *     existing configurator runs, and UTM attribution still flows
-	 *     through.
+	 * Static so callers without a class instance (the per-variant builder
+	 * under hasVariant) can build URLs uniformly.
 	 *
-	 * Canonical UTM shape: `utm_medium=referral` is Google-canonical;
-	 * `utm_id=woo_jsonld` flags JSON-LD-routed traffic via the
-	 * `WOO_JSONLD_ID` constant so a future rename stays consistent
-	 * with the attribution matcher. The companion `woo_ucp` id is
-	 * stamped only by `/checkout-sessions` continue_url; both ids
-	 * trigger STRICT, but downstream reporting splits them.
-	 *
-	 * Static so callers without a class instance (e.g. the per-variant
-	 * builder under `hasVariant`) can build URLs uniformly.
-	 *
-	 * @param WC_Product $product      The product or variation. WC core
-	 *                                 variations have `type === 'variation'`,
-	 *                                 distinct from `bundle`/`grouped`, so
-	 *                                 variation entries under `hasVariant`
-	 *                                 fall through to the Shareable Checkout
-	 *                                 form.
-	 * @param string     $agent_source Value for `utm_source`. Defaults to the
-	 *                                 `{agent_id}` placeholder — the urlTemplate
-	 *                                 shape the `<script>` BuyAction advertises
-	 *                                 for agents to substitute, and the only value
-	 *                                 used today (both live callers default it).
-	 *                                 The parameter remains for any future caller
-	 *                                 that emits a *directly clickable* link: such
-	 *                                 a caller must pass a real, esc_url-safe
-	 *                                 source (e.g. `ucp_unknown`), since `esc_url()`
-	 *                                 strips the `{}` from a placeholder — which
-	 *                                 would desync from the BuyAction and stamp a
-	 *                                 broken literal into order attribution.
-	 * @return string The full checkout URL. No session-id placeholder — see the
-	 *                inline comment in the function body.
+	 * @param WC_Product $product The product or variation.
+	 * @return string The bare checkout URL.
 	 */
-	private static function build_checkout_url_template( $product, string $agent_source = '{agent_id}' ): string {
-		// No `ai_session_id` placeholder — JSON-LD URL templates are
-		// stateless by definition (the `woo_jsonld` channel exists
-		// precisely because there's no UCP session here). The
-		// `{session_id}` substitution had no realistic consumer: a
-		// crawler / search-result / AI-overview surface doesn't have a
-		// session to fill in, and a shopping agent that DOES have one
-		// should route through `/checkout-sessions` instead of
-		// constructing URLs from JSON-LD. The unsubstituted literal
-		// `{session_id}` would have landed in order meta as garbage.
-		// Session-bound attribution remains on the `/checkout-sessions`
-		// continue_url path where it's authentically present.
-		$utm_args = array(
-			'utm_source' => $agent_source,
-			'utm_medium' => 'referral',
-			// `woo_jsonld` (not `woo_ucp`): JSON-LD URL templates are
-			// crawler bait by design. Agents that fill in this template
-			// did so by consuming our structured data, not via a live
-			// UCP session through /checkout-sessions. The attribution
-			// matcher accepts both ids as STRICT, but downstream
-			// dashboards split them so merchants can tell "AI Shopping"
-			// (UCP session) from "Referral" (JSON-LD scrape).
-			'utm_id'     => WC_AI_Storefront_Attribution::WOO_JSONLD_ID,
-		);
-
-		// Bundle and grouped: emit the product permalink with UTM
-		// attribution. See docblock for why `/checkout-link/?products=`
-		// can't represent these types.
+	private static function build_checkout_url_template( $product ): string {
+		// Bundle and grouped: emit the product permalink (bare). See docblock
+		// for why /checkout-link/?products= can't represent these types.
 		if ( $product->is_type( 'bundle' ) || $product->is_type( 'grouped' ) ) {
-			return self::decode_query_url( $utm_args, $product->get_permalink() );
+			return $product->get_permalink();
 		}
 
-		// Simple, variable, variation: WooCommerce Shareable Checkout URL
-		// — `?products=ID:QUANTITY` resolves through WC's `/checkout-link/`
-		// rewrite handler, adds the item to the cart, redirects to
-		// checkout. Quantity fixed at 1 — AI-shopping flows are
-		// single-item by convention.
+		// Simple, variable, variation: WooCommerce Shareable Checkout URL.
+		// Quantity fixed at 1 — AI-shopping flows are single-item by convention.
 		return self::decode_query_url(
-			array_merge( array( 'products' => $product->get_id() . ':1' ), $utm_args ),
+			array( 'products' => $product->get_id() . ':1' ),
 			home_url( '/checkout-link/' )
 		);
 	}
@@ -2204,20 +2142,14 @@ class WC_AI_Storefront_JsonLd {
 				'@type'       => 'SearchAction',
 				'target'      => array(
 					'@type'       => 'EntryPoint',
-					// Canonical UTM shape (0.5.0+) — see BuyAction
-					// urlTemplate above for rationale. The `utm_id`
-					// value comes from the constant rather than the
-					// literal string for the same drift-prevention
-					// reason documented at the BuyAction emit site.
-					'urlTemplate' => home_url(
-						// `woo_jsonld` (not `woo_ucp`): same reasoning
-						// as the BuyAction template — SearchAction is
-						// also JSON-LD, also consumed by crawlers and
-						// AI surfaces who never enter our UCP session
-						// flow. The channel-split needs both JSON-LD
-						// emission sites tagged consistently.
-						'/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=' . WC_AI_Storefront_Attribution::WOO_JSONLD_ID
-					),
+					// Bare target (no UTMs) — a human clicking through
+					// a sitelinks search box lands on a normal search
+					// results page, and if that visit later converts
+					// it is attributed natively by WooCommerce, same
+					// as any other organic visit. `{search_term}` is
+					// the only placeholder here, and it is required:
+					// a consumer MUST substitute it to run a search.
+					'urlTemplate' => home_url( '/?s={search_term}&post_type=product' ),
 				),
 				'query-input' => 'required name=search_term',
 			),

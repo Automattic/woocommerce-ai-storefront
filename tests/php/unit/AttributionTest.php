@@ -50,6 +50,28 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $order->was_saved() );
 	}
 
+	public function test_capture_skips_organic_order_without_utm_id(): void {
+		// Regression guard for #574: JSON-LD checkout URLs are now bare
+		// (no `utm_id=woo_jsonld` placeholder), so a human clicking a
+		// search-surfaced checkout link produces an order with WC core's
+		// own organic/referral attribution — utm_source=google, but no
+		// utm_medium=ai_agent and no utm_id at all. STRICT must not fire
+		// (utm_id doesn't match woo_ucp/woo_jsonld/woo_llms, utm_medium
+		// isn't ai_agent) and LENIENT must not fire either ('google' is
+		// not a KNOWN_AGENT_HOSTS key). The order must NOT receive the
+		// `_wc_ai_storefront_agent` stamp.
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_utm_source', 'google' );
+		// No utm_medium, no utm_id meta at all.
+
+		Functions\expect( 'do_action' )->never();
+
+		$this->attribution->capture_ai_attribution( $order );
+
+		$this->assertFalse( $order->was_saved() );
+		$this->assertEquals( '', $order->get_meta( WC_AI_Storefront_Attribution::AGENT_META_KEY ) );
+	}
+
 	public function test_capture_detects_ai_medium_from_order_meta(): void {
 		$order = new WC_Order();
 		$order->set_test_meta( '_wc_order_attribution_utm_medium', 'ai_agent' );
@@ -1401,5 +1423,29 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'wc_ai_storefront_stats_month', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_quarter', $deleted );
 		$this->assertContains( 'wc_ai_storefront_stats_year', $deleted );
+	}
+
+	// ------------------------------------------------------------------
+	// stamp_buy_link_origin
+	// ------------------------------------------------------------------
+
+	public function test_stamps_buy_link_origin_when_session_entry_is_checkout_link(): void {
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_session_entry', 'https://shop.test/checkout-link/?products=24:1' );
+
+		$this->attribution->stamp_buy_link_origin( $order );
+
+		$this->assertTrue( $order->was_saved() );
+		$this->assertSame( 'yes', $order->get_meta( '_wc_ai_storefront_buy_link_origin' ) );
+	}
+
+	public function test_does_not_stamp_buy_link_origin_for_regular_landing(): void {
+		$order = new WC_Order();
+		$order->set_test_meta( '_wc_order_attribution_session_entry', 'https://shop.test/product/tideline-tee/' );
+
+		$this->attribution->stamp_buy_link_origin( $order );
+
+		$this->assertFalse( $order->was_saved() );
+		$this->assertSame( '', $order->get_meta( '_wc_ai_storefront_buy_link_origin' ) );
 	}
 }
