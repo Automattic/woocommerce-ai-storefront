@@ -432,6 +432,33 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( '{agent_id}', $url );
 	}
 
+	public function test_checkout_urls_are_bare_on_both_properties(): void {
+		// Both BuyAction.target.urlTemplate and Offer.checkoutPageURLTemplate
+		// must be UTM-free and brace-free so a human clicking a
+		// search-surfaced checkout link attributes natively via WC core's
+		// own Order Attribution instead of a literal, unsubstituted
+		// `{agent_id}` placeholder (#574). Consolidated regression lock —
+		// the per-type bare-URL assertions above already cover simple,
+		// bundle, and grouped products individually.
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+		);
+		$product = $this->make_product();
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$buy   = $result['potentialAction']['target']['urlTemplate'] ?? '';
+		$offer = $result['offers'][0]['checkoutPageURLTemplate'] ?? '';
+
+		foreach ( array( $buy, $offer ) as $url ) {
+			$this->assertStringContainsString( '/checkout-link/', $url );
+			$this->assertStringNotContainsString( 'utm_', $url );
+			$this->assertStringNotContainsString( '{', $url );
+		}
+		$this->assertSame( $buy, $offer, 'Both properties still emit the same (bare) URL' );
+	}
+
 	// ------------------------------------------------------------------
 	// BuyAction / checkoutPageURLTemplate — no HTML entities in JSON strings
 	// ------------------------------------------------------------------
