@@ -350,11 +350,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// without first decoding the URL.
 		$this->assertStringContainsString( '/checkout-link/', $url );
 		$this->assertStringContainsString( 'products=42:1', $url );
-		$this->assertStringContainsString( 'utm_source={agent_id}', $url );
-		// Canonical UTM shape (0.5.0+): medium=referral (Google-canonical),
-		// utm_id=woo_jsonld flags "we routed this".
-		$this->assertStringContainsString( 'utm_medium=referral', $url );
-		$this->assertStringContainsString( 'utm_id=woo_jsonld', $url );
+		// Bare URL (#574): no UTM params — a human clicking a search-surfaced
+		// checkout link must get native WC attribution, not a literal {agent_id}.
+		$this->assertStringNotContainsString( 'utm_source', $url );
+		$this->assertStringNotContainsString( 'utm_medium', $url );
+		$this->assertStringNotContainsString( 'utm_id', $url );
+		$this->assertStringNotContainsString( '{agent_id}', $url );
+		$this->assertStringNotContainsString( '{', $url ); // no template braces at all
 		// Regression guard: `ai_session_id` placeholder was removed in
 		// the channel-split work — JSON-LD-routed traffic is by
 		// definition stateless (no UCP session), so asking a crawler /
