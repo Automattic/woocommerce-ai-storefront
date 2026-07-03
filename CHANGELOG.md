@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.31.0] – 2026-07-02
+
 ### Added
 
 - **IndexNow now submits product brand archive URLs (#569).**

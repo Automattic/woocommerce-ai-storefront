@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.30.0
+Stable tag: 0.31.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,13 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.31.0 - 2026-07-02 =
+**New**
+* IndexNow now submits your product brand archive URLs, so search engines pick up brand pages on change and when you use "Submit entire catalog now" (previously only products and categories were sent).
+
+**Changed**
+* The AI-crawler rules in robots.txt are now a deny-list: each welcomed crawler can reach your whole store except cart, checkout, and account pages. No change to what compliant crawlers could already reach; it removes an edge case where an unlisted path could be skipped.
 
 = 0.30.0 - 2026-07-02 =
 **New**
