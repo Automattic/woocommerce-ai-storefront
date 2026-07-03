@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.32.0] – 2026-07-03
+
 ### Changed
 
 - **Structured-data action URLs are now bare (#574).**
