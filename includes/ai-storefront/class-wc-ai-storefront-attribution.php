@@ -208,6 +208,16 @@ class WC_AI_Storefront_Attribution {
 	const WOO_LLMS_ID = 'woo_llms';
 
 	/**
+	 * Order meta flag: the order's session landed on the /checkout-link/
+	 * Shareable-Checkout handler — i.e. it originated from a buy/checkout
+	 * link (JSON-LD checkoutPageURLTemplate / BuyAction) rather than a
+	 * regular product-page browse. Sourced from WooCommerce's native
+	 * session_entry meta so no new client-side capture is needed. Captured
+	 * for reporting; no dashboard consumes it yet (spec A3-minimal).
+	 */
+	const BUY_LINK_ORIGIN_META_KEY = '_wc_ai_storefront_buy_link_origin';
+
+	/**
 	 * Stamp our canonical attribution UTM shape onto a URL.
 	 *
 	 * Two emission surfaces share this helper so the wire shape stays
@@ -349,6 +359,12 @@ class WC_AI_Storefront_Attribution {
 
 		// Also capture from Store API / Blocks checkout.
 		add_action( 'woocommerce_store_api_checkout_order_processed', [ $this, 'capture_ai_attribution' ], 10, 1 );
+
+		// Flag orders whose session landed on the /checkout-link/ handler —
+		// recovers the "routed via our checkout link" signal now that
+		// JSON-LD checkout URLs are bare (see BUY_LINK_ORIGIN_META_KEY).
+		add_action( 'woocommerce_checkout_order_created', [ $this, 'stamp_buy_link_origin' ], 10, 1 );
+		add_action( 'woocommerce_store_api_checkout_order_processed', [ $this, 'stamp_buy_link_origin' ], 10, 1 );
 
 		// Display AI attribution data in admin order view.
 		add_action( 'woocommerce_admin_order_data_after_billing_address', [ $this, 'display_attribution_in_admin' ], 20, 1 );
@@ -704,6 +720,29 @@ class WC_AI_Storefront_Attribution {
 		 * @param string   $session_id      The AI session identifier.
 		 */
 		do_action( 'wc_ai_storefront_attribution_captured', $order, $canonical_agent, $session_id );
+	}
+
+	/**
+	 * Stamp BUY_LINK_ORIGIN_META_KEY = 'yes' when the order's session entry
+	 * URL is the /checkout-link/ handler. Reads WooCommerce core's
+	 * _wc_order_attribution_session_entry; additive and idempotent (only
+	 * ever sets 'yes', never unsets).
+	 *
+	 * @param WC_Order $order The order being attributed.
+	 */
+	public function stamp_buy_link_origin( $order ): void {
+		if ( ! $order instanceof WC_Order ) {
+			return;
+		}
+		$entry = (string) $order->get_meta( '_wc_order_attribution_session_entry' );
+		if ( '' === $entry ) {
+			return;
+		}
+		if ( false === strpos( $entry, '/checkout-link/' ) ) {
+			return;
+		}
+		$order->update_meta_data( self::BUY_LINK_ORIGIN_META_KEY, 'yes' );
+		$order->save();
 	}
 
 	/**
