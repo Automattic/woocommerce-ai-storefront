@@ -859,7 +859,7 @@ Generates a new IndexNow ownership key and persists it, replacing the existing o
 
 ### `POST /indexnow-submit-all`
 
-Enqueues an immediate WP-Cron job that submits every published product URL, every published category URL, and the discovery surfaces (homepage, `/shop/`, `/llms.txt`, `/products.json`) to IndexNow. Returns the last-submission result after the job completes (synchronous in the sense that the REST handler waits for the cron job's immediate dispatch, then reads the stored result). This is the same action triggered by the "Submit entire catalog now" button on the Discovery tab and by the automatic first-enable seed.
+Enqueues an immediate WP-Cron job that submits every published product URL, every non-empty product-category URL, every non-empty product-brand (`product_brand`) URL, and the discovery surfaces (homepage, `/shop/`, `/llms.txt`, `/products.json`) to IndexNow. Returns the last-submission result after the job completes (synchronous in the sense that the REST handler waits for the cron job's immediate dispatch, then reads the stored result). This is the same action triggered by the "Submit entire catalog now" button on the Discovery tab and by the automatic first-enable seed.
 
 **Permission:** `manage_woocommerce`.
 
