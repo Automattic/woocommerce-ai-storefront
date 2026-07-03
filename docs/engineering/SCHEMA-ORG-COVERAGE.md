@@ -249,7 +249,7 @@ The plugin emits two Action subtypes:
 |---|---|---|---|
 | `@type: BuyAction` | ✓ §BuyAction | ✓ | Plugin |
 | `target` (`EntryPoint`) | ✓ §BuyAction | ✓ | Plugin |
-| `target.urlTemplate` | ✓ §BuyAction | ✓ (with `{agent_id}` / `{session_id}` UTM placeholders) | Plugin |
+| `target.urlTemplate` | ✓ §BuyAction | ✓ (bare Shareable Checkout URL, no UTM/attribution parameters — #574) | Plugin |
 | `target.actionPlatform` | ✓ §BuyAction (implicit) | ✓ (`DesktopWebPlatform`, `MobileWebPlatform`) | Plugin |
 | `result` | — | — | — *(per Schema.org, expected `Order`; plugin omits)* |
 | `actionStatus` / `agent` / `participant` / `provider` | — | — | — |
