@@ -159,18 +159,23 @@ class WC_AI_Storefront_Attribution {
 	 *
 	 *   - `WOO_JSONLD_ID` (`woo_jsonld`) — order originated from a
 	 *     JSON-LD scrape: an AI surface (search engine, AI overview,
-	 *     chat assistant) consumed our PotentialAction template,
-	 *     filled it in, and served the URL as a search result. The
-	 *     agent surfaced us; the user converted independently.
+	 *     chat assistant) consumed our PotentialAction template and
+	 *     served the URL. The agent surfaced us; the user converted
+	 *     independently.
 	 *
 	 * Both are AI-attributed, but the merchant-facing dashboard splits
 	 * them so investment in agent partnerships (a UCP-session signal)
 	 * vs. AI-discovery SEO (a JSON-LD signal) can be told apart.
 	 *
-	 * Transition note: existing crawler caches will keep emitting the
-	 * old `WOO_UCP_ID` from JSON-LD templates for ~2-6 weeks after
-	 * the template swap ships. During that window `woo_ucp` is mildly
-	 * over-reported. Accept the noise — see PR description.
+	 * Retention note (#574): the JSON-LD PotentialAction templates
+	 * (BuyAction / SearchAction / checkoutPageURLTemplate) no longer
+	 * emit `utm_id=woo_jsonld` — they are bare, so a human clicking a
+	 * search-surfaced link is attributed natively by WooCommerce
+	 * instead of being mislabeled as an AI referral. This constant is
+	 * retained because the STRICT gate still matches legacy orders that
+	 * captured `woo_jsonld` before the change, plus any crawler cache
+	 * still serving a pre-#574 templated URL during the transition
+	 * window. No live template emits it anymore.
 	 */
 	const WOO_JSONLD_ID = 'woo_jsonld';
 

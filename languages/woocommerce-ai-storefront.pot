@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-07-03T19:57:08+00:00\n"
+"POT-Creation-Date: 2026-07-03T19:58:05+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -97,19 +97,19 @@ msgstr ""
 msgid "Read the full coexistence guide"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:763
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:768
 msgid "AI Agent Attribution"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:764
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:769
 msgid "Agent:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:772
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:777
 msgid "Agent host:"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:776
+#: includes/ai-storefront/class-wc-ai-storefront-attribution.php:781
 msgid "Session ID:"
 msgstr ""
 
