@@ -7,6 +7,13 @@
   - Adds brand enumeration to the full-catalog submission and per-term change detection for `created`/`edited`/`delete` on `product_brand`, mirroring the existing category handling.
   - Permalinks resolve through `get_term_link()`, so the correct registered base (`/brand/` or `/product-brand/`) is used automatically. Stores without the brand taxonomy are unaffected.
 
+### Changed
+
+- **robots.txt per-bot rules are now a deny-list (#571).**
+  - The named-crawler group listed `Allow:` lines for permitted paths; a named group ignores `User-agent: *` (RFC 9309), so an allow-list risked silently blocking any path not explicitly listed by omission.
+  - It now blocks only cart/checkout/account and lets everything else be crawled by default (including product/category archives and sitemap paths). Two defensive `Allow:` lines for the `/wp-json/` commerce endpoints are kept as forward-looking insurance against a future broad `/wp-json/` block.
+  - No behavior change for standards-compliant crawlers (an unlisted path was already crawlable); the win is robustness for naive parsers and future-proofing. WordPress core's `admin-ajax.php` exception and the opted-out-bot block are untouched.
+
 ---
 
 ## [0.30.0] – 2026-07-02
