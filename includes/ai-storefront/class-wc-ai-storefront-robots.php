@@ -585,29 +585,39 @@ class WC_AI_Storefront_Robots {
 		$output .= "\n# WooCommerce AI Storefront\n";
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
 
-		// Derive paths from actual WooCommerce permalink settings.
-		// `wp_parse_url` can return an empty string, false, or null when the
-		// permalink isn't set yet (fresh WC installs). Fall back to sensible
-		// defaults that match WC's out-of-box routes.
+		// Derive the cart/checkout/account paths to Disallow from actual
+		// WooCommerce permalink settings. `wp_parse_url` can return an empty
+		// string, false, or null when the permalink isn't set yet (fresh WC
+		// installs). Fall back to sensible defaults that match WC's
+		// out-of-box routes.
 		$parse_path    = static function ( string $page, string $fallback ): string {
 			$path = wp_parse_url( wc_get_page_permalink( $page ), PHP_URL_PATH );
 			return ( is_string( $path ) && '' !== $path ) ? $path : $fallback;
 		};
-		$shop_path     = $parse_path( 'shop', '/shop/' );
 		$cart_path     = $parse_path( 'cart', '/cart/' );
 		$checkout_path = $parse_path( 'checkout', '/checkout/' );
 		$account_path  = $parse_path( 'myaccount', '/my-account/' );
 
-		$product_base  = '/' . trim( get_option( 'woocommerce_permalinks', [] )['product_base'] ?? 'product', '/' ) . '/';
-		$category_base = '/' . trim( get_option( 'woocommerce_permalinks', [] )['category_base'] ?? 'product-category', '/' ) . '/';
-
 		// Opt-in rule group for all allowed AI crawlers.
 		//
-		// All allowed bots share the same Allow/Disallow body, so we
-		// emit one consolidated rule group (multiple `User-agent:` lines
-		// followed by a single Allow/Disallow block) — valid per
-		// RFC 9309 §2.2.1 and the same shape used by the opt-out block
-		// below.
+		// This group is a DENY-LIST: it blocks cart/checkout/account and
+		// lets everything else be crawled by RFC 9309 §2.2.2 default-allow
+		// (deliberately including product/category archives and sitemap
+		// paths). A crawler that matches a named `User-agent:` group does
+		// not fall back to `User-agent: *` (§2.2.1: the `*` group applies
+		// only when NO named group matches; multiple matching named groups
+		// are combined). So a path this group does not explicitly Allow
+		// depends solely on §2.2.2 default-allow — an allow-list here would
+		// be a deny-by-omission trap where a future broad `Disallow:` could
+		// silently strand an unlisted path. The deny-list can't: new
+		// endpoints stay crawlable without being remembered. The two
+		// `Allow: /wp-json/...` lines are the sole exception, kept as
+		// forward-looking hole-punch insurance (see the body below).
+		//
+		// All allowed bots share the same body, so we emit one consolidated
+		// rule group (multiple `User-agent:` lines followed by a single
+		// rule block) — valid per RFC 9309 §2.2.1 and the same shape used
+		// by the opt-out block below.
 		//
 		// Pre-0.8.8 this section emitted a separate User-agent block per
 		// bot, duplicating the ~10-line rule body for every entry. With
@@ -634,31 +644,44 @@ class WC_AI_Storefront_Robots {
 		// crawlers that only parse directives within their own
 		// User-agent group." That defense was misdirected — `Allow:`
 		// only matters when a `Disallow:` would otherwise block the
-		// path, and none of the per-bot `Disallow:` rules below touch
+		// path, and none of the group's `Disallow:` rules below touch
 		// sitemap paths. The rules permitted something that was never
 		// blocked. Sitemap discovery happens via the top-level
 		// `Sitemap:` directives emitted by WP core / Jetpack / SEO
 		// plugins outside this section.
+		//
+		// (This is distinct from the two `/wp-json/` `Allow:` lines the
+		// deny-list body keeps: those are deliberate insurance against a
+		// *hypothetical future* `Disallow: /wp-json/` in this group, not a
+		// guard against a Disallow that never existed. Present-inert vs.
+		// future-insurance — the sitemap Allows guarded nothing and were
+		// dropped; the `/wp-json/` Allows guard the commerce API against a
+		// plausible future hardening rule and are kept.)
 		if ( ! empty( $allowed_bots ) ) {
 			foreach ( $allowed_bots as $bot ) {
 				$output .= 'User-agent: ' . sanitize_text_field( $bot ) . "\n";
 			}
 
-			$output .= "Allow: /llms.txt\n";
-			$output .= "Allow: /.well-known/ucp\n";
+			// Defensive re-permits for the commerce REST endpoints, relying
+			// on RFC 9309 §2.2.2 longest-match precedence ("The most specific
+			// match found MUST be used. The most specific match is the match
+			// that has the most octets."): a specific `Allow: /wp-json/wc/…`
+			// out-ranks a broader `Disallow: /wp-json/`. Inert today —
+			// nothing in this group disallows /wp-json/ — but they keep the
+			// Store API and UCP API crawlable if a future broad
+			// `Disallow: /wp-json/` is ever added to this group (e.g. an
+			// admin-hardening rule). Same MECHANISM as WP core's
+			// `Disallow: /wp-admin/` + `Allow: /wp-admin/admin-ajax.php`
+			// (a specific Allow overriding a broader Disallow), but applied
+			// PREEMPTIVELY here — no companion `Disallow:` is present yet, so
+			// unlike the WP core pair these Allows punch no hole today. They
+			// are kept while the five former allow-list lines (llms.txt,
+			// .well-known/ucp, shop, product, product-category) were dropped
+			// because no plausible future group Disallow would cover those
+			// paths.
 			$output .= "Allow: /wp-json/wc/store/\n";
-			// UCP adapter endpoints (plugin 1.3.0+): catalog/search,
-			// catalog/lookup, checkout-sessions. Paired visually with
-			// the Store API allow above — both are JSON REST surfaces
-			// agents dispatch to. Distinct from the /.well-known/ucp
-			// discovery manifest, which announces that these exist.
 			$output .= "Allow: /wp-json/wc/ucp/\n";
 
-			if ( '/' !== $shop_path ) {
-				$output .= "Allow: {$shop_path}\n";
-			}
-			$output .= "Allow: {$product_base}\n";
-			$output .= "Allow: {$category_base}\n";
 			$output .= "Disallow: {$cart_path}\n";
 			$output .= "Disallow: {$checkout_path}\n";
 			$output .= "Disallow: {$account_path}\n";

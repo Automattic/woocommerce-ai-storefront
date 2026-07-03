@@ -282,18 +282,33 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// Both fixture bots present.
 		$this->assertStringContainsString( 'User-agent: GPTBot', $output );
 		$this->assertStringContainsString( 'User-agent: ClaudeBot', $output );
+	}
 
-		// Allow rules appear exactly once for the whole group.
-		$this->assertEquals(
-			1,
-			substr_count( $output, "Allow: /llms.txt\n" ),
-			'Allow: /llms.txt appears once for the consolidated group'
-		);
-		$this->assertEquals(
-			1,
-			substr_count( $output, "Allow: /.well-known/ucp\n" ),
-			'Allow: /.well-known/ucp appears once for the consolidated group'
-		);
+	public function test_opt_in_block_is_a_deny_list_with_defensive_rest_allows(): void {
+		// The per-bot group is a deny-list (#571): it blocks
+		// cart/checkout/account and lets everything else be crawled by
+		// RFC 9309 §2.2.2 default-allow (deliberately including sitemap
+		// paths). The five formerly-inert `Allow:` lines are removed; the
+		// two `/wp-json/` allows are KEPT as defensive exception-pattern
+		// insurance (they auto-activate as hole-punches if a future broad
+		// `Disallow: /wp-json/` is ever added to the group).
+		$output = $this->generate_robots_output();
+
+		// Removed: the five inert allow-list lines.
+		$this->assertStringNotContainsString( "Allow: /llms.txt\n", $output );
+		$this->assertStringNotContainsString( "Allow: /.well-known/ucp\n", $output );
+		$this->assertStringNotContainsString( "Allow: /product/\n", $output );
+		$this->assertStringNotContainsString( "Allow: /product-category/\n", $output );
+		$this->assertStringNotContainsString( "Allow: /shop/\n", $output );
+
+		// Kept: the two defensive commerce-REST allows.
+		$this->assertStringContainsString( "Allow: /wp-json/wc/store/\n", $output );
+		$this->assertStringContainsString( "Allow: /wp-json/wc/ucp/\n", $output );
+
+		// Load-bearing deny-list body preserved.
+		$this->assertStringContainsString( 'Disallow: /cart', $output );
+		$this->assertStringContainsString( 'Disallow: /checkout', $output );
+		$this->assertStringContainsString( 'Disallow: /my-account', $output );
 	}
 
 	public function test_ucp_allow_appears_next_to_store_api_allow(): void {
