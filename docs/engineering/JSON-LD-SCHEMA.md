@@ -94,7 +94,7 @@ Below is a representative full output for a published product after the plugin's
     "@type": "BuyAction",
     "target": {
       "@type": "EntryPoint",
-      "urlTemplate": "https://yourstore.example.com/checkout-link/?products=123:1&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld",
+      "urlTemplate": "https://yourstore.example.com/checkout-link/?products=123:1",
       "actionPlatform": [
         "https://schema.org/DesktopWebPlatform",
         "https://schema.org/MobileWebPlatform"
@@ -124,15 +124,15 @@ Each field added by the plugin, with the rule that controls its presence.
 A Schema.org `BuyAction` pointing to a URL the AI agent can use to send the shopper to checkout with that product pre-added.
 
 - **Always emitted** for purchasable products (not draft, not out of stock when stock management is on, has a price).
-- **`target` URL** is built from `$product->add_to_cart_url()` plus `utm_*` placeholders (`{agent_id}`, `{session_id}`) the AI agent substitutes at runtime per UCP convention.
+- **`target` URL** is a bare Shareable Checkout URL (`/checkout-link/?products=ID:1`) with no query-string attribution parameters.
 - **`result.@type`** is always `Order` (Schema.org's expected result type for `BuyAction`).
-- **Source**: `add_buy_action()` (line ~108 in `class-wc-ai-storefront-jsonld.php`).
+- **Source**: `build_checkout_url_template()` via `add_buy_action()` in `class-wc-ai-storefront-jsonld.php`.
 
-#### Are the UTM placeholders actually filled in by AI agents?
+#### Why no UTM/attribution parameters on the URL? (#574)
 
-No — not today. JSON-LD is crawled and indexed offline; AI agents query their knowledge base at recommendation time, not the live page. The `{agent_id}` and `{session_id}` placeholders are stored verbatim in the crawler's index. No AI agent currently dynamically constructs purchase URLs from `BuyAction` `urlTemplate` at recommendation time (unlike `SearchAction`'s `{search_term}`, which Google does exercise for sitelinks search boxes).
+The `BuyAction` / `Offer.checkoutPageURLTemplate` / homepage `SearchAction` URLs used to carry `utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld`. That was removed because these URLs are surfaced to **human shoppers** by search engines (Google's crawled-checkout feature, sitelinks search boxes). A human never substitutes `{agent_id}`, so the literal placeholder corrupted order attribution and — because any `utm_*` param (even a lone `utm_id`) forces WooCommerce's Sourcebuster into "utm" classification and suppresses the `Referer` — it also overwrote WooCommerce's native `Origin` (`Organic: Google`, `Referral: bing.com`). A bare URL lets WooCommerce record the real per-engine source.
 
-The placeholders are **aspirational**: they express a machine-readable intent that allows agents to attribute traffic and correlate sessions if a future agentic standard emerges for dynamic URL construction. There is no harm in leaving them in — crawlers store the template string as-is, no session data leaks, and no broken URLs reach browsers.
+Agent attribution is unaffected: agents identify via the `UCP-Agent` header on the `/checkout-sessions` path, not via a placeholder in the crawled JSON-LD URL. The one placeholder that IS still emitted is `SearchAction`'s `{search_term}` (required — the consumer must substitute a query to run the search). Orders that arrive via a checkout link are flagged from WooCommerce's own `session_entry` landing-page data (`_wc_ai_storefront_buy_link_origin`), not a URL param.
 
 ### `offers[0].inventoryLevel`
 
@@ -340,7 +340,7 @@ Worked example (V-Neck T-Shirt with 3 variations across color and size):
           "price": "20",
           "priceCurrency": "USD",
           "availability": "https://schema.org/InStock",
-          "checkoutPageURLTemplate": "https://example.com/checkout-link/?products=43:1&utm_source={agent_id}&..."
+          "checkoutPageURLTemplate": "https://example.com/checkout-link/?products=43:1"
         }
       ],
       "potentialAction": {
@@ -502,7 +502,7 @@ The `@type` is [`OnlineBusiness`](https://schema.org/OnlineBusiness) — a Schem
     "@type": "SearchAction",
     "target": {
       "@type": "EntryPoint",
-      "urlTemplate": "https://yourstore.example.com/?s={search_term}&post_type=product&utm_source={agent_id}&utm_medium=referral&utm_id=woo_jsonld"
+      "urlTemplate": "https://yourstore.example.com/?s={search_term}&post_type=product"
     },
     "query-input": "required name=search_term"
   },
