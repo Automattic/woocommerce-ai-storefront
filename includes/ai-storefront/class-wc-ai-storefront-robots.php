@@ -603,12 +603,14 @@ class WC_AI_Storefront_Robots {
 		// This group is a DENY-LIST: it blocks cart/checkout/account and
 		// lets everything else be crawled by RFC 9309 §2.2.2 default-allow
 		// (deliberately including product/category archives and sitemap
-		// paths). A crawler with its own named `User-agent:` group reads
-		// ONLY that group and ignores `User-agent: *` (§2.2.1), so an
-		// allow-list here would be a deny-by-omission trap — a path not
-		// explicitly listed would depend on group precedence, and a future
-		// broad `Disallow:` could silently strand it. The deny-list can't:
-		// new endpoints stay crawlable without being remembered. The two
+		// paths). A crawler that matches a named `User-agent:` group does
+		// not fall back to `User-agent: *` (§2.2.1: the `*` group applies
+		// only when NO named group matches; multiple matching named groups
+		// are combined). So a path this group does not explicitly Allow
+		// depends solely on §2.2.2 default-allow — an allow-list here would
+		// be a deny-by-omission trap where a future broad `Disallow:` could
+		// silently strand an unlisted path. The deny-list can't: new
+		// endpoints stay crawlable without being remembered. The two
 		// `Allow: /wp-json/...` lines are the sole exception, kept as
 		// forward-looking hole-punch insurance (see the body below).
 		//
@@ -642,28 +644,41 @@ class WC_AI_Storefront_Robots {
 		// crawlers that only parse directives within their own
 		// User-agent group." That defense was misdirected — `Allow:`
 		// only matters when a `Disallow:` would otherwise block the
-		// path, and none of the per-bot `Disallow:` rules below touch
+		// path, and none of the group's `Disallow:` rules below touch
 		// sitemap paths. The rules permitted something that was never
 		// blocked. Sitemap discovery happens via the top-level
 		// `Sitemap:` directives emitted by WP core / Jetpack / SEO
 		// plugins outside this section.
+		//
+		// (This is distinct from the two `/wp-json/` `Allow:` lines the
+		// deny-list body keeps: those are deliberate insurance against a
+		// *hypothetical future* `Disallow: /wp-json/` in this group, not a
+		// guard against a Disallow that never existed. Present-inert vs.
+		// future-insurance — the sitemap Allows guarded nothing and were
+		// dropped; the `/wp-json/` Allows guard the commerce API against a
+		// plausible future hardening rule and are kept.)
 		if ( ! empty( $allowed_bots ) ) {
 			foreach ( $allowed_bots as $bot ) {
 				$output .= 'User-agent: ' . sanitize_text_field( $bot ) . "\n";
 			}
 
-			// Defensive re-permits (RFC 9309 §2.2.4 exception pattern) for
-			// the commerce REST endpoints. Inert today — nothing in this
-			// group disallows /wp-json/ — but they keep the Store API and
-			// UCP API crawlable if a future broad `Disallow: /wp-json/` is
-			// ever added to this group (e.g. an admin-hardening rule). Same
-			// shape as WP core's `Disallow: /wp-admin/` +
-			// `Allow: /wp-admin/admin-ajax.php`, applied preemptively to the
-			// two endpoints whose accidental blocking would be most damaging
-			// (the agent transaction surface). Kept while the five former
-			// allow-list lines (llms.txt, .well-known/ucp, shop, product,
-			// product-category) were dropped because no plausible future
-			// group Disallow would cover those paths.
+			// Defensive re-permits for the commerce REST endpoints, relying
+			// on RFC 9309 §2.2.2 longest-match precedence ("The most specific
+			// match found MUST be used. The most specific match is the match
+			// that has the most octets."): a specific `Allow: /wp-json/wc/…`
+			// out-ranks a broader `Disallow: /wp-json/`. Inert today —
+			// nothing in this group disallows /wp-json/ — but they keep the
+			// Store API and UCP API crawlable if a future broad
+			// `Disallow: /wp-json/` is ever added to this group (e.g. an
+			// admin-hardening rule). Same MECHANISM as WP core's
+			// `Disallow: /wp-admin/` + `Allow: /wp-admin/admin-ajax.php`
+			// (a specific Allow overriding a broader Disallow), but applied
+			// PREEMPTIVELY here — no companion `Disallow:` is present yet, so
+			// unlike the WP core pair these Allows punch no hole today. They
+			// are kept while the five former allow-list lines (llms.txt,
+			// .well-known/ucp, shop, product, product-category) were dropped
+			// because no plausible future group Disallow would cover those
+			// paths.
 			$output .= "Allow: /wp-json/wc/store/\n";
 			$output .= "Allow: /wp-json/wc/ucp/\n";
 
