@@ -600,9 +600,19 @@ class WC_AI_Storefront_Robots {
 		//     Leaving it crawlable lets AI surfaces route a returning
 		//     shopper to sign in rather than dead-ending at a blocked path.
 		//
-		// Crawler-triggered cart mutation via `?add-to-cart=` remains
-		// covered by WP core's top-level `Disallow: /*?add-to-cart=` rules,
-		// so dropping the page-level disallows doesn't reopen it.
+		// Note on crawler-triggered cart mutation via `?add-to-cart=`:
+		// WooCommerce core splices its `Disallow: /*?add-to-cart=` rules
+		// into the `User-agent: *` group only (see WooCommerce's
+		// `robots_txt()`, which searches for the `User-agent: *` line and
+		// inserts after it). Per RFC 9309 §2.2.1 — the same rule cited
+		// below — a crawler matching a named `User-agent:` group does NOT
+		// read the `*` group, so these named AI crawlers do not inherit
+		// that disallow. We deliberately do not re-emit it here: robots.txt
+		// is advisory (not an access control), the intended crawl target is
+		// the `/checkout-link/` buy-link rather than `?add-to-cart=`, and
+		// the real enforcement against runaway crawler requests is the
+		// plugin's Store API rate limiter (HTTP 429 + Retry-After), which
+		// well-behaved crawlers honor far more reliably than a Disallow.
 
 		// Opt-in rule group for all allowed AI crawlers.
 		//
@@ -650,14 +660,15 @@ class WC_AI_Storefront_Robots {
 		// crawlers that only parse directives within their own
 		// User-agent group." That defense was misdirected — `Allow:`
 		// only matters when a `Disallow:` would otherwise block the
-		// path, and none of the group's `Disallow:` rules below touch
-		// sitemap paths. The rules permitted something that was never
-		// blocked. Sitemap discovery happens via the top-level
+		// path, and this group emits no `Disallow:` rules that touch
+		// sitemap paths (in fact it emits no page-level `Disallow:` at
+		// all). The rules permitted something that was never blocked.
+		// Sitemap discovery happens via the top-level
 		// `Sitemap:` directives emitted by WP core / Jetpack / SEO
 		// plugins outside this section.
 		//
-		// (This is distinct from the two `/wp-json/` `Allow:` lines the
-		// deny-list body keeps: those are deliberate insurance against a
+		// (This is distinct from the two `/wp-json/` `Allow:` lines this
+		// group keeps: those are deliberate insurance against a
 		// *hypothetical future* `Disallow: /wp-json/` in this group, not a
 		// guard against a Disallow that never existed. Present-inert vs.
 		// future-insurance — the sitemap Allows guarded nothing and were

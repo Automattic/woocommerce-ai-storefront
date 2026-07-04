@@ -316,6 +316,27 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'Disallow: /cart', $output );
 		$this->assertStringNotContainsString( 'Disallow: /checkout', $output );
 		$this->assertStringNotContainsString( 'Disallow: /my-account', $output );
+
+		// Scope the check to the opt-in group itself, not the whole file.
+		// The whole-file assertions above pass even if a bare `Disallow: /`
+		// were erroneously emitted (the substring `Disallow: /checkout` is
+		// not contained in `Disallow: /`), so they can't distinguish "no
+		// page-level disallow" from "no disallow at all." Slice the opt-in
+		// group — from its first `User-agent:` line up to the opt-out block
+		// marker — and assert it contains NO `Disallow:` whatsoever. This is
+		// the exact contract of #578: the *allowed* crawler group must emit
+		// no page-level disallow. (The opt-out block's `Disallow: /` is
+		// covered separately by test_opted_out_bots_get_explicit_disallow_block.)
+		$optin_start  = strpos( $output, 'User-agent: GPTBot' );
+		$optout_start = strpos( $output, '# Explicit opt-out' );
+		$this->assertNotFalse( $optin_start, 'Opt-in group should be present for allowed bots' );
+		$this->assertNotFalse( $optout_start, 'Opt-out block marker should be present' );
+		$optin_block = substr( $output, $optin_start, $optout_start - $optin_start );
+		$this->assertStringNotContainsString(
+			'Disallow:',
+			$optin_block,
+			'The allowed-crawler group must emit no page-level Disallow'
+		);
 	}
 
 	public function test_ucp_allow_appears_next_to_store_api_allow(): void {
