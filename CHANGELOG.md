@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.33.0] – 2026-07-04
+
 ### Fixed
 
 - **robots.txt no longer blocks advertised `/checkout-link/` buy-links (#578).**
