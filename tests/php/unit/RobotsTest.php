@@ -284,14 +284,21 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'User-agent: ClaudeBot', $output );
 	}
 
-	public function test_opt_in_block_is_a_deny_list_with_defensive_rest_allows(): void {
-		// The per-bot group is a deny-list (#571): it blocks
-		// cart/checkout/account and lets everything else be crawled by
-		// RFC 9309 §2.2.2 default-allow (deliberately including sitemap
-		// paths). The five formerly-inert `Allow:` lines are removed; the
-		// two `/wp-json/` allows are KEPT as defensive exception-pattern
-		// insurance (they auto-activate as hole-punches if a future broad
-		// `Disallow: /wp-json/` is ever added to the group).
+	public function test_opt_in_block_emits_no_page_disallows_with_defensive_rest_allows(): void {
+		// The per-bot group emits NO page-level `Disallow:` — cart,
+		// checkout, and account are all left crawlable, and everything else
+		// is crawled by RFC 9309 §2.2.2 default-allow (deliberately
+		// including sitemap paths). The former cart/checkout/account
+		// disallows were removed because the plugin's JSON-LD advertises
+		// `/checkout-link/?products=…` buy-links that 302-redirect through
+		// cart/checkout; Google evaluates robots.txt against the redirect
+		// target, so `Disallow: /checkout/` got those buy-links reported as
+		// "Blocked by robots.txt". Account was dropped too so crawlers can
+		// reach the My Account login link. The five formerly-inert `Allow:`
+		// lines stay removed; the two `/wp-json/` allows are KEPT as
+		// defensive exception-pattern insurance (they auto-activate as
+		// hole-punches if a future broad `Disallow: /wp-json/` is ever added
+		// to the group).
 		$output = $this->generate_robots_output();
 
 		// Removed: the five inert allow-list lines.
@@ -305,10 +312,10 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( "Allow: /wp-json/wc/store/\n", $output );
 		$this->assertStringContainsString( "Allow: /wp-json/wc/ucp/\n", $output );
 
-		// Load-bearing deny-list body preserved.
-		$this->assertStringContainsString( 'Disallow: /cart', $output );
-		$this->assertStringContainsString( 'Disallow: /checkout', $output );
-		$this->assertStringContainsString( 'Disallow: /my-account', $output );
+		// Page-level disallows are gone from the AI-crawler group.
+		$this->assertStringNotContainsString( 'Disallow: /cart', $output );
+		$this->assertStringNotContainsString( 'Disallow: /checkout', $output );
+		$this->assertStringNotContainsString( 'Disallow: /my-account', $output );
 	}
 
 	public function test_ucp_allow_appears_next_to_store_api_allow(): void {

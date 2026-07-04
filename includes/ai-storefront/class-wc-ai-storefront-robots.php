@@ -585,33 +585,39 @@ class WC_AI_Storefront_Robots {
 		$output .= "\n# WooCommerce AI Storefront\n";
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
 
-		// Derive the cart/checkout/account paths to Disallow from actual
-		// WooCommerce permalink settings. `wp_parse_url` can return an empty
-		// string, false, or null when the permalink isn't set yet (fresh WC
-		// installs). Fall back to sensible defaults that match WC's
-		// out-of-box routes.
-		$parse_path    = static function ( string $page, string $fallback ): string {
-			$path = wp_parse_url( wc_get_page_permalink( $page ), PHP_URL_PATH );
-			return ( is_string( $path ) && '' !== $path ) ? $path : $fallback;
-		};
-		$cart_path     = $parse_path( 'cart', '/cart/' );
-		$checkout_path = $parse_path( 'checkout', '/checkout/' );
-		$account_path  = $parse_path( 'myaccount', '/my-account/' );
+		// The AI-crawler group intentionally disallows NOTHING at the page
+		// level — cart, checkout, and account are all left crawlable.
+		//
+		//   - Cart/checkout: the plugin's JSON-LD advertises
+		//     `/checkout-link/?products=…` buy-links (see
+		//     WC_AI_Storefront_JsonLd::build_checkout_url_template) which
+		//     302-redirect through the cart/checkout pages. Google evaluates
+		//     robots.txt against the redirect TARGET, so a `Disallow:
+		//     /checkout/` caused those advertised buy-links to be reported as
+		//     "Blocked by robots.txt" in Search Console — defeating the
+		//     crawled-checkout discovery the plugin exists to enable.
+		//   - Account: the My Account page carries the store's login link.
+		//     Leaving it crawlable lets AI surfaces route a returning
+		//     shopper to sign in rather than dead-ending at a blocked path.
+		//
+		// Crawler-triggered cart mutation via `?add-to-cart=` remains
+		// covered by WP core's top-level `Disallow: /*?add-to-cart=` rules,
+		// so dropping the page-level disallows doesn't reopen it.
 
 		// Opt-in rule group for all allowed AI crawlers.
 		//
-		// This group is a DENY-LIST: it blocks cart/checkout/account and
-		// lets everything else be crawled by RFC 9309 §2.2.2 default-allow
-		// (deliberately including product/category archives and sitemap
-		// paths). A crawler that matches a named `User-agent:` group does
-		// not fall back to `User-agent: *` (§2.2.1: the `*` group applies
-		// only when NO named group matches; multiple matching named groups
-		// are combined). So a path this group does not explicitly Allow
-		// depends solely on §2.2.2 default-allow — an allow-list here would
-		// be a deny-by-omission trap where a future broad `Disallow:` could
-		// silently strand an unlisted path. The deny-list can't: new
+		// This group emits no page-level `Disallow:` — it lets the whole
+		// site be crawled by RFC 9309 §2.2.2 default-allow (deliberately
+		// including product/category archives, cart, checkout, account, and
+		// sitemap paths). A crawler that matches a named `User-agent:` group
+		// does not fall back to `User-agent: *` (§2.2.1: the `*` group
+		// applies only when NO named group matches; multiple matching named
+		// groups are combined). So a path this group does not explicitly
+		// Allow depends solely on §2.2.2 default-allow — an allow-list here
+		// would be a deny-by-omission trap where a future broad `Disallow:`
+		// could silently strand an unlisted path. Default-allow can't: new
 		// endpoints stay crawlable without being remembered. The two
-		// `Allow: /wp-json/...` lines are the sole exception, kept as
+		// `Allow: /wp-json/...` lines are the sole explicit rules, kept as
 		// forward-looking hole-punch insurance (see the body below).
 		//
 		// All allowed bots share the same body, so we emit one consolidated
@@ -681,10 +687,6 @@ class WC_AI_Storefront_Robots {
 			// paths.
 			$output .= "Allow: /wp-json/wc/store/\n";
 			$output .= "Allow: /wp-json/wc/ucp/\n";
-
-			$output .= "Disallow: {$cart_path}\n";
-			$output .= "Disallow: {$checkout_path}\n";
-			$output .= "Disallow: {$account_path}\n";
 			$output .= "\n";
 		}
 
