@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Fixed
+
+- **robots.txt no longer blocks advertised `/checkout-link/` buy-links (#578).**
+  - The named AI-crawler group disallowed `/cart`, `/checkout`, and `/my-account`. The plugin's JSON-LD advertises `/checkout-link/?products=ID:1` buy-links (added in #575) that 302-redirect through cart/checkout; because Google evaluates robots.txt against the redirect *target*, Search Console reported those advertised buy-links as "Blocked by robots.txt" — defeating the crawled-checkout discovery the plugin exists to enable.
+  - Removes all three page-level `Disallow:` rules from the AI-crawler group. Cart and checkout are dropped so buy-links resolve; My Account is dropped so crawlers can reach the store login link. This reverses the "blocks cart/checkout/account" behavior introduced in #571.
+  - Crawler-triggered cart mutation via `?add-to-cart=` remains covered by WordPress core's top-level `Disallow: /*?add-to-cart=` rules, and the opt-out `Disallow: /` block for unchecked bots is unchanged.
+
 ---
 
 ## [0.32.0] – 2026-07-03
