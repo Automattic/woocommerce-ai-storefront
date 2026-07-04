@@ -585,33 +585,49 @@ class WC_AI_Storefront_Robots {
 		$output .= "\n# WooCommerce AI Storefront\n";
 		$output .= "# Machine-readable store data for AI-assisted product discovery\n\n";
 
-		// Derive the cart/checkout/account paths to Disallow from actual
-		// WooCommerce permalink settings. `wp_parse_url` can return an empty
-		// string, false, or null when the permalink isn't set yet (fresh WC
-		// installs). Fall back to sensible defaults that match WC's
-		// out-of-box routes.
-		$parse_path    = static function ( string $page, string $fallback ): string {
-			$path = wp_parse_url( wc_get_page_permalink( $page ), PHP_URL_PATH );
-			return ( is_string( $path ) && '' !== $path ) ? $path : $fallback;
-		};
-		$cart_path     = $parse_path( 'cart', '/cart/' );
-		$checkout_path = $parse_path( 'checkout', '/checkout/' );
-		$account_path  = $parse_path( 'myaccount', '/my-account/' );
+		// The AI-crawler group intentionally disallows NOTHING at the page
+		// level — cart, checkout, and account are all left crawlable.
+		//
+		//   - Cart/checkout: the plugin's JSON-LD advertises
+		//     `/checkout-link/?products=…` buy-links (see
+		//     WC_AI_Storefront_JsonLd::build_checkout_url_template) which
+		//     302-redirect through the cart/checkout pages. Google evaluates
+		//     robots.txt against the redirect TARGET, so a `Disallow:
+		//     /checkout/` caused those advertised buy-links to be reported as
+		//     "Blocked by robots.txt" in Search Console — defeating the
+		//     crawled-checkout discovery the plugin exists to enable.
+		//   - Account: the My Account page carries the store's login link.
+		//     Leaving it crawlable lets AI surfaces route a returning
+		//     shopper to sign in rather than dead-ending at a blocked path.
+		//
+		// Note on crawler-triggered cart mutation via `?add-to-cart=`:
+		// WooCommerce core splices its `Disallow: /*?add-to-cart=` rules
+		// into the `User-agent: *` group only (see WooCommerce's
+		// `robots_txt()`, which searches for the `User-agent: *` line and
+		// inserts after it). Per RFC 9309 §2.2.1 — the same rule cited
+		// below — a crawler matching a named `User-agent:` group does NOT
+		// read the `*` group, so these named AI crawlers do not inherit
+		// that disallow. We deliberately do not re-emit it here: robots.txt
+		// is advisory (not an access control), the intended crawl target is
+		// the `/checkout-link/` buy-link rather than `?add-to-cart=`, and
+		// the real enforcement against runaway crawler requests is the
+		// plugin's Store API rate limiter (HTTP 429 + Retry-After), which
+		// well-behaved crawlers honor far more reliably than a Disallow.
 
 		// Opt-in rule group for all allowed AI crawlers.
 		//
-		// This group is a DENY-LIST: it blocks cart/checkout/account and
-		// lets everything else be crawled by RFC 9309 §2.2.2 default-allow
-		// (deliberately including product/category archives and sitemap
-		// paths). A crawler that matches a named `User-agent:` group does
-		// not fall back to `User-agent: *` (§2.2.1: the `*` group applies
-		// only when NO named group matches; multiple matching named groups
-		// are combined). So a path this group does not explicitly Allow
-		// depends solely on §2.2.2 default-allow — an allow-list here would
-		// be a deny-by-omission trap where a future broad `Disallow:` could
-		// silently strand an unlisted path. The deny-list can't: new
+		// This group emits no page-level `Disallow:` — it lets the whole
+		// site be crawled by RFC 9309 §2.2.2 default-allow (deliberately
+		// including product/category archives, cart, checkout, account, and
+		// sitemap paths). A crawler that matches a named `User-agent:` group
+		// does not fall back to `User-agent: *` (§2.2.1: the `*` group
+		// applies only when NO named group matches; multiple matching named
+		// groups are combined). So a path this group does not explicitly
+		// Allow depends solely on §2.2.2 default-allow — an allow-list here
+		// would be a deny-by-omission trap where a future broad `Disallow:`
+		// could silently strand an unlisted path. Default-allow can't: new
 		// endpoints stay crawlable without being remembered. The two
-		// `Allow: /wp-json/...` lines are the sole exception, kept as
+		// `Allow: /wp-json/...` lines are the sole explicit rules, kept as
 		// forward-looking hole-punch insurance (see the body below).
 		//
 		// All allowed bots share the same body, so we emit one consolidated
@@ -644,14 +660,15 @@ class WC_AI_Storefront_Robots {
 		// crawlers that only parse directives within their own
 		// User-agent group." That defense was misdirected — `Allow:`
 		// only matters when a `Disallow:` would otherwise block the
-		// path, and none of the group's `Disallow:` rules below touch
-		// sitemap paths. The rules permitted something that was never
-		// blocked. Sitemap discovery happens via the top-level
+		// path, and this group emits no `Disallow:` rules that touch
+		// sitemap paths (in fact it emits no page-level `Disallow:` at
+		// all). The rules permitted something that was never blocked.
+		// Sitemap discovery happens via the top-level
 		// `Sitemap:` directives emitted by WP core / Jetpack / SEO
 		// plugins outside this section.
 		//
-		// (This is distinct from the two `/wp-json/` `Allow:` lines the
-		// deny-list body keeps: those are deliberate insurance against a
+		// (This is distinct from the two `/wp-json/` `Allow:` lines this
+		// group keeps: those are deliberate insurance against a
 		// *hypothetical future* `Disallow: /wp-json/` in this group, not a
 		// guard against a Disallow that never existed. Present-inert vs.
 		// future-insurance — the sitemap Allows guarded nothing and were
@@ -681,10 +698,6 @@ class WC_AI_Storefront_Robots {
 			// paths.
 			$output .= "Allow: /wp-json/wc/store/\n";
 			$output .= "Allow: /wp-json/wc/ucp/\n";
-
-			$output .= "Disallow: {$cart_path}\n";
-			$output .= "Disallow: {$checkout_path}\n";
-			$output .= "Disallow: {$account_path}\n";
 			$output .= "\n";
 		}
 

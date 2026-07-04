@@ -284,14 +284,21 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'User-agent: ClaudeBot', $output );
 	}
 
-	public function test_opt_in_block_is_a_deny_list_with_defensive_rest_allows(): void {
-		// The per-bot group is a deny-list (#571): it blocks
-		// cart/checkout/account and lets everything else be crawled by
-		// RFC 9309 §2.2.2 default-allow (deliberately including sitemap
-		// paths). The five formerly-inert `Allow:` lines are removed; the
-		// two `/wp-json/` allows are KEPT as defensive exception-pattern
-		// insurance (they auto-activate as hole-punches if a future broad
-		// `Disallow: /wp-json/` is ever added to the group).
+	public function test_opt_in_block_emits_no_page_disallows_with_defensive_rest_allows(): void {
+		// The per-bot group emits NO page-level `Disallow:` — cart,
+		// checkout, and account are all left crawlable, and everything else
+		// is crawled by RFC 9309 §2.2.2 default-allow (deliberately
+		// including sitemap paths). The former cart/checkout/account
+		// disallows were removed because the plugin's JSON-LD advertises
+		// `/checkout-link/?products=…` buy-links that 302-redirect through
+		// cart/checkout; Google evaluates robots.txt against the redirect
+		// target, so `Disallow: /checkout/` got those buy-links reported as
+		// "Blocked by robots.txt". Account was dropped too so crawlers can
+		// reach the My Account login link. The five formerly-inert `Allow:`
+		// lines stay removed; the two `/wp-json/` allows are KEPT as
+		// defensive exception-pattern insurance (they auto-activate as
+		// hole-punches if a future broad `Disallow: /wp-json/` is ever added
+		// to the group).
 		$output = $this->generate_robots_output();
 
 		// Removed: the five inert allow-list lines.
@@ -305,10 +312,31 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( "Allow: /wp-json/wc/store/\n", $output );
 		$this->assertStringContainsString( "Allow: /wp-json/wc/ucp/\n", $output );
 
-		// Load-bearing deny-list body preserved.
-		$this->assertStringContainsString( 'Disallow: /cart', $output );
-		$this->assertStringContainsString( 'Disallow: /checkout', $output );
-		$this->assertStringContainsString( 'Disallow: /my-account', $output );
+		// Page-level disallows are gone from the AI-crawler group.
+		$this->assertStringNotContainsString( 'Disallow: /cart', $output );
+		$this->assertStringNotContainsString( 'Disallow: /checkout', $output );
+		$this->assertStringNotContainsString( 'Disallow: /my-account', $output );
+
+		// Scope the check to the opt-in group itself, not the whole file.
+		// The whole-file assertions above pass even if a bare `Disallow: /`
+		// were erroneously emitted (the substring `Disallow: /checkout` is
+		// not contained in `Disallow: /`), so they can't distinguish "no
+		// page-level disallow" from "no disallow at all." Slice the opt-in
+		// group — from its first `User-agent:` line up to the opt-out block
+		// marker — and assert it contains NO `Disallow:` whatsoever. This is
+		// the exact contract of #578: the *allowed* crawler group must emit
+		// no page-level disallow. (The opt-out block's `Disallow: /` is
+		// covered separately by test_opted_out_bots_get_explicit_disallow_block.)
+		$optin_start  = strpos( $output, 'User-agent: GPTBot' );
+		$optout_start = strpos( $output, '# Explicit opt-out' );
+		$this->assertNotFalse( $optin_start, 'Opt-in group should be present for allowed bots' );
+		$this->assertNotFalse( $optout_start, 'Opt-out block marker should be present' );
+		$optin_block = substr( $output, $optin_start, $optout_start - $optin_start );
+		$this->assertStringNotContainsString(
+			'Disallow:',
+			$optin_block,
+			'The allowed-crawler group must emit no page-level Disallow'
+		);
 	}
 
 	public function test_ucp_allow_appears_next_to_store_api_allow(): void {
