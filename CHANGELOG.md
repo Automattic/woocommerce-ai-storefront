@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Added
+
+- **Product JSON-LD now emits `validFrom`/`validThrough` sale windows (#582).**
+  - Google's Merchant Listing structured data reads these Offer properties to know when a sale price is active; the plugin previously emitted only the date-only `priceValidUntil` (from WooCommerce core), leaving the sale's start unstated.
+  - When a product has a configured WooCommerce sale schedule and is currently on sale, the Offer now carries `validFrom` and `validThrough` as full ISO 8601 datetimes with the store timezone offset (e.g. `2026-07-31T23:59:59+01:00`). Each field is emitted independently, so an open-ended sale (start-only or end-only) is represented faithfully.
+  - Variable products emit per-variant windows: each variation uses its own sale schedule, and a variant that is not on sale carries no window (the parent's window is never inherited). `priceValidUntil`, `priceSpecification`, and the flat `price` are unchanged.
+
 ---
 
 ## [0.33.0] – 2026-07-04

@@ -1,8 +1,12 @@
 # Schema.org Coverage Audit
 
-> Last reviewed: 2026-06-22 (post-[#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)/[#373](https://github.com/Automattic/woocommerce-ai-storefront/pull/373) variant ProductGroup, [#517](https://github.com/Automattic/woocommerce-ai-storefront/pull/517) multi-currency, [#520](https://github.com/Automattic/woocommerce-ai-storefront/pull/520) return-policy A/B)
+> Last reviewed: 2026-07-10 (post-[#582](https://github.com/Automattic/woocommerce-ai-storefront/issues/582) Offer sale window; [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)/[#373](https://github.com/Automattic/woocommerce-ai-storefront/pull/373) variant ProductGroup, [#517](https://github.com/Automattic/woocommerce-ai-storefront/pull/517) multi-currency, [#520](https://github.com/Automattic/woocommerce-ai-storefront/pull/520) return-policy A/B)
 
-## What changed since the last review (2026-05-07)
+## What changed since the last review (2026-06-22)
+
+- **`Offer.validFrom` / `Offer.validThrough` now emitted** (#582): `add_sale_window()` emits the sale window as full ISO 8601 with the store timezone offset when a product is on sale with a configured WooCommerce sale schedule. Each field is independent (open-ended sales supported), skipped on `AggregateOffer`, and per-variant windows use each variation's own schedule with no parent fallback. Complements the date-only `priceValidUntil` from WC core.
+
+## What changed in the review before that (2026-05-07)
 
 - **Variable products now emit `ProductGroup`** (#328/#373): `maybe_convert_to_product_group()` converts a variable product to `@type: ProductGroup`, emitting `productGroupID` (SKU or id fallback), `variesBy` (the varying attribute axes), and `hasVariant: [...]` (each a standalone `Product` with its own offer, `BuyAction`, and `checkoutPageURLTemplate`).
 - **`Offer.checkoutPageURLTemplate` now emitted** on simple offers (`add_checkout_page_url_template()`) and on every per-variant offer inside `hasVariant`; coexists with `BuyAction`.
@@ -184,7 +188,8 @@ Each `hasVariant` entry is a standalone `Product` built by `build_variant_entry(
 | `serialNumber` | — | — | — |
 | `shippingDetails` | ✓ §shipping | ✓ | Plugin |
 | `sku` | — | — | — *(emitted at Product level)* |
-| `validForMemberTier` / `validFrom` / `validThrough` | — | — | — |
+| `validFrom` / `validThrough` | ✓ §sale-window | ✓ when on sale with a configured sale schedule | Plugin (#582) — full ISO 8601 with the store timezone offset via `add_sale_window()`; sourced from `get_date_on_sale_from()`/`get_date_on_sale_to()`; per-variant windows use each variation's own schedule with no parent fallback; skipped on `AggregateOffer` |
+| `validForMemberTier` | — | — | — |
 | `warranty` | — | — | — |
 
 ### Inherited from `Thing`

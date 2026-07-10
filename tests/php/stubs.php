@@ -416,6 +416,23 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return null;
 		}
 
+		/**
+		 * Variation/product sale-start date. Declared alongside
+		 * `get_date_on_sale_to()` so `method_exists()` resolves true in the
+		 * `validFrom` derivation in
+		 * `WC_AI_Storefront_JsonLd::add_sale_window()` /
+		 * `add_inherited_variant_fields()`, and so PHPStan sees the
+		 * signature. Typed `?\DateTimeInterface` (real WC returns a
+		 * `WC_DateTime` or null) so the production `instanceof
+		 * \DateTimeInterface` guard reads as a meaningful nullable-object
+		 * narrowing. Returns `null` by default (no sale window). Tests
+		 * override via Mockery
+		 * (`make_product([ 'date_on_sale_from' => $datetime ])`).
+		 */
+		public function get_date_on_sale_from(): ?\DateTimeInterface {
+			return null;
+		}
+
 		public function get_price( string $context = 'view' ): string {
 			return '19.99';
 		}
@@ -830,6 +847,38 @@ if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
 
 		public function getTimestamp(): int {
 			return strtotime( $this->iso ) ?: 0;
+		}
+	}
+}
+
+// Faithful `WC_DateTime` stub for sale-window tests. Unlike `WC_DateTime_Stub`
+// above (a minimal echo stub for admin-orders display), this reproduces the
+// REAL `WC_DateTime` timezone contract that `iso8601_or_empty()` must handle:
+// a `DateTime` subclass with a detached `utc_offset` property, a `getOffset()`
+// that prefers it, and — critically — NO `format()` override. That last point
+// is the whole reason the production code cannot use `format('c')`: in the
+// manual-UTC-offset store shape, the underlying `DateTime` stays at UTC, so
+// `format('c')` emits `+00:00` and a UTC wall-clock while `getOffset()` still
+// reports the merchant's real offset. A `DateTimeImmutable` fixture cannot
+// reproduce this divergence; a real subclass can. Mirrors WooCommerce core's
+// `class-wc-datetime.php` (`set_utc_offset()` / `getOffset()` / `setTimezone()`).
+if ( ! class_exists( 'WC_DateTime' ) ) {
+	class WC_DateTime extends \DateTime {
+		protected int $utc_offset = 0;
+
+		public function set_utc_offset( int $offset ): void {
+			$this->utc_offset = $offset;
+		}
+
+		#[\ReturnTypeWillChange]
+		public function getOffset() {
+			return $this->utc_offset ?: parent::getOffset();
+		}
+
+		#[\ReturnTypeWillChange]
+		public function setTimezone( $timezone ): \DateTime {
+			$this->utc_offset = 0;
+			return parent::setTimezone( $timezone );
 		}
 	}
 }
