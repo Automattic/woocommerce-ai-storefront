@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.34.0] – 2026-07-10
+
 ### Added
 
 - **Product JSON-LD now emits `validFrom`/`validThrough` sale windows (#582).**

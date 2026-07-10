@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.33.0
+Stable tag: 0.34.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.34.0 - 2026-07-10 =
+**New**
+* When you schedule a sale in WooCommerce (a sale price with a start and/or end date), those dates are now published in your product's structured data. Search engines and AI answer engines can see exactly when the sale price is active, so a limited-time promotion is represented accurately when they cite your products. Variable products publish each variation's own sale window, and products that aren't on sale are unaffected.
 
 = 0.33.0 - 2026-07-04 =
 **Fixed**
