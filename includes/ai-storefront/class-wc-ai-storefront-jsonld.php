@@ -1636,18 +1636,38 @@ class WC_AI_Storefront_JsonLd {
 	 * Formats a WC sale-window date as a full ISO 8601 string, or ''.
 	 *
 	 * `WC_Product::get_date_on_sale_from()` / `get_date_on_sale_to()` return a
-	 * `WC_DateTime` (a `DateTime`/`DateTimeInterface` subclass carrying the
-	 * store timezone) or null. `format( 'c' )` (DATE_ATOM) yields ISO 8601
-	 * with the store's UTC offset (e.g. `2026-07-31T23:59:59+01:00`), which
-	 * is what Google's Merchant Listing guidance recommends for sale windows
-	 * "for accuracy in Google systems". The `instanceof \DateTimeInterface`
-	 * guard mirrors the existing per-variant `priceValidUntil` idiom.
+	 * `WC_DateTime` (a `DateTime` subclass) or null. We emit ISO 8601 carrying
+	 * the store's UTC offset (e.g. `2026-07-31T23:59:59+01:00`), which is what
+	 * Google's Merchant Listing guidance recommends for sale windows "for
+	 * accuracy in Google systems".
+	 *
+	 * We deliberately do NOT use `$date->format( 'c' )`. `WC_DateTime` models
+	 * a store's timezone in two shapes: a named zone (`timezone_string`, e.g.
+	 * `Europe/Berlin`) OR a fixed manual offset (`gmt_offset`, e.g. "UTC+1")
+	 * stored in a detached `utc_offset` property. `WC_DateTime` does NOT
+	 * override `format()`, so in the manual-offset shape `format( 'c' )`
+	 * reflects only the underlying `DateTime`'s timezone — which WC leaves at
+	 * UTC — emitting BOTH a wrong `+00:00` suffix AND a wall-clock shifted off
+	 * the merchant's local time. `WC_DateTime::getOffset()` returns the
+	 * correct offset in both shapes (the stored `utc_offset`, or the named
+	 * zone's live offset), so we build a `DateTimeZone` from it and format the
+	 * instant in that zone. For a plain `DateTime`/`DateTimeImmutable` (no
+	 * `getOffset()` override) this reduces to the object's own offset, which
+	 * is already correct. The `instanceof \DateTimeInterface` guard mirrors
+	 * the existing per-variant `priceValidUntil` idiom.
 	 *
 	 * @param \DateTimeInterface|null $date Sale-window boundary, or null.
 	 * @return string ISO 8601 datetime, or '' when no date is set.
 	 */
 	private function iso8601_or_empty( $date ): string {
-		return ( $date instanceof \DateTimeInterface ) ? $date->format( 'c' ) : '';
+		if ( ! $date instanceof \DateTimeInterface ) {
+			return '';
+		}
+		$offset = $date->getOffset();
+		$sign   = $offset < 0 ? '-' : '+';
+		$abs    = abs( $offset );
+		$tz     = new \DateTimeZone( sprintf( '%s%02d:%02d', $sign, intdiv( $abs, 3600 ), intdiv( $abs % 3600, 60 ) ) );
+		return ( new \DateTimeImmutable( '@' . $date->getTimestamp() ) )->setTimezone( $tz )->format( 'c' );
 	}
 
 	/**

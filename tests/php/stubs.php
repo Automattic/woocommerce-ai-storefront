@@ -851,6 +851,38 @@ if ( ! class_exists( 'WC_DateTime_Stub' ) ) {
 	}
 }
 
+// Faithful `WC_DateTime` stub for sale-window tests. Unlike `WC_DateTime_Stub`
+// above (a minimal echo stub for admin-orders display), this reproduces the
+// REAL `WC_DateTime` timezone contract that `iso8601_or_empty()` must handle:
+// a `DateTime` subclass with a detached `utc_offset` property, a `getOffset()`
+// that prefers it, and — critically — NO `format()` override. That last point
+// is the whole reason the production code cannot use `format('c')`: in the
+// manual-UTC-offset store shape, the underlying `DateTime` stays at UTC, so
+// `format('c')` emits `+00:00` and a UTC wall-clock while `getOffset()` still
+// reports the merchant's real offset. A `DateTimeImmutable` fixture cannot
+// reproduce this divergence; a real subclass can. Mirrors WooCommerce core's
+// `class-wc-datetime.php` (`set_utc_offset()` / `getOffset()` / `setTimezone()`).
+if ( ! class_exists( 'WC_DateTime' ) ) {
+	class WC_DateTime extends \DateTime {
+		protected int $utc_offset = 0;
+
+		public function set_utc_offset( int $offset ): void {
+			$this->utc_offset = $offset;
+		}
+
+		#[\ReturnTypeWillChange]
+		public function getOffset() {
+			return $this->utc_offset ?: parent::getOffset();
+		}
+
+		#[\ReturnTypeWillChange]
+		public function setTimezone( $timezone ): \DateTime {
+			$this->utc_offset = 0;
+			return parent::setTimezone( $timezone );
+		}
+	}
+}
+
 // WC Subscriptions plugin stub. The plugin is optional — only present
 // when the merchant has it activated. Subscription-signal emission in
 // JSON-LD detects the plugin via `function_exists('wcs_is_subscription')`

@@ -5535,6 +5535,131 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'validThrough', $offer );
 	}
 
+	public function test_sale_window_uses_wc_datetime_offset_for_manual_offset_stores(): void {
+		// Regression guard for the manual-UTC-offset store bug: WooCommerce
+		// stores dates for stores configured with a fixed `gmt_offset` (WP
+		// "UTC+1", no named `timezone_string`) as a UTC-internal WC_DateTime
+		// plus a DETACHED `utc_offset` property. Because WC_DateTime does not
+		// override format(), `$date->format('c')` would emit `+00:00` AND a
+		// wall-clock shifted off the merchant's local time. iso8601_or_empty()
+		// must instead honor WC_DateTime::getOffset() (the merchant's real
+		// offset) so the emitted window reflects local civil time. A
+		// DateTimeImmutable fixture CANNOT reproduce this divergence — only a
+		// real WC_DateTime with a set utc_offset can, which is why the faithful
+		// WC_DateTime stub exists.
+		//
+		// Merchant intends a sale starting 2026-07-15 09:30 local in a UTC+1
+		// store. The instant is therefore 08:30 UTC; the correct emission is
+		// `2026-07-15T09:30:00+01:00`, never `2026-07-15T08:30:00+00:00`.
+		$from = new \WC_DateTime( '2026-07-15T08:30:00', new \DateTimeZone( 'UTC' ) );
+		$from->set_utc_offset( 3600 );
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => $from,
+			'date_on_sale_to'   => null,
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '2026-07-15T09:30:00+01:00', $result['offers'][0]['validFrom'] );
+	}
+
+	public function test_sale_window_uses_wc_datetime_offset_for_negative_manual_offset(): void {
+		// Mirror of the positive-offset case for a UTC-5 store, proving the
+		// sign handling in iso8601_or_empty() is correct in both directions.
+		// Merchant intends 09:30 local in UTC-5 → instant is 14:30 UTC →
+		// correct emission `2026-07-15T09:30:00-05:00`.
+		$to = new \WC_DateTime( '2026-07-15T14:30:00', new \DateTimeZone( 'UTC' ) );
+		$to->set_utc_offset( -18000 );
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => null,
+			'date_on_sale_to'   => $to,
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '2026-07-15T09:30:00-05:00', $result['offers'][0]['validThrough'] );
+	}
+
+	public function test_sale_window_named_zone_wc_datetime_preserves_offset(): void {
+		// The named-timezone shape (the common case): a real WC_DateTime whose
+		// underlying DateTime tz is a named zone. getOffset() returns the
+		// zone's live offset (DST-aware), so the emitted string carries e.g.
+		// +02:00 for CEST. Uses a real WC_DateTime (not DateTimeImmutable) so
+		// the assertion exercises the actual production object type.
+		$from = new \WC_DateTime( '2026-07-15T09:30:00', new \DateTimeZone( 'Europe/Berlin' ) );
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => $from,
+			'date_on_sale_to'   => null,
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '2026-07-15T09:30:00+02:00', $result['offers'][0]['validFrom'] );
+	}
+
+	public function test_sale_window_omitted_when_on_sale_but_no_dates(): void {
+		// A product can be on sale via a bare sale_price with NO schedule at
+		// all (both date getters null). is_on_sale() is true, but there is no
+		// window to emit — neither field may appear. Closes the last cell of
+		// the on-sale/date truth table.
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => null,
+			'date_on_sale_to'   => null,
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'validFrom', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'validThrough', $result['offers'][0] );
+	}
+
+	public function test_sale_window_coexists_with_subscription_price_specification(): void {
+		// A WC Subscriptions product can be on sale. add_sale_window() runs
+		// immediately before add_subscription_signals(); the latter REPLACES
+		// offers[0].priceSpecification but must not touch validFrom/validThrough.
+		// Lock the co-existence contract: a subscription-on-sale offer carries
+		// BOTH the recurring priceSpecification AND the sale window. A future
+		// refactor of add_subscription_signals() that rebuilt offers[0] from
+		// scratch would silently drop the window — this test would catch it.
+		$this->seed_subscription( 42, array( 'period' => 'month', 'interval' => 1 ) );
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T23:59:59+00:00' ),
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+		$offer  = $result['offers'][0];
+
+		$this->assertArrayHasKey( 'priceSpecification', $offer, 'subscription priceSpecification must survive' );
+		$this->assertSame( '2026-07-01T00:00:00+00:00', $offer['validFrom'] );
+		$this->assertSame( '2026-07-31T23:59:59+00:00', $offer['validThrough'] );
+	}
+
 	public function test_offer_currency_hoisted_but_no_price_when_spec_lacks_price(): void {
 		// A priceSpecification[0] that carries priceCurrency but NO price
 		// (e.g. a $0 / "contact for price" product) must hoist the currency
