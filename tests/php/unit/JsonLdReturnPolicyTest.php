@@ -120,6 +120,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// Physical product: `add_shipping_details()` (#504) calls
 		// `needs_shipping()` to skip the shipping block for virtual products.
 		$product->shouldReceive( 'needs_shipping' )->andReturn( true );
+		// Not on sale: `add_sale_window()` (#582) calls `is_on_sale()` before
+		// reading the sale-schedule dates. Return-policy tests use products
+		// with no sale window, so the sale-window helper is a no-op here.
+		$product->shouldReceive( 'is_on_sale' )->andReturn( false );
+		$product->shouldReceive( 'get_date_on_sale_from' )->andReturn( null );
+		$product->shouldReceive( 'get_date_on_sale_to' )->andReturn( null );
 
 		// Argument-aware `is_type()` mock matching WC core: returns true
 		// only when the queried type matches 'simple' (the type return-

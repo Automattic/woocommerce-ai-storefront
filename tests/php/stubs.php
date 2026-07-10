@@ -416,6 +416,23 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return null;
 		}
 
+		/**
+		 * Variation/product sale-start date. Declared alongside
+		 * `get_date_on_sale_to()` so `method_exists()` resolves true in the
+		 * `validFrom` derivation in
+		 * `WC_AI_Storefront_JsonLd::add_sale_window()` /
+		 * `add_inherited_variant_fields()`, and so PHPStan sees the
+		 * signature. Typed `?\DateTimeInterface` (real WC returns a
+		 * `WC_DateTime` or null) so the production `instanceof
+		 * \DateTimeInterface` guard reads as a meaningful nullable-object
+		 * narrowing. Returns `null` by default (no sale window). Tests
+		 * override via Mockery
+		 * (`make_product([ 'date_on_sale_from' => $datetime ])`).
+		 */
+		public function get_date_on_sale_from(): ?\DateTimeInterface {
+			return null;
+		}
+
 		public function get_price( string $context = 'view' ): string {
 			return '19.99';
 		}

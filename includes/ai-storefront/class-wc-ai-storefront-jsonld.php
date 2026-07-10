@@ -246,6 +246,7 @@ class WC_AI_Storefront_JsonLd {
 		$country       = $base_location['country'] ?? '';
 
 		$this->add_currency( $markup );
+		$this->add_sale_window( $markup, $product );
 		$this->add_subscription_signals( $markup, $product );
 		$this->decode_seller_name( $markup );
 		$this->add_shipping_details( $markup, $country, $product );
@@ -1343,6 +1344,35 @@ class WC_AI_Storefront_JsonLd {
 				$entry['offers'][0]['priceValidUntil'] = $variant_valid_until;
 			}
 		}
+		// Sale window (validFrom / validThrough): each variation carries its
+		// OWN schedule. Unlike priceValidUntil (which falls back to the
+		// parent's store-default end date), an absent variation window means
+		// "no sale on this variant" — inheriting the parent's window would
+		// emit a wrong-but-plausible sale period. So we read the variation's
+		// own dates only, with no parent fallback, and only when the
+		// variation is actually on sale.
+		if (
+			method_exists( $variation, 'is_on_sale' ) && $variation->is_on_sale()
+		) {
+			if (
+				! isset( $entry['offers'][0]['validFrom'] ) &&
+				method_exists( $variation, 'get_date_on_sale_from' )
+			) {
+				$variant_from = $this->iso8601_or_empty( $variation->get_date_on_sale_from() );
+				if ( '' !== $variant_from ) {
+					$entry['offers'][0]['validFrom'] = $variant_from;
+				}
+			}
+			if (
+				! isset( $entry['offers'][0]['validThrough'] ) &&
+				method_exists( $variation, 'get_date_on_sale_to' )
+			) {
+				$variant_through = $this->iso8601_or_empty( $variation->get_date_on_sale_to() );
+				if ( '' !== $variant_through ) {
+					$entry['offers'][0]['validThrough'] = $variant_through;
+				}
+			}
+		}
 		// Point the offer at the variant's own URL when it has none.
 		if ( ! isset( $entry['offers'][0]['url'] ) && ! empty( $entry['url'] ) ) {
 			$entry['offers'][0]['url'] = $entry['url'];
@@ -1599,6 +1629,80 @@ class WC_AI_Storefront_JsonLd {
 		$offer_type = $markup['offers'][0]['@type'] ?? 'Offer';
 		if ( 'Offer' === $offer_type && isset( $spec['price'] ) && ! isset( $markup['offers'][0]['price'] ) ) {
 			$markup['offers'][0]['price'] = $spec['price'];
+		}
+	}
+
+	/**
+	 * Formats a WC sale-window date as a full ISO 8601 string, or ''.
+	 *
+	 * `WC_Product::get_date_on_sale_from()` / `get_date_on_sale_to()` return a
+	 * `WC_DateTime` (a `DateTime`/`DateTimeInterface` subclass carrying the
+	 * store timezone) or null. `format( 'c' )` (DATE_ATOM) yields ISO 8601
+	 * with the store's UTC offset (e.g. `2026-07-31T23:59:59+01:00`), which
+	 * is what Google's Merchant Listing guidance recommends for sale windows
+	 * "for accuracy in Google systems". The `instanceof \DateTimeInterface`
+	 * guard mirrors the existing per-variant `priceValidUntil` idiom.
+	 *
+	 * @param \DateTimeInterface|null $date Sale-window boundary, or null.
+	 * @return string ISO 8601 datetime, or '' when no date is set.
+	 */
+	private function iso8601_or_empty( $date ): string {
+		return ( $date instanceof \DateTimeInterface ) ? $date->format( 'c' ) : '';
+	}
+
+	/**
+	 * Adds the sale window (`validFrom` / `validThrough`) to the Offer.
+	 *
+	 * Google's Merchant Listing structured data accepts `validFrom` and
+	 * `validThrough` on the Offer to define when a sale price is active,
+	 * complementing the `priceValidUntil` (date-only) that WC core already
+	 * emits. We source both boundaries from the product's WooCommerce sale
+	 * schedule (`get_date_on_sale_from()` / `get_date_on_sale_to()`).
+	 *
+	 * Emission rules:
+	 *   - Only when the product is actually on sale (`is_on_sale()`), so we
+	 *     never advertise a window for a schedule that has expired or not yet
+	 *     started.
+	 *   - Each field independently — WooCommerce allows an open-ended sale
+	 *     with only a start OR only an end date.
+	 *   - Never overwrite a value an upstream filter already set.
+	 *   - Skip an `AggregateOffer` (variable-parent price range): a single
+	 *     window on a range offer is ambiguous. Per-variant windows are
+	 *     handled in `add_inherited_variant_fields()`.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_sale_window( array &$markup, $product ): void {
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			return;
+		}
+		$offer_type = $markup['offers'][0]['@type'] ?? 'Offer';
+		if ( 'Offer' !== $offer_type ) {
+			return;
+		}
+		if ( ! method_exists( $product, 'is_on_sale' ) || ! $product->is_on_sale() ) {
+			return;
+		}
+
+		if (
+			! isset( $markup['offers'][0]['validFrom'] ) &&
+			method_exists( $product, 'get_date_on_sale_from' )
+		) {
+			$from = $this->iso8601_or_empty( $product->get_date_on_sale_from() );
+			if ( '' !== $from ) {
+				$markup['offers'][0]['validFrom'] = $from;
+			}
+		}
+
+		if (
+			! isset( $markup['offers'][0]['validThrough'] ) &&
+			method_exists( $product, 'get_date_on_sale_to' )
+		) {
+			$through = $this->iso8601_or_empty( $product->get_date_on_sale_to() );
+			if ( '' !== $through ) {
+				$markup['offers'][0]['validThrough'] = $through;
+			}
 		}
 	}
 

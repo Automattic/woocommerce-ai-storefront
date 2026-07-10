@@ -278,6 +278,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'is_purchasable' )
 			->andReturn( $overrides['is_purchasable'] ?? true );
 
+		// Sale window (#582). `add_sale_window()` gates on `is_on_sale()`
+		// and reads both boundary dates; the per-variant path reads the same
+		// three methods off the variation mock. Default to not-on-sale with
+		// null dates so existing tests exercise the "no window" branch;
+		// sale-window tests pass `is_on_sale => true` plus WC_DateTime-shaped
+		// `date_on_sale_from` / `date_on_sale_to` mocks.
+		$product->shouldReceive( 'is_on_sale' )
+			->andReturn( $overrides['is_on_sale'] ?? false );
+		$product->shouldReceive( 'get_date_on_sale_from' )
+			->andReturn( $overrides['date_on_sale_from'] ?? null );
+		$product->shouldReceive( 'get_date_on_sale_to' )
+			->andReturn( $overrides['date_on_sale_to'] ?? null );
+
 		// Default to needing shipping (physical product) so existing
 		// shipping tests are unaffected; the shipping-gate tests (#504)
 		// override to `false` to exercise the virtual-product path.
@@ -831,13 +844,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// parent-inheritance branch; tests that want the override branch
 		// pass a non-empty `description` override.
 		$variation->shouldReceive( 'get_description' )->andReturn( $overrides['description'] ?? '' );
-		// `priceValidUntil` derivation prefers the variation's OWN
-		// sale-end date over the inherited parent value. Default null (no
-		// per-variation sale window) so the common case exercises the
-		// parent-fallback branch; tests pass a `date_on_sale_to`
-		// WC_DateTime-shaped mock (with a `getTimestamp()`) to exercise
-		// the own-sale-end branch.
-		$variation->shouldReceive( 'get_date_on_sale_to' )->andReturn( $overrides['date_on_sale_to'] ?? null );
+		// Sale-window methods (`is_on_sale`, `get_date_on_sale_from`,
+		// `get_date_on_sale_to`) are registered on the shared mock in
+		// `make_product()` and honor the same overrides here, since
+		// `make_variation()` funnels its `$overrides` through it. The
+		// `priceValidUntil` derivation prefers the variation's OWN sale-end
+		// date over the inherited parent value; tests pass a `date_on_sale_to`
+		// WC_DateTime-shaped mock (with a `getTimestamp()`) to exercise the
+		// own-sale-end branch, and `date_on_sale_from` + `is_on_sale` to
+		// exercise the per-variant `validFrom`/`validThrough` emission (#582).
 
 		// `add_variant_basics()` reads typed-property values directly
 		// from variation postmeta (`attribute_<slug>`) — see the doc in
@@ -5328,6 +5343,196 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
 		$this->assertSame( '9.99', $result['offers'][0]['price'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Sale window: validFrom / validThrough on the Offer (#582).
+	// `add_sale_window()` sources both boundaries from the product's WC
+	// sale schedule and emits full ISO 8601 (store-timezone offset) only
+	// when the product is actually on sale.
+	// ------------------------------------------------------------------
+
+	public function test_sale_window_emits_valid_from_and_through_when_on_sale(): void {
+		// A real DateTime with a non-UTC offset proves the emitted string is
+		// `format('c')` (ISO 8601 WITH offset), not a UTC/date-only coercion.
+		$from    = new \DateTimeImmutable( '2026-07-01T00:00:00+01:00' );
+		$through = new \DateTimeImmutable( '2026-07-31T23:59:59+01:00' );
+		$product = $this->make_product( array(
+			'is_on_sale'         => true,
+			'date_on_sale_from'  => $from,
+			'date_on_sale_to'    => $through,
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '2026-07-01T00:00:00+01:00', $result['offers'][0]['validFrom'] );
+		$this->assertSame( '2026-07-31T23:59:59+01:00', $result['offers'][0]['validThrough'] );
+	}
+
+	public function test_sale_window_emits_only_valid_from_when_no_end_date(): void {
+		// WooCommerce allows an open-ended sale (start only). Each field is
+		// emitted independently; validThrough must be absent.
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+			'date_on_sale_to'   => null,
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( '2026-07-01T00:00:00+00:00', $result['offers'][0]['validFrom'] );
+		$this->assertArrayNotHasKey( 'validThrough', $result['offers'][0] );
+	}
+
+	public function test_sale_window_emits_only_valid_through_when_no_start_date(): void {
+		// Open-ended sale (end only) — the mirror of the previous case.
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => null,
+			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T23:59:59+00:00' ),
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'validFrom', $result['offers'][0] );
+		$this->assertSame( '2026-07-31T23:59:59+00:00', $result['offers'][0]['validThrough'] );
+	}
+
+	public function test_sale_window_omitted_when_not_on_sale(): void {
+		// Dates may be SET but the schedule expired / not started → is_on_sale()
+		// is false and neither field may be emitted.
+		$product = $this->make_product( array(
+			'is_on_sale'        => false,
+			'date_on_sale_from' => new \DateTimeImmutable( '2020-01-01T00:00:00+00:00' ),
+			'date_on_sale_to'   => new \DateTimeImmutable( '2020-01-31T00:00:00+00:00' ),
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'validFrom', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'validThrough', $result['offers'][0] );
+	}
+
+	public function test_sale_window_not_emitted_on_aggregate_offer(): void {
+		// A variable parent's price-range offer is an AggregateOffer; a single
+		// window on it would be ambiguous. Per-variant windows are handled in
+		// the ProductGroup path instead.
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T00:00:00+00:00' ),
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'     => 'AggregateOffer',
+					'lowPrice'  => '9.99',
+					'highPrice' => '19.99',
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertArrayNotHasKey( 'validFrom', $result['offers'][0] );
+		$this->assertArrayNotHasKey( 'validThrough', $result['offers'][0] );
+	}
+
+	public function test_sale_window_does_not_overwrite_existing_offer_values(): void {
+		// No-clobber: when an upstream filter already set validFrom/validThrough,
+		// the helper must leave both untouched.
+		$product = $this->make_product( array(
+			'is_on_sale'        => true,
+			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T00:00:00+00:00' ),
+		) );
+		$markup  = array(
+			'@type'  => 'Product',
+			'offers' => array(
+				array(
+					'@type'        => 'Offer',
+					'price'        => '9.99',
+					'validFrom'    => 'UPSTREAM_FROM',
+					'validThrough' => 'UPSTREAM_THROUGH',
+				),
+			),
+		);
+
+		$result = $this->jsonld->enhance_product_data( $markup, $product );
+
+		$this->assertSame( 'UPSTREAM_FROM', $result['offers'][0]['validFrom'] );
+		$this->assertSame( 'UPSTREAM_THROUGH', $result['offers'][0]['validThrough'] );
+	}
+
+	public function test_variant_sale_window_uses_own_dates_no_parent_fallback(): void {
+		// Each variation runs its own sale. A variation WITH its own window
+		// emits validFrom/validThrough from THAT window; a parent window must
+		// never bleed onto a variant that has no sale of its own.
+		$from    = new \DateTimeImmutable( '2026-08-01T00:00:00+02:00' );
+		$through = new \DateTimeImmutable( '2026-08-15T23:59:59+02:00' );
+
+		$result = $this->enhance_variable_with_parent_markup(
+			// Parent offer carries a DIFFERENT window that must NOT be inherited.
+			array(
+				'offers' => array(
+					array(
+						'@type'        => 'Offer',
+						'price'        => '20.00',
+						'validFrom'    => '2026-01-01T00:00:00+00:00',
+						'validThrough' => '2026-12-31T00:00:00+00:00',
+					),
+				),
+			),
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => $from,
+				'date_on_sale_to'   => $through,
+			)
+		);
+		$offer = $result['hasVariant'][0]['offers'][0];
+
+		$this->assertSame( '2026-08-01T00:00:00+02:00', $offer['validFrom'] );
+		$this->assertSame( '2026-08-15T23:59:59+02:00', $offer['validThrough'] );
+	}
+
+	public function test_variant_without_own_sale_window_inherits_neither_boundary(): void {
+		// A variation not on sale must carry NO window — even when the parent
+		// markup advertises one. Inheriting it would be a wrong-but-plausible
+		// sale period on a variant that isn't discounted.
+		$result = $this->enhance_variable_with_parent_markup(
+			array(
+				'offers' => array(
+					array(
+						'@type'        => 'Offer',
+						'price'        => '20.00',
+						'validFrom'    => '2026-01-01T00:00:00+00:00',
+						'validThrough' => '2026-12-31T00:00:00+00:00',
+					),
+				),
+			),
+			array( 'is_on_sale' => false )
+		);
+		$offer = $result['hasVariant'][0]['offers'][0];
+
+		$this->assertArrayNotHasKey( 'validFrom', $offer );
+		$this->assertArrayNotHasKey( 'validThrough', $offer );
 	}
 
 	public function test_offer_currency_hoisted_but_no_price_when_spec_lacks_price(): void {

@@ -106,6 +106,14 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		// `needs_shipping()` to skip shipping for virtual products.
 		$product->shouldReceive( 'needs_shipping' )
 			->andReturn( $overrides['needs_shipping'] ?? true );
+		// Sale window (#582): `add_sale_window()` gates on `is_on_sale()` and
+		// reads both boundary dates. Default to no sale window.
+		$product->shouldReceive( 'is_on_sale' )
+			->andReturn( $overrides['is_on_sale'] ?? false );
+		$product->shouldReceive( 'get_date_on_sale_from' )
+			->andReturn( $overrides['date_on_sale_from'] ?? null );
+		$product->shouldReceive( 'get_date_on_sale_to' )
+			->andReturn( $overrides['date_on_sale_to'] ?? null );
 
 		// Argument-aware `is_type()` mock matching WC core: returns true
 		// only when the queried type matches the configured product type
