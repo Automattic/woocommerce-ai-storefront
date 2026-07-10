@@ -72,6 +72,10 @@ Below is a representative full output for a published product after the plugin's
 
     // ---- Added by this plugin ----
     "priceCurrency": "USD",
+    // Sale window — emitted only while the product is on sale with a
+    // configured WooCommerce sale schedule (see field reference below).
+    "validFrom": "2026-07-01T00:00:00+00:00",
+    "validThrough": "2026-07-31T23:59:59+00:00",
     "inventoryLevel": { "@type": "QuantitativeValue", "value": 12 },
     "shippingDetails": { "@type": "OfferShippingDetails", "shippingDestination": [{
       "@type": "DefinedRegion", "addressCountry": "US"
@@ -405,6 +409,17 @@ ISO 4217 currency code, normalized.
 **Per-page currency reflection (WooPayments multi-currency).** When a crawler fetches a single-product page with a `?currency=XXX` query parameter, WooPayments' multi-currency feature switches `get_woocommerce_currency()` for that request *before* the JSON-LD enricher runs. As a result, every `priceCurrency` field on the page's Product JSON-LD (including the variant-level Offer skeletons under `hasVariant[i].offers[0]` and the subscription `priceSpecification` entries) reflects `XXX`, and every `price` reflects the converted amount. This is a free behavior — no plugin code change required. Crawlers that need a multi-currency index can fetch each product URL once per code in `currenciesAccepted` to build the full matrix.
 
 This does NOT apply to the homepage `OnlineBusiness.currenciesAccepted` field (a store-wide list, not a per-quote currency), the UCP manifest (a discovery file served outside the storefront page render), or UCP REST responses (the `/wp-json/wc/ucp/v1/...` path does not traverse WooPayments' page-level `?currency=` handler — that's Phase 2).
+
+### `offers[0].validFrom`, `offers[0].validThrough` (sale window)
+
+Google's Merchant Listing structured data reads these Offer properties to know when a sale price is active, complementing the date-only `priceValidUntil` that WC core already emits. The plugin adds them (#582).
+
+- **Emitted only when the product is on sale** (`is_on_sale()`) **with a configured WooCommerce sale schedule.** Sourced from `WC_Product::get_date_on_sale_from()` → `validFrom` and `get_date_on_sale_to()` → `validThrough`.
+- **Each field is independent.** WooCommerce allows an open-ended sale (start-only or end-only); the corresponding single field is emitted and the other omitted. A product on sale via a bare sale price with no schedule emits neither.
+- **Full ISO 8601 with the store timezone offset**, e.g. `2026-07-31T23:59:59+01:00`, per Google's "provide a start and end date/time … include timezone" guidance. The offset reflects the store's configured timezone — for both named zones (`Europe/Berlin` → `+02:00` DST-aware) and fixed offsets (WP "UTC+1" → `+01:00`). This uses `WC_DateTime::getOffset()` rather than `format('c')`, because `WC_DateTime` does not override `format()` and would emit a wrong `+00:00` / shifted wall-clock for fixed-offset stores.
+- **Never overwrites** a value already set by an upstream `wc_ai_storefront_jsonld_product` filter.
+- **Not emitted on an `AggregateOffer`** (a variable product's price-range parent offer): a single window on a range is ambiguous. Per-variant windows are emitted on each `hasVariant[i].offers[0]` instead, sourced from that variation's own sale schedule with **no** parent fallback — a variant that is not on sale carries no window, so a parent sale never bleeds onto an undiscounted variant.
+- `priceValidUntil`, `priceSpecification`, and the flat `price` are unchanged by this field.
 
 ### `offers[0].seller`
 
