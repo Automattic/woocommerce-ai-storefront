@@ -601,6 +601,49 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_extract_product_does_not_scan_comment_for_known_brand(): void {
+		// The load-bearing security witness: a KNOWN brand token
+		// (`Claude`) buried in the comment behind an unknown leading
+		// token MUST NOT be extracted. This is the case that would
+		// fail if a future refactor ever scanned the comment body —
+		// the `Mozilla ... SomeBot` test above can't catch that
+		// because `SomeBot` isn't a known brand and would bucket as
+		// "Other AI" either way. Here, a leaked `claude` would
+		// mis-attribute to a real brand, so pinning `mozilla` proves
+		// the leading-token-only guarantee.
+		$this->assertEquals(
+			'mozilla',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Mozilla/5.0 (compatible; Claude)' )
+		);
+	}
+
+	public function test_extract_product_requires_whitespace_before_comment(): void {
+		// The no-space form `Claude/4.6(Anthropic)` is deliberately
+		// rejected: RFC 7231 §5.5.3 requires RWS (required whitespace)
+		// between a product and a following comment, so the `\s+`
+		// before the paren group is intentional. A rejected value
+		// falls through to `ucp_unknown` (honest) rather than being
+		// mis-parsed. Pinning this documents the choice so a future
+		// contributor doesn't silently relax `\s+` to `\s*` without
+		// deciding to.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Claude/4.6(Anthropic)' )
+		);
+	}
+
+	public function test_extract_product_rejects_count_balanced_nested_comment(): void {
+		// `\([^)]*\)` matches a non-nested group only. A count-balanced
+		// nested comment closes the character class at the first `)`,
+		// leaving a stray `)` that fails `\s*$` → no-match. Regression
+		// guard: if someone "improves" comment support with a greedy
+		// `\(.*\)`, this flips to a match and the test fires.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Claude/4.6 (Anthropic (Inc))' )
+		);
+	}
+
 	public function test_extract_product_rejects_junk_after_comment(): void {
 		// The comment must be the ONLY trailing content. Trailing junk
 		// after a `(...)` group still produces a no-match rather than
@@ -680,12 +723,25 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 	 */
 	public static function answer_agent_product_provider(): array {
 		return [
-			'claude'     => [ 'claude', 'Claude', 'claude.ai' ],
-			'chatgpt'    => [ 'chatgpt', 'ChatGPT', 'chatgpt.com' ],
-			'openai'     => [ 'openai', 'ChatGPT', 'openai.com' ],
-			'gemini'     => [ 'gemini', 'Gemini', 'gemini.google.com' ],
-			'perplexity' => [ 'perplexity', 'Perplexity', 'perplexity.ai' ],
-			'copilot'    => [ 'copilot', 'Copilot', 'copilot.microsoft.com' ],
+			// Brand-name product tokens.
+			'claude'           => [ 'claude', 'Claude', 'claude.ai' ],
+			'chatgpt'          => [ 'chatgpt', 'ChatGPT', 'chatgpt.com' ],
+			'openai'           => [ 'openai', 'ChatGPT', 'openai.com' ],
+			'gemini'           => [ 'gemini', 'Gemini', 'gemini.google.com' ],
+			'perplexity'       => [ 'perplexity', 'Perplexity', 'perplexity.ai' ],
+			'copilot'          => [ 'copilot', 'Copilot', 'copilot.microsoft.com' ],
+
+			// Crawler user-agent tokens (mirror UA_AGENT_HOSTS) — a
+			// client that puts its User-Agent value in UCP-Agent
+			// resolves to the same brand + hostname as the brand token.
+			'gptbot'           => [ 'gptbot', 'ChatGPT', 'chatgpt.com' ],
+			'chatgpt-user'     => [ 'chatgpt-user', 'ChatGPT', 'chatgpt.com' ],
+			'oai-searchbot'    => [ 'oai-searchbot', 'ChatGPT', 'chatgpt.com' ],
+			'claudebot'        => [ 'claudebot', 'Claude', 'claude.ai' ],
+			'claude-user'      => [ 'claude-user', 'Claude', 'claude.ai' ],
+			'claude-searchbot' => [ 'claude-searchbot', 'Claude', 'claude.ai' ],
+			'perplexitybot'    => [ 'perplexitybot', 'Perplexity', 'perplexity.ai' ],
+			'perplexity-user'  => [ 'perplexity-user', 'Perplexity', 'perplexity.ai' ],
 		];
 	}
 

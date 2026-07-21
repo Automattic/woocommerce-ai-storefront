@@ -197,7 +197,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// request (both User-Agent and UCP-Agent headers). Mirrors the
 		// `ucpplayground.com` host entry so attribution converges on
 		// the same canonical brand whichever header format is sent.
-		'ucp-playground' => 'UCPPlayground',
+		'ucp-playground'   => 'UCPPlayground',
 
 		// Answer agents that self-identify in Product/Version form
 		// (e.g. `Claude/4.6 (Anthropic)`, `ChatGPT/1.0`) rather than
@@ -208,12 +208,31 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// alongside every token here so `utm_source` gets a hostname
 		// (`claude.ai`) rather than the bare token (`claude`) and
 		// converges with the profile-URL path.
-		'claude'         => 'Claude',
-		'chatgpt'        => 'ChatGPT',
-		'openai'         => 'ChatGPT',
-		'gemini'         => 'Gemini',
-		'perplexity'     => 'Perplexity',
-		'copilot'        => 'Copilot',
+		'claude'           => 'Claude',
+		'chatgpt'          => 'ChatGPT',
+		'openai'           => 'ChatGPT',
+		'gemini'           => 'Gemini',
+		'perplexity'       => 'Perplexity',
+		'copilot'          => 'Copilot',
+
+		// Crawler user-agent tokens, keyed here in lowercased form so
+		// a client that copies its `User-Agent` value into the
+		// `UCP-Agent` header (e.g. `UCP-Agent: GPTBot/1.2 (+https://…)`)
+		// resolves at Path 2 of `resolve_agent_host()` to the right
+		// brand DIRECTLY, rather than parsing to an "Other AI" token
+		// and pre-empting the User-Agent fallback (Path 3.5) that would
+		// otherwise have classified it. These mirror `UA_AGENT_HOSTS`
+		// one-for-one — every token below is a lowercased `UA_AGENT_HOSTS`
+		// key and shares that entry's canonical brand, so the header
+		// path and the User-Agent path converge on one stats bucket.
+		'gptbot'           => 'ChatGPT',
+		'chatgpt-user'     => 'ChatGPT',
+		'oai-searchbot'    => 'ChatGPT',
+		'claudebot'        => 'Claude',
+		'claude-user'      => 'Claude',
+		'claude-searchbot' => 'Claude',
+		'perplexitybot'    => 'Perplexity',
+		'perplexity-user'  => 'Perplexity',
 	];
 
 	/**
@@ -250,7 +269,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 * profile-URL path (`utm_source=ucpplayground.com`).
 	 */
 	const PRODUCT_TO_HOSTNAME = [
-		'ucp-playground' => 'ucpplayground.com',
+		'ucp-playground'   => 'ucpplayground.com',
 
 		// Answer-agent product tokens → their canonical hostname, so
 		// `utm_source` matches the profile-URL path. Keep in lockstep
@@ -258,12 +277,25 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// be a `KNOWN_AGENT_HOSTS` key so the lenient bypass-path gate
 		// (`WC_AI_Storefront_Attribution::capture_ai_attribution()`)
 		// recognizes the same source string too.
-		'claude'         => 'claude.ai',
-		'chatgpt'        => 'chatgpt.com',
-		'openai'         => 'openai.com',
-		'gemini'         => 'gemini.google.com',
-		'perplexity'     => 'perplexity.ai',
-		'copilot'        => 'copilot.microsoft.com',
+		'claude'           => 'claude.ai',
+		'chatgpt'          => 'chatgpt.com',
+		'openai'           => 'openai.com',
+		'gemini'           => 'gemini.google.com',
+		'perplexity'       => 'perplexity.ai',
+		'copilot'          => 'copilot.microsoft.com',
+
+		// Crawler-token → hostname, mirroring the `UA_AGENT_HOSTS`
+		// value for each token so a UA-shaped `UCP-Agent` header and
+		// the same string arriving as a real `User-Agent` stamp one
+		// consistent `utm_source`.
+		'gptbot'           => 'chatgpt.com',
+		'chatgpt-user'     => 'chatgpt.com',
+		'oai-searchbot'    => 'chatgpt.com',
+		'claudebot'        => 'claude.ai',
+		'claude-user'      => 'claude.ai',
+		'claude-searchbot' => 'claude.ai',
+		'perplexitybot'    => 'perplexity.ai',
+		'perplexity-user'  => 'perplexity.ai',
 	];
 
 	/**
@@ -765,9 +797,14 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// (which isn't a KNOWN_AGENT_PRODUCT_NAME → buckets as
 		// "Other AI") rather than letting a bot name buried in the
 		// comment masquerade as the agent. Comment matching is
-		// `\([^)]*\)` — a single balanced, non-nested parenthesis
-		// group — and must be the only trailing content (`\s*$`),
-		// so genuinely malformed junk still produces a no-match.
+		// `\([^)]*\)` — one `(`, a run of non-`)` characters, one
+		// `)` — and must be the only trailing content (`\s*$`), so
+		// genuinely malformed junk still produces a no-match. Note
+		// this is "non-nested", NOT paren-balanced: `((Anthropic)`
+		// matches (leading token still wins) while the count-balanced
+		// `(a (b))` does not (its inner `)` closes the class early,
+		// leaving a stray `)` that fails `\s*$`). Harmless either way
+		// — only the leading product token is ever returned.
 		if ( ! preg_match( '#^([A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]+)?(?:\s+\([^)]*\))?\s*$#', trim( $header_value ), $matches ) ) {
 			return '';
 		}
