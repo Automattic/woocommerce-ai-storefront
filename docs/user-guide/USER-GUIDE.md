@@ -257,6 +257,8 @@ It also keeps two kinds of page out of search results automatically: products yo
 
 Keeping your SEO plugin is fine too — dismiss the notice and both keep working, with the minor duplicate-tag caveat noted in [§1](#known-compatibility-notes). The full side-by-side comparison is in the engineering doc [`YOAST-COEXISTENCE.md`](../engineering/YOAST-COEXISTENCE.md).
 
+**If you run Jetpack, turn off its Sitemaps feature and let WordPress core serve the sitemap.** Jetpack's sitemap does not include your **brand, tag, and category archive pages** — exactly the taxonomy pages that help search engines and AI crawlers discover your catalog by the way shoppers actually browse it. WordPress core's `/wp-sitemap.xml` includes them. When Jetpack's sitemap is active it takes over from core, so those pages silently drop out of the sitemap crawlers read. Disable **Jetpack → Settings → Traffic → Generate XML sitemaps** (keep the rest of Jetpack — this only turns off its sitemap). If you had submitted Jetpack's `/sitemap.xml` to Google Search Console, resubmit the core `/wp-sitemap.xml`.
+
 **Check your structured data and metadata with free tools.** Once the plugin is live, confirm what search engines and AI assistants actually read from your pages. A single URL is enough to start: paste your shop or a product page into the first tool. If you also run another SEO plugin, these validators are where duplicate title, description, and social tags show up.
 
 | Tool | What it checks | When to use |
