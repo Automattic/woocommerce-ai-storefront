@@ -6,8 +6,8 @@
 	"license": "GPL-3.0-or-later",
 	"private": true,
 	"engines": {
-		"node": ">=18.12.0",
-		"npm": ">=8.19.2"
+		"node": ">=20.0.0",
+		"npm": ">=10.0.0"
 	},
 	"scripts": {
 		"prepare": "node bin/install-hooks.js",
