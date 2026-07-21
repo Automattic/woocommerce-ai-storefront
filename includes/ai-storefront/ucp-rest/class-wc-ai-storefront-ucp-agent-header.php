@@ -198,6 +198,22 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// `ucpplayground.com` host entry so attribution converges on
 		// the same canonical brand whichever header format is sent.
 		'ucp-playground' => 'UCPPlayground',
+
+		// Answer agents that self-identify in Product/Version form
+		// (e.g. `Claude/4.6 (Anthropic)`, `ChatGPT/1.0`) rather than
+		// via a `profile="..."` URL. Each token mirrors a
+		// `KNOWN_AGENT_HOSTS` brand so attribution rolls up to the
+		// same canonical name regardless of which header shape the
+		// agent sent. Add the matching `PRODUCT_TO_HOSTNAME` entry
+		// alongside every token here so `utm_source` gets a hostname
+		// (`claude.ai`) rather than the bare token (`claude`) and
+		// converges with the profile-URL path.
+		'claude'         => 'Claude',
+		'chatgpt'        => 'ChatGPT',
+		'openai'         => 'ChatGPT',
+		'gemini'         => 'Gemini',
+		'perplexity'     => 'Perplexity',
+		'copilot'        => 'Copilot',
 	];
 
 	/**
@@ -235,6 +251,19 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 */
 	const PRODUCT_TO_HOSTNAME = [
 		'ucp-playground' => 'ucpplayground.com',
+
+		// Answer-agent product tokens → their canonical hostname, so
+		// `utm_source` matches the profile-URL path. Keep in lockstep
+		// with `KNOWN_AGENT_PRODUCT_NAMES`: the chosen hostname must
+		// be a `KNOWN_AGENT_HOSTS` key so the lenient bypass-path gate
+		// (`WC_AI_Storefront_Attribution::capture_ai_attribution()`)
+		// recognizes the same source string too.
+		'claude'         => 'claude.ai',
+		'chatgpt'        => 'chatgpt.com',
+		'openai'         => 'openai.com',
+		'gemini'         => 'gemini.google.com',
+		'perplexity'     => 'perplexity.ai',
+		'copilot'        => 'copilot.microsoft.com',
 	];
 
 	/**
@@ -678,6 +707,14 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 *   product token also permits dots — uncommon in real
 	 *   `KNOWN_AGENT_PRODUCT_NAMES` entries today but cheap to
 	 *   accept.
+	 * - Tolerate a single trailing `( ... )` comment and discard it,
+	 *   returning only the leading product token (RFC 7231 §5.5.3
+	 *   permits comments in User-Agent-style values). This is what
+	 *   lets `Claude/4.6 (Anthropic)` resolve to `claude`. The
+	 *   comment body is NOT scanned for a nested product — only the
+	 *   leading token is taken — so `Mozilla/5.0 (compatible;
+	 *   SomeBot)` yields `mozilla` (unknown → "Other AI"), not the
+	 *   bot name inside the comment.
 	 * - Reject any header value containing `profile=` anywhere in
 	 *   the string (slightly broader than "leading-anchored" — we
 	 *   use `stripos` for simplicity since the false-positive risk
@@ -707,20 +744,31 @@ class WC_AI_Storefront_UCP_Agent_Header {
 
 		// Match the leading product token. Anchored at the start
 		// (^) so the token has to be the first thing in the header
-		// (not a fragment buried inside some other syntax) and at
-		// the end (`\s*$`) so trailing junk produces a no-match
-		// rather than partial extraction. The version segment is
-		// matched but NOT captured — its content doesn't affect the
-		// canonical mapping. The version-segment quantifier is `+`
-		// (not `*`) so a header ending in a bare slash like
-		// `Agent/` doesn't parse as `agent` — RFC 7231's
+		// (not a fragment buried inside some other syntax). The
+		// version segment is matched but NOT captured — its content
+		// doesn't affect the canonical mapping. The version-segment
+		// quantifier is `+` (not `*`) so a header ending in a bare
+		// slash like `Agent/` doesn't parse as `agent` — RFC 7231's
 		// `product/version` grammar requires the version token to
-		// be non-empty when the slash is present. Note the regex
-		// still constrains version characters to `[A-Za-z0-9._-]`
-		// and rejects values with trailing parenthesized comments
-		// (e.g. `Mozilla/5.0 (compatible; UCP-Bot)`), so non-trivial
-		// User-Agent-style values won't parse.
-		if ( ! preg_match( '#^([A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]+)?\s*$#', trim( $header_value ), $matches ) ) {
+		// be non-empty when the slash is present.
+		//
+		// A single trailing `( ... )` comment is tolerated and
+		// discarded. RFC 7231 §5.5.3 defines User-Agent as
+		// `product (RWS (product / comment))*`, so a parenthesized
+		// comment is spec-legal — real answer-agents send it (e.g.
+		// `Claude/4.6 (Anthropic)`), and before this branch existed
+		// those requests failed the whole match and attributed as
+		// `ucp_unknown`. The comment body is intentionally NOT parsed
+		// for additional product tokens: we take the LEADING product
+		// only, so a browser-ish UA like `Mozilla/5.0 (compatible;
+		// SomeBot)` canonicalizes on its leading `mozilla` token
+		// (which isn't a KNOWN_AGENT_PRODUCT_NAME → buckets as
+		// "Other AI") rather than letting a bot name buried in the
+		// comment masquerade as the agent. Comment matching is
+		// `\([^)]*\)` — a single balanced, non-nested parenthesis
+		// group — and must be the only trailing content (`\s*$`),
+		// so genuinely malformed junk still produces a no-match.
+		if ( ! preg_match( '#^([A-Za-z0-9._-]+)(?:/[A-Za-z0-9._-]+)?(?:\s+\([^)]*\))?\s*$#', trim( $header_value ), $matches ) ) {
 			return '';
 		}
 
