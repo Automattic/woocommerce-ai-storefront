@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Fixed
+
+- **AI agent attribution no longer falls back to `ucp_unknown` for `Product/Version`-form `UCP-Agent` headers (#588).**
+  - An agent that identified itself with a `Product/Version` header carrying a trailing comment — e.g. `UCP-Agent: Claude/4.6 (Anthropic)` — was attributed as `utm_source=ucp_unknown` instead of its brand. The parser rejected the parenthesized comment outright, and even a clean `Claude/4.6` had no product-token mapping. The order was still correctly counted as an AI order (via `utm_id=woo_ucp`); only the *which agent* was lost.
+  - The header parser now tolerates and discards a single trailing `( … )` comment (RFC 7231 §5.5.3), taking only the leading product token. The comment body is not scanned for a nested product, so a browser-style User-Agent still buckets as "Other AI" rather than letting a bot name inside the comment masquerade as a known agent.
+  - Added product-token mappings for the known answer agents (ChatGPT, Claude, Gemini, Perplexity, Copilot) plus their crawler user-agent tokens (`GPTBot`, `ClaudeBot`, `Perplexity-User`, …), so a client that sends its User-Agent value in the `UCP-Agent` header resolves to the correct brand and hostname instead of fragmenting into "Other AI".
+  - Because the same header parser feeds the UCP access gate, a merchant who has disabled a brand's crawlers now blocks that brand's `Product/Version`-form requests too — consistent with how the profile-URL form already behaved.
+
 ---
 
 ## [0.34.0] – 2026-07-10
