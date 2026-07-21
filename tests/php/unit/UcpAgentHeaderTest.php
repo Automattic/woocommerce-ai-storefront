@@ -568,6 +568,93 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_extract_product_tolerates_trailing_comment(): void {
+		// The exact header from the live saltwarp.shop transcript (#588):
+		// claude.ai sent `Claude/4.6 (Anthropic)`. RFC 7231 §5.5.3
+		// permits a parenthesized comment; we take the leading product
+		// token and discard the comment. Before this branch, the whole
+		// match failed and the order attributed as `ucp_unknown`.
+		$this->assertEquals(
+			'claude',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Claude/4.6 (Anthropic)' )
+		);
+	}
+
+	public function test_extract_product_tolerates_comment_without_version(): void {
+		// Comment is legal on a bare product too (no `/version`).
+		$this->assertEquals(
+			'claude',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Claude (Anthropic)' )
+		);
+	}
+
+	public function test_extract_product_takes_leading_token_only_for_browser_ua(): void {
+		// The comment body is NOT scanned for a nested product token.
+		// A browser-ish UA canonicalizes on its LEADING token
+		// (`mozilla`, which isn't a KNOWN_AGENT_PRODUCT_NAME → "Other
+		// AI"), never on a bot name buried in the comment. This keeps
+		// the comment-tolerance from becoming a backdoor that lets any
+		// UA string masquerade as a known agent.
+		$this->assertEquals(
+			'mozilla',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Mozilla/5.0 (compatible; SomeBot)' )
+		);
+	}
+
+	public function test_extract_product_does_not_scan_comment_for_known_brand(): void {
+		// The load-bearing security witness: a KNOWN brand token
+		// (`Claude`) buried in the comment behind an unknown leading
+		// token MUST NOT be extracted. This is the case that would
+		// fail if a future refactor ever scanned the comment body —
+		// the `Mozilla ... SomeBot` test above can't catch that
+		// because `SomeBot` isn't a known brand and would bucket as
+		// "Other AI" either way. Here, a leaked `claude` would
+		// mis-attribute to a real brand, so pinning `mozilla` proves
+		// the leading-token-only guarantee.
+		$this->assertEquals(
+			'mozilla',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Mozilla/5.0 (compatible; Claude)' )
+		);
+	}
+
+	public function test_extract_product_requires_whitespace_before_comment(): void {
+		// The no-space form `Claude/4.6(Anthropic)` is deliberately
+		// rejected: RFC 7231 §5.5.3 requires RWS (required whitespace)
+		// between a product and a following comment, so the `\s+`
+		// before the paren group is intentional. A rejected value
+		// falls through to `ucp_unknown` (honest) rather than being
+		// mis-parsed. Pinning this documents the choice so a future
+		// contributor doesn't silently relax `\s+` to `\s*` without
+		// deciding to.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Claude/4.6(Anthropic)' )
+		);
+	}
+
+	public function test_extract_product_rejects_count_balanced_nested_comment(): void {
+		// `\([^)]*\)` matches a non-nested group only. A count-balanced
+		// nested comment closes the character class at the first `)`,
+		// leaving a stray `)` that fails `\s*$` → no-match. Regression
+		// guard: if someone "improves" comment support with a greedy
+		// `\(.*\)`, this flips to a match and the test fires.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Claude/4.6 (Anthropic (Inc))' )
+		);
+	}
+
+	public function test_extract_product_rejects_junk_after_comment(): void {
+		// The comment must be the ONLY trailing content. Trailing junk
+		// after a `(...)` group still produces a no-match rather than
+		// partial extraction, preserving the "did this yield anything?"
+		// contract for the caller.
+		$this->assertEquals(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( 'Claude/4.6 (Anthropic) {garbage}' )
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// canonicalize_product() — product token → canonical brand
 	// ------------------------------------------------------------------
@@ -598,6 +685,64 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			'',
 			WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( '' )
 		);
+	}
+
+	/**
+	 * @dataProvider answer_agent_product_provider
+	 */
+	public function test_canonicalize_product_maps_answer_agents( string $product, string $brand, string $host ): void {
+		// Answer-agent product tokens (#588) resolve to the same
+		// canonical brand + hostname as their profile-URL form, so
+		// product-form and profile-form orders roll up together.
+		$this->assertEquals(
+			$brand,
+			WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product )
+		);
+		$this->assertEquals(
+			$host,
+			WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME[ $product ]
+		);
+		// The resolved hostname MUST be a KNOWN_AGENT_HOSTS key so the
+		// lenient bypass-path attribution gate recognizes the same
+		// utm_source string. Without this, the product path and the
+		// bypass path would fragment into separate stats rows.
+		$this->assertArrayHasKey(
+			$host,
+			WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS,
+			sprintf( 'PRODUCT_TO_HOSTNAME maps %s → %s, which is not a KNOWN_AGENT_HOSTS key.', $product, $host )
+		);
+		$this->assertEquals(
+			$brand,
+			WC_AI_Storefront_UCP_Agent_Header::KNOWN_AGENT_HOSTS[ $host ],
+			sprintf( 'Product token %s and host %s disagree on canonical brand.', $product, $host )
+		);
+	}
+
+	/**
+	 * @return array<string, array{0: string, 1: string, 2: string}>
+	 */
+	public static function answer_agent_product_provider(): array {
+		return [
+			// Brand-name product tokens.
+			'claude'           => [ 'claude', 'Claude', 'claude.ai' ],
+			'chatgpt'          => [ 'chatgpt', 'ChatGPT', 'chatgpt.com' ],
+			'openai'           => [ 'openai', 'ChatGPT', 'openai.com' ],
+			'gemini'           => [ 'gemini', 'Gemini', 'gemini.google.com' ],
+			'perplexity'       => [ 'perplexity', 'Perplexity', 'perplexity.ai' ],
+			'copilot'          => [ 'copilot', 'Copilot', 'copilot.microsoft.com' ],
+
+			// Crawler user-agent tokens (mirror UA_AGENT_HOSTS) — a
+			// client that puts its User-Agent value in UCP-Agent
+			// resolves to the same brand + hostname as the brand token.
+			'gptbot'           => [ 'gptbot', 'ChatGPT', 'chatgpt.com' ],
+			'chatgpt-user'     => [ 'chatgpt-user', 'ChatGPT', 'chatgpt.com' ],
+			'oai-searchbot'    => [ 'oai-searchbot', 'ChatGPT', 'chatgpt.com' ],
+			'claudebot'        => [ 'claudebot', 'Claude', 'claude.ai' ],
+			'claude-user'      => [ 'claude-user', 'Claude', 'claude.ai' ],
+			'claude-searchbot' => [ 'claude-searchbot', 'Claude', 'claude.ai' ],
+			'perplexitybot'    => [ 'perplexitybot', 'Perplexity', 'perplexity.ai' ],
+			'perplexity-user'  => [ 'perplexity-user', 'Perplexity', 'perplexity.ai' ],
+		];
 	}
 
 	// ------------------------------------------------------------------

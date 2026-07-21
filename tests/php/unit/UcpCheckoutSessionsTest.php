@@ -3401,6 +3401,75 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'ucpplayground.com', $path1_source );
 	}
 
+	public function test_claude_profile_and_product_comment_paths_emit_identical_utm_source(): void {
+		// Regression for #588: claude.ai's live saltwarp.shop session
+		// sent `UCP-Agent: Claude/4.6 (Anthropic)` — Product/Version
+		// form with a trailing comment — and attributed as
+		// `ucp_unknown` because the parser rejected the comment AND
+		// `claude` had no product-token mapping. Both are fixed now;
+		// this proves the Product-form-with-comment path converges on
+		// the same `claude.ai` utm_source as the profile-URL path.
+		$this->seed_simple_product( 1 );
+
+		$line_items = [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ];
+
+		// Profile-URL form.
+		$profile_result = $this->call_handler(
+			[ 'line_items' => $line_items ],
+			'profile="https://claude.ai/profile.json"'
+		);
+
+		// Product/Version form WITH a trailing comment — the exact
+		// transcript header shape.
+		$product_result = $this->call_handler(
+			[ 'line_items' => $line_items ],
+			'Claude/4.6 (Anthropic)'
+		);
+
+		$profile_source = $this->extract_utm_source( $profile_result['data']['continue_url'] );
+		$product_source = $this->extract_utm_source( $product_result['data']['continue_url'] );
+
+		$this->assertSame(
+			$profile_source,
+			$product_source,
+			'Claude profile-URL and Product/Version-with-comment paths must emit identical utm_source.'
+		);
+		// Not the fallback sentinel — the bug symptom was `ucp_unknown`.
+		$this->assertSame( 'claude.ai', $product_source );
+		$this->assertNotSame(
+			WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$product_source
+		);
+	}
+
+	public function test_crawler_ua_shaped_ucp_agent_header_resolves_to_brand_not_other_ai(): void {
+		// Regression for the comment-tolerance side effect: when a
+		// client copies its crawler User-Agent into the UCP-Agent
+		// header (e.g. `GPTBot/1.2 (+https://openai.com/gptbot)`), the
+		// now-tolerant parser SUCCEEDS at Path 2 with token `gptbot`.
+		// Before `gptbot` was mapped, that token bucketed as "Other AI"
+		// AND short-circuited the User-Agent fallback (Path 3.5) that
+		// would otherwise have classified it — a silent downgrade from
+		// ChatGPT to Other AI. With the crawler-token maps in place it
+		// resolves straight to `chatgpt.com`.
+		$this->seed_simple_product( 1 );
+
+		$line_items = [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ];
+
+		$result = $this->call_handler(
+			[ 'line_items' => $line_items ],
+			'GPTBot/1.2 (+https://openai.com/gptbot)'
+		);
+
+		$source = $this->extract_utm_source( $result['data']['continue_url'] );
+
+		$this->assertSame( 'chatgpt.com', $source );
+		$this->assertNotSame(
+			WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
+			$source
+		);
+	}
+
 	/**
 	 * Parse the utm_source query parameter out of a continue_url.
 	 *

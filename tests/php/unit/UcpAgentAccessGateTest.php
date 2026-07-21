@@ -608,6 +608,77 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $result );
 	}
 
+	// ------------------------------------------------------------------
+	// Product/Version-with-comment headers (#588)
+	// ------------------------------------------------------------------
+	//
+	// The comment-tolerant parser (#588) makes a header like
+	// `UCP-Agent: Claude/4.6 (Anthropic)` resolve to a KNOWN brand
+	// (`Claude`) where it previously failed to parse. That parse feeds
+	// the SAME security gate, so a merchant who disabled Claude's
+	// crawlers now blocks this header form too. Before #588 the header
+	// was unparseable → empty canonical → permissive fallback (ALLOW).
+	// These tests pin the post-#588 outcomes so the gate coupling is
+	// intentional and locked: an answer-agent comment-form header hits
+	// the same block/allow decisions as its profile-URL form.
+
+	public function test_comment_form_known_brand_blocked_when_no_mapped_crawler_ids_in_allow_list(): void {
+		// The exact transcript header. Claude's crawler IDs
+		// (Claude-User, Claude-SearchBot) are absent from the
+		// allow-list → the brand-blocked gate must 403, matching the
+		// profile-URL form's behavior — NOT fall through to the
+		// pre-#588 permissive allow.
+		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'Claude/4.6 (Anthropic)' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $result );
+		$this->assertSame( 'ucp_agent_blocked', $result->get_error_code() );
+		$data = $result->get_error_data();
+		$this->assertSame( 403, $data['status'] );
+	}
+
+	public function test_comment_form_known_brand_passes_when_mapped_crawler_id_in_allow_list(): void {
+		// Same comment-form header, but the merchant has one of Claude's
+		// mapped crawler IDs in the allow-list → allowed (OR-semantics),
+		// mirroring the profile-URL allow case.
+		WC_AI_Storefront::$test_settings = [
+			'allowed_crawlers' => [ 'Claude-User' ],
+		];
+
+		$result = $this->controller->check_agent_access(
+			$this->make_request( 'Claude/4.6 (Anthropic)' )
+		);
+
+		$this->assertTrue( $result );
+	}
+
+	public function test_comment_form_and_profile_form_agree_on_gate_outcome(): void {
+		// Convergence at the gate: the comment-form and profile-URL
+		// forms of the same brand must produce the same block decision
+		// under identical settings. Asserting both are WP_Error (rather
+		// than a literal) means a future divergence in either parser
+		// path is caught regardless of which side moved.
+		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+
+		$comment_form = $this->controller->check_agent_access(
+			$this->make_request( 'Claude/4.6 (Anthropic)' )
+		);
+		$profile_form = $this->controller->check_agent_access(
+			$this->make_request( 'profile="https://claude.ai/agent.json"' )
+		);
+
+		$this->assertInstanceOf( WP_Error::class, $comment_form );
+		$this->assertInstanceOf( WP_Error::class, $profile_form );
+		$this->assertSame(
+			$profile_form->get_error_code(),
+			$comment_form->get_error_code(),
+			'Comment-form and profile-URL form of the same brand must hit the same gate outcome.'
+		);
+	}
+
 	public function test_meta_source_body_does_not_satisfy_gate(): void {
 		// Body field `meta.source` is honored by `resolve_agent_host()`
 		// for ATTRIBUTION but deliberately NOT by `check_agent_access()`
