@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.34.1] – 2026-07-21
+
 ### Fixed
 
 - **AI agent attribution no longer falls back to `ucp_unknown` for `Product/Version`-form `UCP-Agent` headers (#588).**
