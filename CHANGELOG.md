@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Backordered variants no longer emit `availability: InStock` alongside a negative `inventoryLevel` (#601).**
+  - A variable product oversold under an allow-backorders setting published `availability: https://schema.org/InStock` on every variant Offer while the same Offer carried `inventoryLevel.value: -4`, so the two fields told an AI agent contradictory stories about the same variant.
+  - `WC_Product::is_in_stock()` is a lossy two-state view of WooCommerce's three-state `stock_status` — it only tests `'outofstock' !== $stock_status`, so `onbackorder` reads as `true`. The per-variant Offer builder branched on that bool alone; the inventory emitter read `get_stock_quantity()` directly, which is not lossy. Variant Offers now map the full three states, mirroring WooCommerce core's own `WC_Structured_Data` (which checks the backorder case ahead of plain in-stock, and has since WC 9.9).
+  - Only per-variant Offers were affected. Simple products and parent Offers are built by WooCommerce core, which already handled this correctly across the whole supported WC range. The UCP and `products.json` surfaces express availability as a required bool per spec and are unchanged.
+  - `inventoryLevel.value` is now clamped to `0` instead of publishing a negative quantity. schema.org defines the property as the "current approximate inventory level", so `0` misrepresents nothing it promised to be exact, and `availability: BackOrder` carries the "still orderable" signal instead. A level of exactly `0` remains meaningful ("none on hand") and is still emitted; only an untracked (`null`) quantity suppresses the property.
+
 ---
 
 ## [0.34.1] – 2026-07-21

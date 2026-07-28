@@ -523,6 +523,16 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return null;
 		}
 
+		/**
+		 * Three-state WC stock status: 'instock' | 'outofstock' |
+		 * 'onbackorder'. Read alongside `is_in_stock()` when mapping to a
+		 * schema.org availability term — the bool alone is TRUE for
+		 * backorders and so cannot distinguish that case.
+		 */
+		public function get_stock_status(): string {
+			return 'instock';
+		}
+
 		// Weight + dimensions (JSON-LD enhancer).
 		public function has_weight(): bool {
 			return false;
