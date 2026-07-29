@@ -641,6 +641,22 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Adds inventoryLevel to offers[0] when the product manages stock.
 	 *
+	 * A product oversold under an allow-backorders setting carries a
+	 * NEGATIVE `stock_quantity`, which is clamped to 0 here. schema.org
+	 * defines `inventoryLevel` as the "current approximate inventory
+	 * level", so 0 misrepresents nothing the property promised to be
+	 * exact, while a negative quantity leaves an agent to guess. The
+	 * "still orderable" signal is carried by `availability: BackOrder`
+	 * instead — set by WC core on the parent Offer, and by
+	 * `stock_status_to_schema()` on the per-variant Offers built here.
+	 *
+	 * Google's merchant-listing spec does not list `inventoryLevel` among
+	 * the Offer properties it reads (checked 2026-07), so this field is
+	 * aimed at AI agents rather than search validators.
+	 *
+	 * Zero itself is a meaningful level ("none on hand") and is emitted
+	 * normally; only `null` (not tracked) suppresses the property.
+	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
 	 */
@@ -656,7 +672,7 @@ class WC_AI_Storefront_JsonLd {
 		) {
 			$markup['offers'][0]['inventoryLevel'] = array(
 				'@type' => 'QuantitativeValue',
-				'value' => $stock_qty,
+				'value' => max( 0, $stock_qty ),
 			);
 		}
 	}
@@ -1554,6 +1570,52 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Map a product's WC stock status onto a schema.org availability term.
+	 *
+	 * WC tracks three stock states — `instock`, `outofstock` and
+	 * `onbackorder` — but `is_in_stock()` collapses them to a bool that is
+	 * TRUE for backorders: it returns `'outofstock' !== stock_status`
+	 * passed through the `woocommerce_product_is_in_stock` filter.
+	 * Branching on that bool alone publishes `InStock` for a backordered
+	 * variant, which contradicts the `inventoryLevel` the same Offer
+	 * carries: an oversold variation ships `InStock` next to a negative
+	 * quantity. `BackOrder` keeps the two fields telling one story and
+	 * still marks the variant as orderable.
+	 *
+	 * The out-of-stock branch is checked FIRST and wins outright. Because
+	 * `is_in_stock()` runs through that filter, a third party (multi-
+	 * warehouse inventory, role-based catalogs, availability windows) can
+	 * legitimately force the bool false while `stock_status` still reads
+	 * `onbackorder`. Ordering it this way stops that combination from
+	 * being upgraded to a purchasable-sounding `BackOrder`.
+	 *
+	 * Semantically equivalent to WC core's own
+	 * `WC_Structured_Data::generate_product_data()` — core nests the
+	 * backorder ternary inside `if ( is_in_stock() )` where this
+	 * early-returns the out-of-stock case. Core has done this since WC
+	 * 7.8, so it predates this plugin's declared WC floor and applies to
+	 * the parent Offer core builds; this is the equivalent for the
+	 * per-variant Offers built here.
+	 *
+	 * The status is compared as a literal rather than via
+	 * `Automattic\WooCommerce\Enums\ProductStockStatus::ON_BACKORDER`
+	 * (which does exist at our WC floor) because the value is frozen
+	 * public API — core itself wrote this comparison as a bare
+	 * `'onbackorder'` literal through WC 8.x — and a literal keeps the
+	 * unit-test doubles free of the `Automattic\WooCommerce\Enums`
+	 * namespace.
+	 *
+	 * @param WC_Product $product The product or variation.
+	 * @return string Unqualified schema.org term: InStock, OutOfStock or BackOrder.
+	 */
+	private static function stock_status_to_schema( $product ): string {
+		if ( ! $product->is_in_stock() ) {
+			return 'OutOfStock';
+		}
+		return 'onbackorder' === $product->get_stock_status() ? 'BackOrder' : 'InStock';
+	}
+
+	/**
 	 * Build the bare-minimum Offer skeleton for a variant — price,
 	 * priceCurrency, availability. The remaining fields (inventory,
 	 * shipping, return policy, checkoutPageURLTemplate) are layered on
@@ -1567,9 +1629,7 @@ class WC_AI_Storefront_JsonLd {
 		$price        = function_exists( 'wc_format_decimal' ) && function_exists( 'wc_get_price_decimals' )
 			? wc_format_decimal( $variation->get_price(), wc_get_price_decimals() )
 			: (string) $variation->get_price();
-		$availability = $variation->is_in_stock()
-			? 'https://schema.org/InStock'
-			: 'https://schema.org/OutOfStock';
+		$availability = 'https://schema.org/' . self::stock_status_to_schema( $variation );
 
 		return array(
 			'@type'         => 'Offer',

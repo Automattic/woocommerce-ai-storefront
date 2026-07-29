@@ -1,5 +1,18 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Backordered variants no longer emit `availability: InStock` alongside a negative `inventoryLevel` (#601).**
+  - A variable product oversold under an allow-backorders setting published `availability: https://schema.org/InStock` on every variant Offer while the same Offer carried `inventoryLevel.value: -4`, so the two fields told an AI agent contradictory stories about the same variant.
+  - `WC_Product::is_in_stock()` is a lossy two-state view of WooCommerce's three-state `stock_status` — it reports `'outofstock' !== $stock_status`, so `onbackorder` reads as `true`. The per-variant Offer builder branched on that bool alone; the inventory emitter read `get_stock_quantity()` directly, which is not lossy. Variant Offers now map the full three states, matching WooCommerce core's own `WC_Structured_Data`, which checks the backorder case ahead of plain in-stock and has done so since WC 7.8 — comfortably below this plugin's WC 9.9 floor.
+  - Only per-variant Offers were affected. Simple products and parent Offers are built by WooCommerce core, which already handled this correctly across the whole supported WC range. The UCP and `products.json` surfaces express availability as a required bool per spec and are unchanged.
+  - `inventoryLevel.value` is now clamped to `0` instead of publishing a negative quantity. schema.org defines the property as the "current approximate inventory level", so `0` misrepresents nothing it promised to be exact, and `availability: BackOrder` carries the "still orderable" signal instead. A level of exactly `0` remains meaningful ("none on hand") and is still emitted; only an untracked (`null`) quantity suppresses the property.
+
+### Changed
+
+- **Dev tooling: bump `wp-coding-standards/wpcs` to 3.4.1 for CVE-2026-45293.** The WordPressCS arbitrary-code-execution advisory (high severity, affecting `>=0.14.1,<3.4.1`) was published 2026-07-28 and failed the `composer audit` CI gate on every open PR. The package is `require-dev` only — it is the PHPCS ruleset and is not shipped in the plugin zip — so no released version exposed users to it; the risk was confined to running lint locally or in CI.
+  - `composer.json` already declared the constraint as `*`, so only `composer.lock` moved. `phpcsstandards/phpcsutils` (1.2.2 → 1.2.3) and `phpcsstandards/phpcsextra` (1.5.0 → 1.5.1) are bumped alongside it, because wpcs 3.4.1 requires them; a lockfile update naming wpcs alone silently resolves *backwards* to 0.14.0 (which predates the advisory range) instead of forwards. Repo-wide PHPCS is clean on the new ruleset with no code changes.
+
 ---
 
 ## [0.34.1] – 2026-07-21

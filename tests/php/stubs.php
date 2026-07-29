@@ -523,6 +523,13 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return null;
 		}
 
+		/**
+		 * @return string One of 'instock' | 'outofstock' | 'onbackorder'.
+		 */
+		public function get_stock_status(): string {
+			return 'instock';
+		}
+
 		// Weight + dimensions (JSON-LD enhancer).
 		public function has_weight(): bool {
 			return false;
