@@ -673,7 +673,13 @@ A security plugin is blocking `/.well-known/`. Add `/.well-known/ucp` to its all
 
 ### JSON-LD doesn't include the BuyAction
 
-Your theme or page builder may be overriding WooCommerce's product details. Try switching to the Storefront theme temporarily to confirm. If that works, contact your theme developer or try a different theme.
+Most often this is deliberate. The plugin omits the buy link (`BuyAction` and `checkoutPageURLTemplate`) whenever WooCommerce's cart would refuse the product anyway, so AI agents and search crawlers are never handed a link that lands on an error. Check these first:
+
+1. **Is the product out of stock?** Out-of-stock products keep their name, price, image and `availability` in the JSON-LD, but drop the buy link. Restock it — or, if you accept backorders, set **Backorders** to "Allow" on the product's Inventory tab. Backordered products *do* keep their buy link, because WooCommerce still accepts them at checkout.
+2. **Does the product have a price?** A product with no price set is "unpurchasable" to WooCommerce, and gets the same treatment. This also covers drafts and catalog-hidden products.
+3. **For variable products**, each variation is judged on its own — an out-of-stock size loses its buy link while the in-stock sizes keep theirs. That's expected.
+
+If the product is in stock and priced and the buy link is still missing, your theme or page builder may be overriding WooCommerce's product details. Try switching to the Storefront theme temporarily to confirm. If that works, contact your theme developer or try a different theme.
 
 ### I see two meta descriptions or social tags in my page source
 

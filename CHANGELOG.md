@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.34.3] – 2026-07-29
+
 ### Fixed
 
 - **Out-of-stock products no longer advertise a buy link that errors at the cart (#606).**

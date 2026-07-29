@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.34.2
+Stable tag: 0.34.3
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.34.3 - 2026-07-29 =
+**Fixed**
+* Out-of-stock products no longer publish a "buy" link that fails. An out-of-stock product used to advertise a checkout link to AI shopping assistants and search engines even though WooCommerce refuses it at the cart — following that link landed on an empty cart with an "out of stock" error. Out-of-stock products now keep their name, price, image and availability in the published data, but drop the buy link. Products on backorder are unaffected and keep their buy links, since WooCommerce still accepts those at checkout.
 
 = 0.34.2 - 2026-07-29 =
 **Fixed**
