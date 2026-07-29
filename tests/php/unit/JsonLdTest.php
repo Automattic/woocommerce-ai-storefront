@@ -250,11 +250,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( $overrides['managing_stock'] ?? false );
 		$product->shouldReceive( 'get_stock_quantity' )
 			->andReturn( $overrides['stock_quantity'] ?? null );
-		// WC's `stock_status` is three-state ('instock' / 'outofstock' /
-		// 'onbackorder') while `is_in_stock()` collapses it to a bool that
-		// is TRUE for backorders. Both are read when mapping to
-		// schema.org availability, so mocks must carry both. Default to
-		// 'instock' so the common case matches `is_in_stock() => true`.
+		// Both `stock_status` and `is_in_stock()` are read when mapping to
+		// schema.org availability (see `stock_status_to_schema()`), so
+		// mocks must carry both. Default to 'instock' so the common case
+		// matches `make_variation()`'s `is_in_stock() => true` default.
 		$product->shouldReceive( 'get_stock_status' )
 			->andReturn( $overrides['stock_status'] ?? 'instock' );
 		$product->shouldReceive( 'has_weight' )
@@ -1122,11 +1121,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_variant_entry_offer_marks_backorder_when_stock_status_is_onbackorder(): void {
-		// WC keeps three stock states but `is_in_stock()` reports only two
-		// — it is TRUE for 'onbackorder'. Mapping straight off that bool
-		// publishes `InStock` for a backordered variant, which WC core's
-		// own `WC_Structured_Data` avoids by checking `get_stock_status()`
-		// for the backorder case first. Mirror core.
+		// `is_in_stock()` is TRUE for 'onbackorder', so mapping off that
+		// bool alone publishes `InStock` here. See
+		// `stock_status_to_schema()` for the full rationale.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
@@ -1144,12 +1141,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_variant_entry_backordered_availability_agrees_with_clamped_inventory_level(): void {
-		// The reported symptom: a variation oversold to -4 under an
-		// allow-backorders setting published `InStock` alongside
-		// `inventoryLevel.value: -4`, so the two fields contradicted each
-		// other. Both halves are corrected here — availability reports
-		// the backorder, and the oversold depth is clamped to 0 rather
-		// than published as a negative quantity.
+		// The reported symptom end to end (#601): a variation oversold to
+		// -4 under allow-backorders published `InStock` next to
+		// `inventoryLevel.value: -4`. Both halves are asserted together
+		// because the defect was the CONTRADICTION between the two
+		// fields, not either value alone.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
@@ -1170,10 +1166,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_variant_entry_offer_prefers_out_of_stock_over_backorder_status(): void {
-		// Defensive ordering guard matching WC core: the out-of-stock
-		// branch wins outright, so a stale/contradictory 'onbackorder'
-		// status on a variation `is_in_stock()` calls false can never
-		// upgrade it to a purchasable-sounding `BackOrder`.
+		// This state is reachable on a live site, not corrupt data:
+		// `is_in_stock()` returns its `'outofstock' !== stock_status`
+		// comparison through the `woocommerce_product_is_in_stock`
+		// filter, so a multi-warehouse, role-based-catalog or
+		// availability-window plugin can force the bool false while
+		// `stock_status` still reads 'onbackorder'. The out-of-stock
+		// branch must win outright so that combination is never upgraded
+		// to a purchasable-sounding `BackOrder`. This is the only test
+		// pinning the branch ORDER in `stock_status_to_schema()`.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
@@ -2442,14 +2443,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_inventory_level_clamps_negative_stock_to_zero(): void {
-		// An oversold product under an allow-backorders setting carries a
-		// negative `stock_quantity`. schema.org defines `inventoryLevel`
-		// as the "current APPROXIMATE inventory level", so reporting 0
-		// misrepresents nothing it promised to be exact — whereas a
-		// negative QuantitativeValue has no precedent in the vocabulary
-		// and leaves an agent to guess. `availability: BackOrder` is what
-		// carries the "still orderable" signal; see
-		// `stock_status_to_schema()`.
+		// An oversold product under allow-backorders carries a negative
+		// `stock_quantity`. See `add_inventory_level()` for why that is
+		// clamped rather than published as-is.
 		$product = $this->make_product( [
 			'managing_stock' => true,
 			'stock_quantity' => -4,
@@ -2465,8 +2461,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_inventory_level_preserves_zero_stock(): void {
 		// Boundary guard: an exactly-zero level is a real, meaningful
-		// signal ("none on hand") and must still be emitted, not treated
-		// as absent by a truthiness slip in the clamp.
+		// signal ("none on hand") and must still be emitted. The line
+		// this actually protects is the EMISSION GUARD in
+		// `add_inventory_level()` — `null !== $stock_qty` loosened to a
+		// truthy `$stock_qty` would silently drop zero levels, and no
+		// other test catches that (the null-quantity test still passes
+		// under it). `max( 0, 0 )` itself cannot slip.
 		$product = $this->make_product( [
 			'managing_stock' => true,
 			'stock_quantity' => 0,

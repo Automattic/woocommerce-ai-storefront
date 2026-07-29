@@ -524,10 +524,7 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		}
 
 		/**
-		 * Three-state WC stock status: 'instock' | 'outofstock' |
-		 * 'onbackorder'. Read alongside `is_in_stock()` when mapping to a
-		 * schema.org availability term — the bool alone is TRUE for
-		 * backorders and so cannot distinguish that case.
+		 * @return string One of 'instock' | 'outofstock' | 'onbackorder'.
 		 */
 		public function get_stock_status(): string {
 			return 'instock';

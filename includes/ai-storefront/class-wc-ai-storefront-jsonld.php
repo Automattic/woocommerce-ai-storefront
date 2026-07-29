@@ -645,12 +645,14 @@ class WC_AI_Storefront_JsonLd {
 	 * NEGATIVE `stock_quantity`, which is clamped to 0 here. schema.org
 	 * defines `inventoryLevel` as the "current approximate inventory
 	 * level", so 0 misrepresents nothing the property promised to be
-	 * exact, whereas a negative `QuantitativeValue` has no precedent in
-	 * the vocabulary and leaves an agent to guess. The "still orderable"
-	 * signal is carried by `availability: BackOrder` instead — see
-	 * `stock_status_to_schema()`. Note that no consumer validates this
-	 * either way: Google's merchant-listing spec does not read
-	 * `inventoryLevel` at all, so its only audience is AI agents.
+	 * exact, while a negative quantity leaves an agent to guess. The
+	 * "still orderable" signal is carried by `availability: BackOrder`
+	 * instead — set by WC core on the parent Offer, and by
+	 * `stock_status_to_schema()` on the per-variant Offers built here.
+	 *
+	 * Google's merchant-listing spec does not list `inventoryLevel` among
+	 * the Offer properties it reads (checked 2026-07), so this field is
+	 * aimed at AI agents rather than search validators.
 	 *
 	 * Zero itself is a meaningful level ("none on hand") and is emitted
 	 * normally; only `null` (not tracked) suppresses the property.
@@ -1572,20 +1574,36 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * WC tracks three stock states — `instock`, `outofstock` and
 	 * `onbackorder` — but `is_in_stock()` collapses them to a bool that is
-	 * TRUE for backorders (it only tests `'outofstock' !== stock_status`).
+	 * TRUE for backorders: it returns `'outofstock' !== stock_status`
+	 * passed through the `woocommerce_product_is_in_stock` filter.
 	 * Branching on that bool alone publishes `InStock` for a backordered
 	 * variant, which contradicts the `inventoryLevel` the same Offer
 	 * carries: an oversold variation ships `InStock` next to a negative
 	 * quantity. `BackOrder` keeps the two fields telling one story and
 	 * still marks the variant as orderable.
 	 *
-	 * This mirrors WC core's own `WC_Structured_Data::generate_product_data()`,
-	 * which checks the backorder status ahead of the plain in-stock case —
-	 * core applies it to the parent Offer it builds, and this is the
-	 * equivalent for the per-variant Offers built here. The status is
-	 * compared as a literal rather than via
-	 * `Automattic\WooCommerce\Enums\ProductStockStatus::ON_BACKORDER` to
-	 * keep the class free of WC class-level dependencies.
+	 * The out-of-stock branch is checked FIRST and wins outright. Because
+	 * `is_in_stock()` runs through that filter, a third party (multi-
+	 * warehouse inventory, role-based catalogs, availability windows) can
+	 * legitimately force the bool false while `stock_status` still reads
+	 * `onbackorder`. Ordering it this way stops that combination from
+	 * being upgraded to a purchasable-sounding `BackOrder`.
+	 *
+	 * Semantically equivalent to WC core's own
+	 * `WC_Structured_Data::generate_product_data()` — core nests the
+	 * backorder ternary inside `if ( is_in_stock() )` where this
+	 * early-returns the out-of-stock case. Core has done this since WC
+	 * 7.8, so it predates this plugin's declared WC floor and applies to
+	 * the parent Offer core builds; this is the equivalent for the
+	 * per-variant Offers built here.
+	 *
+	 * The status is compared as a literal rather than via
+	 * `Automattic\WooCommerce\Enums\ProductStockStatus::ON_BACKORDER`
+	 * (which does exist at our WC floor) because the value is frozen
+	 * public API — core itself wrote this comparison as a bare
+	 * `'onbackorder'` literal through WC 8.x — and a literal keeps the
+	 * unit-test doubles free of the `Automattic\WooCommerce\Enums`
+	 * namespace.
 	 *
 	 * @param WC_Product $product The product or variation.
 	 * @return string Unqualified schema.org term: InStock, OutOfStock or BackOrder.
