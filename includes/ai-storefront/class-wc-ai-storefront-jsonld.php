@@ -228,7 +228,8 @@ class WC_AI_Storefront_JsonLd {
 		// overrides this by converting to ProductGroup and emitting
 		// per-variant entries under `hasVariant`, each gated
 		// independently (see `build_variant_entry`). (#373)
-		$parent_purchasable = ! method_exists( $product, 'is_purchasable' ) || $product->is_purchasable();
+		$parent_purchasable = ( ! method_exists( $product, 'is_purchasable' ) || $product->is_purchasable() )
+			&& self::is_orderable( $product );
 		if ( $parent_purchasable ) {
 			$this->add_buy_action( $markup, $product );
 			$this->add_checkout_page_url_template( $markup, $product );
@@ -1227,7 +1228,10 @@ class WC_AI_Storefront_JsonLd {
 		// descriptive variant entry (@id, name, sku, image) still
 		// emits — agents see the variant exists, just without a
 		// monetary action attached. (#373)
-		if ( ! method_exists( $variation, 'is_purchasable' ) || $variation->is_purchasable() ) {
+		if (
+			( ! method_exists( $variation, 'is_purchasable' ) || $variation->is_purchasable() )
+			&& self::is_orderable( $variation )
+		) {
 			$this->add_buy_action( $entry, $variation );
 			$this->add_checkout_page_url_template( $entry, $variation );
 		}
@@ -1608,6 +1612,35 @@ class WC_AI_Storefront_JsonLd {
 	 * @param WC_Product $product The product or variation.
 	 * @return string Unqualified schema.org term: InStock, OutOfStock or BackOrder.
 	 */
+	/**
+	 * Whether WC's cart would actually accept this product right now.
+	 *
+	 * Gates the two buy-link fields (`potentialAction` / BuyAction and
+	 * `offers[].checkoutPageURLTemplate`). `is_purchasable()` alone is
+	 * NOT sufficient: core defines it as `exists && published && has a
+	 * price` and never consults stock, while `WC_Cart::add_to_cart()`
+	 * rejects on `! is_in_stock()`. An out-of-stock-but-priced product
+	 * therefore satisfied the #373 purchasable gate and advertised a
+	 * checkout URL that dumps the agent on an empty cart carrying "You
+	 * cannot add … because the product is out of stock" (#606).
+	 *
+	 * Deliberately `is_in_stock()` and NOT a quantity test: a
+	 * backordered product reports `is_in_stock() === true`, the cart
+	 * accepts it, and its buy link must keep emitting — gating on stock
+	 * quantity would suppress exactly the variants #601 taught to
+	 * advertise themselves as `BackOrder`. This predicate is therefore
+	 * equivalent to "availability is not OutOfStock" on both the parent
+	 * and per-variant paths, since `stock_status_to_schema()` returns
+	 * `OutOfStock` iff `! is_in_stock()` and WC core does the same when
+	 * it builds the parent Offer.
+	 *
+	 * @param WC_Product $product The product or variation.
+	 * @return bool True when a buy link would resolve rather than error.
+	 */
+	private static function is_orderable( $product ): bool {
+		return ! method_exists( $product, 'is_in_stock' ) || (bool) $product->is_in_stock();
+	}
+
 	private static function stock_status_to_schema( $product ): string {
 		if ( ! $product->is_in_stock() ) {
 			return 'OutOfStock';

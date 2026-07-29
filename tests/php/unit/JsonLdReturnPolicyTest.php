@@ -117,6 +117,9 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// `is_purchasable()` before emitting `BuyAction` /
 		// `checkoutPageURLTemplate`.
 		$product->shouldReceive( 'is_purchasable' )->andReturn( true );
+		// In stock by default: the buy-link gate reads `is_in_stock()`
+		// alongside `is_purchasable()` (see `is_orderable()`, #606).
+		$product->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
 		// Physical product: `add_shipping_details()` (#504) calls
 		// `needs_shipping()` to skip the shipping block for virtual products.
 		$product->shouldReceive( 'needs_shipping' )->andReturn( true );

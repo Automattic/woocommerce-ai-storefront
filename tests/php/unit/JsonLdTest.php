@@ -251,11 +251,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_stock_quantity' )
 			->andReturn( $overrides['stock_quantity'] ?? null );
 		// Both `stock_status` and `is_in_stock()` are read when mapping to
-		// schema.org availability (see `stock_status_to_schema()`), so
-		// mocks must carry both. Default to 'instock' so the common case
-		// matches `make_variation()`'s `is_in_stock() => true` default.
+		// schema.org availability (see `stock_status_to_schema()`) and to
+		// gate the buy links (see `is_orderable()`), so mocks must carry
+		// both. Defaults are the in-stock pair, matching
+		// `make_variation()`'s `is_in_stock() => true` default; keep them
+		// consistent when overriding — an `in_stock => false` with a
+		// 'instock' status is a state WC itself never produces.
 		$product->shouldReceive( 'get_stock_status' )
 			->andReturn( $overrides['stock_status'] ?? 'instock' );
+		$product->shouldReceive( 'is_in_stock' )
+			->andReturn( $overrides['in_stock'] ?? true );
 		$product->shouldReceive( 'has_weight' )
 			->andReturn( $overrides['has_weight'] ?? false );
 		$product->shouldReceive( 'get_weight' )
@@ -1249,6 +1254,104 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Action URLs are suppressed.
 		$this->assertArrayNotHasKey( 'potentialAction', $entry );
 		$this->assertArrayNotHasKey( 'checkoutPageURLTemplate', $entry['offers'][0] );
+	}
+
+	public function test_variant_entry_omits_buy_action_and_url_template_when_out_of_stock(): void {
+		// #606: `is_purchasable()` is `exists && published && has price` —
+		// it never consults stock — while `WC_Cart::add_to_cart()` rejects
+		// on `! is_in_stock()`. An out-of-stock-but-priced variation
+		// therefore passed the #373 gate and advertised a checkout URL
+		// that lands the agent on an empty cart carrying "You cannot add
+		// ... because the product is out of stock."
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [
+			'id'           => 999,
+			'in_stock'     => false,
+			'stock_status' => 'outofstock',
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		// Descriptive fields still emit — the agent learns the variant
+		// exists and is unavailable.
+		$this->assertArrayHasKey( 'sku', $entry );
+		$this->assertArrayHasKey( 'price', $entry['offers'][0] );
+		$this->assertSame(
+			'https://schema.org/OutOfStock',
+			$entry['offers'][0]['availability']
+		);
+
+		// Both action URLs are suppressed.
+		$this->assertArrayNotHasKey( 'potentialAction', $entry );
+		$this->assertArrayNotHasKey( 'checkoutPageURLTemplate', $entry['offers'][0] );
+	}
+
+	public function test_variant_entry_keeps_buy_action_when_backordered(): void {
+		// Guard for #601: backordered products have `is_in_stock() =>
+		// true` and WC's cart ACCEPTS them, so their buy links must keep
+		// emitting. Gating on stock QUANTITY rather than `is_in_stock()`
+		// would suppress exactly the variants #601 taught to advertise
+		// themselves as orderable via `BackOrder`.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent    = $this->make_product( [ 'id' => 100 ] );
+		$variation = $this->make_variation( [
+			'id'             => 999,
+			'in_stock'       => true,
+			'stock_status'   => 'onbackorder',
+			'managing_stock' => true,
+			'stock_quantity' => -4,
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame(
+			'https://schema.org/BackOrder',
+			$entry['offers'][0]['availability']
+		);
+		$this->assertArrayHasKey( 'potentialAction', $entry );
+		$this->assertArrayHasKey( 'checkoutPageURLTemplate', $entry['offers'][0] );
+	}
+
+	public function test_enhance_product_omits_buy_action_when_out_of_stock(): void {
+		// #606, parent/simple path — same gap as the variant path at the
+		// other call site.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product( [
+			'in_stock'     => false,
+			'stock_status' => 'outofstock',
+		] );
+
+		$result = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer', 'price' => '10' ] ] ],
+			$product
+		);
+
+		$this->assertArrayNotHasKey( 'potentialAction', $result );
+		$this->assertArrayNotHasKey( 'checkoutPageURLTemplate', $result['offers'][0] );
+	}
+
+	public function test_enhance_product_keeps_buy_action_when_backordered(): void {
+		// Parent-path counterpart to the variant backorder guard above.
+		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->make_product( [
+			'in_stock'     => true,
+			'stock_status' => 'onbackorder',
+		] );
+
+		$result = $this->jsonld->enhance_product_data(
+			[ 'offers' => [ [ '@type' => 'Offer', 'price' => '10' ] ] ],
+			$product
+		);
+
+		$this->assertArrayHasKey( 'potentialAction', $result );
+		$this->assertArrayHasKey( 'checkoutPageURLTemplate', $result['offers'][0] );
 	}
 
 	public function test_enhance_product_omits_buy_action_when_parent_unpurchasable(): void {
