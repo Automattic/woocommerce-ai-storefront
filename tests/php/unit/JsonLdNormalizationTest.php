@@ -102,6 +102,10 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		// Default to purchasable for the JSON-LD URL gate (#373).
 		$product->shouldReceive( 'is_purchasable' )
 			->andReturn( $overrides['is_purchasable'] ?? true );
+		// In stock by default: the buy-link gate reads `is_in_stock()`
+		// alongside `is_purchasable()` (see `is_orderable()`, #606).
+		$product->shouldReceive( 'is_in_stock' )
+			->andReturn( $overrides['in_stock'] ?? true );
 		// Physical by default: `add_shipping_details()` (#504) calls
 		// `needs_shipping()` to skip shipping for virtual products.
 		$product->shouldReceive( 'needs_shipping' )

@@ -1,5 +1,13 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Out-of-stock products no longer advertise a buy link that errors at the cart (#606).**
+  - An out-of-stock product emitted `potentialAction` (BuyAction) and `offers[].checkoutPageURLTemplate` alongside `availability: OutOfStock`. Following that advertised URL didn't merely dead-end — it landed on an empty cart carrying `?wc_error=You cannot add "…" to the cart because the product is out of stock`, so an AI agent or search crawler acting on the published JSON-LD reached a broken flow.
+  - Both emission sites gated on `is_purchasable()` alone, which in WooCommerce core is `exists && published && has a price` and **never consults stock** — while `WC_Cart::add_to_cart()` rejects on `! is_in_stock()`. The two gates were checking different things. Buy-link emission now additionally requires `is_in_stock()`, at both the parent/simple path and the per-variant path.
+  - Descriptive fields (`@id`, `name`, `sku`, `image`, `offers[].price`, `offers[].availability`) still emit, so agents continue to see that the product exists and why it can't be bought — they just aren't handed a URL that fails.
+  - **Backordered products keep their buy links.** The predicate is `is_in_stock()`, not a stock-quantity test: a backordered product reports in-stock, WooCommerce accepts it at cart-add, and its availability is `BackOrder`. Gating on quantity would have suppressed exactly the oversold-but-orderable variants corrected in #601.
+
 ---
 
 ## [0.34.2] – 2026-07-29

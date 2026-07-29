@@ -127,7 +127,7 @@ Each field added by the plugin, with the rule that controls its presence.
 
 A Schema.org `BuyAction` pointing to a URL the AI agent can use to send the shopper to checkout with that product pre-added.
 
-- **Always emitted** for purchasable products (not draft, not out of stock when stock management is on, has a price).
+- **Emitted for products WooCommerce's cart would actually accept**: purchasable (published, not draft, has a price) **and** in stock. Backordered products still qualify — `is_in_stock()` is true for them and WC accepts them at cart-add — so they keep their buy link. See "Unpurchasable and out-of-stock suppression" below.
 - **`target` URL** is a bare Shareable Checkout URL (`/checkout-link/?products=ID:1`) with no query-string attribution parameters.
 - **`result.@type`** is always `Order` (Schema.org's expected result type for `BuyAction`).
 - **Source**: `build_checkout_url_template()` via `add_buy_action()` in `class-wc-ai-storefront-jsonld.php`.
@@ -309,12 +309,18 @@ Override is intentionally limited to the four core typed slugs: they have canoni
 
 When a variable product has variation children but no axis qualifies — neither `get_variation_attributes()` nor the core-typed override surfaces ≥2 distinct values — the plugin falls back to simple-Product emission. With no `variesBy` to advertise, a `hasVariant` block of N near-identical entries would just confuse agents. Better to emit a working single-SKU shape and let the merchant fix the variation config in the editor.
 
-**Unpurchasable URL suppression** (#373):
+**Unpurchasable and out-of-stock URL suppression** (#373, #606):
 
-When a variation or parent product reads `is_purchasable: false` in WC (typically missing a price, draft, catalog-hidden, or merchant-misconfigured), the JSON-LD emission **suppresses both `BuyAction` and `Offer.checkoutPageURLTemplate`** on that entry while keeping the descriptive fields (`@id`, `name`, `sku`, `image`, `offers[].price`). SEO crawlers and non-UCP agents that only read JSON-LD therefore don't receive a URL that WC would refuse at checkout — but they still see the product/variant exists. Same suppression applies to:
+When a variation or parent product is either **unpurchasable** (`is_purchasable: false` — typically missing a price, draft, catalog-hidden, or merchant-misconfigured) or **out of stock** (`is_in_stock: false`), the JSON-LD emission **suppresses both `BuyAction` and `Offer.checkoutPageURLTemplate`** on that entry while keeping the descriptive fields (`@id`, `name`, `sku`, `image`, `offers[].price`, `offers[].availability`). SEO crawlers and non-UCP agents that only read JSON-LD therefore don't receive a URL that WC would refuse at checkout — but they still see the product/variant exists and why it can't be bought.
 
-- A variant entry under `hasVariant[]` whose underlying variation is unpurchasable (descriptive fields emit; URLs drop).
-- A simple or variable parent product that itself reads `is_purchasable: false` (the parent's own `BuyAction` + `checkoutPageURLTemplate` are skipped).
+Both conditions are required because they are independent in WC core: `is_purchasable()` is `exists && published && has a price` and **never consults stock**, while `WC_Cart::add_to_cart()` rejects on `! is_in_stock()`. Before #606 an out-of-stock-but-priced product passed the purchasable gate and advertised a checkout URL that landed the agent on an empty cart carrying `?wc_error=You cannot add … because the product is out of stock`.
+
+**Backorders keep their buy link.** The stock predicate is `is_in_stock()`, not a quantity test: a backordered product reports `is_in_stock: true`, WC accepts it at cart-add, and its `availability` is `BackOrder` rather than `OutOfStock`. Gating on stock quantity instead would wrongly suppress buy links for oversold-but-orderable variants (see #601). The predicate is equivalent to "availability is not `OutOfStock`" on both paths.
+
+Same suppression applies to:
+
+- A variant entry under `hasVariant[]` whose underlying variation is unpurchasable or out of stock (descriptive fields emit; URLs drop).
+- A simple or variable parent product that itself reads `is_purchasable: false` or `is_in_stock: false` (the parent's own `BuyAction` + `checkoutPageURLTemplate` are skipped).
 
 For variable parents, this is mostly defense-in-depth — `maybe_convert_to_product_group()` already drops the parent's `offers[]` and `potentialAction` when converting to ProductGroup. The per-variant gate in `build_variant_entry()` handles the in-list case.
 
