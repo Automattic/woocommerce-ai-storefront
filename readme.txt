@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.34.1
+Stable tag: 0.34.2
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.34.2 - 2026-07-29 =
+**Fixed**
+* Products on backorder are now described correctly to AI shopping assistants. A variation you have oversold (stock below zero, with backorders allowed) used to be published as "in stock" while also reporting a negative stock number — two contradictory signals on the same product. It is now published as "on backorder", which still tells assistants the item is orderable, and the stock number is reported as 0 rather than a negative figure. Only variations of variable products were affected; simple products were always correct.
 
 = 0.34.1 - 2026-07-21 =
 **Fixed**

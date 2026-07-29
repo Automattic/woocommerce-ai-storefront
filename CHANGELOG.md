@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.34.2] – 2026-07-29
+
 ### Fixed
 
 - **Backordered variants no longer emit `availability: InStock` alongside a negative `inventoryLevel` (#601).**
@@ -12,6 +16,10 @@
 
 - **Dev tooling: bump `wp-coding-standards/wpcs` to 3.4.1 for CVE-2026-45293.** The WordPressCS arbitrary-code-execution advisory (high severity, affecting `>=0.14.1,<3.4.1`) was published 2026-07-28 and failed the `composer audit` CI gate on every open PR. The package is `require-dev` only — it is the PHPCS ruleset and is not shipped in the plugin zip — so no released version exposed users to it; the risk was confined to running lint locally or in CI.
   - `composer.json` already declared the constraint as `*`, so only `composer.lock` moved. `phpcsstandards/phpcsutils` (1.2.2 → 1.2.3) and `phpcsstandards/phpcsextra` (1.5.0 → 1.5.1) are bumped alongside it, because wpcs 3.4.1 requires them; a lockfile update naming wpcs alone silently resolves *backwards* to 0.14.0 (which predates the advisory range) instead of forwards. Repo-wide PHPCS is clean on the new ruleset with no code changes.
+
+### Docs
+
+- **JSON-LD field reference updated for the three-state availability mapping and the `inventoryLevel` clamp (#601).** `JSON-LD-SCHEMA.md` now documents why the out-of-stock branch is checked first (the `woocommerce_product_is_in_stock` filter can decouple the bool from `stock_status`), that Google's merchant-listing spec never reads `inventoryLevel`, and the shared-pool caveat — when stock is managed on a variable *parent*, every variant reports the same inherited number, which is faithful to WooCommerce but is not a per-variant figure.
 
 ---
 
