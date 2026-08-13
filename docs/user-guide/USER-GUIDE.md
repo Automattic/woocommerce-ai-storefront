@@ -443,6 +443,48 @@ Pick whichever preserves the navigation your shoppers expect. Either way, the AI
 
 > **Note on category-name search**: AI Storefront does light synonym handling in agent search (singular/plural, common variants). It doesn't translate marketing names into product types. If your `Summer Vibes` category contains swimwear and an agent asks for swimwear, the agent will not find it unless the category is renamed *or* you also assign those products to a `Swimwear` category.
 
+### Set the product attributes shopping surfaces read
+
+Categories tell an agent *what kind of thing* a product is. Attributes tell it *which one*. For apparel, four attributes carry most of the weight, and Google Merchant Center expects all four:
+
+| Attribute | Set it on | Accepted values |
+|---|---|---|
+| Color | All apparel and accessories | Any text ("Black", "Sea Green") |
+| Size | Clothing and shoes | Any text ("M", "32Wx34L", "One size") |
+| Gender | All apparel and accessories | `male`, `female`, `unisex` |
+| Age group | All apparel and accessories | `newborn`, `infant`, `toddler`, `kids`, `adult` |
+
+Once an attribute is on the product it travels on its own. Your product-feed plugin reads it when it builds your Merchant Center feed, and AI Storefront publishes it in the product's structured data for AI agents.
+
+Four rules worth knowing as you fill them in:
+
+**Set Color and Size on every product, including single-color and one-size items.** These are expected per product, not per variation. A shirt that comes only in black should still say "Black", and a one-size hat should say "One size".
+
+**Set Gender and Age group explicitly on every product.** Both are read literally, with no default applied. An adult clothing store sets Age group to `adult` throughout, and a unisex tee says `unisex`.
+
+**Use Google's exact values, in English,** for Gender and Age group. "Womens", "Adults", and translated equivalents read fine to a human and are not accepted values.
+
+**Use one value per attribute per product,** so it can be published as a single Color or Size.
+
+Age group values cover these ranges:
+
+| Value | Ages |
+|---|---|
+| `newborn` | 0 to 3 months |
+| `infant` | 3 to 12 months |
+| `toddler` | 1 to 5 years |
+| `kids` | 5 to 13 years |
+| `adult` | Teens or older, 13 and up |
+
+To set them up:
+
+1. Go to *Products → Attributes* and create a global attribute for each one you need: Color, Size, Gender, Age group. Global attributes let you pick from a list instead of retyping, which keeps spelling consistent across the catalog and makes the values usable as filters.
+2. Add your terms under each attribute. For Gender and Age group, add only Google's accepted values.
+3. On each product, open the *Attributes* tab and set a value for each.
+4. Tick **Visible on the product page**. AI Storefront publishes the attributes marked visible.
+
+These same four attributes are what an AI agent reads to decide whether your product matches a shopper asking for "a black hoodie, mens, large".
+
 ### Optional: let an AI assistant help you with the reshape
 
 WooCommerce **core** ships a built-in MCP (Model Context Protocol) integration starting in WC 10.3.0, designed for **admin-side** AI: it lets AI assistants like Claude or ChatGPT, running under your own credentials, read and modify your store on your behalf from inside the admin. There is no extension to install: the integration is already on your store after you update WooCommerce, gated behind a feature flag you toggle on.
