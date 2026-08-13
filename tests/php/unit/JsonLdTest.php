@@ -2737,6 +2737,46 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'CMT', $result['depth']['unitCode'] );
 	}
 
+	public function test_dimension_and_weight_values_encode_as_json_numbers(): void {
+		// WC persists weight and dimensions as free-form decimal strings
+		// ('.5', '10'), which reach the markup verbatim unless cast.
+		// `QuantitativeValue.value` is Number-ranged, and a consumer that
+		// does not coerce reads a quoted literal as text.
+		//
+		// Asserted on the encoded output rather than the array, because
+		// assertEquals( '10', 10.0 ) passes in both directions — the
+		// loose comparison cannot tell a fixed emitter from a broken one.
+		// The quotes are only visible after json_encode.
+		Functions\when( 'get_option' )->alias(
+			static fn( $key, $default = '' ) => match ( $key ) {
+				'woocommerce_dimension_unit' => 'cm',
+				'woocommerce_weight_unit'    => 'kg',
+				default                      => $default,
+			}
+		);
+
+		$product = $this->make_product( [
+			'has_weight'     => true,
+			'weight'         => '.5',
+			'has_dimensions' => true,
+			'dimensions'     => [ 'length' => '10', 'width' => '20', 'height' => '30' ],
+		] );
+
+		$result = $this->jsonld->enhance_product_data( [], $product );
+
+		foreach ( [ 'weight', 'depth', 'width', 'height' ] as $key ) {
+			$this->assertIsFloat(
+				$result[ $key ]['value'],
+				"{$key}.value must be a float, not a string."
+			);
+		}
+
+		$encoded = wp_json_encode( $result );
+		$this->assertStringContainsString( '"value":0.5', $encoded, 'weight must encode unquoted.' );
+		$this->assertStringContainsString( '"value":10', $encoded, 'depth must encode unquoted.' );
+		$this->assertStringNotContainsString( '"value":"', $encoded, 'No QuantitativeValue may encode its value as a quoted string.' );
+	}
+
 	// ------------------------------------------------------------------
 	// Attributes
 	// ------------------------------------------------------------------

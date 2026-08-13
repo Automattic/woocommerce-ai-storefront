@@ -730,9 +730,14 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Adds weight and depth/width/height QuantitativeValue blocks.
 	 *
-	 * Casts weight through (float) to produce a canonical numeric value —
-	 * WC persists weight as a free-form string (e.g. `.5`) that strict
-	 * JSON-LD parsers would see as a quoted string literal. Audit bug #4.
+	 * Every value is cast through (float) to produce a canonical numeric
+	 * value — WC persists weight and dimensions alike as free-form strings
+	 * (e.g. `.5`, `10`) that strict JSON-LD parsers would see as quoted
+	 * string literals. `QuantitativeValue.value` is Number-ranged.
+	 *
+	 * Audit bug #4 introduced the weight cast; the three dimension values
+	 * carried the same defect until #613 because `get_dimensions( false )`
+	 * returns the raw props untouched.
 	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
@@ -751,17 +756,17 @@ class WC_AI_Storefront_JsonLd {
 			$dimension_unit   = $this->get_dimension_unit_code();
 			$markup['depth']  = array(
 				'@type'    => 'QuantitativeValue',
-				'value'    => $dimensions['length'],
+				'value'    => (float) $dimensions['length'],
 				'unitCode' => $dimension_unit,
 			);
 			$markup['width']  = array(
 				'@type'    => 'QuantitativeValue',
-				'value'    => $dimensions['width'],
+				'value'    => (float) $dimensions['width'],
 				'unitCode' => $dimension_unit,
 			);
 			$markup['height'] = array(
 				'@type'    => 'QuantitativeValue',
-				'value'    => $dimensions['height'],
+				'value'    => (float) $dimensions['height'],
 				'unitCode' => $dimension_unit,
 			);
 		}
