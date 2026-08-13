@@ -28,7 +28,7 @@ Use this audit to:
 
 ## Methodology
 
-1. Properties pulled directly from Schema.org spec pages for `Product`, `Offer`, `Action`, `Review`, `Organization`, `OnlineBusiness`, `OnlineStore`.
+1. Properties pulled directly from Schema.org spec pages for `Product`, `Offer`, `Action`, `Review`, `Organization`, `OnlineBusiness`, `OnlineStore`. Domain claims (which type a property is actually declared on) are verified against the canonical machine-readable vocabulary — `https://schema.org/version/latest/schemaorg-current-https.ttl`, grepping the property's `schema:domainIncludes` — because the rendered spec pages make an inherited property and a directly-declared one look alike.
 2. Implementation cross-referenced against [`class-wc-ai-storefront-jsonld.php`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) and WooCommerce core's `WC_Structured_Data::generate_product_data()` (in `wp-content/plugins/woocommerce/includes/class-wc-structured-data.php`).
 3. Doc coverage measured against [`JSON-LD-SCHEMA.md`](./JSON-LD-SCHEMA.md).
 
@@ -321,11 +321,11 @@ WC core emits both when reviews are enabled and the product has ≥1 rated revie
 
 ---
 
-## `Organization` (the Thing → Organization layer of `OnlineStore`)
+## `Organization` (the Thing → Organization layer of `OnlineBusiness`)
 
 [Schema.org spec →](https://schema.org/Organization)
 
-The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy section). The Organization properties below cover the entire chain since `OnlineBusiness` adds none and `OnlineStore` adds only `currenciesAccepted`.
+The plugin emits `@type: OnlineBusiness` — one level above the deepest type in the chain ([decision](#why-onlinebusiness-and-not-onlinestore)). The Organization properties below cover everything we emit: `OnlineBusiness` defines no direct properties of its own, and `OnlineStore` adds only `isStoreOn` (which we don't emit).
 
 ### Direct properties — emitted
 
@@ -408,7 +408,7 @@ The plugin emits `@type: OnlineStore` (deepest in the chain — see hierarchy se
 Thing → Organization → OnlineBusiness → OnlineStore
 ```
 
-All inherited properties are covered by the [Organization](#organization-the-thing--organization-layer-of-onlinestore) table.
+All inherited properties are covered by the [Organization](#organization-the-thing--organization-layer-of-onlinebusiness) table.
 
 ### Why `OnlineBusiness` and not `OnlineStore`
 
@@ -423,7 +423,34 @@ Schema.org's `OnlineStore` description is *"An eCommerce site"* — strictly pro
 
 Emitting `OnlineStore` for everything would mis-classify a meaningful fraction of merchants. `OnlineBusiness` covers the same intent ("this entity does business online") without claiming product retail.
 
-The trade-off: `currenciesAccepted` is defined on `OnlineStore` per the Schema.org spec, not on the `OnlineBusiness` parent — and Schema.org property inheritance flows parent → child only, so the parent does NOT pick up subtype-scoped properties from a child. We continue to emit `currenciesAccepted` on `OnlineBusiness` despite the domain mismatch as an **intentional non-domain pairing**: most consumers (AI agents, search crawlers) parse the property regardless of the enclosing type, and the machine-readable currency signal is too useful to drop. Strict validators may emit a non-fatal "unrecognized property for this type" warning — accepted tradeoff. `hasOfferCatalog`, `name`, `description`, `url`, and `potentialAction` are all defined on `Organization` (or `Thing`) and apply cleanly to `OnlineBusiness` via standard parent-to-child inheritance.
+The trade-off: `currenciesAccepted` is **not** a property of `OnlineBusiness` — and, contrary to what this document and the emitter docblock claimed until the audit re-verification, it is not a property of `OnlineStore` either. Its sole declared domain in the canonical vocabulary is `LocalBusiness`:
+
+```turtle
+schema:currenciesAccepted a rdf:Property ;
+    schema:domainIncludes schema:LocalBusiness ;
+    schema:rangeIncludes schema:Text .
+```
+
+`LocalBusiness` is a **sibling** branch, not an ancestor: it descends from `Organization` (and `Place`) in parallel with `OnlineBusiness`, so no inheritance path reaches our emitted type from either direction. The only property `OnlineStore` adds over `OnlineBusiness` is `isStoreOn`.
+
+We continue to emit `currenciesAccepted` on `OnlineBusiness` as an **intentional non-domain pairing**: most consumers (AI agents, search crawlers) parse the property regardless of the enclosing type, and the machine-readable currency signal is too useful to drop. Strict validators may emit a non-fatal "unrecognized property for this type" warning — accepted tradeoff. `hasOfferCatalog`, `name`, `description`, `url`, and `potentialAction` are all defined on `Organization` (or `Thing`) and apply cleanly to `OnlineBusiness` via standard parent-to-child inheritance.
+
+> **Historical note.** `currenciesAccepted` was on-domain before 0.10.0, when the plugin emitted `@type: Store` (`Thing → Organization/Place → LocalBusiness → Store`) and inherited it legitimately. It went off-domain at [#311](https://github.com/Automattic/woocommerce-ai-storefront/pull/311)'s move to `OnlineStore` — which left the `LocalBusiness` branch — not at #334's move to `OnlineBusiness`. #334 correctly identified that the property was off-domain but misattributed the boundary it had crossed.
+
+### Counter-evidence: Google recommends the subtype
+
+Google's [Organization structured data documentation](https://developers.google.com/search/docs/appearance/structured-data/organization) names this exact choice and comes down the other way:
+
+> "We recommend using the most specific schema.org subtype of `Organization` that matches your organization. For example, if you have an ecommerce site, then we recommend using the `OnlineStore` subtype instead of `OnlineBusiness`."
+
+Weighing it against the decision above:
+
+- **The recommendation is conditional on the site.** It says to use the subtype *"that matches your organization"* — a per-store judgment. This plugin ships one emitter to every WC install and cannot know, at render time, whether a given store is retail. That's the whole basis for picking the parent.
+- **Switching gains no properties.** `OnlineStore` declares exactly one property `OnlineBusiness` doesn't: `isStoreOn` (the marketplace an online store is listed on), which we don't emit. `hasMerchantReturnPolicy`, `acceptedPaymentMethod`, `makesOffer`, and `hasShippingService` are all `Organization`-domain properties and already apply to `OnlineBusiness` — verify with `schema:domainIncludes` in the vocabulary before accepting a claim to the contrary.
+- **No rich-result eligibility depends on it.** Merchant listing / shopping experiences are built on `Product` and `Offer` markup; [Google's merchant listing documentation](https://developers.google.com/search/docs/appearance/structured-data/merchant-listing) does not mention `OnlineStore` or `OnlineBusiness` at all. Claims that the subtype unlocks Merchant Center integration, storefront badges, or free listing feeds are unsourced.
+- **Both types are pending.** `OnlineStore` and `OnlineBusiness` alike carry `schema:isPartOf <https://pending.schema.org>` — neither is stable core vocabulary, so "more specific" does not mean "more stable."
+
+The unresolved tension is real: for the retail majority of WC installs, Google's guidance favours `OnlineStore`, and the plugin currently emits the parent for all of them. Merchants can already override the type through the `wc_ai_storefront_jsonld_store` filter, which receives the whole `$store_data` array before output. Auto-deriving the type per-store is tracked separately.
 
 > **Status:** Resolved (issues [#334](https://github.com/Automattic/woocommerce-ai-storefront/issues/334) and [#337](https://github.com/Automattic/woocommerce-ai-storefront/issues/337) phase 1, bundled in one PR). The [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) method now emits `@type: OnlineBusiness`.
 
@@ -439,12 +466,15 @@ We **don't target** `OnlineStore` because its "eCommerce site" definition is too
 
 ### Direct properties
 
+`isStoreOn` is the **only** property `OnlineStore` declares directly — verified against `schemaorg-current-https.ttl`, not the rendered spec page.
+
 | Property | In doc? | Emitted under target type? | Source |
 |---|---|---|---|
-| `currenciesAccepted` | — | n/a (`OnlineBusiness` doesn't carry this — Organization can, but the property is most idiomatic on `OnlineStore`) | — |
 | `isStoreOn` (`OnlineMarketplace`) | — | — | — *(would be useful for product stores mirrored on Etsy / Amazon / eBay; out of scope while we target `OnlineBusiness`)* |
 
-Everything else on `OnlineStore` flows through the inheritance chain. See the [Organization](#organization-the-thing--organization-layer-of-onlinestore) and `Thing` tables above; those properties are still emitted under our target `OnlineBusiness` type.
+> `currenciesAccepted` previously appeared in this table. It does not belong to `OnlineStore` — its only declared domain is `LocalBusiness`. We emit it anyway; see [the trade-off above](#why-onlinebusiness-and-not-onlinestore).
+
+Everything else on `OnlineStore` flows through the inheritance chain. See the [Organization](#organization-the-thing--organization-layer-of-onlinebusiness) and `Thing` tables above; those properties are still emitted under our target `OnlineBusiness` type.
 
 ### What changes if we ever wanted to emit `OnlineStore` (e.g. per-merchant opt-in)
 

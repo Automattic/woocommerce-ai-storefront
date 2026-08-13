@@ -163,7 +163,7 @@ Before configuring anything else, take 30 seconds to confirm the endpoints are l
 | `https://your-store.com/.well-known/ucp` | A pretty-printed JSON document in monospace. Top-level keys: `name`, `version`, `capabilities`, `payment_handlers`, `services`. |
 | `https://your-store.com/robots.txt` | The standard WordPress `robots.txt` plus a block of `User-agent: GPTBot` / `User-agent: ChatGPT-User` / etc. Each allowed crawler is welcomed to the whole store except cart, checkout, and account pages; unchecked crawlers get an explicit block. |
 | `https://your-store.com/opensearch.xml` | A small XML document starting with `<OpenSearchDescription>`. It tells AI agents and browsers how to search your products, pointing at both your product-search page and the catalog API. |
-| Homepage → "View page source" | Search for `"@type":"OnlineStore"`. This is your store's brand info available to AI shopping agents. See [section 4b](#4b-what-the-homepage-publishes-to-ai-agents). |
+| Homepage → "View page source" | Search for `"@type":"OnlineBusiness"`. This is your store's brand info available to AI shopping agents. See [section 4b](#4b-what-the-homepage-publishes-to-ai-agents). |
 | Any product page → "View page source" | Search for `"@type":"Product"`. You should see product details like prices and (once you set one in [section 7](#7-set-your-store-policies)) return policy information. |
 | Any product page → "View page source" | Search for `<meta name="description"` and `og:title`. These are the search-result snippet and social-share preview the plugin generates for the page. See [section 4c](#4c-search-engine-and-social-metadata). |
 
