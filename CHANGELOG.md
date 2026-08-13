@@ -1,5 +1,17 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Product dimension values now emit as JSON numbers instead of quoted strings (#613).**
+  - `depth`, `width`, and `height` published their `QuantitativeValue.value` as a string literal (`"value": "10"`) while `weight` on the same product published a number (`"value": 1.5`). Two adjacent properties in one block disagreed on type.
+  - `QuantitativeValue.value` is Number-ranged. The markup was not invalid, since the property also accepts `Text`, but a consumer that doesn't coerce read a string where every sibling gave a number.
+  - The weight cast was added as audit bug #4 for exactly this reason — WooCommerce persists both weight and dimensions as free-form decimal strings (`.5`, `10`). `get_dimensions( false )` returns those props untouched, and the fix was never applied to the dimension branch. All three now cast through `(float)`.
+  - No change to which products emit dimensions, to unit codes, or to any other field.
+
+### Tests
+
+- **`JsonLdTest.php`** — new `test_dimension_and_weight_values_encode_as_json_numbers` asserts on the `wp_json_encode` output rather than the array. The pre-existing dimension test used `assertEquals( '10', … )`, which passes against both a string and a float under loose comparison and so could not detect this defect in either direction; the quotes are only visible after encoding. Also asserts `assertIsFloat` per value and that no `QuantitativeValue` anywhere in the markup encodes its value quoted.
+
 ---
 
 ## [0.34.3] – 2026-07-29
