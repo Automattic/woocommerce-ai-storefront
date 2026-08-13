@@ -46,7 +46,7 @@ apply_filters( 'wc_ai_storefront_jsonld_store', array $store_data, array $settin
 
 | Param | Type | Description |
 |-------|------|-------------|
-| `$store_data` | `array` | The Schema.org `OnlineStore` structure (`@type`, `@context`, `name`, `description`, `url`, `currenciesAccepted`, `potentialAction`, `hasOfferCatalog`, plus optionally `logo`, `address`, `contactPoint`). |
+| `$store_data` | `array` | The Schema.org `OnlineBusiness` structure (`@type`, `@context`, `name`, `description`, `url`, `currenciesAccepted`, `potentialAction`, `hasOfferCatalog`, plus optionally `logo`, `address`, `contactPoint`). |
 | `$settings` | `array` | A minimal 3-key subset of the plugin's settings: `enabled`, `product_selection_mode`, `return_policy`. Security-sensitive fields are intentionally excluded (same subset as `wc_ai_storefront_jsonld_product`). |
 
 **Returns:** modified `array`.
@@ -101,7 +101,7 @@ add_filter( 'wc_ai_storefront_jsonld_store', function ( array $store_data, array
 }, 10, 2 );
 ```
 
-**What you should NOT add via this filter.** `streetAddress` is deliberately suppressed by the plugin — for an `OnlineStore` (vs. a `LocalBusiness`) the field has low signal value but real privacy risk (many merchants populate WC Settings with their home address for tax purposes and don't expect it published). Re-injecting `streetAddress` via this filter undoes that privacy guard. If a merchant actually wants their street address published, they should configure that through a plugin that explicitly asks them to opt in.
+**What you should NOT add via this filter.** `streetAddress` is deliberately suppressed by the plugin — for an `OnlineBusiness` (vs. a `LocalBusiness`) the field has low signal value but real privacy risk (many merchants populate WC Settings with their home address for tax purposes and don't expect it published). Re-injecting `streetAddress` via this filter undoes that privacy guard. If a merchant actually wants their street address published, they should configure that through a plugin that explicitly asks them to opt in.
 
 ### `wc_ai_storefront_jsonld_website`
 
