@@ -2,18 +2,24 @@
 
 > Last reviewed: 2026-08-13. Requirement scopes and value lists verified directly against Google Merchant Center help pages on that date; Schema.org property domains verified against `schemaorg-current-https.ttl`.
 
-Apparel merchants running Google Merchant Center alongside this plugin hit a recurring class of catalog-data problem: GMC reports missing `gender`, `age_group`, `color`, or `size` on products the merchant considers complete. This document maps each GMC-required attribute to its Schema.org property and to what the plugin emits today, and enumerates the ways correct catalog data can still fail to reach Google.
+Apparel merchants running Google Merchant Center alongside this plugin hit a recurring class of report: GMC flags missing `gender`, `age_group`, `color`, or `size`. This document maps each GMC-required attribute to its Schema.org property, records what the plugin does with the value once it has one, and lists the traps that produce a missing-attribute report.
 
-This is a catalog-data reference, not a feed-integration guide. The plugin is not a Merchant Center feed (see the "What this plugin does not do" section of the [merchant user guide](../user-guide/USER-GUIDE.md)); merchants submit to GMC through a feed plugin or through Google's crawl of on-page structured data. Either path reads the same underlying WooCommerce attributes, so the data hygiene below applies regardless of which one a merchant uses.
+**Start from the product, not from the plugin.** The plugin publishes what the merchant enters. It cannot publish an attribute that is not on the product, and the overwhelming majority of these reports resolve to exactly that: the Color field is empty, the Gender attribute was never created. Nothing downstream compensates for an empty field, so check the product data first. The emission detail in this document is for the minority of cases where the value *is* present and something else is going on.
+
+**The plugin is not the Merchant Center path.** Merchants submit to GMC through a product-feed plugin, which reads WooCommerce attributes directly. This plugin's JSON-LD is the agent-facing surface, not the feed. So the emission behaviour described below explains what AI agents see; it is not what gates a Merchant Center report, and no change to it will clear one. What both paths share is the underlying WooCommerce attribute, which is why the data hygiene here applies either way. (See "What this plugin does not do" in the [merchant user guide](../user-guide/USER-GUIDE.md).)
+
+The merchant-facing version of this guidance lives in [user guide §5b](../user-guide/USER-GUIDE.md#5b-shape-your-catalog-for-ai-discoverability).
 
 ## The four attributes
 
-| GMC attribute | Required for | Supported values | Schema.org target | Plugin emits? |
+| GMC attribute | Required for | Supported values | Schema.org target | Published as, when the merchant sets it |
 |---|---|---|---|---|
-| `gender` | All Apparel & Accessories (ID 166) | `male`, `female`, `unisex` | `Product.audience` → `PeopleAudience.suggestedGender` | ❌ never |
-| `age_group` | All Apparel & Accessories (ID 166) | `newborn`, `infant`, `toddler`, `kids`, `adult` | `PeopleAudience.suggestedMinAge` / `suggestedMaxAge` | ❌ never |
-| `color` | All Apparel & Accessories (ID 166) | Free text | `Product.color` | ✅ conditionally |
-| `size` | Apparel & Accessories > Clothing (ID 1604) and > Shoes (ID 187) | Free text | `Product.size` | ✅ conditionally |
+| `gender` | All Apparel & Accessories (ID 166) | `male`, `female`, `unisex` | `Product.audience` → `PeopleAudience.suggestedGender` | `additionalProperty` (untyped) |
+| `age_group` | All Apparel & Accessories (ID 166) | `newborn`, `infant`, `toddler`, `kids`, `adult` | `PeopleAudience.suggestedMinAge` / `suggestedMaxAge` | `additionalProperty` (untyped) |
+| `color` | All Apparel & Accessories (ID 166) | Free text | `Product.color` | typed `color` |
+| `size` | Apparel & Accessories > Clothing (ID 1604) and > Shoes (ID 187) | Free text | `Product.size` | typed `size` |
+
+Every one of these is published when the merchant sets it. The last column is about *shape*, not presence: `color` and `size` become typed Schema.org properties, while `gender` and `age_group` currently ride along as generic `additionalProperty` entries because no slug maps them. An agent can read either; only the typed form carries machine meaning beyond a name/value pair. None of this affects the feed path.
 
 "Required for" above is the **free listings** requirement, which applies to every merchant with an unpaid GMC presence. Each attribute is additionally required for **Shopping ads** when targeting Brazil, France, Germany, Japan, the United Kingdom, or the United States. Google lists optional exemptions for a set of Apparel & Accessories subcategories (pinback buttons, tie clips, cufflinks, wristbands, shoelaces, keychains and similar).
 
@@ -72,19 +78,21 @@ Anything not in that map is emitted as a generic `additionalProperty` entry:
 { "@type": "PropertyValue", "name": "Gender", "value": "female" }
 ```
 
-There is no `audience` / `PeopleAudience` emission anywhere in the codebase, so `gender` and `age_group` have no typed representation at all.
+So a Gender value the merchant entered is published, and published accurately. There is simply no `audience` / `PeopleAudience` emission anywhere in the codebase, so it arrives untyped. That is a legibility limitation for AI agents, not a data loss.
 
-## Four ways correct catalog data fails to reach Google
+## Why an attribute is missing
 
-These are the failure modes worth checking before concluding a product is missing data. All four are current, intended behavior of `emit_attributes()`, not defects — but each one produces a GMC report that looks like missing data.
+**By far the most common reason is that nobody filled it in.** Check this first, on the product itself, before reading any further. A WooCommerce merchant creates a Color attribute when color drives variations, because that is the only case WooCommerce itself demands one; a single-colorway product therefore has no Color at all, and nothing downstream can invent it. The same holds for one-size items, and for Gender and Age Group, which most stores never create as attributes in the first place.
 
-**1. The attribute exists but is unmapped.** A merchant who dutifully creates a `Gender` or `Age Group` attribute and fills it on every product gets a `PropertyValue` entry in `additionalProperty`. The data is present and correct in the markup, and Google will not read it as `gender` or `age_group`, because those require the typed `audience` structure. This is the most frustrating variant of the problem: the merchant did the work and the report still says missing.
+Once the value *is* on the product, four behaviours of `emit_attributes()` determine what shape it takes in the JSON-LD. All four are intended, none is a defect, and none of them affects the Merchant Center feed, which reads the WooCommerce attribute directly. They matter for what AI agents can read.
+
+**1. The attribute is unmapped.** A `Gender` or `Age Group` attribute produces a `PropertyValue` entry in `additionalProperty` rather than a typed property, because no slug maps it. The value is present and correct; it just carries no more machine meaning than any other free-text pair. #618 tracks giving these two a typed home.
 
 **2. The attribute is not marked visible.** `emit_attributes()` skips any attribute where `get_visible()` is false. An attribute added for internal use, or added with the "Visible on the product page" checkbox cleared, is emitted nowhere.
 
 **3. The attribute is variation-defining, on a variable product.** Attributes used as variation axes are skipped on the parent. A variable product whose Color axis drives its variations emits `variesBy` on the parent `ProductGroup` and `color` on each variant, but no `color` on the parent itself. Confirmed on a local hoodie: the `ProductGroup` node carries `variesBy`, and `color` appears only inside `hasVariant` entries.
 
-That is defensible Schema.org modelling. It matters for GMC because the item-group parent and its variants are submitted as separate rows, and a report keyed to the parent shows the attribute absent.
+That is defensible Schema.org modelling: the axis is described once as `variesBy` and resolved per variant. It means an agent reading only the parent node sees no colour, which is the reason to know about it. It does not affect the feed, where the parent and its variants are built from the WooCommerce attributes regardless of how the JSON-LD nests them.
 
 **4. The value is multi-valued.** The typed branch requires a single value. If the attribute value contains `|` or `,` — "Red, Blue" on one product — the code falls back to `additionalProperty` rather than claim a single `color`. Schema.org's `color` is `Text`-ranged and cannot honestly carry two colors, so this is correct, but the typed property goes unemitted.
 
@@ -99,11 +107,11 @@ A fifth, narrower case: if an upstream filter has already set the typed key (`$m
 5. **Tick "Visible on the product page"** on each attribute, or the plugin skips it.
 6. **Keep one value per attribute per product.** Multi-value attributes fall back to a generic property.
 
-Steps 4 and 6 apply to the feed path as much as the structured-data path; steps 5 and 6 are specific to what this plugin emits.
+Steps 1 through 4 are what clear a Merchant Center report, and they are entirely merchant-side. Steps 5 and 6 are specific to this plugin's JSON-LD and affect what AI agents read, not the feed.
 
-## Gaps to close in the plugin
+## Enhancements on the plugin side
 
-Neither is filed yet; both are catalog-completeness work rather than bug fixes.
+Neither of these clears a Merchant Center report, since the feed does not read our JSON-LD. Both make an already-published value more legible to AI agents, which is the plugin's own remit.
 
 **Map gender and age group to `audience`.** `Product.audience` accepts an `Audience`, and `PeopleAudience` carries the exact properties needed:
 
@@ -117,15 +125,16 @@ Neither is filed yet; both are catalog-completeness work rather than bug fixes.
 
 `suggestedGender` is ranged as `GenderType` or `Text` and Schema.org's own comment gives "male", "female", "unisex" as the examples — the same three values GMC accepts, so the merchant's value passes through unchanged. `suggestedMinAge` and `suggestedMaxAge` are `Number`, in years, which means Google's named buckets need translating (`toddler` → min 1, max 5; `adult` → min 13, no max). That translation table is a design decision, not a mechanical mapping, and the boundary values above come from Google's own definitions.
 
-**Decide parent-level emission for variation-defining color and size.** Skipping them on the parent is right for Schema.org and unhelpful for GMC. Options include emitting the distinct set of variant values as `additionalProperty` on the parent, or leaving it and documenting that the variants carry the data.
+**Decide parent-level emission for variation-defining color and size.** Skipping them on the parent is right for Schema.org and leaves an agent reading only the parent node without the values. Options include emitting the distinct set of variant values as `additionalProperty` on the parent, or leaving it as-is and documenting that the variants carry the data.
 
 ## How to verify a product
 
-1. **View source** on the product page and search for `"color"`, `"size"`, and `"audience"`. Check whether the value is a typed property or buried in `additionalProperty`.
-2. **Google's [Rich Results Test](https://search.google.com/test/rich-results)** parses the page the way Google does and shows the structured data it extracted.
-3. **GMC diagnostics** reports per-product attribute problems and is the authoritative source for what Google actually ingested.
+1. **Open the product in WP-Admin** and look at the Attributes tab. This answers the question that resolves most reports: is the value there at all? If it is blank, stop here and fill it in.
+2. **View source** on the product page and search for `"color"`, `"size"`, and `"audience"`. This tells you what AI agents see, and whether a present value arrived typed or as an `additionalProperty` entry.
+3. **Google's [Rich Results Test](https://search.google.com/test/rich-results)** parses the page the way Google does and shows the structured data it extracted.
+4. **GMC diagnostics** is authoritative for what Google actually ingested from the feed. Note that it is reporting on the feed, so a discrepancy between it and the page markup is expected rather than alarming.
 
-If a value appears in `additionalProperty` rather than as a typed property, work back through the four failure modes above — the attribute almost certainly exists and is simply not reaching Google in a form it reads.
+A value that appears as `additionalProperty` rather than a typed property is published and readable; work back through the four behaviours above to see which one shaped it that way.
 
 ## Sources
 
