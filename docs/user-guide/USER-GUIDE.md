@@ -443,30 +443,30 @@ Pick whichever preserves the navigation your shoppers expect. Either way, the AI
 
 > **Note on category-name search**: AI Storefront does light synonym handling in agent search (singular/plural, common variants). It doesn't translate marketing names into product types. If your `Summer Vibes` category contains swimwear and an agent asks for swimwear, the agent will not find it unless the category is renamed *or* you also assign those products to a `Swimwear` category.
 
-### Fill in the product attributes shopping surfaces expect
+### Set the product attributes shopping surfaces read
 
-Categories tell an agent *what kind of thing* a product is. Attributes tell it *which one*. If you sell apparel, four attributes carry most of the weight, and Google Merchant Center treats them as required:
+Categories tell an agent *what kind of thing* a product is. Attributes tell it *which one*. For apparel, four attributes carry most of the weight, and Google Merchant Center expects all four:
 
-| Attribute | Required on | Accepted values |
+| Attribute | Set it on | Accepted values |
 |---|---|---|
 | Color | All apparel and accessories | Any text ("Black", "Sea Green") |
 | Size | Clothing and shoes | Any text ("M", "32Wx34L", "One size") |
 | Gender | All apparel and accessories | `male`, `female`, `unisex` |
 | Age group | All apparel and accessories | `newborn`, `infant`, `toddler`, `kids`, `adult` |
 
-Set these on your products and the data flows through on its own. Your product-feed plugin reads the WooCommerce attribute when it builds your Merchant Center feed, and AI Storefront publishes it in the product's structured data for AI agents. Neither one can publish an attribute you have not filled in.
+Once an attribute is on the product it travels on its own. Your product-feed plugin reads it when it builds your Merchant Center feed, and AI Storefront publishes it in the product's structured data for AI agents.
 
-**Four things merchants miss most often:**
+Four rules worth knowing as you fill them in:
 
-**1. Color is required even when a product comes in only one color.** This is the single most common gap. In WooCommerce you only *need* a Color attribute when color drives your variations, so a product that comes in one colorway usually ends up with no Color at all. Google still expects one. A shirt that only comes in black should say "Black".
+**Set Color and Size on every product, including single-color and one-size items.** These are expected per product, not per variation. A shirt that comes only in black should still say "Black", and a one-size hat should say "One size".
 
-**2. Size works the same way.** A one-size hat or a single-size accessory in Clothing or Shoes still needs its Size filled in. "One size" is a perfectly good value.
+**Set Gender and Age group explicitly on every product.** Both are read literally, with no default applied. An adult clothing store sets Age group to `adult` throughout, and a unisex tee says `unisex`.
 
-**3. Nothing is assumed about gender or age group.** If you sell adult clothing, every product needs Age group set to `adult`. Google does not read silence as "adult", it reads silence as missing. Same for Gender: a unisex tee needs `unisex` written on it.
+**Use Google's exact values, in English,** for Gender and Age group. "Womens", "Adults", and translated equivalents read fine to a human and are not accepted values.
 
-**4. Use Google's exact values, in English.** Gender accepts only `male`, `female`, or `unisex`. Age group accepts only `newborn`, `infant`, `toddler`, `kids`, or `adult`. Values like "Womens", "Adults", or a translated equivalent will not validate, even though they read fine to a human.
+**Use one value per attribute per product,** so it can be published as a single Color or Size.
 
-Google's age group values map to these ranges:
+Age group values cover these ranges:
 
 | Value | Ages |
 |---|---|
@@ -476,15 +476,14 @@ Google's age group values map to these ranges:
 | `kids` | 5 to 13 years |
 | `adult` | Teens or older, 13 and up |
 
-**How to set them up:**
+To set them up:
 
-1. Go to *Products → Attributes* and create a global attribute for each one you need: Color, Size, Gender, Age group. Creating them globally means you pick values from a list instead of retyping them, which keeps spelling consistent across the catalog.
-2. Add the terms you use under each attribute. For Gender and Age group, add only Google's accepted values.
+1. Go to *Products → Attributes* and create a global attribute for each one you need: Color, Size, Gender, Age group. Global attributes let you pick from a list instead of retyping, which keeps spelling consistent across the catalog and makes the values usable as filters.
+2. Add your terms under each attribute. For Gender and Age group, add only Google's accepted values.
 3. On each product, open the *Attributes* tab and set a value for each.
-4. Tick **Visible on the product page**. AI Storefront only publishes attributes marked visible, so an attribute left hidden reaches nobody.
-5. Keep it to one value per attribute per product. A product tagged with two colors at once cannot be published as a single color, so it falls back to a generic property that shopping surfaces do not read as Color.
+4. Tick **Visible on the product page**. AI Storefront publishes the attributes marked visible.
 
-If Merchant Center is already reporting missing attributes, this is almost always the fix, and it is worth doing even if you are not on Merchant Center: the same four attributes are what an AI agent uses to decide whether your product matches "black hoodie, mens, large".
+These same four attributes are what an AI agent reads to decide whether your product matches a shopper asking for "a black hoodie, mens, large".
 
 ### Optional: let an AI assistant help you with the reshape
 
