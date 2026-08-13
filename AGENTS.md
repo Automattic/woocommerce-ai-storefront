@@ -18,7 +18,7 @@ Core principle: AI agents discover and recommend. The merchant owns the transact
 | How an agent decides to render a Buy CTA | [`docs/engineering/UCP-BUY-FLOW.md`](./docs/engineering/UCP-BUY-FLOW.md) |
 | Cart and checkout flow models (and roadmap for `dev.ucp.cart`) | [`docs/engineering/CART-MODELS.md`](./docs/engineering/CART-MODELS.md) |
 | REST endpoint shapes (UCP and admin) | [`docs/engineering/API-REFERENCE.md`](./docs/engineering/API-REFERENCE.md) |
-| JSON-LD field reference (Product enhancement + homepage `OnlineStore`) | [`docs/engineering/JSON-LD-SCHEMA.md`](./docs/engineering/JSON-LD-SCHEMA.md) |
+| JSON-LD field reference (Product enhancement + homepage `OnlineBusiness`) | [`docs/engineering/JSON-LD-SCHEMA.md`](./docs/engineering/JSON-LD-SCHEMA.md) |
 | Google Merchant Center attribute requirements (gender, age group, color, size) | [`docs/engineering/GOOGLE-MERCHANT-CENTER-ATTRIBUTES.md`](./docs/engineering/GOOGLE-MERCHANT-CENTER-ATTRIBUTES.md) |
 | Known limitations and design choices we've consciously accepted | [`docs/engineering/KNOWN-GAPS.md`](./docs/engineering/KNOWN-GAPS.md) |
 | Options, transients, meta keys, cron | [`docs/engineering/DATA-MODEL.md`](./docs/engineering/DATA-MODEL.md) |
