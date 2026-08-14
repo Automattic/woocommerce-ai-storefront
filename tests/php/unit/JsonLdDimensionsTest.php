@@ -245,4 +245,58 @@ class JsonLdDimensionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertNull( $this->shipping_block( $product ) );
 	}
+
+	/**
+	 * Builds a variation mock. WC_Product_Variation resolves inheritance
+	 * inside its own getters, so a variation that inherits simply reports
+	 * the parent's values here — which is what we simulate.
+	 *
+	 * @param string|null $weight     Resolved weight.
+	 * @param array|null  $dimensions Resolved dimensions.
+	 * @param bool        $virtual    Whether the variation is virtual.
+	 * @return Mockery\MockInterface
+	 */
+	private function make_variation( ?string $weight, ?array $dimensions, bool $virtual = false ) {
+		$variation = $this->make_product( $virtual ? null : $weight, $virtual ? null : $dimensions );
+		$variation->shouldReceive( 'get_virtual' )->andReturn( $virtual );
+		$variation->shouldReceive( 'needs_shipping' )->andReturn( ! $virtual );
+		return $variation;
+	}
+
+	public function test_variant_entry_carries_its_own_resolved_dimensions(): void {
+		$variation = $this->make_variation(
+			'0.8',
+			array(
+				'length' => '6',
+				'width'  => '4',
+				'height' => '2',
+			)
+		);
+
+		$entry  = array();
+		$jsonld = new WC_AI_Storefront_JsonLd();
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'add_dimensions' );
+		$method->setAccessible( true );
+		$method->invokeArgs( $jsonld, array( &$entry, $variation ) );
+
+		$this->assertSame( 0.8, $entry['weight']['value'] );
+		$this->assertSame( 6.0, $entry['depth']['value'] );
+	}
+
+	public function test_virtual_variation_emits_no_dimensions(): void {
+		// has_weight() / has_dimensions() both carry a ! get_virtual()
+		// guard in WC core, so this falls out for free — assert it so a
+		// future refactor cannot quietly lose it.
+		$variation = $this->make_variation(
+			'0.8',
+			array(
+				'length' => '6',
+				'width'  => '4',
+				'height' => '2',
+			),
+			true
+		);
+
+		$this->assertSame( array(), $this->build( $variation ) );
+	}
 }

@@ -1791,9 +1791,11 @@ class WC_AI_Storefront_JsonLd {
 	 * (gender/age group, when this variation carries one of its own —
 	 * {@see add_variant_audience()}; a variant without its own value
 	 * inherits per-field from the parent later, in
-	 * {@see add_inherited_variant_fields()}), an `offers[0]` Offer block
-	 * with price/availability/currency/inventory/shipping/return-policy,
-	 * the variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
+	 * {@see add_inherited_variant_fields()}), its own resolved weight and
+	 * depth/width/height (own value if set, parent's otherwise — see
+	 * {@see add_dimensions()}), an `offers[0]` Offer block with
+	 * price/availability/currency/inventory/shipping/return-policy, the
+	 * variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
 	 *
 	 * Both URL fields point at the WC Shareable Checkout URL using the
 	 * **variation ID** so AI-routed traffic lands on checkout with the
@@ -1828,6 +1830,14 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_inventory_level( $entry, $variation );
 		$this->add_currency( $entry );
 		$this->add_subscription_signals( $entry, $variation );
+
+		// Variants carry their own dimensions so a consumer reading one
+		// hasVariant entry in isolation sees complete shipping data.
+		// WC_Product_Variation's getters fall back to the parent when the
+		// variation does not override, so inheritance needs no branching:
+		// own value if set, parent's otherwise.
+		$this->add_dimensions( $entry, $variation );
+
 		$this->add_shipping_details( $entry, $country, $variation );
 		$this->add_handling_time( $entry, $settings );
 		$this->add_return_policy( $entry, $parent_product, $settings, $country );
