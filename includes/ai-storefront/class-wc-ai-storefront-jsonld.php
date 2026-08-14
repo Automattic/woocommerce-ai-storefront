@@ -114,6 +114,29 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
+	 * Attribute slugs recognised as Gender and Age group.
+	 *
+	 * `pa_gender` and `pa_age_group` are what
+	 * {@see WC_AI_Storefront_Attribute_Seeder} creates, so they are
+	 * canonical on any store running this plugin version. The bare forms
+	 * cover a merchant using a custom product-level attribute instead of
+	 * a global one, mirroring how CORE_ATTRIBUTE_MAP lists both
+	 * `pa_color` and `color`.
+	 *
+	 * Keys are compared after lowercasing and after collapsing spaces and
+	 * hyphens to underscores, so a custom attribute the merchant labelled
+	 * "Age group" still matches.
+	 *
+	 * @var array<string, string>
+	 */
+	private const AUDIENCE_ATTRIBUTE_MAP = array(
+		'pa_gender'    => 'gender',
+		'gender'       => 'gender',
+		'pa_age_group' => 'age_group',
+		'age_group'    => 'age_group',
+	);
+
+	/**
 	 * Hard cap on per-property entries emitted under
 	 * {@see add_related_products()} — `isRelatedTo` and `isSimilarTo`
 	 * are each capped independently. A merchant who has 100 cross-sell
@@ -828,15 +851,21 @@ class WC_AI_Storefront_JsonLd {
 
 	/**
 	 * Emit each visible attribute either as its typed Schema.org property
-	 * (color/size/material/pattern) or as an `additionalProperty` entry.
-	 * Single pass — one `get_attribute()` lookup per attribute.
+	 * (color/size/material/pattern), the `audience` PeopleAudience block
+	 * (gender/age group), or as an `additionalProperty` entry. Single
+	 * pass — one `get_attribute()` lookup per attribute.
 	 *
 	 * Per-attribute decision tree:
 	 *   1. Hidden / variation-defining / empty value → skip entirely.
-	 *   2. Maps to a typed property AND value is single-valued AND no
+	 *   2. Maps to Gender or Age group (see AUDIENCE_ATTRIBUTE_MAP) →
+	 *      held in a pending collector; routed to `audience` or
+	 *      `additionalProperty` after the loop, once
+	 *      {@see build_audience_block()} has judged which values it
+	 *      recognises.
+	 *   3. Maps to a typed property AND value is single-valued AND no
 	 *      upstream owner of the typed key → emit as typed property,
 	 *      skip additionalProperty for this slug.
-	 *   3. Otherwise (unmapped, multi-value, or upstream-owns-typed) →
+	 *   4. Otherwise (unmapped, multi-value, or upstream-owns-typed) →
 	 *      emit to additionalProperty.
 	 *
 	 * Caller control: when an upstream filter has already set the typed
@@ -856,6 +885,11 @@ class WC_AI_Storefront_JsonLd {
 		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		$additional_properties = array();
+		$audience_values       = array(
+			'gender'    => '',
+			'age_group' => '',
+		);
+		$audience_pending      = array();
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
 				continue;
@@ -866,6 +900,26 @@ class WC_AI_Storefront_JsonLd {
 			}
 			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
 			if ( '' === $value ) {
+				continue;
+			}
+
+			// Gender / Age group route to the typed `audience` block rather
+			// than to a Schema.org property on Product itself. Normalise
+			// separators first: a custom attribute labelled "Age group"
+			// arrives as `age group`.
+			$audience_key = str_replace( array( ' ', '-' ), '_', $slug );
+			if ( isset( self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ] ) ) {
+				$field = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ];
+				if ( '' === $audience_values[ $field ] ) {
+					$audience_values[ $field ] = $value;
+				}
+				// Fall through to additionalProperty only if the value turns
+				// out to be unrecognised; decided after the loop.
+				$audience_pending[ $field ] = array(
+					'@type' => 'PropertyValue',
+					'name'  => wc_attribute_label( $attribute->get_name(), $product ),
+					'value' => $value,
+				);
 				continue;
 			}
 
@@ -892,6 +946,26 @@ class WC_AI_Storefront_JsonLd {
 				'value' => $value,
 			);
 		}
+
+		// Emit the typed audience block when either value is recognised.
+		// Anything unrecognised falls back to additionalProperty so the
+		// merchant's data still reaches agents in some form.
+		$audience = self::build_audience_block(
+			$audience_values['gender'],
+			$audience_values['age_group']
+		);
+		if ( ! empty( $audience ) ) {
+			$markup['audience'] = $audience;
+		}
+		foreach ( $audience_pending as $field => $property ) {
+			$recognised = ( 'gender' === $field )
+				? isset( $audience['suggestedGender'] )
+				: isset( $audience['suggestedAge'] );
+			if ( ! $recognised ) {
+				$additional_properties[] = $property;
+			}
+		}
+
 		if ( ! empty( $additional_properties ) ) {
 			// Merge with any pre-existing entries (WC core or another
 			// plugin filtered `woocommerce_structured_data_product` and

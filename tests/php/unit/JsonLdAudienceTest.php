@@ -6,6 +6,7 @@
  */
 
 use Brain\Monkey;
+use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
 class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
@@ -135,5 +136,138 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 	public function test_no_usable_values_returns_empty_array(): void {
 		$this->assertSame( array(), $this->build( '', '' ) );
 		$this->assertSame( array(), $this->build( 'Womens', 'Grown-up' ) );
+	}
+
+	/**
+	 * Builds a mock WC_Product exposing the given attributes.
+	 *
+	 * @param array<string, string> $attributes Slug => value.
+	 * @return Mockery\MockInterface
+	 */
+	private function make_product_with_attributes( array $attributes ) {
+		$attribute_objects = array();
+		foreach ( array_keys( $attributes ) as $slug ) {
+			$attr = Mockery::mock();
+			$attr->shouldReceive( 'get_visible' )->andReturn( true );
+			$attr->shouldReceive( 'get_name' )->andReturn( $slug );
+			$attribute_objects[ $slug ] = $attr;
+		}
+
+		$product = Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_attributes' )->andReturn( $attribute_objects );
+		$product->shouldReceive( 'get_attribute' )->andReturnUsing(
+			static fn( $slug ) => $attributes[ $slug ] ?? ''
+		);
+		$product->shouldReceive( 'get_variation_attributes' )->andReturn( array() );
+		$product->shouldReceive( 'is_type' )->andReturn( false );
+
+		return $product;
+	}
+
+	/**
+	 * Runs emit_attributes() against a product and returns the markup.
+	 *
+	 * @param array<string, string> $attributes Slug => value.
+	 * @return array
+	 */
+	private function emit( array $attributes ): array {
+		Functions\when( 'wc_attribute_label' )->returnArg();
+
+		$jsonld = new WC_AI_Storefront_JsonLd();
+		$markup = array();
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'emit_attributes' );
+		$method->setAccessible( true );
+		$method->invokeArgs( $jsonld, array( &$markup, $this->make_product_with_attributes( $attributes ) ) );
+
+		return $markup;
+	}
+
+	public function test_audience_emitted_from_seeded_global_attributes(): void {
+		$markup = $this->emit(
+			array(
+				'pa_gender'    => 'female',
+				'pa_age_group' => 'adult',
+			)
+		);
+
+		$this->assertSame( 'PeopleAudience', $markup['audience']['@type'] );
+		$this->assertSame( 'female', $markup['audience']['suggestedGender'] );
+		$this->assertSame( 13.0, $markup['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_audience_emitted_from_bare_custom_attribute_slugs(): void {
+		$markup = $this->emit(
+			array(
+				'gender'    => 'unisex',
+				'age_group' => 'kids',
+			)
+		);
+
+		$this->assertSame( 'unisex', $markup['audience']['suggestedGender'] );
+		$this->assertSame( 5.0, $markup['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_two_word_custom_attribute_label_is_matched(): void {
+		// A custom (non-global) attribute carries the merchant's own label,
+		// so "Age group" arrives lowercased as "age group" with a space.
+		// Colour and size never exposed this because they are one word.
+		$markup = $this->emit( array( 'Age group' => 'toddler' ) );
+
+		$this->assertArrayHasKey( 'audience', $markup );
+		$this->assertSame( 1.0, $markup['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_no_audience_key_when_neither_attribute_present(): void {
+		$markup = $this->emit( array( 'pa_color' => 'Black' ) );
+
+		$this->assertArrayNotHasKey( 'audience', $markup );
+	}
+
+	public function test_no_audience_key_when_values_are_unrecognised(): void {
+		$markup = $this->emit(
+			array(
+				'pa_gender'    => 'Womens',
+				'pa_age_group' => 'Grown-up',
+			)
+		);
+
+		$this->assertArrayNotHasKey( 'audience', $markup );
+	}
+
+	public function test_unrecognised_values_still_reach_additional_property(): void {
+		// The merchant's data is never discarded, only left untyped.
+		$markup = $this->emit( array( 'pa_gender' => 'Womens' ) );
+
+		$names = array_column( $markup['additionalProperty'], 'name' );
+		$this->assertContains( 'pa_gender', $names );
+	}
+
+	public function test_recognised_values_do_not_also_emit_additional_property(): void {
+		// Typed emission wins; a duplicate untyped copy would be noise.
+		$markup = $this->emit( array( 'pa_gender' => 'female' ) );
+
+		$this->assertArrayNotHasKey( 'additionalProperty', $markup );
+	}
+
+	public function test_hidden_attribute_is_ignored(): void {
+		$attr = Mockery::mock();
+		$attr->shouldReceive( 'get_visible' )->andReturn( false );
+		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_gender' );
+
+		$product = Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_attributes' )->andReturn( array( 'pa_gender' => $attr ) );
+		$product->shouldReceive( 'get_attribute' )->andReturn( 'female' );
+		$product->shouldReceive( 'get_variation_attributes' )->andReturn( array() );
+		$product->shouldReceive( 'is_type' )->andReturn( false );
+
+		Functions\when( 'wc_attribute_label' )->returnArg();
+
+		$jsonld = new WC_AI_Storefront_JsonLd();
+		$markup = array();
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'emit_attributes' );
+		$method->setAccessible( true );
+		$method->invokeArgs( $jsonld, array( &$markup, $product ) );
+
+		$this->assertArrayNotHasKey( 'audience', $markup );
 	}
 }
