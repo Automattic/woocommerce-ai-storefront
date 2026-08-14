@@ -454,7 +454,7 @@ Categories tell an agent *what kind of thing* a product is. Attributes tell it *
 | Gender | All apparel and accessories | `male`, `female`, `unisex` |
 | Age group | All apparel and accessories | `newborn`, `infant`, `toddler`, `kids`, `adult` |
 
-Once an attribute is on the product it travels on its own, by two routes. If you run a product-feed plugin, it reads the attribute when it builds your Merchant Center feed. Separately, AI Storefront publishes the attribute in the product's structured data, which AI agents read directly and which Google crawls at least once a day to add and update products in Merchant Center.
+Once an attribute is on the product it travels on its own, by two routes. If you run a product-feed plugin, it reads the attribute when it builds your Merchant Center feed. Separately, AI Storefront publishes the attribute in the product's structured data, which AI agents read directly and which Google crawls to add and update products in Merchant Center.
 
 That second route matters most if you are not running a feed plugin, because then your structured data is how Google learns about your products at all. It still helps if you are: Google fills gaps in your listings from what it crawls, so the more complete your product attributes, the more complete your Merchant Center data.
 
