@@ -35,6 +35,13 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Storefront_Attribute_Seeder {
 
 	/**
+	 * Filter name controlling whether seeding runs at all.
+	 *
+	 * @var string
+	 */
+	const SEED_FILTER = 'wc_ai_storefront_seed_attributes';
+
+	/**
 	 * Attribute definitions, in creation order.
 	 *
 	 * Keys are the bare slug WITHOUT the `pa_` prefix — `wc_create_attribute()`
@@ -179,5 +186,40 @@ class WC_AI_Storefront_Attribute_Seeder {
 		}
 
 		return true;
+	}
+
+	/**
+	 * Creates every missing attribute.
+	 *
+	 * Idempotent: safe to call on every activation and every upgrade.
+	 * The decision is per attribute, so a store that already has Color
+	 * but not Size gets Size created and Color left alone.
+	 *
+	 * @return int Number of attributes created.
+	 */
+	public static function seed(): int {
+		/**
+		 * Filters whether the plugin seeds its recommended product attributes.
+		 *
+		 * Return false to skip entirely — useful for a store that will
+		 * never sell apparel and does not want six unused taxonomies.
+		 *
+		 * @since 0.35.0
+		 *
+		 * @param bool $should_seed Whether to create missing attributes.
+		 */
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.DynamicHooknameFound -- SEED_FILTER is the literal 'wc_ai_storefront_seed_attributes'; the sniff can't resolve the constant to see the prefix.
+		if ( ! apply_filters( self::SEED_FILTER, true ) ) {
+			return 0;
+		}
+
+		$created = 0;
+		foreach ( self::get_definitions() as $slug => $definition ) {
+			if ( self::create_attribute( $slug, $definition ) ) {
+				++$created;
+			}
+		}
+
+		return $created;
 	}
 }

@@ -204,4 +204,88 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( array( 'White' ), $inserted );
 	}
+
+	/**
+	 * Stubs every WP/WC function create_attribute() touches, so seed()
+	 * tests can focus on orchestration. $existing lists taxonomies that
+	 * already exist.
+	 *
+	 * @param string[] $existing Taxonomy names to report as existing.
+	 * @param array    $created  Populated by reference with created slugs.
+	 */
+	private function stub_creation_environment( array $existing, array &$created ): void {
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
+			static fn( $slug ) => 'pa_' . $slug
+		);
+		Functions\when( 'taxonomy_exists' )->alias(
+			static fn( $taxonomy ) => in_array( $taxonomy, $existing, true )
+		);
+		// Do NOT stub is_wp_error(). tests/php/stubs.php defines a real one
+		// before Patchwork loads, so Brain Monkey throws DefinedTooEarly.
+		// wc_create_attribute() below returns an int, which the real
+		// is_wp_error() correctly reports as not-an-error. Same approach
+		// as IndexNowTest.php.
+		Functions\when( 'term_exists' )->justReturn( null );
+		Functions\when( 'register_taxonomy' )->justReturn( null );
+		Functions\when( 'wp_insert_term' )->justReturn( array( 'term_id' => 1 ) );
+		Functions\when( 'wc_create_attribute' )->alias(
+			static function ( $args ) use ( &$created ) {
+				$created[] = $args['slug'];
+				return 1;
+			}
+		);
+	}
+
+	public function test_seed_creates_all_six_on_a_fresh_store(): void {
+		$created = array();
+		$this->stub_creation_environment( array(), $created );
+		Functions\when( 'apply_filters' )->justReturn( true );
+
+		$count = WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertSame( 6, $count );
+		$this->assertSame(
+			array( 'gender', 'age_group', 'color', 'size', 'material', 'pattern' ),
+			$created
+		);
+	}
+
+	public function test_seed_leaves_existing_attributes_untouched_per_attribute(): void {
+		$created = array();
+		// Merchant already has Color and Size; the other four are absent.
+		$this->stub_creation_environment( array( 'pa_color', 'pa_size' ), $created );
+		Functions\when( 'apply_filters' )->justReturn( true );
+
+		$count = WC_AI_Storefront_Attribute_Seeder::seed();
+
+		// Per-attribute decision, not all-or-nothing.
+		$this->assertSame( 4, $count );
+		$this->assertSame(
+			array( 'gender', 'age_group', 'material', 'pattern' ),
+			$created
+		);
+		$this->assertNotContains( 'color', $created );
+		$this->assertNotContains( 'size', $created );
+	}
+
+	public function test_seed_is_a_noop_when_everything_already_exists(): void {
+		$created = array();
+		$this->stub_creation_environment(
+			array( 'pa_gender', 'pa_age_group', 'pa_color', 'pa_size', 'pa_material', 'pa_pattern' ),
+			$created
+		);
+		Functions\when( 'apply_filters' )->justReturn( true );
+
+		$this->assertSame( 0, WC_AI_Storefront_Attribute_Seeder::seed() );
+		$this->assertSame( array(), $created );
+	}
+
+	public function test_seed_does_nothing_when_filter_returns_false(): void {
+		$created = array();
+		$this->stub_creation_environment( array(), $created );
+		Functions\when( 'apply_filters' )->justReturn( false );
+
+		$this->assertSame( 0, WC_AI_Storefront_Attribute_Seeder::seed() );
+		$this->assertSame( array(), $created );
+	}
 }
