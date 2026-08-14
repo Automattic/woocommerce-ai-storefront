@@ -60,6 +60,60 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
+	 * Accepted `suggestedGender` values.
+	 *
+	 * Google accepts exactly these three and requires them in English
+	 * regardless of store language. Schema.org's own comment on
+	 * `suggestedGender` gives the same three as its examples, so the
+	 * merchant's value passes through unchanged.
+	 *
+	 * @var string[]
+	 */
+	private const AUDIENCE_GENDER_VALUES = array( 'male', 'female', 'unisex' );
+
+	/**
+	 * Google `age_group` buckets mapped to a Schema.org `QuantitativeValue`.
+	 *
+	 * Google's structured-data documentation uses `suggestedAge` (a
+	 * QuantitativeValue) rather than `suggestedMinAge`/`suggestedMaxAge`,
+	 * and the `unitCode` is what keeps the sub-1 buckets honest: newborn
+	 * and infant are expressed in months (MON) rather than as fractions
+	 * of a year, so they stay distinguishable.
+	 *
+	 * `adult` carries no `max` — Google's own worked example is the adult
+	 * case and bounds it only from below.
+	 *
+	 * @var array<string, array{min: float, max: float|null, unit: string}>
+	 */
+	private const AUDIENCE_AGE_GROUPS = array(
+		'newborn' => array(
+			'min'  => 0.0,
+			'max'  => 3.0,
+			'unit' => 'MON',
+		),
+		'infant'  => array(
+			'min'  => 3.0,
+			'max'  => 12.0,
+			'unit' => 'MON',
+		),
+		'toddler' => array(
+			'min'  => 1.0,
+			'max'  => 5.0,
+			'unit' => 'ANN',
+		),
+		'kids'    => array(
+			'min'  => 5.0,
+			'max'  => 13.0,
+			'unit' => 'ANN',
+		),
+		'adult'   => array(
+			'min'  => 13.0,
+			'max'  => null,
+			'unit' => 'ANN',
+		),
+	);
+
+	/**
 	 * Hard cap on per-property entries emitted under
 	 * {@see add_related_products()} — `isRelatedTo` and `isSimilarTo`
 	 * are each capped independently. A merchant who has 100 cross-sell
@@ -860,6 +914,57 @@ class WC_AI_Storefront_JsonLd {
 			}
 			$markup['additionalProperty'] = array_merge( $existing, $additional_properties );
 		}
+	}
+
+	/**
+	 * Builds the `Product.audience` → `PeopleAudience` block.
+	 *
+	 * Google requires `gender` and `age_group` on all Apparel & Accessories
+	 * products, and reads them from this typed structure. A merchant's
+	 * Gender attribute emitted as a generic `additionalProperty` entry is
+	 * published but invisible to Google for that purpose, which for an
+	 * apparel product means disapproval rather than a thinner listing.
+	 *
+	 * Unrecognised values are dropped rather than mapped. "Children" looks
+	 * like `kids` until "Youth" or "Junior" turns up, and guessing wrong
+	 * about a product's intended audience is worse than emitting nothing.
+	 * The caller still routes the raw value to `additionalProperty`, so
+	 * the merchant's data is never discarded — only left untyped.
+	 *
+	 * @param string $gender    Raw Gender attribute value.
+	 * @param string $age_group Raw Age group attribute value.
+	 * @return array The PeopleAudience block, or an empty array when
+	 *               neither input yields a recognised value.
+	 */
+	private static function build_audience_block( string $gender, string $age_group ): array {
+		$block = array();
+
+		$gender_key = strtolower( trim( $gender ) );
+		if ( in_array( $gender_key, self::AUDIENCE_GENDER_VALUES, true ) ) {
+			$block['suggestedGender'] = $gender_key;
+		}
+
+		$age_key = strtolower( trim( $age_group ) );
+		if ( isset( self::AUDIENCE_AGE_GROUPS[ $age_key ] ) ) {
+			$bucket = self::AUDIENCE_AGE_GROUPS[ $age_key ];
+
+			$suggested_age = array(
+				'@type'    => 'QuantitativeValue',
+				'minValue' => $bucket['min'],
+			);
+			if ( null !== $bucket['max'] ) {
+				$suggested_age['maxValue'] = $bucket['max'];
+			}
+			$suggested_age['unitCode'] = $bucket['unit'];
+
+			$block['suggestedAge'] = $suggested_age;
+		}
+
+		if ( empty( $block ) ) {
+			return array();
+		}
+
+		return array_merge( array( '@type' => 'PeopleAudience' ), $block );
 	}
 
 	/**
