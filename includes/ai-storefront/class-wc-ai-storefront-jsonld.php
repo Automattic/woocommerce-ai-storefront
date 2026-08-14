@@ -852,23 +852,38 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Adds weight and depth/width/height QuantitativeValue blocks.
+	 * Builds the weight and depth/width/height QuantitativeValue blocks.
 	 *
-	 * Every value is cast through (float) to produce a canonical numeric
-	 * value — WC persists weight and dimensions alike as free-form strings
-	 * (e.g. `.5`, `10`) that strict JSON-LD parsers would see as quoted
-	 * string literals. `QuantitativeValue.value` is Number-ranged.
+	 * Extracted so `OfferShippingDetails` can carry the same values
+	 * without a second copy of the construction — the same reason
+	 * `build_return_policy_block()` was extracted when its second call
+	 * site appeared.
+	 *
+	 * Every value is cast through (float): WC persists weight and
+	 * dimensions alike as free-form strings (e.g. `.5`, `10`) that strict
+	 * JSON-LD parsers would read as quoted string literals, and
+	 * `QuantitativeValue.value` is Number-ranged.
 	 *
 	 * Audit bug #4 introduced the weight cast; the three dimension values
 	 * carried the same defect until #613 because `get_dimensions( false )`
 	 * returns the raw props untouched.
 	 *
-	 * @param array      $markup  Markup array, modified by reference.
-	 * @param WC_Product $product The product object.
+	 * Note WC's **length** is Schema.org's **depth** — Schema.org has no
+	 * `length` property for physical products.
+	 *
+	 * Passing a `WC_Product_Variation` resolves inheritance for free:
+	 * its getters fall back to the parent when the variation's own value
+	 * is empty, and `has_weight()` / `has_dimensions()` route through
+	 * those same getters.
+	 *
+	 * @param WC_Product $product The product or variation.
+	 * @return array<string, array> Any of weight/depth/width/height.
 	 */
-	private function add_dimensions( array &$markup, $product ): void {
+	private function build_dimension_blocks( $product ): array {
+		$blocks = array();
+
 		if ( $product->has_weight() ) {
-			$markup['weight'] = array(
+			$blocks['weight'] = array(
 				'@type'    => 'QuantitativeValue',
 				'value'    => (float) $product->get_weight(),
 				'unitCode' => $this->get_weight_unit_code(),
@@ -878,22 +893,34 @@ class WC_AI_Storefront_JsonLd {
 		if ( $product->has_dimensions() ) {
 			$dimensions       = $product->get_dimensions( false );
 			$dimension_unit   = $this->get_dimension_unit_code();
-			$markup['depth']  = array(
+			$blocks['depth']  = array(
 				'@type'    => 'QuantitativeValue',
 				'value'    => (float) $dimensions['length'],
 				'unitCode' => $dimension_unit,
 			);
-			$markup['width']  = array(
+			$blocks['width']  = array(
 				'@type'    => 'QuantitativeValue',
 				'value'    => (float) $dimensions['width'],
 				'unitCode' => $dimension_unit,
 			);
-			$markup['height'] = array(
+			$blocks['height'] = array(
 				'@type'    => 'QuantitativeValue',
 				'value'    => (float) $dimensions['height'],
 				'unitCode' => $dimension_unit,
 			);
 		}
+
+		return $blocks;
+	}
+
+	/**
+	 * Adds weight and depth/width/height to the Product-level markup.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_dimensions( array &$markup, $product ): void {
+		$markup = array_merge( $markup, $this->build_dimension_blocks( $product ) );
 	}
 
 	/**
