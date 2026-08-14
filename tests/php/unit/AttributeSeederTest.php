@@ -73,4 +73,135 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 			);
 		}
 	}
+
+	public function test_create_attribute_skips_when_taxonomy_already_exists(): void {
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
+			static fn( $slug ) => 'pa_' . $slug
+		);
+		Functions\when( 'taxonomy_exists' )->justReturn( true );
+
+		// If the seeder tries to create despite the taxonomy existing,
+		// these expectations fail the test.
+		Functions\expect( 'wc_create_attribute' )->never();
+		Functions\expect( 'wp_insert_term' )->never();
+
+		$created = WC_AI_Storefront_Attribute_Seeder::create_attribute(
+			'color',
+			array(
+				'label' => 'Color',
+				'terms' => array( 'Black' ),
+			)
+		);
+
+		$this->assertFalse( $created );
+	}
+
+	public function test_create_attribute_registers_taxonomy_before_inserting_terms(): void {
+		$call_order = array();
+
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
+			static fn( $slug ) => 'pa_' . $slug
+		);
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		// is_wp_error() is defined in stubs.php before Patchwork loads, so it
+		// cannot be redefined via Brain Monkey. The stub checks `instanceof
+		// WP_Error`; the int id returned by wc_create_attribute() below
+		// naturally evaluates false, same as the real function.
+		Functions\when( 'term_exists' )->justReturn( null );
+
+		Functions\when( 'wc_create_attribute' )->alias(
+			static function ( $args ) use ( &$call_order ) {
+				$call_order[] = 'create:' . $args['slug'];
+				return 42;
+			}
+		);
+		Functions\when( 'register_taxonomy' )->alias(
+			static function ( $taxonomy ) use ( &$call_order ) {
+				$call_order[] = 'register:' . $taxonomy;
+			}
+		);
+		Functions\when( 'wp_insert_term' )->alias(
+			static function ( $term, $taxonomy ) use ( &$call_order ) {
+				$call_order[] = 'term:' . $term;
+				return array( 'term_id' => 1 );
+			}
+		);
+
+		$created = WC_AI_Storefront_Attribute_Seeder::create_attribute(
+			'gender',
+			array(
+				'label' => 'Gender',
+				'terms' => array( 'male', 'female' ),
+			)
+		);
+
+		$this->assertTrue( $created );
+
+		// wc_create_attribute() does NOT register the taxonomy in the same
+		// request. Inserting terms before register_taxonomy() fails with an
+		// invalid-taxonomy error, so the ordering is the contract.
+		$this->assertSame(
+			array( 'create:gender', 'register:pa_gender', 'term:male', 'term:female' ),
+			$call_order
+		);
+	}
+
+	public function test_create_attribute_aborts_when_attribute_creation_errors(): void {
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
+			static fn( $slug ) => 'pa_' . $slug
+		);
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		// is_wp_error() in stubs.php checks instanceof WP_Error; a real
+		// WP_Error instance drives the true branch without mocking the
+		// function (see note in the previous test).
+		Functions\when( 'wc_create_attribute' )->justReturn( new WP_Error( 'invalid_attribute', 'wp-error-object' ) );
+
+		Functions\expect( 'register_taxonomy' )->never();
+		Functions\expect( 'wp_insert_term' )->never();
+
+		$created = WC_AI_Storefront_Attribute_Seeder::create_attribute(
+			'size',
+			array(
+				'label' => 'Size',
+				'terms' => array( 'S' ),
+			)
+		);
+
+		$this->assertFalse( $created );
+	}
+
+	public function test_create_attribute_skips_terms_that_already_exist(): void {
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
+			static fn( $slug ) => 'pa_' . $slug
+		);
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		// is_wp_error() is the real stub from stubs.php (see note above); the
+		// int id returned here is not a WP_Error, so it naturally evaluates
+		// false.
+		Functions\when( 'wc_create_attribute' )->justReturn( 7 );
+		Functions\when( 'register_taxonomy' )->justReturn( null );
+
+		// 'Black' already present, 'White' not.
+		Functions\when( 'term_exists' )->alias(
+			static fn( $term ) => 'Black' === $term ? array( 'term_id' => 5 ) : null
+		);
+
+		$inserted = array();
+		Functions\when( 'wp_insert_term' )->alias(
+			static function ( $term ) use ( &$inserted ) {
+				$inserted[] = $term;
+				return array( 'term_id' => 9 );
+			}
+		);
+
+		WC_AI_Storefront_Attribute_Seeder::create_attribute(
+			'color',
+			array(
+				'label' => 'Color',
+				'terms' => array( 'Black', 'White' ),
+			)
+		);
+
+		$this->assertSame( array( 'White' ), $inserted );
+	}
 }

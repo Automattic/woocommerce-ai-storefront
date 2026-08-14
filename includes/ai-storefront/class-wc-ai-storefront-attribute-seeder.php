@@ -113,4 +113,71 @@ class WC_AI_Storefront_Attribute_Seeder {
 			),
 		);
 	}
+
+	/**
+	 * Creates one global attribute and its terms.
+	 *
+	 * Skips entirely when the taxonomy already exists. An existing
+	 * attribute belongs to the merchant: its terms may be variation axes,
+	 * so renaming or adding to them would break variations and orphan
+	 * product data. Leaving a merchant with a dropdown containing both
+	 * "Grown-up" and "adult" is worse than either alone.
+	 *
+	 * `wc_create_attribute()` does NOT register the taxonomy in the
+	 * current request — WooCommerce registers attribute taxonomies on
+	 * `init` via `WC_Post_Types::register_taxonomies()`. Inserting terms
+	 * before registering therefore fails with an invalid-taxonomy error.
+	 * WooCommerce hits this in its own CSV importer and solves it the
+	 * same way, in `abstract-wc-product-importer.php`, commented
+	 * "Register as taxonomy while importing".
+	 *
+	 * @param string                                $slug       Bare slug, no `pa_` prefix.
+	 * @param array{label: string, terms: string[]} $definition Label and terms.
+	 * @return bool True when the attribute was created.
+	 */
+	public static function create_attribute( string $slug, array $definition ): bool {
+		if ( ! function_exists( 'wc_create_attribute' ) || ! function_exists( 'wc_attribute_taxonomy_name' ) ) {
+			return false;
+		}
+
+		$taxonomy = wc_attribute_taxonomy_name( $slug );
+		if ( taxonomy_exists( $taxonomy ) ) {
+			return false;
+		}
+
+		$attribute_id = wc_create_attribute(
+			array(
+				'name'         => $definition['label'],
+				'slug'         => $slug,
+				'type'         => 'select',
+				'order_by'     => 'menu_order',
+				'has_archives' => false,
+			)
+		);
+
+		if ( is_wp_error( $attribute_id ) ) {
+			return false;
+		}
+
+		register_taxonomy(
+			$taxonomy,
+			array( 'product' ),
+			array(
+				'labels'       => array( 'name' => $definition['label'] ),
+				'hierarchical' => true,
+				'show_ui'      => false,
+				'query_var'    => true,
+				'rewrite'      => false,
+			)
+		);
+
+		foreach ( $definition['terms'] as $term ) {
+			if ( term_exists( $term, $taxonomy ) ) {
+				continue;
+			}
+			wp_insert_term( $term, $taxonomy );
+		}
+
+		return true;
+	}
 }
