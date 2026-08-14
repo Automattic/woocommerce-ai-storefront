@@ -286,6 +286,17 @@ class WC_AI_Storefront {
 	 * mirrors the existing `flush_rewrite_rules` deferral a few lines
 	 * below, which exists for the same class of reason.
 	 *
+	 * Do not "fix" that crash by wrapping the call in a `taxonomy_exists()`
+	 * guard and moving it inline — that trades a loud failure for a silent
+	 * one. Before `init`, WooCommerce has not yet registered its attribute
+	 * taxonomies, so `taxonomy_exists()` returns a false negative for an
+	 * attribute that was already seeded on a prior request.
+	 * `create_attribute()` would then re-run `wc_create_attribute()`,
+	 * inserting a duplicate row into `wc_attribute_taxonomies` on every
+	 * request that takes this branch, with no crash and no test to catch
+	 * it. Deferring to `init` is what keeps `taxonomy_exists()` accurate
+	 * and the seeding idempotent.
+	 *
 	 * Public so the deferral contract can be tested directly.
 	 */
 	public static function schedule_attribute_seeding(): void {
