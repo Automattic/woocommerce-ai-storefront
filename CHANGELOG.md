@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Added
+
+- **The six recommended product attributes are now created automatically (#623).**
+  - A fresh WooCommerce store ships with no product attributes at all, so merchants build them ad hoc, name them freely, and type values freely. On activation and on every plugin upgrade, the plugin now creates `pa_gender`, `pa_age_group`, `pa_color`, `pa_size`, `pa_material` and `pa_pattern` if they are missing.
+  - **Gender and Age group carry Google's complete accepted values** (`male`/`female`/`unisex`, and `newborn`/`infant`/`toddler`/`kids`/`adult`), because Google defines those lists exhaustively. Merchants should not need to add to them.
+  - **Color, Size, Material and Pattern carry a small starting set** that merchants extend. Google treats these as free text and asks that submitted values match the merchant's own product page, so a canonical list would be wrong. Size deliberately uses abbreviations (`S`, `M`, `L`) per Google's consistency guidance, rather than the `Small`/`Medium`/`Large` form WooCommerce's own sample data creates.
+  - **An attribute that already exists is left completely alone**, terms included, decided per attribute rather than all-or-nothing. Existing terms may be variation axes, so adding to or renaming them would break variations and orphan product data.
+  - New `wc_ai_storefront_seed_attributes` filter returns `false` to skip seeding entirely.
+
 ### Fixed
 
 - **Product dimension values now emit as JSON numbers instead of quoted strings (#613).**
