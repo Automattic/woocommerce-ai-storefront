@@ -355,4 +355,58 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey( 'audience', $markup );
 	}
+
+	// ------------------------------------------------------------------
+	// detect_varies_by() — audience axes map to Schema.org URLs, not
+	// plain text labels, in `variesBy` (Task 3, #618).
+	// ------------------------------------------------------------------
+
+	public function test_varies_by_maps_audience_axes_to_schema_org_urls(): void {
+		$product = Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_variation_attributes' )->andReturn(
+			array(
+				'pa_age_group' => array( 'kids', 'adult' ),
+			)
+		);
+		$product->shouldReceive( 'get_children' )->andReturn( array() );
+
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'detect_varies_by' );
+		$method->setAccessible( true );
+		$varies = $method->invoke( null, $product );
+
+		$this->assertContains( 'https://schema.org/suggestedAge', $varies );
+	}
+
+	public function test_varies_by_maps_gender_axis_to_schema_org_url(): void {
+		$product = Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_variation_attributes' )->andReturn(
+			array(
+				'pa_gender' => array( 'male', 'female' ),
+			)
+		);
+		$product->shouldReceive( 'get_children' )->andReturn( array() );
+
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'detect_varies_by' );
+		$method->setAccessible( true );
+		$varies = $method->invoke( null, $product );
+
+		$this->assertContains( 'https://schema.org/suggestedGender', $varies );
+	}
+
+	public function test_uniform_audience_axis_is_not_advertised_as_varying(): void {
+		// Every variation shares one value, so it is not a dimension the
+		// buyer chooses between.
+		$product = Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_variation_attributes' )->andReturn(
+			array(
+				'pa_gender' => array( 'unisex' ),
+			)
+		);
+		$product->shouldReceive( 'get_children' )->andReturn( array() );
+
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'detect_varies_by' );
+		$method->setAccessible( true );
+
+		$this->assertNotContains( 'https://schema.org/suggestedGender', $method->invoke( null, $product ) );
+	}
 }

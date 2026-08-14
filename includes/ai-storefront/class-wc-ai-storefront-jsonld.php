@@ -1180,6 +1180,36 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Resolves an attribute slug to the Schema.org property it varies by.
+	 *
+	 * Checks the four core typed slugs ({@see CORE_ATTRIBUTE_MAP}) first,
+	 * then the two audience slugs ({@see AUDIENCE_ATTRIBUTE_MAP}). Google
+	 * lists `suggestedAge` and `suggestedGender` among the properties
+	 * valid in `variesBy`, alongside the core four, so an age- or
+	 * gender-keyed variable product can advertise its real axis instead
+	 * of a plain text label. Shared by both {@see detect_varies_by()}
+	 * lookup sites — the parent-flagged path and the typed-slug override
+	 * — so they agree on what counts as typed.
+	 *
+	 * @param string $slug_lower Lowercased attribute slug.
+	 * @return string Schema.org property name, or '' when unmapped.
+	 */
+	private static function varies_by_property( string $slug_lower ): string {
+		if ( isset( self::CORE_ATTRIBUTE_MAP[ $slug_lower ] ) ) {
+			return self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+		}
+
+		$audience_key = str_replace( array( ' ', '-' ), '_', $slug_lower );
+		if ( isset( self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ] ) ) {
+			return 'gender' === self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['field']
+				? 'suggestedGender'
+				: 'suggestedAge';
+		}
+
+		return '';
+	}
+
+	/**
 	 * Builds the `variesBy` array for a `ProductGroup` — Schema.org property
 	 * URLs (or short labels for unmapped attributes) for the dimensions that
 	 * actually vary across this product's variations.
@@ -1190,25 +1220,31 @@ class WC_AI_Storefront_JsonLd {
 	 * in `variesBy`. This matters because Google's variant rich result keys
 	 * on `variesBy` to know which dimensions a buyer can choose between.
 	 *
-	 * **Core typed override**: If a slug maps to a Schema.org typed property
-	 * via {@see CORE_ATTRIBUTE_MAP} (color / size / material / pattern), we
-	 * also inspect the variation children's own attribute meta directly —
-	 * not just the parent's `get_variation_attributes()`. WC's parent-level
-	 * "Used for variations" flag gates `get_variation_attributes()` but not
-	 * the underlying variation meta; merchants who configure `pa_color`
-	 * with distinct values across variations but forget to flag it as a
-	 * variation axis still get correct ProductGroup emission, because the
-	 * data is right there on each child even if the parent flag is wrong.
-	 * This override is intentionally limited to the four core typed slugs
-	 * — they have canonical Schema.org type mappings and are the axes AI
-	 * agents are most likely to query, so getting them right matters more
-	 * than honoring a likely-misconfigured parent flag.
+	 * **Typed-slug override**: If a slug maps to a Schema.org typed
+	 * property — a core one via {@see CORE_ATTRIBUTE_MAP} (color / size /
+	 * material / pattern) or an audience one via
+	 * {@see AUDIENCE_ATTRIBUTE_MAP} (gender / age group) — we also inspect
+	 * the variation children's own attribute meta directly, not just the
+	 * parent's `get_variation_attributes()`. WC's parent-level "Used for
+	 * variations" flag gates `get_variation_attributes()` but not the
+	 * underlying variation meta; merchants who configure `pa_color` (or
+	 * `pa_gender`) with distinct values across variations but forget to
+	 * flag it as a variation axis still get correct ProductGroup emission,
+	 * because the data is right there on each child even if the parent
+	 * flag is wrong. This override is intentionally limited to slugs with
+	 * a canonical Schema.org typed property — they are the axes AI agents
+	 * are most likely to query (and, for gender/age group, the ones
+	 * Google requires for Apparel & Accessories), so getting them right
+	 * matters more than honoring a likely-misconfigured parent flag. An
+	 * unmapped custom axis still honors the parent flag, same as before.
 	 *
-	 * Slug → Schema.org URL mapping uses {@see CORE_ATTRIBUTE_MAP} (the same
-	 * lookup #331 uses for typed-property emission). Mapped attributes emit
-	 * as full Schema.org URLs (e.g. `https://schema.org/color`); unmapped
-	 * attributes (custom merchant axes like "Style" or "Heel Height") emit
-	 * as plain Text labels — Schema.org `variesBy` accepts both shapes.
+	 * Slug → Schema.org property mapping uses {@see varies_by_property()},
+	 * shared with the override path so both sites agree on what counts as
+	 * typed. Mapped attributes emit as full Schema.org URLs (e.g.
+	 * `https://schema.org/color`, `https://schema.org/suggestedGender`);
+	 * unmapped attributes (custom merchant axes like "Style" or "Heel
+	 * Height") emit as plain Text labels — Schema.org `variesBy` accepts
+	 * both shapes.
 	 *
 	 * @param WC_Product $product The variable product.
 	 * @return string[] List of Schema.org URLs and/or Text labels for axes
@@ -1234,8 +1270,9 @@ class WC_AI_Storefront_JsonLd {
 				continue;
 			}
 			$slug_lower = strtolower( (string) $slug );
-			if ( isset( self::CORE_ATTRIBUTE_MAP[ $slug_lower ] ) ) {
-				$varies_urls[] = 'https://schema.org/' . self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+			$property   = self::varies_by_property( $slug_lower );
+			if ( '' !== $property ) {
+				$varies_urls[] = 'https://schema.org/' . $property;
 			} else {
 				$varies_labels[] = function_exists( 'wc_attribute_label' )
 					? wc_attribute_label( $slug, $product )
@@ -1243,8 +1280,9 @@ class WC_AI_Storefront_JsonLd {
 			}
 		}
 
-		// Path 2: core-typed override. For the four canonical Schema.org
-		// slugs (color / size / material / pattern), also peek at the
+		// Path 2: typed-slug override. For slugs with a canonical
+		// Schema.org typed property — core (color / size / material /
+		// pattern) or audience (gender / age group) — also peek at the
 		// variation children directly. This catches the misconfigured
 		// case where a merchant set up variations with real per-child
 		// values but didn't flag the parent attribute "Used for
@@ -1259,16 +1297,19 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Inspect variation children's attribute meta to find core-typed axes
-	 * (color / size / material / pattern) that have ≥2 distinct values
-	 * across children — even if the parent's "Used for variations" flag
-	 * is unset on the matching attribute.
+	 * Inspect variation children's attribute meta to find typed axes —
+	 * core (color / size / material / pattern) or audience (gender / age
+	 * group) — that have ≥2 distinct values across children, even if the
+	 * parent's "Used for variations" flag is unset on the matching
+	 * attribute.
 	 *
 	 * Returns Schema.org property URLs only (no Text labels), because
-	 * the override is scoped to the four core typed slugs by design.
+	 * the override is scoped to slugs with a canonical Schema.org typed
+	 * property by design ({@see CORE_ATTRIBUTE_MAP} and
+	 * {@see AUDIENCE_ATTRIBUTE_MAP}).
 	 *
 	 * @param WC_Product $product The variable product (parent).
-	 * @return string[] Schema.org URLs for core-typed axes that factually vary.
+	 * @return string[] Schema.org URLs for typed axes that factually vary.
 	 */
 	private static function detect_core_typed_axes_from_children( $product ): array {
 		$children = $product->get_children();
@@ -1277,19 +1318,28 @@ class WC_AI_Storefront_JsonLd {
 			return array();
 		}
 
-		// Bucket: core slug → set of distinct non-empty values seen.
-		$values_by_core_slug = array();
+		// Bucket: slug → set of distinct non-empty values seen. Merges
+		// core-typed and audience postmeta reads — both are scoped to a
+		// fixed, known slug list, so merging by slug key cannot collide.
+		$values_by_slug = array();
 		foreach ( $children as $child_id ) {
-			$attrs = self::read_variation_core_attributes( (int) $child_id );
+			$attrs = array_merge(
+				self::read_variation_core_attributes( (int) $child_id ),
+				self::read_variation_audience_attributes( (int) $child_id )
+			);
 			foreach ( $attrs as $slug_lower => $value_str ) {
-				$values_by_core_slug[ $slug_lower ][ $value_str ] = true;
+				$values_by_slug[ $slug_lower ][ $value_str ] = true;
 			}
 		}
 
 		$urls = array();
-		foreach ( $values_by_core_slug as $slug_lower => $value_set ) {
-			if ( count( $value_set ) >= 2 ) {
-				$urls[] = 'https://schema.org/' . self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+		foreach ( $values_by_slug as $slug_lower => $value_set ) {
+			if ( count( $value_set ) < 2 ) {
+				continue;
+			}
+			$property = self::varies_by_property( $slug_lower );
+			if ( '' !== $property ) {
+				$urls[] = 'https://schema.org/' . $property;
 			}
 		}
 		return $urls;
@@ -1322,6 +1372,42 @@ class WC_AI_Storefront_JsonLd {
 		}
 		$out = array();
 		foreach ( self::CORE_ATTRIBUTE_MAP as $slug_lower => $_schema_property ) {
+			$value     = get_post_meta( $variation_id, 'attribute_' . $slug_lower, true );
+			$value_str = is_string( $value ) ? trim( $value ) : '';
+			if ( '' === $value_str ) {
+				continue;
+			}
+			$out[ $slug_lower ] = $value_str;
+		}
+		return $out;
+	}
+
+	/**
+	 * Read a variation's Gender / Age group attribute values directly from
+	 * postmeta — the audience counterpart to
+	 * {@see read_variation_core_attributes()}, for the same reason: WC's
+	 * parent-level "Used for variations" flag gates
+	 * `get_variation_attributes()` / `get_variation_attribute_slugs()` but
+	 * not the underlying `attribute_<slug>` postmeta, so reading it
+	 * directly is the only way to see a value the merchant entered but
+	 * forgot to flag as a variation axis.
+	 *
+	 * Per-SLUG, not per-field: a `pa_gender`-vs-bare-`gender` collision
+	 * (both present with different values) is left for the caller to
+	 * resolve via {@see AUDIENCE_ATTRIBUTE_MAP}'s `priority` — this
+	 * function only reports what postmeta actually holds, mirroring
+	 * {@see read_variation_core_attributes()}'s own scope.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return array<string,string> Slug → trimmed value, only for non-empty
+	 *                               recognised audience slugs.
+	 */
+	private static function read_variation_audience_attributes( int $variation_id ): array {
+		if ( $variation_id <= 0 || ! function_exists( 'get_post_meta' ) ) {
+			return array();
+		}
+		$out = array();
+		foreach ( self::AUDIENCE_ATTRIBUTE_MAP as $slug_lower => $_meta ) {
 			$value     = get_post_meta( $variation_id, 'attribute_' . $slug_lower, true );
 			$value_str = is_string( $value ) ? trim( $value ) : '';
 			if ( '' === $value_str ) {
@@ -1473,9 +1559,13 @@ class WC_AI_Storefront_JsonLd {
 	 * The entry is a standalone Schema.org Product block describing the
 	 * specific variation: SKU, image (with parent fallback), per-variant
 	 * typed properties (color/size/material/pattern from the variation's
-	 * specific attribute selections), an `offers[0]` Offer block with
-	 * price/availability/currency/inventory/shipping/return-policy, the
-	 * variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
+	 * specific attribute selections), its own resolved `audience`
+	 * (gender/age group, when this variation carries one of its own —
+	 * {@see add_variant_audience()}; a variant without its own value
+	 * inherits per-field from the parent later, in
+	 * {@see add_inherited_variant_fields()}), an `offers[0]` Offer block
+	 * with price/availability/currency/inventory/shipping/return-policy,
+	 * the variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
 	 *
 	 * Both URL fields point at the WC Shareable Checkout URL using the
 	 * **variation ID** so AI-routed traffic lands on checkout with the
@@ -1499,6 +1589,7 @@ class WC_AI_Storefront_JsonLd {
 		$entry = array( '@type' => 'Product' );
 
 		$this->add_variant_basics( $entry, $variation, $parent_product );
+		$this->add_variant_audience( $entry, $variation );
 
 		$entry['offers'] = array( $this->build_variant_offer_skeleton( $variation ) );
 
@@ -1577,6 +1668,12 @@ class WC_AI_Storefront_JsonLd {
 	 *     `description`. Only emitted when non-empty.
 	 *   - `brand` / `category`: copied verbatim from the parent when set
 	 *     and not already present on the variant.
+	 *   - `audience`: merged per Schema.org sub-property (`suggestedGender`,
+	 *     `suggestedAge`) rather than copied wholesale, so a variant whose
+	 *     own axis is (say) age group alone still inherits the parent's
+	 *     constant gender instead of losing it. See
+	 *     {@see add_variant_audience()} for where the variant's own value
+	 *     is set first.
 	 *   - offer `seller`: copied from the parent `offers[0]` when present
 	 *     and not already on the variant offer (the seller IS store-level).
 	 *   - offer `priceValidUntil`: NOT store-level. WC core derives the
@@ -1617,6 +1714,35 @@ class WC_AI_Storefront_JsonLd {
 		}
 		if ( ! isset( $entry['category'] ) && ! empty( $parent_markup['category'] ) ) {
 			$entry['category'] = $parent_markup['category'];
+		}
+
+		// audience: merged per Schema.org sub-property, not copied
+		// wholesale. `add_variant_audience()` (called earlier, in
+		// `build_variant_entry()`) already set whichever sub-property
+		// this variation resolved on its own — e.g. `suggestedAge`, when
+		// age group is the actual variation axis. This step fills in
+		// only the sub-property the variant did NOT resolve, from the
+		// parent's own `audience` (e.g. a `suggestedGender` that's
+		// constant across every variant). Google requires both fields
+		// for Apparel & Accessories, so a variant whose own axis covers
+		// just one of the two still needs the other merged in, not
+		// silently dropped.
+		if ( ! empty( $parent_markup['audience'] ) && is_array( $parent_markup['audience'] ) ) {
+			$audience = ( isset( $entry['audience'] ) && is_array( $entry['audience'] ) ) ? $entry['audience'] : array();
+			foreach ( array( 'suggestedGender', 'suggestedAge' ) as $sub_property ) {
+				if ( ! isset( $audience[ $sub_property ] ) && isset( $parent_markup['audience'][ $sub_property ] ) ) {
+					$audience[ $sub_property ] = $parent_markup['audience'][ $sub_property ];
+				}
+			}
+			if ( ! empty( $audience ) ) {
+				// `@type` first, matching build_audience_block()'s own
+				// key order — array_merge() keeps a colliding string
+				// key's ORIGINAL position (here, first) while still
+				// taking the later array's value, so this is a no-op
+				// re-confirmation when `$audience` already carries
+				// `@type` from its own resolution.
+				$entry['audience'] = array_merge( array( '@type' => 'PeopleAudience' ), $audience );
+			}
 		}
 
 		// Offer-level inheritance operates on the variant's own
@@ -1818,6 +1944,73 @@ class WC_AI_Storefront_JsonLd {
 				continue;
 			}
 			$entry[ $schema_prop ] = $this->display_name_for_attribute_value( $slug, $value );
+		}
+	}
+
+	/**
+	 * Emit `audience` on a variant entry from the variation's own resolved
+	 * Gender / Age group attribute values.
+	 *
+	 * **Why not {@see emit_attributes()}**: that method assumes
+	 * `$product->get_attributes()` returns `WC_Product_Attribute[]`
+	 * (visible/variation-flag-bearing objects), which holds for a parent
+	 * `WC_Product` but not for a `WC_Product_Variation` — the latter's
+	 * `get_attributes()` is inherited, unoverridden, from the base class
+	 * and returns a flat `slug => value` STRING map instead (WC core's
+	 * own `WC_Product_Variation::get_variation_attributes()` iterates
+	 * that same prop as plain key/value pairs, and feeds the values
+	 * straight into `add_query_arg()` / `urlencode()` — never through an
+	 * object). Calling `emit_attributes()` against a variation would
+	 * fatal the first time it tries `$attribute->get_visible()` on a
+	 * string. Reading postmeta directly via
+	 * {@see read_variation_audience_attributes()} — the same approach
+	 * {@see read_variation_core_attributes()} already uses for
+	 * color/size/material/pattern — sidesteps the shape mismatch
+	 * entirely.
+	 *
+	 * A variation that does not itself carry a recognised Gender / Age
+	 * group value (the common case: these are usually constant across a
+	 * product's variants, with size/color as the actual variation axes)
+	 * emits nothing here; {@see add_inherited_variant_fields()} fills the
+	 * gap from the parent's own resolved `audience` afterwards, per
+	 * Schema.org sub-property.
+	 *
+	 * @param array      $entry     Variant markup, modified by reference.
+	 * @param WC_Product $variation The variation.
+	 */
+	private function add_variant_audience( array &$entry, $variation ): void {
+		if ( ! method_exists( $variation, 'get_id' ) ) {
+			return;
+		}
+
+		// Same pa_-vs-bare precedence as emit_attributes() (see
+		// AUDIENCE_ATTRIBUTE_MAP): the winning value per field is
+		// whichever slug has the lowest `priority` among the slugs
+		// actually present on this variation's own postmeta.
+		$winners = array(
+			'gender'    => array(
+				'value'    => '',
+				'priority' => PHP_INT_MAX,
+			),
+			'age_group' => array(
+				'value'    => '',
+				'priority' => PHP_INT_MAX,
+			),
+		);
+		foreach ( self::read_variation_audience_attributes( (int) $variation->get_id() ) as $slug_lower => $value ) {
+			$field    = self::AUDIENCE_ATTRIBUTE_MAP[ $slug_lower ]['field'];
+			$priority = self::AUDIENCE_ATTRIBUTE_MAP[ $slug_lower ]['priority'];
+			if ( $priority < $winners[ $field ]['priority'] ) {
+				$winners[ $field ] = array(
+					'value'    => $value,
+					'priority' => $priority,
+				);
+			}
+		}
+
+		$audience = self::build_audience_block( $winners['gender']['value'], $winners['age_group']['value'] );
+		if ( ! empty( $audience ) ) {
+			$entry['audience'] = $audience;
 		}
 	}
 
