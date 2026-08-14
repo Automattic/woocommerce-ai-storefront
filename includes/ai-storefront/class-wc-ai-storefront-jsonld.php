@@ -2630,12 +2630,16 @@ class WC_AI_Storefront_JsonLd {
 	 * Adds shippingDetails to offers[0] when the product ships and a store
 	 * country is known.
 	 *
-	 * Virtual / downloadable products have no shipping, so no block is emitted
-	 * for them — a shippingDetails on a no-ship product is contradictory and
-	 * mismatches the products feed, which already gates on `needs_shipping()`
-	 * (`requires_shipping`). The defensive `method_exists()` mirrors the feed:
-	 * when the method is unavailable we fail safe and still emit, never
-	 * suppressing shipping for a real product. (#504)
+	 * Virtual products have no shipping, so no block is emitted for them —
+	 * a shippingDetails on a no-ship product is contradictory and mismatches
+	 * the products feed, which already gates on `needs_shipping()`
+	 * (`requires_shipping`). `needs_shipping()` is `! is_virtual()`; it does
+	 * not consult `is_downloadable()`, which is an independent checkbox — a
+	 * physical, downloadable product (a vinyl record bundled with a
+	 * download code) still ships and still gets a shippingDetails block. The
+	 * defensive `method_exists()` mirrors the feed: when the method is
+	 * unavailable we fail safe and still emit, never suppressing shipping
+	 * for a real product. (#504)
 	 *
 	 * A DefinedRegion without addressCountry is meaningless — no emission
 	 * when $country is empty.
