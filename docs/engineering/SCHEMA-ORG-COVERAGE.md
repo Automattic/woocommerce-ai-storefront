@@ -1,8 +1,13 @@
 # Schema.org Coverage Audit
 
-> Last reviewed: 2026-08-13 (post-[#618](https://github.com/Automattic/woocommerce-ai-storefront/issues/618) `Product.audience`)
+> Last reviewed: 2026-08-14 (post-[#614](https://github.com/Automattic/woocommerce-ai-storefront/issues/614)/[#615](https://github.com/Automattic/woocommerce-ai-storefront/issues/615) shipping-level and variant dimensions)
 
-## What changed since the last review (2026-07-10)
+## What changed since the last review (2026-08-13)
+
+- **`OfferShippingDetails.weight`/`.depth`/`.width`/`.height` now emitted** (#614): the same `QuantitativeValue` blocks already published at `Product` level now also appear under `offers[0].shippingDetails`, from a shared `build_dimension_blocks()` builder so the two placements can't drift. Schema.org distinguishes item size (`Product`) from parcel size (`OfferShippingDetails`), matching Google's `product_*`/`shipping_*` split; WooCommerce has one set of dimension fields — its own shipping methods already consume them to compute rates — so populating both from that one set is faithful to what the data means in WooCommerce. Deliberately does not gate on `wc_product_weight_enabled()`/`wc_product_dimensions_enabled()` — see [JSON-LD-SCHEMA.md §dimensions](./JSON-LD-SCHEMA.md#weight-depth-width-height-dimensions).
+- **`hasVariant[].weight`/`.depth`/`.width`/`.height` now emitted** (#615): each variant Product entry carries its own resolved dimensions — its own value if set, the parent's otherwise — via WooCommerce's own getter inheritance (`WC_Product_Variation` falling back to `parent_data`), not logic this plugin wrote. Emits on every variant including inherited values, so a consumer reading one `hasVariant` node in isolation gets a self-contained answer. See [JSON-LD-SCHEMA.md §hasVariant](./JSON-LD-SCHEMA.md#productgroup--hasvariant--variesby-variable-products).
+
+## What changed in the review before that (2026-07-10)
 
 - **`Product.audience` now emitted** (#618): `emit_attributes()` resolves the merchant's Gender and Age group attributes (`pa_gender`/`pa_age_group`, or a bare `gender`/`age_group` custom attribute as a compatibility fallback) into a `PeopleAudience` block — `suggestedGender` passes through any non-empty value, normalising only a recognised match to lowercase; `suggestedAge` maps a recognised bucket to a `QuantitativeValue`. An unrecognised age-group value falls back to `additionalProperty` since there's no honest number to emit for it. Variants resolve and inherit the block per Schema.org sub-property, and `variesBy` advertises `suggestedGender`/`suggestedAge` when that's the varying axis. See [JSON-LD-SCHEMA.md §audience](./JSON-LD-SCHEMA.md#audience-gender-and-age-group--peopleaudience).
 
@@ -142,7 +147,7 @@ Variable products are converted to `@type: ProductGroup` by `maybe_convert_to_pr
 
 ### Per-variant `Product` entries (inside `hasVariant[]`)
 
-Each `hasVariant` entry is a standalone `Product` built by `build_variant_entry()` and includes: `@id`, `url`, `name`, `sku`, `image`, typed props, `brand`, `category`, and `offers[0]` with `seller` (copied from parent), the variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
+Each `hasVariant` entry is a standalone `Product` built by `build_variant_entry()` and includes: `@id`, `url`, `name`, `sku`, `image`, typed props, `brand`, `category`, `weight`/`depth`/`width`/`height` (own value if set, else inherited from the parent via WC's own getters, #615), and `offers[0]` with `seller` (copied from parent), `shippingDetails` (including the variant's own weight/dimensions, #614), the variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
 
 **Not emitted on variants**: `isVariantOf` (no back-pointer to the parent) and `inProductGroupWithID` (the parent carries `productGroupID` instead).
 
@@ -219,7 +224,7 @@ These nested types are emitted under `Offer.shippingDetails`. The Offer table ab
 | Property | In doc? | Emitted? | Source |
 |---|---|---|---|
 | `deliveryTime` (`ShippingDeliveryTime`) | ✓ §shipping | ✓ when handling time configured | Plugin (see `ShippingDeliveryTime` table below) |
-| `depth` / `height` / `width` / `weight` | — | — | — *(would be **shipment box** dimensions, distinct from product dimensions emitted at Product level)* |
+| `depth` / `height` / `width` / `weight` | ✓ §shipping | ✓ (#614) | Plugin — same `QuantitativeValue` values as `Product`-level (both drawn from WooCommerce's single set of dimension fields, which its own shipping methods already use to compute rates; the two properties answer different questions — item size vs. parcel size — the same split Google's `product_*`/`shipping_*` attributes make) |
 | `doesNotShip` | — | — | — *(regional exclusions; merchant data exists in WC's restricted-shipping zones, but we don't reflect it here)* |
 | `hasShippingService` (`ShippingService`) | — | — | — *(newer Schema.org property for service-tier shipping info)* |
 | `shippingDestination` (`DefinedRegion`) | ✓ §shipping | ✓ (`addressCountry` from store base location) | Plugin |
@@ -240,7 +245,7 @@ These nested types are emitted under `Offer.shippingDetails`. The Offer table ab
 
 ### Coverage gap summary for Shipping
 
-We emit the structural skeleton (OfferShippingDetails wrapper, free-shipping `shippingRate`, handling time, destination country) but miss several high-value signals AI agents use for delivery-estimate computation: `transitTime`, `cutoffTime`, `businessDays`, `shippingOrigin`. Filed as a follow-up below.
+We emit the structural skeleton (OfferShippingDetails wrapper, free-shipping `shippingRate`, handling time, destination country, weight/dimensions) but miss several high-value signals AI agents use for delivery-estimate computation: `transitTime`, `cutoffTime`, `businessDays`, `shippingOrigin`. Filed as a follow-up below.
 
 ---
 

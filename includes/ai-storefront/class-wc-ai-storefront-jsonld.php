@@ -852,23 +852,50 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Adds weight and depth/width/height QuantitativeValue blocks.
+	 * Builds the weight and depth/width/height QuantitativeValue blocks.
 	 *
-	 * Every value is cast through (float) to produce a canonical numeric
-	 * value — WC persists weight and dimensions alike as free-form strings
-	 * (e.g. `.5`, `10`) that strict JSON-LD parsers would see as quoted
-	 * string literals. `QuantitativeValue.value` is Number-ranged.
+	 * Extracted so `OfferShippingDetails` can carry the same values
+	 * without a second copy of the construction — the same reason
+	 * `build_return_policy_block()` was extracted when its second call
+	 * site appeared.
+	 *
+	 * Every value is cast through (float): WC persists weight and
+	 * dimensions alike as free-form strings (e.g. `.5`, `10`) that strict
+	 * JSON-LD parsers would read as quoted string literals, and
+	 * `QuantitativeValue.value` is Number-ranged.
 	 *
 	 * Audit bug #4 introduced the weight cast; the three dimension values
 	 * carried the same defect until #613 because `get_dimensions( false )`
 	 * returns the raw props untouched.
 	 *
-	 * @param array      $markup  Markup array, modified by reference.
-	 * @param WC_Product $product The product object.
+	 * Note WC's **length** is Schema.org's **depth** — Schema.org has no
+	 * `length` property for physical products.
+	 *
+	 * Passing a `WC_Product_Variation` resolves inheritance for free:
+	 * its getters fall back to the parent when the variation's own value
+	 * is empty, and `has_weight()` / `has_dimensions()` route through
+	 * those same getters.
+	 *
+	 * Deliberately does NOT gate on `wc_product_weight_enabled()` /
+	 * `wc_product_dimensions_enabled()`, despite #614's acceptance
+	 * criteria asking for it. Both are bare `apply_filters( ..., true )`
+	 * wrappers consumed only in wp-admin product-editor views, controlling
+	 * whether the input fields render there — not whether stored data is
+	 * used or displayed publicly. WooCommerce's own frontend "Additional
+	 * information" tab ignores them and renders on `has_weight()` /
+	 * `has_dimensions()` alone, exactly as this method does. Honouring
+	 * them here would invent a suppression semantic WooCommerce has
+	 * nowhere else, and would make this markup less complete than the
+	 * page's own visible content.
+	 *
+	 * @param WC_Product $product The product or variation.
+	 * @return array<string, array> Any of weight/depth/width/height.
 	 */
-	private function add_dimensions( array &$markup, $product ): void {
+	private function build_dimension_blocks( $product ): array {
+		$blocks = array();
+
 		if ( $product->has_weight() ) {
-			$markup['weight'] = array(
+			$blocks['weight'] = array(
 				'@type'    => 'QuantitativeValue',
 				'value'    => (float) $product->get_weight(),
 				'unitCode' => $this->get_weight_unit_code(),
@@ -876,23 +903,56 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		if ( $product->has_dimensions() ) {
-			$dimensions       = $product->get_dimensions( false );
-			$dimension_unit   = $this->get_dimension_unit_code();
-			$markup['depth']  = array(
-				'@type'    => 'QuantitativeValue',
-				'value'    => (float) $dimensions['length'],
-				'unitCode' => $dimension_unit,
-			);
-			$markup['width']  = array(
-				'@type'    => 'QuantitativeValue',
-				'value'    => (float) $dimensions['width'],
-				'unitCode' => $dimension_unit,
-			);
-			$markup['height'] = array(
-				'@type'    => 'QuantitativeValue',
-				'value'    => (float) $dimensions['height'],
-				'unitCode' => $dimension_unit,
-			);
+			$dimensions     = $product->get_dimensions( false );
+			$dimension_unit = $this->get_dimension_unit_code();
+
+			// WC's `length` is Schema.org's `depth` — Schema.org has
+			// depth/width/height and no "length".
+			//
+			// Each axis is emitted independently because `has_dimensions()`
+			// is true when ANY ONE of the three is set:
+			//
+			//   ( get_length() || get_height() || get_width() ) && ! get_virtual()
+			//
+			// WooCommerce stores an unset axis as '', and `(float) ''` is
+			// `0.0`. Emitting the whole set on that gate would publish
+			// `depth: 0` for a product whose merchant only recorded a
+			// height — a fabricated measurement, and a more convincing one
+			// than the empty string this used to emit before the value was
+			// cast to a number.
+			foreach ( array(
+				'depth'  => 'length',
+				'width'  => 'width',
+				'height' => 'height',
+			) as $schema_key => $wc_key ) {
+				if ( '' === trim( (string) $dimensions[ $wc_key ] ) ) {
+					continue;
+				}
+				$blocks[ $schema_key ] = array(
+					'@type'    => 'QuantitativeValue',
+					'value'    => (float) $dimensions[ $wc_key ],
+					'unitCode' => $dimension_unit,
+				);
+			}
+		}
+
+		return $blocks;
+	}
+
+	/**
+	 * Adds weight and depth/width/height to the Product-level markup.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product object.
+	 */
+	private function add_dimensions( array &$markup, $product ): void {
+		// Assigned key by key rather than via array_merge(): merging would
+		// copy the whole markup array — nested `offers` and all — to add at
+		// most four keys, and array_merge() also renumbers integer keys,
+		// which would silently reindex anything an upstream filter had
+		// added to `woocommerce_structured_data_product`.
+		foreach ( $this->build_dimension_blocks( $product ) as $key => $block ) {
+			$markup[ $key ] = $block;
 		}
 	}
 
@@ -1764,9 +1824,11 @@ class WC_AI_Storefront_JsonLd {
 	 * (gender/age group, when this variation carries one of its own —
 	 * {@see add_variant_audience()}; a variant without its own value
 	 * inherits per-field from the parent later, in
-	 * {@see add_inherited_variant_fields()}), an `offers[0]` Offer block
-	 * with price/availability/currency/inventory/shipping/return-policy,
-	 * the variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
+	 * {@see add_inherited_variant_fields()}), its own resolved weight and
+	 * depth/width/height (own value if set, parent's otherwise — see
+	 * {@see add_dimensions()}), an `offers[0]` Offer block with
+	 * price/availability/currency/inventory/shipping/return-policy, the
+	 * variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
 	 *
 	 * Both URL fields point at the WC Shareable Checkout URL using the
 	 * **variation ID** so AI-routed traffic lands on checkout with the
@@ -1801,6 +1863,14 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_inventory_level( $entry, $variation );
 		$this->add_currency( $entry );
 		$this->add_subscription_signals( $entry, $variation );
+
+		// Variants carry their own dimensions so a consumer reading one
+		// hasVariant entry in isolation sees complete shipping data.
+		// WC_Product_Variation's getters fall back to the parent when the
+		// variation does not override, so inheritance needs no branching:
+		// own value if set, parent's otherwise.
+		$this->add_dimensions( $entry, $variation );
+
 		$this->add_shipping_details( $entry, $country, $variation );
 		$this->add_handling_time( $entry, $settings );
 		$this->add_return_policy( $entry, $parent_product, $settings, $country );
@@ -2581,12 +2651,16 @@ class WC_AI_Storefront_JsonLd {
 	 * Adds shippingDetails to offers[0] when the product ships and a store
 	 * country is known.
 	 *
-	 * Virtual / downloadable products have no shipping, so no block is emitted
-	 * for them — a shippingDetails on a no-ship product is contradictory and
-	 * mismatches the products feed, which already gates on `needs_shipping()`
-	 * (`requires_shipping`). The defensive `method_exists()` mirrors the feed:
-	 * when the method is unavailable we fail safe and still emit, never
-	 * suppressing shipping for a real product. (#504)
+	 * Virtual products have no shipping, so no block is emitted for them —
+	 * a shippingDetails on a no-ship product is contradictory and mismatches
+	 * the products feed, which already gates on `needs_shipping()`
+	 * (`requires_shipping`). `needs_shipping()` is `! is_virtual()`; it does
+	 * not consult `is_downloadable()`, which is an independent checkbox — a
+	 * physical, downloadable product (a vinyl record bundled with a
+	 * download code) still ships and still gets a shippingDetails block. The
+	 * defensive `method_exists()` mirrors the feed: when the method is
+	 * unavailable we fail safe and still emit, never suppressing shipping
+	 * for a real product. (#504)
 	 *
 	 * A DefinedRegion without addressCountry is meaningless — no emission
 	 * when $country is empty.
@@ -2624,6 +2698,22 @@ class WC_AI_Storefront_JsonLd {
 				'value'    => 0,
 				'currency' => get_woocommerce_currency(),
 			);
+		}
+
+		// Google's shipping_* attributes describe the parcel, and
+		// WooCommerce's single set of dimension fields is what its own
+		// shipping methods use to compute rates — the product editor
+		// files them under the Shipping tab. Publishing them here as well
+		// as on Product is the same data serving two questions: how big
+		// the item is, and how big the thing being shipped is. For a
+		// single-item order they are the same numbers; the divergence is
+		// packaging overhead, which is the approximation GMC accepts too.
+		//
+		// Assigned key by key rather than merged, matching add_dimensions().
+		// This runs for every product and every variant, and merging
+		// reallocates the whole block to add at most four keys.
+		foreach ( $this->build_dimension_blocks( $product ) as $key => $dimension_block ) {
+			$block[ $key ] = $dimension_block;
 		}
 
 		$markup['offers'][0]['shippingDetails'] = $block;

@@ -3708,6 +3708,124 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// Variant weight/dimensions on hasVariant entries (#615)
+	//
+	// JsonLdDimensionsTest covers build_dimension_blocks()/add_dimensions()
+	// in isolation via reflection, but neither of those tests goes through
+	// build_variant_entry() — so nothing there would notice if the call
+	// site inside build_variant_entry() were ever removed. These tests
+	// close that gap by asserting on the entry build_variant_entry()
+	// actually returns.
+	// ------------------------------------------------------------------
+
+	public function test_variant_entry_carries_its_own_dimensions(): void {
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation( [
+			'id'             => 101,
+			'has_weight'     => true,
+			'weight'         => '0.8',
+			'has_dimensions' => true,
+			'dimensions'     => [ 'length' => '6', 'width' => '4', 'height' => '2' ],
+		] );
+		$parent = $this->make_product();
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 0.8, $entry['weight']['value'] );
+		$this->assertSame( 6.0, $entry['depth']['value'] );
+		$this->assertSame( 4.0, $entry['width']['value'] );
+		$this->assertSame( 2.0, $entry['height']['value'] );
+	}
+
+	public function test_variant_entry_inherits_parent_dimensions_when_its_own_are_absent(): void {
+		// WC_Product_Variation's own getters resolve inheritance (own
+		// value if set, parent's otherwise) — a Mockery mock can't
+		// exercise that resolution logic itself, so this simulates the
+		// RESULT: a variation whose own meta is empty reports back
+		// exactly what its parent carries below (1.5 / 10 / 8 / 3).
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$parent = $this->make_product( [
+			'has_weight'     => true,
+			'weight'         => '1.5',
+			'has_dimensions' => true,
+			'dimensions'     => [ 'length' => '10', 'width' => '8', 'height' => '3' ],
+		] );
+		$variation = $this->make_variation( [
+			'id'             => 101,
+			'has_weight'     => true,
+			'weight'         => '1.5',
+			'has_dimensions' => true,
+			'dimensions'     => [ 'length' => '10', 'width' => '8', 'height' => '3' ],
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 1.5, $entry['weight']['value'] );
+		$this->assertSame( 10.0, $entry['depth']['value'] );
+		$this->assertSame( 8.0, $entry['width']['value'] );
+		$this->assertSame( 3.0, $entry['height']['value'] );
+	}
+
+	public function test_virtual_variant_entry_emits_no_dimensions(): void {
+		// has_weight() / has_dimensions() both carry a `! get_virtual()`
+		// guard in WC core (see build_dimension_blocks()'s docblock) — a
+		// virtual variation resolves both to false regardless of any
+		// weight/dimensions the variation or its parent otherwise carry.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation( [
+			'id'             => 101,
+			'needs_shipping' => false,
+			'has_weight'     => false,
+			'has_dimensions' => false,
+		] );
+		$parent = $this->make_product( [
+			'has_weight'     => true,
+			'weight'         => '1.5',
+			'has_dimensions' => true,
+			'dimensions'     => [ 'length' => '10', 'width' => '8', 'height' => '3' ],
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		foreach ( [ 'weight', 'depth', 'width', 'height' ] as $key ) {
+			$this->assertArrayNotHasKey( $key, $entry, "{$key} must be absent for a virtual variation" );
+		}
+	}
+
+	public function test_variant_dimensions_agree_between_product_level_and_shipping_details(): void {
+		// Task 2 (#614) placed the same weight/dimension blocks at
+		// offers[0].shippingDetails. Both placements call
+		// build_dimension_blocks() with the same $variation argument, so
+		// they cannot diverge by construction — pin it so a future
+		// refactor that splits the two call sites can't quietly desync
+		// them.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$variation = $this->make_variation( [
+			'id'             => 101,
+			'has_weight'     => true,
+			'weight'         => '0.8',
+			'has_dimensions' => true,
+			'dimensions'     => [ 'length' => '6', 'width' => '4', 'height' => '2' ],
+		] );
+		$parent = $this->make_product();
+
+		$entry            = $this->invoke_build_variant_entry( $variation, $parent );
+		$shipping_details = $entry['offers'][0]['shippingDetails'];
+
+		foreach ( [ 'weight', 'depth', 'width', 'height' ] as $key ) {
+			$this->assertSame(
+				$entry[ $key ],
+				$shipping_details[ $key ],
+				"{$key} must agree between the Product-level entry and offers[0].shippingDetails"
+			);
+		}
+	}
+
+	// ------------------------------------------------------------------
 	// Shipping rate — free shipping detection
 	// ------------------------------------------------------------------
 
