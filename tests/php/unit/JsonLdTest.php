@@ -1165,6 +1165,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// variation — see that method's docblock for why calling
 		// emit_attributes() on a WC_Product_Variation would be wrong).
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// add_variant_audience() now routes the winning value through
+		// display_name_for_attribute_value() (#618 finding 3); stub the
+		// term lookup to "not found" so it falls back to the raw
+		// postmeta value, same as the assertions below expect.
+		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
 		$variation = $this->make_variation( [
 			'variation_attributes' => array(
@@ -1184,6 +1189,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Mirrors emit_attributes()'s pa_-vs-bare precedence
 		// (AUDIENCE_ATTRIBUTE_MAP) at the per-variant level.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
 		$variation = $this->make_variation( [
 			'variation_attributes' => array(
@@ -1197,6 +1203,49 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'female', $entry['audience']['suggestedGender'] );
 	}
 
+	public function test_variant_audience_uses_term_display_name_not_slug(): void {
+		// #618 review finding: a merchant-renamed pa_gender term (slug
+		// `mens`, name "Men's") must produce the SAME suggestedGender
+		// string on the parent and on every variant. The parent already
+		// gets this right — WC core's own get_attribute() resolves a
+		// taxonomy attribute to its term NAME before emit_attributes()
+		// ever sees the value (see JsonLdAudienceTest's
+		// test_unrecognised_gender_passes_through_verbatim for that
+		// verbatim-passthrough contract acting on a name). Before this
+		// fix, add_variant_audience() read the raw postmeta value
+		// directly — the term SLUG, not its name — so a renamed term
+		// produced two different suggestedGender strings on the same
+		// product. add_variant_core_typed_properties() already avoids
+		// this for color/size/material/pattern via
+		// display_name_for_attribute_value(); add_variant_audience() now
+		// does the same.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$term       = new \WP_Term();
+		$term->slug = 'mens';
+		$term->name = "Men's";
+		Functions\when( 'get_term_by' )->alias(
+			static function ( $field, $value, $taxonomy ) use ( $term ) {
+				return ( 'slug' === $field && $term->slug === $value && 'pa_gender' === $taxonomy )
+					? $term
+					: false;
+			}
+		);
+
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array( 'pa_gender' => 'mens' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		// The renamed term's NAME is what emits — not the raw slug, and
+		// not one of Google's three canonical values either. Gender's
+		// no-gatekeeping rule means it passes through verbatim, which is
+		// exactly the intended feedback loop: Google flags an invalid
+		// value directly to the merchant.
+		$this->assertSame( "Men's", $entry['audience']['suggestedGender'] );
+	}
+
 	public function test_variant_entry_omits_audience_when_variation_has_no_recognised_value(): void {
 		// The common case: Gender/Age group are usually constant across
 		// a product's variants (size/color are the actual axes), so most
@@ -1205,6 +1254,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// add_inherited_variant_fields(), exercised separately) must not
 		// synthesize an audience key here.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// `pa_color` here goes through add_variant_core_typed_properties(),
+		// which (independently of this test's audience concern) already
+		// routes through display_name_for_attribute_value() and so calls
+		// get_term_by(). Stub it to "not found" so the fixture's raw
+		// value ('White') passes through unchanged.
+		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
 		$variation = $this->make_variation( [
 			'variation_attributes' => array( 'pa_color' => 'White' ),
@@ -1928,6 +1983,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// suggestedGender per Schema.org sub-property rather than
 		// skipping inheritance just because the variant already resolved
 		// SOME audience data on its own.
+		//
+		// add_variant_audience() now routes the winning value through
+		// display_name_for_attribute_value() (#618 finding 3); stub the
+		// term lookup to "not found" so it falls back to the raw
+		// postmeta value, same as the assertions below expect.
+		Functions\when( 'get_term_by' )->justReturn( false );
 		$result  = $this->enhance_variable_with_parent_markup(
 			array(
 				'audience' => array(
@@ -1949,6 +2010,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// When the variation resolves BOTH fields on its own, the
 		// parent's (different) audience must not bleed through on either
 		// sub-property.
+		Functions\when( 'get_term_by' )->justReturn( false );
 		$result  = $this->enhance_variable_with_parent_markup(
 			array(
 				'audience' => array(

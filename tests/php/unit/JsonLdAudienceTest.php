@@ -189,14 +189,17 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * Runs emit_attributes() against a product and returns the markup.
 	 *
-	 * @param array<string, string> $attributes Slug => value.
+	 * @param array<string, string> $attributes    Slug => value.
+	 * @param array                 $initial_markup Pre-existing markup — e.g. as if an
+	 *                                              upstream `woocommerce_structured_data_product`
+	 *                                              filter already ran at an earlier priority.
 	 * @return array
 	 */
-	private function emit( array $attributes ): array {
+	private function emit( array $attributes, array $initial_markup = array() ): array {
 		Functions\when( 'wc_attribute_label' )->returnArg();
 
 		$jsonld = new WC_AI_Storefront_JsonLd();
-		$markup = array();
+		$markup = $initial_markup;
 		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'emit_attributes' );
 		$method->setAccessible( true );
 		$method->invokeArgs( $jsonld, array( &$markup, $this->make_product_with_attributes( $attributes ) ) );
@@ -275,6 +278,123 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 13.0, $markup['audience']['suggestedAge']['minValue'] );
 		$by_name = array_column( $markup['additionalProperty'], 'value', 'name' );
 		$this->assertSame( 'kids', $by_name['age_group'] );
+	}
+
+	public function test_unmappable_winner_falls_through_to_mappable_bare_attribute(): void {
+		// #618 review finding: pa_age_group wins on priority (0 < 1), but
+		// "Grown-up" doesn't map to any AUDIENCE_AGE_GROUPS bucket.
+		// Previously this blocked suggestedAge entirely even though a
+		// canonical bare `age_group` value sat right there on the same
+		// product. The fall-through now tries the next-priority candidate.
+		$markup = $this->emit(
+			array(
+				'pa_age_group' => 'Grown-up',
+				'age_group'    => 'adult',
+			)
+		);
+
+		$this->assertSame( 13.0, $markup['audience']['suggestedAge']['minValue'] );
+		// The candidate that actually typed — the bare `age_group` — is
+		// the one excluded from additionalProperty; the unmappable
+		// pa_age_group still reaches agents there, untyped.
+		$names = array_column( $markup['additionalProperty'], 'name' );
+		$this->assertContains( 'pa_age_group', $names );
+		$this->assertNotContains( 'age_group', $names );
+	}
+
+	public function test_precedence_unchanged_when_winner_is_mappable(): void {
+		// Guard against the fall-through becoming the default path: when
+		// pa_age_group DOES map, it must still win outright over a
+		// mappable bare age_group, exactly as before this fix.
+		$markup = $this->emit(
+			array(
+				'pa_age_group' => 'kids',
+				'age_group'    => 'adult',
+			)
+		);
+
+		$this->assertSame( 5.0, $markup['audience']['suggestedAge']['minValue'] );
+		$names = array_column( $markup['additionalProperty'], 'name' );
+		$this->assertContains( 'age_group', $names );
+		$this->assertNotContains( 'pa_age_group', $names );
+	}
+
+	public function test_gender_never_uses_fall_through(): void {
+		// Gender always types for any non-empty value (see
+		// build_gender_sub_property()), so even when the higher-priority
+		// pa_gender value isn't one of Google's three canonical strings,
+		// it still "types" verbatim and must win outright — the
+		// fall-through added for age group must never activate for
+		// gender.
+		$markup = $this->emit(
+			array(
+				'pa_gender' => 'Womens',
+				'gender'    => 'male',
+			)
+		);
+
+		$this->assertSame( 'Womens', $markup['audience']['suggestedGender'] );
+		$by_name = array_column( $markup['additionalProperty'], 'value', 'name' );
+		$this->assertSame( 'male', $by_name['gender'] );
+	}
+
+	public function test_upstream_audience_is_merged_not_overwritten(): void {
+		// #618 review finding: a plugin hooking
+		// woocommerce_structured_data_product before priority 20 may
+		// already have set `audience` (e.g. with its own audienceType).
+		// emit_attributes() must merge our sub-properties in rather than
+		// replacing the block wholesale — the same upstream_owns
+		// convention the core typed properties already honor.
+		$markup = $this->emit(
+			array(
+				'pa_gender'    => 'female',
+				'pa_age_group' => 'adult',
+			),
+			array(
+				'audience' => array(
+					'@type'        => 'PeopleAudience',
+					'audienceType' => 'gift shoppers',
+				),
+			)
+		);
+
+		$this->assertSame( 'gift shoppers', $markup['audience']['audienceType'], 'Upstream key must survive untouched.' );
+		$this->assertSame( 'female', $markup['audience']['suggestedGender'] );
+		$this->assertSame( 13.0, $markup['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_upstream_owned_sub_property_is_not_overwritten(): void {
+		$markup = $this->emit(
+			array(
+				'pa_gender'    => 'female',
+				'pa_age_group' => 'adult',
+			),
+			array(
+				'audience' => array(
+					'@type'           => 'PeopleAudience',
+					'suggestedGender' => 'male',
+				),
+			)
+		);
+
+		// Upstream's suggestedGender wins; ours is deferred and reaches
+		// additionalProperty instead, same as the existing upstream_owns
+		// convention for color/size/material/pattern.
+		$this->assertSame( 'male', $markup['audience']['suggestedGender'] );
+		$this->assertSame( 13.0, $markup['audience']['suggestedAge']['minValue'] );
+		$names = array_column( $markup['additionalProperty'], 'name' );
+		$this->assertContains( 'pa_gender', $names );
+	}
+
+	public function test_non_array_upstream_audience_is_left_untouched(): void {
+		$markup = $this->emit(
+			array( 'pa_gender' => 'female' ),
+			array( 'audience' => 'not-an-array' )
+		);
+
+		$this->assertSame( 'not-an-array', $markup['audience'] );
+		$names = array_column( $markup['additionalProperty'], 'name' );
+		$this->assertContains( 'pa_gender', $names );
 	}
 
 	public function test_unrecognised_gender_emits_typed_not_additional_property(): void {

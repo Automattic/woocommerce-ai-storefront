@@ -147,11 +147,16 @@ class WC_AI_Storefront_JsonLd {
 	 * carries both `pa_gender` and a bare `gender` with different
 	 * values, `pa_gender` (priority 0) is the one
 	 * {@see build_audience_block()} sees; the bare `gender` (priority 1)
-	 * is outranked. The outranked value is NOT discarded — it cannot
-	 * occupy the single `audience` slot alongside its winner, so
-	 * {@see emit_attributes()} routes it to `additionalProperty` instead,
-	 * keyed by its own slug so the collision never causes either value
-	 * to silently vanish.
+	 * is outranked — PROVIDED `pa_gender`'s value actually produces typed
+	 * output. {@see emit_attributes()} falls through to the next-priority
+	 * candidate when the higher-priority one doesn't (e.g. `pa_age_group`
+	 * set to an unrecognised bucket), so precedence only decides the
+	 * winner among candidates that are actually usable; it never blocks a
+	 * usable lower-priority value outright. The outranked/unused value is
+	 * NOT discarded — it cannot occupy the single `audience` slot
+	 * alongside its winner, so {@see emit_attributes()} routes it to
+	 * `additionalProperty` instead, keyed by its own slug so the
+	 * collision never causes either value to silently vanish.
 	 *
 	 * Keys are compared after lowercasing and after collapsing spaces and
 	 * hyphens to underscores, so a custom attribute the merchant labelled
@@ -903,21 +908,29 @@ class WC_AI_Storefront_JsonLd {
 	 *      held in a pending collector keyed by slug (not field), so a
 	 *      losing attribute in a `pa_`-vs-bare collision is judged, and
 	 *      routed to `additionalProperty`, independently of its winner.
-	 *      The highest-precedence (lowest `priority`) value per field is
-	 *      what actually reaches {@see build_audience_block()}; routing
-	 *      of every pending entry is decided after the loop, once that
-	 *      call has run.
+	 *      Every candidate for a field is kept, not just the
+	 *      highest-precedence one: after the loop, candidates are tried
+	 *      in precedence order and the first one that actually produces
+	 *      typed output wins. A `pa_` value that fails to type (e.g. an
+	 *      unrecognised age-group bucket) falls through to a lower-
+	 *      priority but mappable candidate instead of blocking typed
+	 *      emission outright — see the resolution step below.
 	 *   3. Maps to a typed property AND value is single-valued AND no
 	 *      upstream owner of the typed key → emit as typed property,
 	 *      skip additionalProperty for this slug.
 	 *   4. Otherwise (unmapped, multi-value, or upstream-owns-typed) →
 	 *      emit to additionalProperty.
 	 *
-	 * Caller control: when an upstream filter has already set the typed
-	 * property (e.g. `$markup['color']`), we defer on the typed side AND
-	 * still emit the merchant's attribute to `additionalProperty`. This
-	 * preserves the merchant's data signal even if it differs from what
-	 * upstream chose to claim.
+	 * Caller control: when an upstream filter has already set a typed
+	 * property or sub-property (e.g. `$markup['color']`, or
+	 * `$markup['audience']['suggestedGender']`), we defer on that typed
+	 * side AND still emit the merchant's attribute to
+	 * `additionalProperty`. This preserves the merchant's data signal
+	 * even if it differs from what upstream chose to claim. `audience`
+	 * sub-properties are merged in individually rather than the whole
+	 * block being replaced, so an upstream `audienceType` — or a
+	 * `suggestedGender` upstream already set — survives even when we
+	 * contribute the other sub-property.
 	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
@@ -930,20 +943,20 @@ class WC_AI_Storefront_JsonLd {
 		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		$additional_properties = array();
-		// Highest-precedence (lowest `priority`) value seen so far, per
-		// field. `priority` starts above any real value (0 or 1) so the
-		// first attribute encountered for a field always wins initially.
-		$audience_winners = array(
-			'gender'    => array(
-				'slug'     => '',
-				'value'    => '',
-				'priority' => PHP_INT_MAX,
-			),
-			'age_group' => array(
-				'slug'     => '',
-				'value'    => '',
-				'priority' => PHP_INT_MAX,
-			),
+		// Every candidate seen so far, per field — not just the
+		// highest-precedence one. `pa_gender` / `pa_age_group` are the
+		// attributes this plugin creates and seeds with Google's
+		// accepted values, so they are authoritative by construction; a
+		// bare `gender` / `age_group` attribute is the compatibility
+		// fallback for a merchant's own pre-existing custom attribute
+		// (see AUDIENCE_ATTRIBUTE_MAP for the full rationale). Keeping
+		// every candidate lets a `pa_` value that fails to produce typed
+		// output fall through to the next-priority candidate instead of
+		// blocking typed emission for the field entirely. Resolved into
+		// winners after the loop.
+		$audience_candidates = array(
+			'gender'    => array(),
+			'age_group' => array(),
 		);
 		// Keyed by SLUG (not field): a `pa_`-vs-bare collision must not
 		// let one attribute's pending entry overwrite the other's — each
@@ -971,20 +984,11 @@ class WC_AI_Storefront_JsonLd {
 				$field    = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['field'];
 				$priority = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['priority'];
 
-				// `pa_gender` / `pa_age_group` are the attributes this
-				// plugin creates and seeds with Google's accepted values,
-				// so they are authoritative by construction; a bare
-				// `gender` / `age_group` attribute is the compatibility
-				// fallback for a merchant's own pre-existing custom
-				// attribute. See AUDIENCE_ATTRIBUTE_MAP for the full
-				// rationale.
-				if ( $priority < $audience_winners[ $field ]['priority'] ) {
-					$audience_winners[ $field ] = array(
-						'slug'     => $slug,
-						'value'    => $value,
-						'priority' => $priority,
-					);
-				}
+				$audience_candidates[ $field ][] = array(
+					'slug'     => $slug,
+					'value'    => $value,
+					'priority' => $priority,
+				);
 
 				$audience_pending[ $slug ] = array(
 					'@type' => 'PropertyValue',
@@ -1018,31 +1022,89 @@ class WC_AI_Storefront_JsonLd {
 			);
 		}
 
-		// Build the typed block from each field's highest-precedence
-		// value. Gender always types once non-empty (see
-		// build_audience_block()); age group types only when the bucket
-		// is recognised — an unrecognised bucket falls back to
-		// additionalProperty below like any other unmapped attribute.
-		$audience = self::build_audience_block(
-			$audience_winners['gender']['value'],
-			$audience_winners['age_group']['value']
+		// Resolve each field's candidates in precedence order (lowest
+		// `priority` first), falling through past a candidate that
+		// produces no typed output — e.g. `pa_age_group` set to an
+		// unrecognised bucket like "Grown-up" — to the next one. Gender
+		// always types for any non-empty value (see
+		// build_gender_sub_property()), so its highest-priority
+		// candidate always wins outright and this loop never actually
+		// falls through for it; the fall-through only ever activates for
+		// age group. This does not reopen the pa_-vs-bare precedence
+		// ruling — `pa_` still wins whenever its value is usable.
+		$priority_ascending = static function ( array $a, array $b ): int {
+			return $a['priority'] <=> $b['priority'];
+		};
+		usort( $audience_candidates['gender'], $priority_ascending );
+		usort( $audience_candidates['age_group'], $priority_ascending );
+
+		$gender_winner = array(
+			'slug'  => '',
+			'value' => '',
 		);
-		if ( ! empty( $audience ) ) {
-			$markup['audience'] = $audience;
+		foreach ( $audience_candidates['gender'] as $candidate ) {
+			if ( ! empty( self::build_gender_sub_property( $candidate['value'] ) ) ) {
+				$gender_winner = array(
+					'slug'  => $candidate['slug'],
+					'value' => $candidate['value'],
+				);
+				break;
+			}
 		}
 
-		// A pending entry is excluded from additionalProperty only when
-		// its slug is the winning slug for its field AND that field
-		// actually typed. Every other pending entry — outranked by a
-		// same-field sibling, or the winner itself when its field didn't
-		// type — still needs to reach agents somehow.
+		$age_winner = array(
+			'slug'  => '',
+			'value' => '',
+		);
+		foreach ( $audience_candidates['age_group'] as $candidate ) {
+			if ( ! empty( self::build_age_sub_property( $candidate['value'] ) ) ) {
+				$age_winner = array(
+					'slug'  => $candidate['slug'],
+					'value' => $candidate['value'],
+				);
+				break;
+			}
+		}
+
+		$audience = self::build_audience_block( $gender_winner['value'], $age_winner['value'] );
+
+		// `audience` follows the same upstream-defer convention as the
+		// core typed properties above (see this method's own docblock):
+		// when `woocommerce_structured_data_product` already set
+		// `audience` at an earlier priority, merge our sub-properties
+		// into it — leaving any key upstream already claimed untouched —
+		// rather than overwriting the block wholesale. Mirrors the
+		// merge-without-overwrite pattern in
+		// add_inherited_variant_fields(). A pending entry is excluded
+		// from additionalProperty only when its slug is the one that
+		// actually landed a key in `$markup['audience']`; every other
+		// pending entry — outranked, unable to type, or deferred to an
+		// upstream owner — still needs to reach agents somehow.
 		$typed_winner_slugs = array();
-		if ( isset( $audience['suggestedGender'] ) ) {
-			$typed_winner_slugs[] = $audience_winners['gender']['slug'];
+		if ( ! empty( $audience ) ) {
+			$upstream_audience = $markup['audience'] ?? null;
+			// A non-array existing value (e.g. a string some other
+			// filter set) is left untouched entirely — we skip our
+			// emission rather than merge into a shape we can't guard,
+			// consistent with how the rest of this file guards optional
+			// structures before merging into them.
+			if ( null === $upstream_audience || is_array( $upstream_audience ) ) {
+				$merged = is_array( $upstream_audience ) ? $upstream_audience : array();
+				foreach ( array( 'suggestedGender', 'suggestedAge' ) as $sub_property ) {
+					if ( isset( $merged[ $sub_property ] ) || ! isset( $audience[ $sub_property ] ) ) {
+						continue;
+					}
+					$merged[ $sub_property ] = $audience[ $sub_property ];
+					$typed_winner_slugs[]    = ( 'suggestedGender' === $sub_property ) ? $gender_winner['slug'] : $age_winner['slug'];
+				}
+				// `array_merge()` keeps a colliding string key's
+				// ORIGINAL position (here, first) while still taking the
+				// later array's value — a no-op re-confirmation when
+				// `$merged` already carries its own `@type`.
+				$markup['audience'] = array_merge( array( '@type' => 'PeopleAudience' ), $merged );
+			}
 		}
-		if ( isset( $audience['suggestedAge'] ) ) {
-			$typed_winner_slugs[] = $audience_winners['age_group']['slug'];
-		}
+
 		foreach ( $audience_pending as $slug => $property ) {
 			if ( ! in_array( $slug, $typed_winner_slugs, true ) ) {
 				$additional_properties[] = $property;
@@ -1074,7 +1136,77 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Builds the `Product.audience` → `PeopleAudience` block.
+	 * Builds the `suggestedGender` sub-property from a raw Gender
+	 * attribute value. Split out of {@see build_audience_block()} so
+	 * {@see emit_attributes()} can test a fall-through candidate's value
+	 * in isolation before committing to it as the field's winner.
+	 *
+	 * `suggestedGender` is Text-ranged, so ANY non-empty, trimmed value
+	 * is structurally valid markup — there is nothing to reject. See
+	 * {@see build_audience_block()} for the full gatekeeping rationale;
+	 * this is why gender's fall-through in {@see emit_attributes()} never
+	 * actually activates: the highest-priority candidate always "types".
+	 *
+	 * @param string $gender Raw Gender attribute value.
+	 * @return array `array( 'suggestedGender' => string )`, or empty when
+	 *               $gender is empty after trim.
+	 */
+	private static function build_gender_sub_property( string $gender ): array {
+		$gender_trimmed = trim( $gender );
+		if ( '' === $gender_trimmed ) {
+			return array();
+		}
+
+		$gender_lower = strtolower( $gender_trimmed );
+		return array(
+			'suggestedGender' => in_array( $gender_lower, self::AUDIENCE_GENDER_VALUES, true )
+				? $gender_lower
+				: $gender_trimmed,
+		);
+	}
+
+	/**
+	 * Builds the `suggestedAge` `QuantitativeValue` sub-property from a
+	 * raw Age group attribute value. Split out of
+	 * {@see build_audience_block()} so {@see emit_attributes()} can test
+	 * a fall-through candidate's value in isolation before committing to
+	 * it as the field's winner.
+	 *
+	 * An unmapped bucket has no numbers to compute, so there is nothing
+	 * honest to emit for it — see {@see build_audience_block()} for the
+	 * full gatekeeping rationale. This is exactly the case
+	 * {@see emit_attributes()}'s fall-through exists for: a higher-
+	 * priority but unmapped candidate yields empty here, so the caller
+	 * tries the next one.
+	 *
+	 * @param string $age_group Raw Age group attribute value.
+	 * @return array `array( 'suggestedAge' => array(...) )`, or empty
+	 *               when $age_group doesn't map to a recognised bucket
+	 *               ({@see AUDIENCE_AGE_GROUPS}).
+	 */
+	private static function build_age_sub_property( string $age_group ): array {
+		$age_key = strtolower( trim( $age_group ) );
+		if ( ! isset( self::AUDIENCE_AGE_GROUPS[ $age_key ] ) ) {
+			return array();
+		}
+		$bucket = self::AUDIENCE_AGE_GROUPS[ $age_key ];
+
+		$suggested_age = array(
+			'@type'    => 'QuantitativeValue',
+			'minValue' => $bucket['min'],
+		);
+		if ( null !== $bucket['max'] ) {
+			$suggested_age['maxValue'] = $bucket['max'];
+		}
+		$suggested_age['unitCode'] = $bucket['unit'];
+
+		return array( 'suggestedAge' => $suggested_age );
+	}
+
+	/**
+	 * Builds the `Product.audience` → `PeopleAudience` block by composing
+	 * {@see build_gender_sub_property()} and
+	 * {@see build_age_sub_property()}.
 	 *
 	 * Google requires `gender` and `age_group` on all Apparel & Accessories
 	 * products, and reads them from this typed structure. A merchant's
@@ -1108,11 +1240,12 @@ class WC_AI_Storefront_JsonLd {
 	 *     the merchant's data still reaches agents, just untyped.
 	 *
 	 * @param string $gender    Raw Gender attribute value — already the
-	 *                          highest-precedence value when the caller
-	 *                          resolved a collision between `pa_gender`
-	 *                          and a bare `gender` attribute (see
+	 *                          field's resolved winner when the caller
+	 *                          collected multiple candidates (`pa_gender`
+	 *                          vs. a bare `gender` attribute; see
 	 *                          AUDIENCE_ATTRIBUTE_MAP for the precedence
-	 *                          rule).
+	 *                          rule and {@see emit_attributes()} for the
+	 *                          fall-through that resolves it).
 	 * @param string $age_group Raw Age group attribute value, same
 	 *                          precedence contract as $gender.
 	 * @return array The PeopleAudience block. Empty only when $gender is
@@ -1120,31 +1253,10 @@ class WC_AI_Storefront_JsonLd {
 	 *               recognised bucket.
 	 */
 	private static function build_audience_block( string $gender, string $age_group ): array {
-		$block = array();
-
-		$gender_trimmed = trim( $gender );
-		if ( '' !== $gender_trimmed ) {
-			$gender_lower             = strtolower( $gender_trimmed );
-			$block['suggestedGender'] = in_array( $gender_lower, self::AUDIENCE_GENDER_VALUES, true )
-				? $gender_lower
-				: $gender_trimmed;
-		}
-
-		$age_key = strtolower( trim( $age_group ) );
-		if ( isset( self::AUDIENCE_AGE_GROUPS[ $age_key ] ) ) {
-			$bucket = self::AUDIENCE_AGE_GROUPS[ $age_key ];
-
-			$suggested_age = array(
-				'@type'    => 'QuantitativeValue',
-				'minValue' => $bucket['min'],
-			);
-			if ( null !== $bucket['max'] ) {
-				$suggested_age['maxValue'] = $bucket['max'];
-			}
-			$suggested_age['unitCode'] = $bucket['unit'];
-
-			$block['suggestedAge'] = $suggested_age;
-		}
+		$block = array_merge(
+			self::build_gender_sub_property( $gender ),
+			self::build_age_sub_property( $age_group )
+		);
 
 		if ( empty( $block ) ) {
 			return array();
@@ -2024,6 +2136,19 @@ class WC_AI_Storefront_JsonLd {
 	 * gap from the parent's own resolved `audience` afterwards, per
 	 * Schema.org sub-property.
 	 *
+	 * The winning value is routed through
+	 * {@see display_name_for_attribute_value()} — the same helper
+	 * {@see add_variant_core_typed_properties()} already uses for
+	 * color/size/material/pattern — before it reaches
+	 * {@see build_audience_block()}. `read_variation_audience_attributes()`
+	 * returns the raw postmeta value, which for a `pa_*` slug is the term
+	 * SLUG, not its display name (e.g. `mens`, not "Men's"). The parent's
+	 * own `emit_attributes()` resolves through `$product->get_attribute()`,
+	 * which WC core already resolves to the term NAME. Without this
+	 * conversion a merchant who renames a term gets two different
+	 * `suggestedGender` strings on the same product — the parent showing
+	 * the chosen name, the variant leaking the raw slug.
+	 *
 	 * @param array      $entry     Variant markup, modified by reference.
 	 * @param WC_Product $variation The variation.
 	 */
@@ -2038,10 +2163,12 @@ class WC_AI_Storefront_JsonLd {
 		// actually present on this variation's own postmeta.
 		$winners = array(
 			'gender'    => array(
+				'slug'     => '',
 				'value'    => '',
 				'priority' => PHP_INT_MAX,
 			),
 			'age_group' => array(
+				'slug'     => '',
 				'value'    => '',
 				'priority' => PHP_INT_MAX,
 			),
@@ -2051,13 +2178,17 @@ class WC_AI_Storefront_JsonLd {
 			$priority = self::AUDIENCE_ATTRIBUTE_MAP[ $slug_lower ]['priority'];
 			if ( $priority < $winners[ $field ]['priority'] ) {
 				$winners[ $field ] = array(
+					'slug'     => $slug_lower,
 					'value'    => $value,
 					'priority' => $priority,
 				);
 			}
 		}
 
-		$audience = self::build_audience_block( $winners['gender']['value'], $winners['age_group']['value'] );
+		$gender    = $this->display_name_for_attribute_value( $winners['gender']['slug'], $winners['gender']['value'] );
+		$age_group = $this->display_name_for_attribute_value( $winners['age_group']['slug'], $winners['age_group']['value'] );
+
+		$audience = self::build_audience_block( $gender, $age_group );
 		if ( ! empty( $audience ) ) {
 			$entry['audience'] = $audience;
 		}
