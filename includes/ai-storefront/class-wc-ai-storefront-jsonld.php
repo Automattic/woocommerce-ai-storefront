@@ -2708,7 +2708,13 @@ class WC_AI_Storefront_JsonLd {
 		// the item is, and how big the thing being shipped is. For a
 		// single-item order they are the same numbers; the divergence is
 		// packaging overhead, which is the approximation GMC accepts too.
-		$block = array_merge( $block, $this->build_dimension_blocks( $product ) );
+		//
+		// Assigned key by key rather than merged, matching add_dimensions().
+		// This runs for every product and every variant, and merging
+		// reallocates the whole block to add at most four keys.
+		foreach ( $this->build_dimension_blocks( $product ) as $key => $dimension_block ) {
+			$block[ $key ] = $dimension_block;
+		}
 
 		$markup['offers'][0]['shippingDetails'] = $block;
 	}
