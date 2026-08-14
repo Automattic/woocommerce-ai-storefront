@@ -9,6 +9,14 @@
   - **An attribute that already exists is left completely alone**, terms included, decided per attribute rather than all-or-nothing. Existing terms may be variation axes, so adding to or renaming them would break variations and orphan product data.
   - New `wc_ai_storefront_seed_attributes` filter returns `false` to skip seeding entirely.
 
+- **Gender and Age group now emit as a typed `Product.audience` block (#618).**
+  - Google requires `gender` and `age_group` on all Apparel & Accessories products, and reads them from a typed `PeopleAudience` block, not from `additionalProperty`. A merchant's Gender attribute previously reached the markup only as a generic `additionalProperty` entry — published, but invisible to Google for that purpose. For an apparel product that means disapproval rather than a thinner listing.
+  - Sourced from the `pa_gender` / `pa_age_group` attributes the plugin now seeds (#623), with a bare `gender` / `age_group` custom attribute accepted as a compatibility fallback. When both forms are present with different values, `pa_gender` wins over a bare `gender` (same for age group) — order-independent, via a `priority` on each map entry. The losing attribute is never discarded; it still emits as its own `additionalProperty` entry.
+  - **Gender is not validated.** Any non-empty value emits as `suggestedGender` — a value matching `male`/`female`/`unisex` is normalised to lowercase, anything else (even a value Google itself rejects, like "Womens") emits trimmed and verbatim. `schema:suggestedGender` is Text-ranged, so this is valid markup either way; Google's Merchant Center and Search Console are the intended place to flag a bad value to the merchant, not silent validation here.
+  - **Age group IS mapped, and can't follow gender's rule.** `suggestedAge` is a `QuantitativeValue` needing `minValue`/`maxValue`/`unitCode`, so an unrecognised bucket (e.g. "Grown-up") has no honest numbers to emit and falls back to `additionalProperty` instead. This is a data-model constraint, not an inconsistency with gender's pass-through behaviour.
+  - Recognised buckets: `newborn` (0–3 `MON`), `infant` (3–12 `MON`), `toddler` (1–5 `ANN`), `kids` (5–13 `ANN`), `adult` (13+ `ANN`, no upper bound — matching Google's own worked example).
+  - Variable products advertise `suggestedGender` / `suggestedAge` in `variesBy` when that's the varying axis, and each variant carries its own resolved `audience`, inherited per-field from the parent when the variation doesn't define its own.
+
 ### Fixed
 
 - **Product dimension values now emit as JSON numbers instead of quoted strings (#613).**

@@ -1420,6 +1420,22 @@ class WC_AI_Storefront_JsonLd {
 	 * multi-word key probes the exact form first, falling back to the
 	 * hyphenated form only when the exact form is empty.
 	 *
+	 * **Known limitation — "absent" vs "explicitly any"**: `get_post_meta()`
+	 * with `$single = true` returns `''` both when the meta key was never
+	 * set and when it was set to WooCommerce's own "Any <attribute>"
+	 * placeholder (also stored as `''`). The hyphen fallback above cannot
+	 * tell those two cases apart, so it only misbehaves in a contrived
+	 * collision: two distinct custom attributes mapping to the same map
+	 * slug on one variation — one underscore-labelled (e.g. `age_group`)
+	 * explicitly set to "Any", the other space-labelled (`Age group` →
+	 * `attribute_age-group`) holding a real value. The exact-form probe
+	 * reads the underscore attribute's "Any" placeholder as empty, falls
+	 * back to the hyphenated key, and returns the space-labelled
+	 * attribute's value under the underscore attribute's slug. Not fixed
+	 * here — distinguishing the two would need `metadata_exists()` rather
+	 * than a value check, and this scenario requires two colliding
+	 * custom attributes on the same variation to occur at all.
+	 *
 	 * @param int                 $variation_id The variation post ID.
 	 * @param array<string,mixed> $map          A const attribute-slug map
 	 *                                          (only the key set is used;

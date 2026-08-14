@@ -1,8 +1,12 @@
 # Schema.org Coverage Audit
 
-> Last reviewed: 2026-07-10 (post-[#582](https://github.com/Automattic/woocommerce-ai-storefront/issues/582) Offer sale window; [#328](https://github.com/Automattic/woocommerce-ai-storefront/issues/328)/[#373](https://github.com/Automattic/woocommerce-ai-storefront/pull/373) variant ProductGroup, [#517](https://github.com/Automattic/woocommerce-ai-storefront/pull/517) multi-currency, [#520](https://github.com/Automattic/woocommerce-ai-storefront/pull/520) return-policy A/B)
+> Last reviewed: 2026-08-13 (post-[#618](https://github.com/Automattic/woocommerce-ai-storefront/issues/618) `Product.audience`)
 
-## What changed since the last review (2026-06-22)
+## What changed since the last review (2026-07-10)
+
+- **`Product.audience` now emitted** (#618): `emit_attributes()` resolves the merchant's Gender and Age group attributes (`pa_gender`/`pa_age_group`, or a bare `gender`/`age_group` custom attribute as a compatibility fallback) into a `PeopleAudience` block — `suggestedGender` passes through any non-empty value, normalising only a recognised match to lowercase; `suggestedAge` maps a recognised bucket to a `QuantitativeValue`. An unrecognised age-group value falls back to `additionalProperty` since there's no honest number to emit for it. Variants resolve and inherit the block per Schema.org sub-property, and `variesBy` advertises `suggestedGender`/`suggestedAge` when that's the varying axis. See [JSON-LD-SCHEMA.md §audience](./JSON-LD-SCHEMA.md#audience-gender-and-age-group--peopleaudience).
+
+## What changed in the review before that (2026-06-22)
 
 - **`Offer.validFrom` / `Offer.validThrough` now emitted** (#582): `add_sale_window()` emits the sale window as full ISO 8601 with the store timezone offset when a product is on sale with a configured WooCommerce sale schedule. Each field is independent (open-ended sales supported), skipped on `AggregateOffer`, and per-variant windows use each variation's own schedule with no parent fallback. Complements the date-only `priceValidUntil` from WC core.
 
@@ -66,7 +70,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 |---|---|---|---|
 | `additionalProperty` | ✓ | ✓ | Plugin |
 | `aggregateRating` | — | ✓ when reviews enabled + ≥1 rated | WC core |
-| `audience` | — | — | — |
+| `audience` | ✓ §audience | ✓ from `pa_gender` / `pa_age_group` (or bare `gender` / `age_group`) attributes | Plugin |
 | `award` | — | — | — |
 | `brand` | ✓ §brand | ✓ when `product_brand` taxonomy has a value | WC core (`WC_Brands::add_structured_data()` in `class-wc-brands.php`, NOT `class-wc-structured-data.php` — that's why an audit grep against just the main structured-data file missed it) |
 | `category` | ✓ | ✓ | Plugin |
@@ -508,7 +512,7 @@ In rough priority order:
 2. **`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.
 3. **`Product.gtin8` / `gtin12` / `gtin13` / `gtin14`** — more specific GTIN forms when WC's GTIN field has a value with the right length.
 4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
-5. **`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.
+5. ~~**`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.~~ **Implemented in #618**, via `suggestedGender` / `suggestedAge` rather than `audienceType` — Google's Apparel & Accessories requirements read those two specific sub-properties, not the generic `audienceType` this line originally proposed. See [JSON-LD-SCHEMA.md §audience](./JSON-LD-SCHEMA.md#audience-gender-and-age-group--peopleaudience).
 6. **Switch homepage `@type` from `OnlineStore` to `OnlineBusiness`** — broader fit for WC's full install base (services, bookings, memberships, donations, lead-gen, retail). Code change is one line in [`output_store_jsonld()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) plus a `JSON-LD-SCHEMA.md` update. Decision rationale captured in [the OnlineBusiness section](#onlinebusiness--target-type).
 7. **Expand `ShippingDeliveryTime` emission carefully** — currently we emit only `handlingTime`. The spec also has `transitTime`, `cutoffTime`, `businessDays`, and `shippingOrigin`. **Caveat: shipping data is multi-dimensional in reality** — transit time depends on the buyer's destination, the chosen service level (ground vs expedited vs overnight), the merchant's shipping origin, and sometimes the day of week. A single static `transitTime: 3-5 days` claim hides this dimensionality. Two paths forward:
    - **Conservative**: emit only `cutoffTime` and `businessDays` (which DON'T depend on the buyer's destination — they're store-level operating windows). Skip `transitTime` until we can model destination/service-level shape.
