@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-14T01:54:29+00:00\n"
+"POT-Creation-Date: 2026-08-14T02:16:32+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -95,6 +95,30 @@ msgstr ""
 
 #: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:82
 msgid "Read the full coexistence guide"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php:73
+msgid "Gender"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php:78
+msgid "Age group"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php:83
+msgid "Color"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php:102
+msgid "Size"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php:107
+msgid "Material"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php:125
+msgid "Pattern"
 msgstr ""
 
 #: includes/ai-storefront/class-wc-ai-storefront-attribution.php:768

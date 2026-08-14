@@ -48,23 +48,39 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * strips a leading `pa_` from whatever slug it is given, so passing
 	 * `gender` yields the `pa_gender` taxonomy.
 	 *
+	 * Labels are translated because they are merchant-facing: they become
+	 * the attribute name shown in the WooCommerce admin. Translating them
+	 * cannot affect matching, because the slug is passed explicitly and is
+	 * never derived from the label.
+	 *
+	 * Terms are deliberately NOT translated, for two different reasons:
+	 *
+	 *   Closed lists (gender, age_group) must be Google's exact English
+	 *   values. Google requires them "submitted in English" regardless of
+	 *   store language, and a localised value is simply rejected.
+	 *
+	 *   Open vocabularies (color, size, material, pattern) are a starting
+	 *   point the merchant edits, and Google asks that the submitted value
+	 *   match the merchant's own product page. Shipping a translated guess
+	 *   would put a value in the catalog that contradicts the storefront.
+	 *
 	 * @return array<string, array{label: string, terms: string[]}>
 	 */
 	public static function get_definitions(): array {
 		return array(
 			// Closed list. Google's complete accepted set.
 			'gender'    => array(
-				'label' => 'Gender',
+				'label' => __( 'Gender', 'woocommerce-ai-storefront' ),
 				'terms' => array( 'male', 'female', 'unisex' ),
 			),
 			// Closed list. Google's complete accepted set.
 			'age_group' => array(
-				'label' => 'Age group',
+				'label' => __( 'Age group', 'woocommerce-ai-storefront' ),
 				'terms' => array( 'newborn', 'infant', 'toddler', 'kids', 'adult' ),
 			),
 			// Open vocabulary. Google's "standard names" plus obvious gaps.
 			'color'     => array(
-				'label' => 'Color',
+				'label' => __( 'Color', 'woocommerce-ai-storefront' ),
 				'terms' => array(
 					'Black',
 					'White',
@@ -83,12 +99,12 @@ class WC_AI_Storefront_Attribute_Seeder {
 			// Open vocabulary. Abbreviations per Google's consistency
 			// guidance, NOT WooCommerce sample data's Small/Medium/Large.
 			'size'      => array(
-				'label' => 'Size',
+				'label' => __( 'Size', 'woocommerce-ai-storefront' ),
 				'terms' => array( 'XS', 'S', 'M', 'L', 'XL', '2XL', '3XL', 'One size' ),
 			),
 			// Open vocabulary. Apparel-weighted; composites use a slash.
 			'material'  => array(
-				'label' => 'Material',
+				'label' => __( 'Material', 'woocommerce-ai-storefront' ),
 				'terms' => array(
 					'Cotton',
 					'Polyester',
@@ -106,7 +122,7 @@ class WC_AI_Storefront_Attribute_Seeder {
 			// warns off "none"/"n/a"/"multi"/"other", but Solid is a real
 			// descriptor and the honest answer for an unpatterned garment.
 			'pattern'   => array(
-				'label' => 'Pattern',
+				'label' => __( 'Pattern', 'woocommerce-ai-storefront' ),
 				'terms' => array(
 					'Solid',
 					'Striped',

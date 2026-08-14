@@ -15,6 +15,9 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		// Attribute labels are merchant-facing and therefore translated.
+		// Return the source string so the assertions below stay readable.
+		Functions\when( '__' )->returnArg();
 	}
 
 	protected function tearDown(): void {
