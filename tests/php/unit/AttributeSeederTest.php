@@ -96,6 +96,38 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $created );
 	}
 
+	public function test_create_attribute_skips_when_taxonomy_not_registered_but_row_exists_in_db(): void {
+		// Simulates the concurrent-request race the second guard closes: this
+		// request's in-memory taxonomy registry does not know about the
+		// attribute (taxonomy_exists() is false, e.g. a sibling request
+		// created it after this request's init:5 registry was already
+		// built), but the DB row already exists and wc_create_attribute()
+		// busted the wc_attribute_taxonomies cache when it was inserted, so
+		// wc_attribute_taxonomy_id_by_name() (which re-reads that cache)
+		// reports a non-zero ID.
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
+			static fn( $slug ) => 'pa_' . $slug
+		);
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 42 );
+
+		// If the seeder relied on taxonomy_exists() alone, it would reach
+		// these calls and create a duplicate row.
+		Functions\expect( 'wc_create_attribute' )->never();
+		Functions\expect( 'register_taxonomy' )->never();
+		Functions\expect( 'wp_insert_term' )->never();
+
+		$created = WC_AI_Storefront_Attribute_Seeder::create_attribute(
+			'color',
+			array(
+				'label' => 'Color',
+				'terms' => array( 'Black' ),
+			)
+		);
+
+		$this->assertFalse( $created );
+	}
+
 	public function test_create_attribute_registers_taxonomy_before_inserting_terms(): void {
 		$call_order = array();
 
@@ -103,6 +135,10 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 			static fn( $slug ) => 'pa_' . $slug
 		);
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		// Second existence guard (see create_attribute()'s docblock) must
+		// also report "not found" so this happy-path test reaches
+		// wc_create_attribute().
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 0 );
 		// is_wp_error() is defined in stubs.php before Patchwork loads, so it
 		// cannot be redefined via Brain Monkey. The stub checks `instanceof
 		// WP_Error`; the int id returned by wc_create_attribute() below
@@ -151,6 +187,9 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 			static fn( $slug ) => 'pa_' . $slug
 		);
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		// Second existence guard must also report "not found" so this test
+		// reaches wc_create_attribute() and exercises the error path.
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 0 );
 		// is_wp_error() in stubs.php checks instanceof WP_Error; a real
 		// WP_Error instance drives the true branch without mocking the
 		// function (see note in the previous test).
@@ -175,6 +214,9 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 			static fn( $slug ) => 'pa_' . $slug
 		);
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		// Second existence guard must also report "not found" so this test
+		// reaches wc_create_attribute().
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 0 );
 		// is_wp_error() is the real stub from stubs.php (see note above); the
 		// int id returned here is not a WP_Error, so it naturally evaluates
 		// false.
@@ -219,6 +261,14 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'taxonomy_exists' )->alias(
 			static fn( $taxonomy ) => in_array( $taxonomy, $existing, true )
+		);
+		// Second existence guard (see create_attribute()'s docblock). Kept
+		// consistent with $existing here — these seed()-level orchestration
+		// tests are not exercising the concurrent-request race itself
+		// (AttributeSeederTest::test_create_attribute_skips_when_taxonomy_not_registered_but_row_exists_in_db
+		// covers that directly), so both guards should agree.
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->alias(
+			static fn( $slug ) => in_array( 'pa_' . $slug, $existing, true ) ? 1 : 0
 		);
 		// Do NOT stub is_wp_error(). tests/php/stubs.php defines a real one
 		// before Patchwork loads, so Brain Monkey throws DefinedTooEarly.
