@@ -161,6 +161,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				return '';
 			}
 		);
+		// Paired with the `get_post_meta` stub above, against the same
+		// `$this->post_meta_by_id` table — but via `array_key_exists()`
+		// rather than `isset()`, so it correctly reports TRUE for a key a
+		// test explicitly set to '' (WooCommerce's "Any <attribute>"
+		// placeholder). `isset()` alone can't distinguish "key present,
+		// holding ''" from "key never set", which is exactly the
+		// distinction `read_variation_attributes_from_map()`'s hyphen
+		// fallback now relies on `metadata_exists()` to make (#625 review
+		// finding 1). A key never populated by a test (absent from the
+		// table entirely) correctly reports FALSE, i.e. genuinely missing.
+		Functions\when( 'metadata_exists' )->alias(
+			static function ( $meta_type, $object_id, $key ) use ( $test ) {
+				return array_key_exists( (int) $object_id, $test->post_meta_by_id )
+					&& array_key_exists( $key, $test->post_meta_by_id[ (int) $object_id ] );
+			}
+		);
 		// Default `wp_get_post_parent_id()` to 0 — these tests use
 		// non-variation product mocks. Override-scope resolution
 		// happens at the `enhance_product_data` entry point.
@@ -826,6 +842,69 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// detect_varies_by() — audience-axis override path (Task 3, #618).
+	// Mirrors test_misconfigured_variable_with_core_typed_axis_still_emits_product_group
+	// below, but for the audience map: `detect_core_typed_axes_from_children()`
+	// (the "core-typed override") must also consult AUDIENCE_ATTRIBUTE_MAP
+	// via the shared varies_by_property() lookup, not just CORE_ATTRIBUTE_MAP.
+	// These invoke detect_varies_by() directly (no wc_get_product() needed —
+	// the override path reads children's postmeta by ID only).
+	// ------------------------------------------------------------------
+
+	public function test_detect_varies_by_override_maps_audience_axis_to_schema_org_url(): void {
+		// pa_gender is NOT flagged "Used for variations" at the parent
+		// (get_variation_attributes() returns []), but each variation
+		// child's own postmeta carries a distinct value.
+		$this->post_meta_by_id[201]['attribute_pa_gender'] = 'male';
+		$this->post_meta_by_id[202]['attribute_pa_gender'] = 'female';
+
+		$product = $this->make_product( [
+			'children'             => [ 201, 202 ],
+			'variation_attributes' => array(),  // parent flag unset
+		] );
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertSame( array( 'https://schema.org/suggestedGender' ), $result );
+	}
+
+	public function test_detect_varies_by_override_excludes_uniform_audience_axis(): void {
+		// Both children share the same gender — not a dimension the
+		// buyer chooses between, so the override must not advertise it.
+		$this->post_meta_by_id[203]['attribute_pa_gender'] = 'unisex';
+		$this->post_meta_by_id[204]['attribute_pa_gender'] = 'unisex';
+
+		$product = $this->make_product( [
+			'children'             => [ 203, 204 ],
+			'variation_attributes' => array(),
+		] );
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertSame( array(), $result );
+	}
+
+	public function test_detect_varies_by_override_maps_multi_word_bare_audience_axis(): void {
+		// Regression test (fix round 1, #618): same hyphen-vs-underscore
+		// trap as test_variant_entry_emits_audience_from_multi_word_bare_attribute_postmeta(),
+		// exercised through the override path instead of build_variant_entry().
+		// A merchant's "Age group"-labelled custom attribute writes
+		// `attribute_age-group` postmeta on each child (sanitize_title()
+		// hyphenates the space), not `attribute_age_group`.
+		$this->post_meta_by_id[301]['attribute_age-group'] = 'kids';
+		$this->post_meta_by_id[302]['attribute_age-group'] = 'adult';
+
+		$product = $this->make_product( [
+			'children'             => [ 301, 302 ],
+			'variation_attributes' => array(),
+		] );
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertSame( array( 'https://schema.org/suggestedAge' ), $result );
+	}
+
+	// ------------------------------------------------------------------
 	// build_variant_entry() — per-variation Product blocks (#328)
 	// ------------------------------------------------------------------
 
@@ -1092,6 +1171,251 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
 		$this->assertSame( 'White', $entry['color'] );
+	}
+
+	public function test_variant_entry_emits_own_audience_from_variation_attributes(): void {
+		// Task 3 (#618): a variation whose OWN postmeta carries Gender /
+		// Age group gets its own resolved `audience`, built the same way
+		// as the parent's (add_variant_audience() reads postmeta
+		// directly rather than calling emit_attributes() against the
+		// variation — see that method's docblock for why calling
+		// emit_attributes() on a WC_Product_Variation would be wrong).
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// add_variant_audience() now routes the winning value through
+		// display_name_for_attribute_value() (#618 finding 3); stub the
+		// term lookup to "not found" so it falls back to the raw
+		// postmeta value, same as the assertions below expect.
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_gender'    => 'male',
+				'pa_age_group' => 'kids',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'PeopleAudience', $entry['audience']['@type'] );
+		$this->assertSame( 'male', $entry['audience']['suggestedGender'] );
+		$this->assertSame( 5.0, $entry['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_variant_entry_pa_gender_takes_precedence_over_bare_gender(): void {
+		// Mirrors emit_attributes()'s pa_-vs-bare precedence
+		// (AUDIENCE_ATTRIBUTE_MAP) at the per-variant level.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_gender' => 'female',
+				'gender'    => 'unisex',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'female', $entry['audience']['suggestedGender'] );
+	}
+
+	public function test_variant_explicit_any_age_group_does_not_fall_through_to_hyphenated_key(): void {
+		// #625 review finding 1: get_post_meta() with $single = true
+		// returns '' both when a meta key is ABSENT and when it is
+		// PRESENT holding WooCommerce's own empty-string "Any <attribute>"
+		// placeholder. Before this fix, an explicit "Any Age group" (the
+		// bare `age_group` meta key present, set to '') was
+		// indistinguishable from a missing key, so the hyphen fallback
+		// fired and could pick up an unrelated, colliding attribute's
+		// value sitting at the hyphenated `attribute_age-group` key.
+		// `metadata_exists()` now distinguishes "absent" from "present but
+		// empty" and respects the explicit "any" — no fallback, and this
+		// slug contributes nothing.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_gender' => 'female',
+				// Explicit "Any Age group" — the key IS present, just empty.
+				'age_group' => '',
+				// A DIFFERENT, colliding attribute's value sitting at the
+				// hyphenated form. Must never leak into `age_group`'s slot.
+				'age-group' => 'kids',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'female', $entry['audience']['suggestedGender'] );
+		$this->assertArrayNotHasKey( 'suggestedAge', $entry['audience'] );
+	}
+
+	public function test_variant_entry_falls_through_to_mappable_bare_age_group(): void {
+		// #625 review finding 2: add_variant_audience() previously picked
+		// a single winner per field by strict priority comparison alone
+		// (no fall-through), so an unmappable pa_age_group ("Grown-up")
+		// blocked a mappable bare age_group on the same VARIATION — the
+		// exact bug already fixed for the parent path in
+		// emit_attributes() (see JsonLdAudienceTest's
+		// test_unmappable_winner_falls_through_to_mappable_bare_attribute).
+		// Both paths now share resolve_audience_winner().
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_age_group' => 'Grown-up',
+				'age_group'    => 'adult',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 13.0, $entry['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_variant_entry_precedence_unchanged_when_winner_is_mappable(): void {
+		// Guard against the fall-through becoming the default path on the
+		// variant side too: when pa_age_group DOES map, it must still win
+		// outright over a mappable bare age_group, exactly as before this
+		// fix. Mirrors JsonLdAudienceTest's
+		// test_precedence_unchanged_when_winner_is_mappable for the parent
+		// path.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_age_group' => 'kids',
+				'age_group'    => 'adult',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 5.0, $entry['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_variant_entry_gender_never_uses_fall_through(): void {
+		// Gender always types for any non-empty value (see
+		// build_gender_sub_property()), so even when the higher-priority
+		// pa_gender value isn't one of Google's three canonical strings,
+		// it still "types" verbatim and must win outright on the variant
+		// path too — the fall-through added for age group must never
+		// activate for gender here either. Mirrors JsonLdAudienceTest's
+		// test_gender_never_uses_fall_through for the parent path.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_gender' => 'Womens',
+				'gender'    => 'male',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'Womens', $entry['audience']['suggestedGender'] );
+	}
+
+	public function test_variant_audience_uses_term_display_name_not_slug(): void {
+		// #618 review finding: a merchant-renamed pa_gender term (slug
+		// `mens`, name "Men's") must produce the SAME suggestedGender
+		// string on the parent and on every variant. The parent already
+		// gets this right — WC core's own get_attribute() resolves a
+		// taxonomy attribute to its term NAME before emit_attributes()
+		// ever sees the value (see JsonLdAudienceTest's
+		// test_unrecognised_gender_passes_through_verbatim for that
+		// verbatim-passthrough contract acting on a name). Before this
+		// fix, add_variant_audience() read the raw postmeta value
+		// directly — the term SLUG, not its name — so a renamed term
+		// produced two different suggestedGender strings on the same
+		// product. add_variant_core_typed_properties() already avoids
+		// this for color/size/material/pattern via
+		// display_name_for_attribute_value(); add_variant_audience() now
+		// does the same.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$term       = new \WP_Term();
+		$term->slug = 'mens';
+		$term->name = "Men's";
+		Functions\when( 'get_term_by' )->alias(
+			static function ( $field, $value, $taxonomy ) use ( $term ) {
+				return ( 'slug' === $field && $term->slug === $value && 'pa_gender' === $taxonomy )
+					? $term
+					: false;
+			}
+		);
+
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array( 'pa_gender' => 'mens' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		// The renamed term's NAME is what emits — not the raw slug, and
+		// not one of Google's three canonical values either. Gender's
+		// no-gatekeeping rule means it passes through verbatim, which is
+		// exactly the intended feedback loop: Google flags an invalid
+		// value directly to the merchant.
+		$this->assertSame( "Men's", $entry['audience']['suggestedGender'] );
+	}
+
+	public function test_variant_entry_omits_audience_when_variation_has_no_recognised_value(): void {
+		// The common case: Gender/Age group are usually constant across
+		// a product's variants (size/color are the actual axes), so most
+		// variations carry no own value at all. build_variant_entry()
+		// alone (without the parent-inheritance step in
+		// add_inherited_variant_fields(), exercised separately) must not
+		// synthesize an audience key here.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// `pa_color` here goes through add_variant_core_typed_properties(),
+		// which (independently of this test's audience concern) already
+		// routes through display_name_for_attribute_value() and so calls
+		// get_term_by(). Stub it to "not found" so the fixture's raw
+		// value ('White') passes through unchanged.
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array( 'pa_color' => 'White' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertArrayNotHasKey( 'audience', $entry );
+	}
+
+	public function test_variant_entry_emits_audience_from_multi_word_bare_attribute_postmeta(): void {
+		// Regression test (fix round 1, #618): a merchant's custom
+		// (non-taxonomy) attribute literally labelled "Age group" writes
+		// its variation postmeta under the HYPHENATED slug
+		// `attribute_age-group` — WooCommerce builds that key via
+		// wc_variation_attribute_name() = 'attribute_' . sanitize_title(),
+		// and sanitize_title_with_dashes() converts whitespace to a
+		// hyphen, not an underscore — even though AUDIENCE_ATTRIBUTE_MAP's
+		// own key is the underscored `age_group`. Before this fix,
+		// read_variation_audience_attributes() only ever probed the
+		// underscore form and silently found nothing: `variesBy` still
+		// listed suggestedAge (Path 1 normalises via varies_by_property()),
+		// but no hasVariant[].audience.suggestedAge ever attached to any
+		// variant — a self-contradictory ProductGroup. `pa_age_group` is
+		// unaffected (its slug is fixed programmatically) and `gender`
+		// cannot collide (single word); this is specifically the
+		// multi-word bare-attribute case.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			// make_variation()'s helper prefixes with 'attribute_' but
+			// does not otherwise touch the key — 'age-group' here mirrors
+			// exactly what sanitize_title( 'Age group' ) produces.
+			'variation_attributes' => array( 'age-group' => 'kids' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 5.0, $entry['audience']['suggestedAge']['minValue'] );
 	}
 
 	public function test_variant_entry_offer_carries_price_currency_availability(): void {
@@ -1745,6 +2069,90 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Tops', $variant['category'] );
 	}
 
+	public function test_variant_inherits_audience_from_parent_when_variation_has_none(): void {
+		// Task 3 (#618): the common case — Gender is constant across the
+		// whole product (size/color are the actual variation axes), so
+		// the variation itself carries no pa_gender/pa_age_group
+		// postmeta of its own. The variant must inherit the parent's
+		// already-resolved `audience` wholesale.
+		$result  = $this->enhance_variable_with_parent_markup(
+			array(
+				'audience' => array(
+					'@type'           => 'PeopleAudience',
+					'suggestedGender' => 'unisex',
+				),
+			)
+		);
+		$variant = $result['hasVariant'][0];
+
+		$this->assertSame(
+			array( '@type' => 'PeopleAudience', 'suggestedGender' => 'unisex' ),
+			$variant['audience']
+		);
+	}
+
+	public function test_variant_own_age_group_merges_with_parents_constant_gender(): void {
+		// Mixed-axis edge case: age group is this variation's OWN axis
+		// (own postmeta value), but gender is constant across every
+		// variant (only on the parent). Google requires BOTH fields for
+		// Apparel & Accessories, so the merge in
+		// add_inherited_variant_fields() must fill in the missing
+		// suggestedGender per Schema.org sub-property rather than
+		// skipping inheritance just because the variant already resolved
+		// SOME audience data on its own.
+		//
+		// add_variant_audience() now routes the winning value through
+		// display_name_for_attribute_value() (#618 finding 3); stub the
+		// term lookup to "not found" so it falls back to the raw
+		// postmeta value, same as the assertions below expect.
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$result  = $this->enhance_variable_with_parent_markup(
+			array(
+				'audience' => array(
+					'@type'           => 'PeopleAudience',
+					'suggestedGender' => 'unisex',
+				),
+			),
+			array(
+				'variation_attributes' => array( 'pa_age_group' => 'kids' ),
+			)
+		);
+		$variant = $result['hasVariant'][0];
+
+		$this->assertSame( 'unisex', $variant['audience']['suggestedGender'] );
+		$this->assertSame( 5.0, $variant['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_variant_own_audience_is_not_overridden_by_parent(): void {
+		// When the variation resolves BOTH fields on its own, the
+		// parent's (different) audience must not bleed through on either
+		// sub-property.
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$result  = $this->enhance_variable_with_parent_markup(
+			array(
+				'audience' => array(
+					'@type'           => 'PeopleAudience',
+					'suggestedGender' => 'unisex',
+					'suggestedAge'    => array(
+						'@type'    => 'QuantitativeValue',
+						'minValue' => 13.0,
+						'unitCode' => 'ANN',
+					),
+				),
+			),
+			array(
+				'variation_attributes' => array(
+					'pa_gender'    => 'male',
+					'pa_age_group' => 'kids',
+				),
+			)
+		);
+		$variant = $result['hasVariant'][0];
+
+		$this->assertSame( 'male', $variant['audience']['suggestedGender'] );
+		$this->assertSame( 5.0, $variant['audience']['suggestedAge']['minValue'] );
+	}
+
 	public function test_variant_offer_inherits_seller_and_price_valid_until(): void {
 		$result = $this->enhance_variable_with_parent_markup();
 		$offer  = $result['hasVariant'][0]['offers'][0];
@@ -1769,9 +2177,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_variant_omits_inherited_fields_when_parent_lacks_them(): void {
 		// Regression guard: a minimal parent markup (no description,
-		// brand, category, seller, or priceValidUntil) must not trigger
-		// PHP warnings and must not synthesize empty inherited fields on
-		// the variant. The variant simply omits what the parent never had.
+		// brand, category, audience, seller, or priceValidUntil) must
+		// not trigger PHP warnings and must not synthesize empty
+		// inherited fields on the variant. The variant simply omits what
+		// the parent never had.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$variation = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-w' ] );
@@ -1790,6 +2199,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'description', $variant );
 		$this->assertArrayNotHasKey( 'brand', $variant );
 		$this->assertArrayNotHasKey( 'category', $variant );
+		$this->assertArrayNotHasKey( 'audience', $variant );
 		// The variant offer still exists (built from scratch) but carries
 		// no inherited seller/priceValidUntil.
 		$this->assertArrayNotHasKey( 'seller', $variant['offers'][0] );
@@ -1855,6 +2265,17 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'description' => 'VARIANT SENTINEL DESC',
 			'brand'       => array( '@type' => 'Brand', 'name' => 'VariantBrand' ),
 			'category'    => 'VariantCategory',
+			// Both sub-properties already resolved on the variant's own —
+			// the per-field audience merge must not touch either one.
+			'audience'    => array(
+				'@type'           => 'PeopleAudience',
+				'suggestedGender' => 'variant-sentinel-gender',
+				'suggestedAge'    => array(
+					'@type'    => 'QuantitativeValue',
+					'minValue' => 1.0,
+					'unitCode' => 'ANN',
+				),
+			),
 			'offers'      => array(
 				array(
 					'@type'           => 'Offer',
@@ -1870,6 +2291,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'description' => 'PARENT DESC SHOULD NOT WIN',
 			'brand'       => array( '@type' => 'Brand', 'name' => 'ParentBrand' ),
 			'category'    => 'ParentCategory',
+			'audience'    => array(
+				'@type'           => 'PeopleAudience',
+				'suggestedGender' => 'parent-sentinel-should-not-win',
+				'suggestedAge'    => array(
+					'@type'    => 'QuantitativeValue',
+					'minValue' => 99.0,
+					'unitCode' => 'ANN',
+				),
+			),
 			'offers'      => array(
 				array(
 					'@type'           => 'Offer',
@@ -1885,6 +2315,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'VARIANT SENTINEL DESC', $entry['description'] );
 		$this->assertSame( array( '@type' => 'Brand', 'name' => 'VariantBrand' ), $entry['brand'] );
 		$this->assertSame( 'VariantCategory', $entry['category'] );
+		$this->assertSame(
+			array(
+				'@type'           => 'PeopleAudience',
+				'suggestedGender' => 'variant-sentinel-gender',
+				'suggestedAge'    => array(
+					'@type'    => 'QuantitativeValue',
+					'minValue' => 1.0,
+					'unitCode' => 'ANN',
+				),
+			),
+			$entry['audience']
+		);
 		$this->assertSame(
 			array( '@type' => 'Organization', 'name' => 'VariantSeller' ),
 			$entry['offers'][0]['seller']

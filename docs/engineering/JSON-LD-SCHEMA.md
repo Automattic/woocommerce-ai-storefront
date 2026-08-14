@@ -273,6 +273,53 @@ Worked example:
 
 Implementation: [`emit_attributes()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) — single-pass per attribute, decides typed property vs `additionalProperty` inline. One `get_attribute()` lookup per visible attribute regardless of which path the value takes.
 
+### `audience` (Gender and Age group → `PeopleAudience`)
+
+Google requires `gender` and `age_group` on all Apparel & Accessories products and reads them from a typed `Product.audience` → [`PeopleAudience`](https://schema.org/PeopleAudience) block, not from `additionalProperty`. Since [#618](https://github.com/Automattic/woocommerce-ai-storefront/issues/618) the plugin emits that block from the merchant's Gender and Age group attributes.
+
+**Source**: `pa_gender` and `pa_age_group` — the two attributes [the attribute seeder](https://github.com/Automattic/woocommerce-ai-storefront/issues/623) creates and seeds with Google's accepted values on activation, upgrade, or a syndication-toggle save. A bare `gender` / `age_group` custom attribute is also accepted as a compatibility fallback for merchants with a pre-existing custom attribute of their own, mirroring `color`/`pa_color` in the typed-properties section above.
+
+**Precedence when both forms are present**: `pa_gender` outranks a bare `gender`; `pa_age_group` outranks a bare `age_group`. This is encoded as a `priority` in `AUDIENCE_ATTRIBUTE_MAP` and is order-independent — `pa_gender` wins regardless of which attribute the merchant edited most recently. The losing attribute is not discarded: it still emits as its own `additionalProperty` entry, keyed by its own slug, so a `pa_`-vs-bare collision never makes either value silently vanish.
+
+**Gender is NOT validated.** `suggestedGender` is `Text`-ranged, so any non-empty, trimmed value is structurally valid markup — there's nothing to reject. A value that case-insensitively matches `male` / `female` / `unisex` is normalised to that lowercase form; anything else — including a value Google's own documentation rejects, like "Womens" — still emits, verbatim and trimmed. This is deliberate, not an oversight: silently dropping or guessing at an unrecognised value would deny the merchant the feedback loop Google's Merchant Center / Search Console diagnostics already provide for a bad `suggestedGender`, and that diagnostic — plus this doc, plus a future Product Editor surface — is the intended correction path.
+
+**Age group IS mapped, and cannot follow gender's rule.** `suggestedAge` is a `QuantitativeValue` needing `minValue` / `maxValue` / `unitCode` — there is no honest number to emit for an unmapped bucket like "Grown-up". This is a data-model constraint, not an inconsistency with gender's pass-through: gender has a verbatim `Text` fallback shape available, age group has no equivalent for a `QuantitativeValue`. An unrecognised age-group value falls back to `additionalProperty` instead of typing — it is not mapped to the nearest bucket, because a wrong guess ("Youth" → `kids`?) is worse for the merchant than an untyped value.
+
+**The age-bucket table:**
+
+| `age_group` value | `minValue` | `maxValue` | `unitCode` |
+|---|---|---|---|
+| `newborn` | 0 | 3 | `MON` |
+| `infant` | 3 | 12 | `MON` |
+| `toddler` | 1 | 5 | `ANN` |
+| `kids` | 5 | 13 | `ANN` |
+| `adult` | 13 | *(none)* | `ANN` |
+
+`adult` carries no `maxValue` — Google's own worked example bounds the adult case only from below. The sub-1-year buckets (`newborn`, `infant`) are expressed in months (`MON`) rather than fractional years so they stay numerically distinct from each other.
+
+Worked example:
+
+```jsonc
+// Simple product, attributes: pa_gender="unisex", pa_age_group="adult"
+{
+  "@type": "Product",
+  "name": "...",
+  "audience": {
+    "@type": "PeopleAudience",
+    "suggestedGender": "unisex",
+    "suggestedAge": {
+      "@type": "QuantitativeValue",
+      "minValue": 13,
+      "unitCode": "ANN"
+    }
+  }
+}
+```
+
+**Variants**: on a variable product, each `hasVariant` entry carries its own resolved `audience`, resolved field-by-field. The variation's own `pa_gender` / `pa_age_group` / bare-slug postmeta is read directly (bypassing the parent's "Used for variations" flag, the same override the four core typed properties use) and applied first; whichever sub-property (`suggestedGender` or `suggestedAge`) the variation did NOT resolve on its own is then filled in from the parent's already-resolved `audience`, so a variant whose only own axis is age group still inherits a gender that's constant across the whole product. `variesBy` advertises `https://schema.org/suggestedGender` / `https://schema.org/suggestedAge` when that field is the axis that actually varies, via the same typed-slug override described in [`ProductGroup` / `hasVariant` / `variesBy`](#productgroup--hasvariant--variesby-variable-products) below.
+
+Implementation: [`build_audience_block()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) (typed-block builder, shared by parent and variant paths), [`emit_attributes()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) (parent-level precedence resolution + `additionalProperty` fallback), [`add_variant_audience()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php) (per-variant resolution).
+
 ### `ProductGroup` / `hasVariant` / `variesBy` (variable products)
 
 Variable products with at least one attribute marked **Used for variations** emit as Schema.org [`ProductGroup`](https://schema.org/ProductGroup) — a parent abstraction over its variations, where each concrete buyable SKU lives under `hasVariant` as its own Product block.

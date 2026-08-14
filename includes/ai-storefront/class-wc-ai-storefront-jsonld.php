@@ -60,6 +60,130 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
+	 * `suggestedGender` values Google documents and accepts, in English,
+	 * regardless of store language. Schema.org's own comment on
+	 * `suggestedGender` gives the same three as its examples.
+	 *
+	 * This list controls CASING normalisation only, not whether a value
+	 * emits at all: {@see build_audience_block()} lowercases a
+	 * case-insensitive match against this list to Google's canonical
+	 * form, but a value that isn't in this list still emits as
+	 * `suggestedGender`, verbatim and trimmed. `schema:suggestedGender`
+	 * is Text-ranged, so an unrecognised value is still structurally
+	 * valid markup — Google's own Merchant Center / Search Console
+	 * diagnostics are the intended place to tell the merchant it's
+	 * wrong, not silent validation here. Contrast with
+	 * {@see AUDIENCE_AGE_GROUPS}, whose keys really do gate emission,
+	 * because `suggestedAge` is a `QuantitativeValue` with no honest
+	 * default for an unmapped bucket. See {@see build_audience_block()}
+	 * for the full reasoning — this asymmetry is deliberate, not an
+	 * inconsistency to "fix".
+	 *
+	 * @var string[]
+	 */
+	private const AUDIENCE_GENDER_VALUES = array( 'male', 'female', 'unisex' );
+
+	/**
+	 * Google `age_group` buckets mapped to a Schema.org `QuantitativeValue`.
+	 *
+	 * Google's structured-data documentation uses `suggestedAge` (a
+	 * QuantitativeValue) rather than `suggestedMinAge`/`suggestedMaxAge`,
+	 * and the `unitCode` is what keeps the sub-1 buckets honest: newborn
+	 * and infant are expressed in months (MON) rather than as fractions
+	 * of a year, so they stay distinguishable.
+	 *
+	 * `adult` carries no `max` — Google's own worked example is the adult
+	 * case and bounds it only from below.
+	 *
+	 * @var array<string, array{min: float, max: float|null, unit: string}>
+	 */
+	private const AUDIENCE_AGE_GROUPS = array(
+		'newborn' => array(
+			'min'  => 0.0,
+			'max'  => 3.0,
+			'unit' => 'MON',
+		),
+		'infant'  => array(
+			'min'  => 3.0,
+			'max'  => 12.0,
+			'unit' => 'MON',
+		),
+		'toddler' => array(
+			'min'  => 1.0,
+			'max'  => 5.0,
+			'unit' => 'ANN',
+		),
+		'kids'    => array(
+			'min'  => 5.0,
+			'max'  => 13.0,
+			'unit' => 'ANN',
+		),
+		'adult'   => array(
+			'min'  => 13.0,
+			'max'  => null,
+			'unit' => 'ANN',
+		),
+	);
+
+	/**
+	 * Attribute slugs recognised as Gender and Age group, mapped to the
+	 * field they feed and their precedence when a product carries both
+	 * the `pa_` and the bare form for the same field.
+	 *
+	 * The plugin creates and seeds `pa_gender` / `pa_age_group` itself
+	 * (see {@see WC_AI_Storefront_Attribute_Seeder}) — Google treats them
+	 * as required for Apparel & Accessories even though WooCommerce core
+	 * takes no position on either. Because we create these two
+	 * attributes, seed their terms with exactly Google's accepted
+	 * values, and point merchants at them in the user guide, `pa_gender`
+	 * / `pa_age_group` are constrained to valid values by construction
+	 * and are the authoritative source. The bare `gender` / `age_group`
+	 * forms are the compatibility path for a merchant who built (or
+	 * already had) a custom product-level attribute of their own,
+	 * instead of adopting the seeded ones — mirroring how
+	 * CORE_ATTRIBUTE_MAP lists both `pa_color` and `color`.
+	 *
+	 * `priority` (lower wins) encodes that precedence: if a product
+	 * carries both `pa_gender` and a bare `gender` with different
+	 * values, `pa_gender` (priority 0) is the one
+	 * {@see build_audience_block()} sees; the bare `gender` (priority 1)
+	 * is outranked — PROVIDED `pa_gender`'s value actually produces typed
+	 * output. {@see emit_attributes()} falls through to the next-priority
+	 * candidate when the higher-priority one doesn't (e.g. `pa_age_group`
+	 * set to an unrecognised bucket), so precedence only decides the
+	 * winner among candidates that are actually usable; it never blocks a
+	 * usable lower-priority value outright. The outranked/unused value is
+	 * NOT discarded — it cannot occupy the single `audience` slot
+	 * alongside its winner, so {@see emit_attributes()} routes it to
+	 * `additionalProperty` instead, keyed by its own slug so the
+	 * collision never causes either value to silently vanish.
+	 *
+	 * Keys are compared after lowercasing and after collapsing spaces and
+	 * hyphens to underscores, so a custom attribute the merchant labelled
+	 * "Age group" still matches.
+	 *
+	 * @var array<string, array{field: string, priority: int}>
+	 */
+	private const AUDIENCE_ATTRIBUTE_MAP = array(
+		'pa_gender'    => array(
+			'field'    => 'gender',
+			'priority' => 0,
+		),
+		'gender'       => array(
+			'field'    => 'gender',
+			'priority' => 1,
+		),
+		'pa_age_group' => array(
+			'field'    => 'age_group',
+			'priority' => 0,
+		),
+		'age_group'    => array(
+			'field'    => 'age_group',
+			'priority' => 1,
+		),
+	);
+
+	/**
 	 * Hard cap on per-property entries emitted under
 	 * {@see add_related_products()} — `isRelatedTo` and `isSimilarTo`
 	 * are each capped independently. A merchant who has 100 cross-sell
@@ -774,22 +898,39 @@ class WC_AI_Storefront_JsonLd {
 
 	/**
 	 * Emit each visible attribute either as its typed Schema.org property
-	 * (color/size/material/pattern) or as an `additionalProperty` entry.
-	 * Single pass — one `get_attribute()` lookup per attribute.
+	 * (color/size/material/pattern), the `audience` PeopleAudience block
+	 * (gender/age group), or as an `additionalProperty` entry. Single
+	 * pass — one `get_attribute()` lookup per attribute.
 	 *
 	 * Per-attribute decision tree:
 	 *   1. Hidden / variation-defining / empty value → skip entirely.
-	 *   2. Maps to a typed property AND value is single-valued AND no
+	 *   2. Maps to Gender or Age group (see AUDIENCE_ATTRIBUTE_MAP) →
+	 *      held in a pending collector keyed by slug (not field), so a
+	 *      losing attribute in a `pa_`-vs-bare collision is judged, and
+	 *      routed to `additionalProperty`, independently of its winner.
+	 *      Every candidate for a field is kept, not just the
+	 *      highest-precedence one: after the loop, candidates are tried
+	 *      in precedence order and the first one that actually produces
+	 *      typed output wins. A `pa_` value that fails to type (e.g. an
+	 *      unrecognised age-group bucket) falls through to a lower-
+	 *      priority but mappable candidate instead of blocking typed
+	 *      emission outright — see the resolution step below.
+	 *   3. Maps to a typed property AND value is single-valued AND no
 	 *      upstream owner of the typed key → emit as typed property,
 	 *      skip additionalProperty for this slug.
-	 *   3. Otherwise (unmapped, multi-value, or upstream-owns-typed) →
+	 *   4. Otherwise (unmapped, multi-value, or upstream-owns-typed) →
 	 *      emit to additionalProperty.
 	 *
-	 * Caller control: when an upstream filter has already set the typed
-	 * property (e.g. `$markup['color']`), we defer on the typed side AND
-	 * still emit the merchant's attribute to `additionalProperty`. This
-	 * preserves the merchant's data signal even if it differs from what
-	 * upstream chose to claim.
+	 * Caller control: when an upstream filter has already set a typed
+	 * property or sub-property (e.g. `$markup['color']`, or
+	 * `$markup['audience']['suggestedGender']`), we defer on that typed
+	 * side AND still emit the merchant's attribute to
+	 * `additionalProperty`. This preserves the merchant's data signal
+	 * even if it differs from what upstream chose to claim. `audience`
+	 * sub-properties are merged in individually rather than the whole
+	 * block being replaced, so an upstream `audienceType` — or a
+	 * `suggestedGender` upstream already set — survives even when we
+	 * contribute the other sub-property.
 	 *
 	 * @param array      $markup  Markup array, modified by reference.
 	 * @param WC_Product $product The product object.
@@ -802,6 +943,25 @@ class WC_AI_Storefront_JsonLd {
 		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		$additional_properties = array();
+		// Every candidate seen so far, per field — not just the
+		// highest-precedence one. `pa_gender` / `pa_age_group` are the
+		// attributes this plugin creates and seeds with Google's
+		// accepted values, so they are authoritative by construction; a
+		// bare `gender` / `age_group` attribute is the compatibility
+		// fallback for a merchant's own pre-existing custom attribute
+		// (see AUDIENCE_ATTRIBUTE_MAP for the full rationale). Keeping
+		// every candidate lets a `pa_` value that fails to produce typed
+		// output fall through to the next-priority candidate instead of
+		// blocking typed emission for the field entirely. Resolved into
+		// winners after the loop.
+		$audience_candidates = array(
+			'gender'    => array(),
+			'age_group' => array(),
+		);
+		// Keyed by SLUG (not field): a `pa_`-vs-bare collision must not
+		// let one attribute's pending entry overwrite the other's — each
+		// is judged for additionalProperty on its own, after the loop.
+		$audience_pending = array();
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
 				continue;
@@ -812,6 +972,29 @@ class WC_AI_Storefront_JsonLd {
 			}
 			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
 			if ( '' === $value ) {
+				continue;
+			}
+
+			// Gender / Age group route to the typed `audience` block rather
+			// than to a Schema.org property on Product itself. Normalise
+			// separators first: a custom attribute labelled "Age group"
+			// arrives as `age group`.
+			$audience_key = str_replace( array( ' ', '-' ), '_', $slug );
+			if ( isset( self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ] ) ) {
+				$field    = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['field'];
+				$priority = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['priority'];
+
+				$audience_candidates[ $field ][] = array(
+					'slug'     => $slug,
+					'value'    => $value,
+					'priority' => $priority,
+				);
+
+				$audience_pending[ $slug ] = array(
+					'@type' => 'PropertyValue',
+					'name'  => wc_attribute_label( $attribute->get_name(), $product ),
+					'value' => $value,
+				);
 				continue;
 			}
 
@@ -838,6 +1021,63 @@ class WC_AI_Storefront_JsonLd {
 				'value' => $value,
 			);
 		}
+
+		// Resolve each field's candidates in precedence order (lowest
+		// `priority` first), falling through past a candidate that
+		// produces no typed output — e.g. `pa_age_group` set to an
+		// unrecognised bucket like "Grown-up" — to the next one. This
+		// does not reopen the pa_-vs-bare precedence ruling — `pa_`
+		// still wins whenever its value is usable. Shared with the
+		// per-variant path via {@see resolve_audience_winner()} so the
+		// two rules cannot drift apart again (see its docblock).
+		$gender_winner = self::resolve_audience_winner( 'gender', $audience_candidates['gender'] );
+		$age_winner    = self::resolve_audience_winner( 'age_group', $audience_candidates['age_group'] );
+
+		$audience = self::build_audience_block( $gender_winner['value'], $age_winner['value'] );
+
+		// `audience` follows the same upstream-defer convention as the
+		// core typed properties above (see this method's own docblock):
+		// when `woocommerce_structured_data_product` already set
+		// `audience` at an earlier priority, merge our sub-properties
+		// into it — leaving any key upstream already claimed untouched —
+		// rather than overwriting the block wholesale. Mirrors the
+		// merge-without-overwrite pattern in
+		// add_inherited_variant_fields(). A pending entry is excluded
+		// from additionalProperty only when its slug is the one that
+		// actually landed a key in `$markup['audience']`; every other
+		// pending entry — outranked, unable to type, or deferred to an
+		// upstream owner — still needs to reach agents somehow.
+		$typed_winner_slugs = array();
+		if ( ! empty( $audience ) ) {
+			$upstream_audience = $markup['audience'] ?? null;
+			// A non-array existing value (e.g. a string some other
+			// filter set) is left untouched entirely — we skip our
+			// emission rather than merge into a shape we can't guard,
+			// consistent with how the rest of this file guards optional
+			// structures before merging into them.
+			if ( null === $upstream_audience || is_array( $upstream_audience ) ) {
+				$merged = is_array( $upstream_audience ) ? $upstream_audience : array();
+				foreach ( array( 'suggestedGender', 'suggestedAge' ) as $sub_property ) {
+					if ( isset( $merged[ $sub_property ] ) || ! isset( $audience[ $sub_property ] ) ) {
+						continue;
+					}
+					$merged[ $sub_property ] = $audience[ $sub_property ];
+					$typed_winner_slugs[]    = ( 'suggestedGender' === $sub_property ) ? $gender_winner['slug'] : $age_winner['slug'];
+				}
+				// `array_merge()` keeps a colliding string key's
+				// ORIGINAL position (here, first) while still taking the
+				// later array's value — a no-op re-confirmation when
+				// `$merged` already carries its own `@type`.
+				$markup['audience'] = array_merge( array( '@type' => 'PeopleAudience' ), $merged );
+			}
+		}
+
+		foreach ( $audience_pending as $slug => $property ) {
+			if ( ! in_array( $slug, $typed_winner_slugs, true ) ) {
+				$additional_properties[] = $property;
+			}
+		}
+
 		if ( ! empty( $additional_properties ) ) {
 			// Merge with any pre-existing entries (WC core or another
 			// plugin filtered `woocommerce_structured_data_product` and
@@ -860,6 +1100,192 @@ class WC_AI_Storefront_JsonLd {
 			}
 			$markup['additionalProperty'] = array_merge( $existing, $additional_properties );
 		}
+	}
+
+	/**
+	 * Builds the `suggestedGender` sub-property from a raw Gender
+	 * attribute value. Split out of {@see build_audience_block()} so
+	 * {@see emit_attributes()} can test a fall-through candidate's value
+	 * in isolation before committing to it as the field's winner.
+	 *
+	 * `suggestedGender` is Text-ranged, so ANY non-empty, trimmed value
+	 * is structurally valid markup — there is nothing to reject. See
+	 * {@see build_audience_block()} for the full gatekeeping rationale;
+	 * this is why gender's fall-through in {@see emit_attributes()} never
+	 * actually activates: the highest-priority candidate always "types".
+	 *
+	 * @param string $gender Raw Gender attribute value.
+	 * @return array `array( 'suggestedGender' => string )`, or empty when
+	 *               $gender is empty after trim.
+	 */
+	private static function build_gender_sub_property( string $gender ): array {
+		$gender_trimmed = trim( $gender );
+		if ( '' === $gender_trimmed ) {
+			return array();
+		}
+
+		$gender_lower = strtolower( $gender_trimmed );
+		return array(
+			'suggestedGender' => in_array( $gender_lower, self::AUDIENCE_GENDER_VALUES, true )
+				? $gender_lower
+				: $gender_trimmed,
+		);
+	}
+
+	/**
+	 * Builds the `suggestedAge` `QuantitativeValue` sub-property from a
+	 * raw Age group attribute value. Split out of
+	 * {@see build_audience_block()} so {@see emit_attributes()} can test
+	 * a fall-through candidate's value in isolation before committing to
+	 * it as the field's winner.
+	 *
+	 * An unmapped bucket has no numbers to compute, so there is nothing
+	 * honest to emit for it — see {@see build_audience_block()} for the
+	 * full gatekeeping rationale. This is exactly the case
+	 * {@see emit_attributes()}'s fall-through exists for: a higher-
+	 * priority but unmapped candidate yields empty here, so the caller
+	 * tries the next one.
+	 *
+	 * @param string $age_group Raw Age group attribute value.
+	 * @return array `array( 'suggestedAge' => array(...) )`, or empty
+	 *               when $age_group doesn't map to a recognised bucket
+	 *               ({@see AUDIENCE_AGE_GROUPS}).
+	 */
+	private static function build_age_sub_property( string $age_group ): array {
+		$age_key = strtolower( trim( $age_group ) );
+		if ( ! isset( self::AUDIENCE_AGE_GROUPS[ $age_key ] ) ) {
+			return array();
+		}
+		$bucket = self::AUDIENCE_AGE_GROUPS[ $age_key ];
+
+		$suggested_age = array(
+			'@type'    => 'QuantitativeValue',
+			'minValue' => $bucket['min'],
+		);
+		if ( null !== $bucket['max'] ) {
+			$suggested_age['maxValue'] = $bucket['max'];
+		}
+		$suggested_age['unitCode'] = $bucket['unit'];
+
+		return array( 'suggestedAge' => $suggested_age );
+	}
+
+	/**
+	 * Picks the field's winning candidate — the highest-priority one
+	 * whose value actually produces typed output — falling through past
+	 * a candidate that doesn't (e.g. `pa_age_group` set to an
+	 * unrecognised bucket like "Grown-up") to the next-priority one.
+	 *
+	 * Shared by {@see emit_attributes()} (parent/simple-product path) and
+	 * {@see add_variant_audience()} (per-variant path) so the two cannot
+	 * drift apart again: this exact fall-through rule was originally
+	 * written twice, and only the parent copy got the fix for #618's
+	 * "unmappable priority-0 candidate blocks a mappable priority-1 one"
+	 * bug — see PR #625 review.
+	 *
+	 * Gender always types for any non-empty value (see
+	 * {@see build_gender_sub_property()}), so its highest-priority
+	 * candidate always wins outright here and the fall-through never
+	 * actually activates for it — a structural consequence of the data
+	 * model, not a gender special-case in this helper.
+	 *
+	 * @param string $field      Either 'gender' or 'age_group' — selects
+	 *                           which typed builder
+	 *                           ({@see build_gender_sub_property()} /
+	 *                           {@see build_age_sub_property()}) tests
+	 *                           each candidate.
+	 * @param array<int, array{slug: string, value: string, priority: int}> $candidates
+	 *                           Every candidate seen for this field, unsorted.
+	 * @return array{slug: string, value: string} The winning slug/value,
+	 *                           or both '' when no candidate produced
+	 *                           typed output.
+	 */
+	private static function resolve_audience_winner( string $field, array $candidates ): array {
+		usort(
+			$candidates,
+			static function ( array $a, array $b ): int {
+				return $a['priority'] <=> $b['priority'];
+			}
+		);
+
+		foreach ( $candidates as $candidate ) {
+			$typed = 'gender' === $field
+				? self::build_gender_sub_property( $candidate['value'] )
+				: self::build_age_sub_property( $candidate['value'] );
+			if ( ! empty( $typed ) ) {
+				return array(
+					'slug'  => $candidate['slug'],
+					'value' => $candidate['value'],
+				);
+			}
+		}
+
+		return array(
+			'slug'  => '',
+			'value' => '',
+		);
+	}
+
+	/**
+	 * Builds the `Product.audience` → `PeopleAudience` block by composing
+	 * {@see build_gender_sub_property()} and
+	 * {@see build_age_sub_property()}.
+	 *
+	 * Google requires `gender` and `age_group` on all Apparel & Accessories
+	 * products, and reads them from this typed structure. A merchant's
+	 * Gender attribute emitted as a generic `additionalProperty` entry is
+	 * published but invisible to Google for that purpose, which for an
+	 * apparel product means disapproval rather than a thinner listing.
+	 *
+	 * Gender and age group are gatekept asymmetrically. This is
+	 * deliberate — do not "fix" it into matching, and do not remove it:
+	 *
+	 *   - `suggestedGender` is Text-ranged, so ANY non-empty, trimmed
+	 *     value is structurally valid markup — there is nothing to
+	 *     reject. A value matching {@see AUDIENCE_GENDER_VALUES}
+	 *     case-insensitively is normalised to Google's canonical
+	 *     lowercase form; anything else passes through exactly as the
+	 *     merchant typed it, trimmed. We do not pre-validate against
+	 *     Google's three accepted values before emitting: Merchant
+	 *     Center / Search Console will flag an unrecognised value
+	 *     directly to the merchant, and that diagnostic — plus our
+	 *     documentation, plus a future Product Editor surface — is the
+	 *     intended correction path. Silently dropping or guessing at the
+	 *     value here would deny the merchant all three feedback
+	 *     channels.
+	 *   - `suggestedAge` is a `QuantitativeValue` — it needs `minValue` /
+	 *     `maxValue` / `unitCode`. An unmapped bucket like "Grown-up" has
+	 *     no numbers to compute, so there is nothing honest to emit for
+	 *     it. This is a data-model constraint, not a validation choice:
+	 *     unlike gender, there is no verbatim fallback shape for a
+	 *     QuantitativeValue. The caller ({@see emit_attributes()}) routes
+	 *     an unrecognised age group to `additionalProperty` instead, so
+	 *     the merchant's data still reaches agents, just untyped.
+	 *
+	 * @param string $gender    Raw Gender attribute value — already the
+	 *                          field's resolved winner when the caller
+	 *                          collected multiple candidates (`pa_gender`
+	 *                          vs. a bare `gender` attribute; see
+	 *                          AUDIENCE_ATTRIBUTE_MAP for the precedence
+	 *                          rule and {@see emit_attributes()} for the
+	 *                          fall-through that resolves it).
+	 * @param string $age_group Raw Age group attribute value, same
+	 *                          precedence contract as $gender.
+	 * @return array The PeopleAudience block. Empty only when $gender is
+	 *               empty (after trim) AND $age_group did not map to a
+	 *               recognised bucket.
+	 */
+	private static function build_audience_block( string $gender, string $age_group ): array {
+		$block = array_merge(
+			self::build_gender_sub_property( $gender ),
+			self::build_age_sub_property( $age_group )
+		);
+
+		if ( empty( $block ) ) {
+			return array();
+		}
+
+		return array_merge( array( '@type' => 'PeopleAudience' ), $block );
 	}
 
 	/**
@@ -889,6 +1315,36 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Resolves an attribute slug to the Schema.org property it varies by.
+	 *
+	 * Checks the four core typed slugs ({@see CORE_ATTRIBUTE_MAP}) first,
+	 * then the two audience slugs ({@see AUDIENCE_ATTRIBUTE_MAP}). Google
+	 * lists `suggestedAge` and `suggestedGender` among the properties
+	 * valid in `variesBy`, alongside the core four, so an age- or
+	 * gender-keyed variable product can advertise its real axis instead
+	 * of a plain text label. Shared by both {@see detect_varies_by()}
+	 * lookup sites — the parent-flagged path and the typed-slug override
+	 * — so they agree on what counts as typed.
+	 *
+	 * @param string $slug_lower Lowercased attribute slug.
+	 * @return string Schema.org property name, or '' when unmapped.
+	 */
+	private static function varies_by_property( string $slug_lower ): string {
+		if ( isset( self::CORE_ATTRIBUTE_MAP[ $slug_lower ] ) ) {
+			return self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+		}
+
+		$audience_key = str_replace( array( ' ', '-' ), '_', $slug_lower );
+		if ( isset( self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ] ) ) {
+			return 'gender' === self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['field']
+				? 'suggestedGender'
+				: 'suggestedAge';
+		}
+
+		return '';
+	}
+
+	/**
 	 * Builds the `variesBy` array for a `ProductGroup` — Schema.org property
 	 * URLs (or short labels for unmapped attributes) for the dimensions that
 	 * actually vary across this product's variations.
@@ -899,25 +1355,31 @@ class WC_AI_Storefront_JsonLd {
 	 * in `variesBy`. This matters because Google's variant rich result keys
 	 * on `variesBy` to know which dimensions a buyer can choose between.
 	 *
-	 * **Core typed override**: If a slug maps to a Schema.org typed property
-	 * via {@see CORE_ATTRIBUTE_MAP} (color / size / material / pattern), we
-	 * also inspect the variation children's own attribute meta directly —
-	 * not just the parent's `get_variation_attributes()`. WC's parent-level
-	 * "Used for variations" flag gates `get_variation_attributes()` but not
-	 * the underlying variation meta; merchants who configure `pa_color`
-	 * with distinct values across variations but forget to flag it as a
-	 * variation axis still get correct ProductGroup emission, because the
-	 * data is right there on each child even if the parent flag is wrong.
-	 * This override is intentionally limited to the four core typed slugs
-	 * — they have canonical Schema.org type mappings and are the axes AI
-	 * agents are most likely to query, so getting them right matters more
-	 * than honoring a likely-misconfigured parent flag.
+	 * **Typed-slug override**: If a slug maps to a Schema.org typed
+	 * property — a core one via {@see CORE_ATTRIBUTE_MAP} (color / size /
+	 * material / pattern) or an audience one via
+	 * {@see AUDIENCE_ATTRIBUTE_MAP} (gender / age group) — we also inspect
+	 * the variation children's own attribute meta directly, not just the
+	 * parent's `get_variation_attributes()`. WC's parent-level "Used for
+	 * variations" flag gates `get_variation_attributes()` but not the
+	 * underlying variation meta; merchants who configure `pa_color` (or
+	 * `pa_gender`) with distinct values across variations but forget to
+	 * flag it as a variation axis still get correct ProductGroup emission,
+	 * because the data is right there on each child even if the parent
+	 * flag is wrong. This override is intentionally limited to slugs with
+	 * a canonical Schema.org typed property — they are the axes AI agents
+	 * are most likely to query (and, for gender/age group, the ones
+	 * Google requires for Apparel & Accessories), so getting them right
+	 * matters more than honoring a likely-misconfigured parent flag. An
+	 * unmapped custom axis still honors the parent flag, same as before.
 	 *
-	 * Slug → Schema.org URL mapping uses {@see CORE_ATTRIBUTE_MAP} (the same
-	 * lookup #331 uses for typed-property emission). Mapped attributes emit
-	 * as full Schema.org URLs (e.g. `https://schema.org/color`); unmapped
-	 * attributes (custom merchant axes like "Style" or "Heel Height") emit
-	 * as plain Text labels — Schema.org `variesBy` accepts both shapes.
+	 * Slug → Schema.org property mapping uses {@see varies_by_property()},
+	 * shared with the override path so both sites agree on what counts as
+	 * typed. Mapped attributes emit as full Schema.org URLs (e.g.
+	 * `https://schema.org/color`, `https://schema.org/suggestedGender`);
+	 * unmapped attributes (custom merchant axes like "Style" or "Heel
+	 * Height") emit as plain Text labels — Schema.org `variesBy` accepts
+	 * both shapes.
 	 *
 	 * @param WC_Product $product The variable product.
 	 * @return string[] List of Schema.org URLs and/or Text labels for axes
@@ -943,8 +1405,9 @@ class WC_AI_Storefront_JsonLd {
 				continue;
 			}
 			$slug_lower = strtolower( (string) $slug );
-			if ( isset( self::CORE_ATTRIBUTE_MAP[ $slug_lower ] ) ) {
-				$varies_urls[] = 'https://schema.org/' . self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+			$property   = self::varies_by_property( $slug_lower );
+			if ( '' !== $property ) {
+				$varies_urls[] = 'https://schema.org/' . $property;
 			} else {
 				$varies_labels[] = function_exists( 'wc_attribute_label' )
 					? wc_attribute_label( $slug, $product )
@@ -952,8 +1415,9 @@ class WC_AI_Storefront_JsonLd {
 			}
 		}
 
-		// Path 2: core-typed override. For the four canonical Schema.org
-		// slugs (color / size / material / pattern), also peek at the
+		// Path 2: typed-slug override. For slugs with a canonical
+		// Schema.org typed property — core (color / size / material /
+		// pattern) or audience (gender / age group) — also peek at the
 		// variation children directly. This catches the misconfigured
 		// case where a merchant set up variations with real per-child
 		// values but didn't flag the parent attribute "Used for
@@ -968,16 +1432,19 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Inspect variation children's attribute meta to find core-typed axes
-	 * (color / size / material / pattern) that have ≥2 distinct values
-	 * across children — even if the parent's "Used for variations" flag
-	 * is unset on the matching attribute.
+	 * Inspect variation children's attribute meta to find typed axes —
+	 * core (color / size / material / pattern) or audience (gender / age
+	 * group) — that have ≥2 distinct values across children, even if the
+	 * parent's "Used for variations" flag is unset on the matching
+	 * attribute.
 	 *
 	 * Returns Schema.org property URLs only (no Text labels), because
-	 * the override is scoped to the four core typed slugs by design.
+	 * the override is scoped to slugs with a canonical Schema.org typed
+	 * property by design ({@see CORE_ATTRIBUTE_MAP} and
+	 * {@see AUDIENCE_ATTRIBUTE_MAP}).
 	 *
 	 * @param WC_Product $product The variable product (parent).
-	 * @return string[] Schema.org URLs for core-typed axes that factually vary.
+	 * @return string[] Schema.org URLs for typed axes that factually vary.
 	 */
 	private static function detect_core_typed_axes_from_children( $product ): array {
 		$children = $product->get_children();
@@ -986,19 +1453,28 @@ class WC_AI_Storefront_JsonLd {
 			return array();
 		}
 
-		// Bucket: core slug → set of distinct non-empty values seen.
-		$values_by_core_slug = array();
+		// Bucket: slug → set of distinct non-empty values seen. Merges
+		// core-typed and audience postmeta reads — both are scoped to a
+		// fixed, known slug list, so merging by slug key cannot collide.
+		$values_by_slug = array();
 		foreach ( $children as $child_id ) {
-			$attrs = self::read_variation_core_attributes( (int) $child_id );
+			$attrs = array_merge(
+				self::read_variation_core_attributes( (int) $child_id ),
+				self::read_variation_audience_attributes( (int) $child_id )
+			);
 			foreach ( $attrs as $slug_lower => $value_str ) {
-				$values_by_core_slug[ $slug_lower ][ $value_str ] = true;
+				$values_by_slug[ $slug_lower ][ $value_str ] = true;
 			}
 		}
 
 		$urls = array();
-		foreach ( $values_by_core_slug as $slug_lower => $value_set ) {
-			if ( count( $value_set ) >= 2 ) {
-				$urls[] = 'https://schema.org/' . self::CORE_ATTRIBUTE_MAP[ $slug_lower ];
+		foreach ( $values_by_slug as $slug_lower => $value_set ) {
+			if ( count( $value_set ) < 2 ) {
+				continue;
+			}
+			$property = self::varies_by_property( $slug_lower );
+			if ( '' !== $property ) {
+				$urls[] = 'https://schema.org/' . $property;
 			}
 		}
 		return $urls;
@@ -1007,6 +1483,50 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Read a variation's core-typed attribute values directly from
 	 * postmeta — bypassing the parent's "Used for variations" flag.
+	 *
+	 * Thin wrapper around {@see read_variation_attributes_from_map()}
+	 * scoped to {@see CORE_ATTRIBUTE_MAP} (color / size / material /
+	 * pattern) — they have canonical Schema.org typed properties;
+	 * unmapped custom attributes intentionally honor the parent's flag.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return array<string,string> Slug → trimmed value, only for non-empty
+	 *                              core typed slugs.
+	 */
+	private static function read_variation_core_attributes( int $variation_id ): array {
+		return self::read_variation_attributes_from_map( $variation_id, self::CORE_ATTRIBUTE_MAP );
+	}
+
+	/**
+	 * Read a variation's Gender / Age group attribute values directly from
+	 * postmeta — the audience counterpart to
+	 * {@see read_variation_core_attributes()}.
+	 *
+	 * Thin wrapper around {@see read_variation_attributes_from_map()}
+	 * scoped to {@see AUDIENCE_ATTRIBUTE_MAP}.
+	 *
+	 * Per-SLUG, not per-field: a `pa_gender`-vs-bare-`gender` collision
+	 * (both present with different values) is left for the caller to
+	 * resolve via {@see AUDIENCE_ATTRIBUTE_MAP}'s `priority` — this
+	 * function only reports what postmeta actually holds.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return array<string,string> Slug → trimmed value, only for non-empty
+	 *                               recognised audience slugs.
+	 */
+	private static function read_variation_audience_attributes( int $variation_id ): array {
+		return self::read_variation_attributes_from_map( $variation_id, self::AUDIENCE_ATTRIBUTE_MAP );
+	}
+
+	/**
+	 * Read a variation's attribute values directly from postmeta for
+	 * every slug in the given map — bypassing the parent's "Used for
+	 * variations" flag. Shared implementation behind
+	 * {@see read_variation_core_attributes()} and
+	 * {@see read_variation_audience_attributes()}, which differ only in
+	 * which const map they scan; collapsing them here means the postmeta
+	 * key lookup (including its hyphen fallback, below) is fixed once
+	 * instead of drifting between two copies.
 	 *
 	 * `WC_Product_Variation::get_attributes()` (and its
 	 * `get_variation_attributes()` wrapper) only surface attributes
@@ -1017,22 +1537,80 @@ class WC_AI_Storefront_JsonLd {
 	 * when the merchant configured variations correctly but forgot to
 	 * flag the parent attribute.
 	 *
-	 * Scoped to the four core typed slugs ({@see CORE_ATTRIBUTE_MAP})
-	 * because they have canonical Schema.org typed properties; unmapped
-	 * custom attributes intentionally honor the parent's flag.
+	 * **Hyphen fallback**: WooCommerce builds that meta key via
+	 * `wc_variation_attribute_name()` = `'attribute_' . sanitize_title( $name )`,
+	 * and `sanitize_title_with_dashes()` converts whitespace to a HYPHEN,
+	 * not an underscore. Our map keys use underscores (matching Google's
+	 * canonical `age_group`-style names), so a merchant's multi-word
+	 * custom attribute — e.g. one literally labelled "Age group" — writes
+	 * its variation postmeta to `attribute_age-group`, not
+	 * `attribute_age_group`. This is the exact scenario
+	 * {@see AUDIENCE_ATTRIBUTE_MAP}'s own docblock cites to justify the
+	 * bare-slug fallback existing at all, and it applies equally to any
+	 * future multi-word CORE_ATTRIBUTE_MAP entry — none of the current
+	 * four (color/size/material/pattern) happens to be multi-word, which
+	 * is why this only surfaced on the audience side. We do not guess
+	 * which form a given merchant's attribute used — a plain single-word
+	 * key never collides (there is nothing to hyphenate), and a
+	 * multi-word key probes the exact form first, falling back to the
+	 * hyphenated form only when the exact form is empty.
 	 *
-	 * @param int $variation_id The variation post ID.
-	 * @return array<string,string> Slug → trimmed value, only for non-empty
-	 *                              core typed slugs.
+	 * **"Absent" vs "explicitly any"**: `get_post_meta()` with
+	 * `$single = true` returns `''` both when the meta key was never set
+	 * and when it was set to WooCommerce's own "Any <attribute>"
+	 * placeholder (also stored as `''`), and WooCommerce's own meaning
+	 * for that placeholder is "this variation matches any value of the
+	 * axis" — so an explicit "any" must never be treated as if the key
+	 * were missing. A value check alone can't tell the two apart, which
+	 * matters for the hyphen fallback: without distinguishing them, the
+	 * fallback could fire on an explicit "any" and pick up a DIFFERENT,
+	 * colliding custom attribute's value sitting at the hyphenated key
+	 * (e.g. an underscore-labelled `age_group` explicitly set to "Any"
+	 * sitting alongside a space-labelled "Age group" → `attribute_age-group`
+	 * holding a real value). We resolve this with `metadata_exists()`,
+	 * which reports whether the meta ROW exists regardless of its value —
+	 * the hyphen fallback below only fires when the underscore-form key
+	 * genuinely does not exist; when it exists and holds `''`, that is
+	 * respected as an explicit "any" and this slug contributes nothing.
+	 * `metadata_exists()` is guarded by `function_exists()` like the other
+	 * optional WP functions this file calls; when unavailable, we cannot
+	 * distinguish the two cases and fall back to the old best-effort
+	 * behaviour (always probe the hyphenated form on an empty value)
+	 * rather than break.
+	 *
+	 * @param int                 $variation_id The variation post ID.
+	 * @param array<string,mixed> $map          A const attribute-slug map
+	 *                                          (only the key set is used;
+	 *                                          CORE_ATTRIBUTE_MAP and
+	 *                                          AUDIENCE_ATTRIBUTE_MAP have
+	 *                                          different value shapes).
+	 * @return array<string,string> Slug (the map's key, not the postmeta
+	 *                              key that matched) → trimmed value, only
+	 *                              for non-empty recognised slugs.
 	 */
-	private static function read_variation_core_attributes( int $variation_id ): array {
+	private static function read_variation_attributes_from_map( int $variation_id, array $map ): array {
 		if ( $variation_id <= 0 || ! function_exists( 'get_post_meta' ) ) {
 			return array();
 		}
 		$out = array();
-		foreach ( self::CORE_ATTRIBUTE_MAP as $slug_lower => $_schema_property ) {
-			$value     = get_post_meta( $variation_id, 'attribute_' . $slug_lower, true );
+		foreach ( $map as $slug_lower => $_unused ) {
+			$key       = 'attribute_' . $slug_lower;
+			$value     = get_post_meta( $variation_id, $key, true );
 			$value_str = is_string( $value ) ? trim( $value ) : '';
+			if ( '' === $value_str && false !== strpos( $slug_lower, '_' ) ) {
+				// Only probe the hyphenated form when the underscore-form
+				// key genuinely does not exist. When it exists and holds
+				// '', that is WooCommerce's own explicit "any" for this
+				// axis — respect it, don't fall through to a possibly
+				// unrelated attribute's value (see this method's docblock).
+				$underscore_key_missing = ! function_exists( 'metadata_exists' )
+					|| ! metadata_exists( 'post', $variation_id, $key );
+				if ( $underscore_key_missing ) {
+					$hyphenated = str_replace( '_', '-', $slug_lower );
+					$value      = get_post_meta( $variation_id, 'attribute_' . $hyphenated, true );
+					$value_str  = is_string( $value ) ? trim( $value ) : '';
+				}
+			}
 			if ( '' === $value_str ) {
 				continue;
 			}
@@ -1182,9 +1760,13 @@ class WC_AI_Storefront_JsonLd {
 	 * The entry is a standalone Schema.org Product block describing the
 	 * specific variation: SKU, image (with parent fallback), per-variant
 	 * typed properties (color/size/material/pattern from the variation's
-	 * specific attribute selections), an `offers[0]` Offer block with
-	 * price/availability/currency/inventory/shipping/return-policy, the
-	 * variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
+	 * specific attribute selections), its own resolved `audience`
+	 * (gender/age group, when this variation carries one of its own —
+	 * {@see add_variant_audience()}; a variant without its own value
+	 * inherits per-field from the parent later, in
+	 * {@see add_inherited_variant_fields()}), an `offers[0]` Offer block
+	 * with price/availability/currency/inventory/shipping/return-policy,
+	 * the variation's `BuyAction`, and `Offer.checkoutPageURLTemplate`.
 	 *
 	 * Both URL fields point at the WC Shareable Checkout URL using the
 	 * **variation ID** so AI-routed traffic lands on checkout with the
@@ -1208,6 +1790,7 @@ class WC_AI_Storefront_JsonLd {
 		$entry = array( '@type' => 'Product' );
 
 		$this->add_variant_basics( $entry, $variation, $parent_product );
+		$this->add_variant_audience( $entry, $variation );
 
 		$entry['offers'] = array( $this->build_variant_offer_skeleton( $variation ) );
 
@@ -1286,6 +1869,12 @@ class WC_AI_Storefront_JsonLd {
 	 *     `description`. Only emitted when non-empty.
 	 *   - `brand` / `category`: copied verbatim from the parent when set
 	 *     and not already present on the variant.
+	 *   - `audience`: merged per Schema.org sub-property (`suggestedGender`,
+	 *     `suggestedAge`) rather than copied wholesale, so a variant whose
+	 *     own axis is (say) age group alone still inherits the parent's
+	 *     constant gender instead of losing it. See
+	 *     {@see add_variant_audience()} for where the variant's own value
+	 *     is set first.
 	 *   - offer `seller`: copied from the parent `offers[0]` when present
 	 *     and not already on the variant offer (the seller IS store-level).
 	 *   - offer `priceValidUntil`: NOT store-level. WC core derives the
@@ -1326,6 +1915,35 @@ class WC_AI_Storefront_JsonLd {
 		}
 		if ( ! isset( $entry['category'] ) && ! empty( $parent_markup['category'] ) ) {
 			$entry['category'] = $parent_markup['category'];
+		}
+
+		// audience: merged per Schema.org sub-property, not copied
+		// wholesale. `add_variant_audience()` (called earlier, in
+		// `build_variant_entry()`) already set whichever sub-property
+		// this variation resolved on its own — e.g. `suggestedAge`, when
+		// age group is the actual variation axis. This step fills in
+		// only the sub-property the variant did NOT resolve, from the
+		// parent's own `audience` (e.g. a `suggestedGender` that's
+		// constant across every variant). Google requires both fields
+		// for Apparel & Accessories, so a variant whose own axis covers
+		// just one of the two still needs the other merged in, not
+		// silently dropped.
+		if ( ! empty( $parent_markup['audience'] ) && is_array( $parent_markup['audience'] ) ) {
+			$audience = ( isset( $entry['audience'] ) && is_array( $entry['audience'] ) ) ? $entry['audience'] : array();
+			foreach ( array( 'suggestedGender', 'suggestedAge' ) as $sub_property ) {
+				if ( ! isset( $audience[ $sub_property ] ) && isset( $parent_markup['audience'][ $sub_property ] ) ) {
+					$audience[ $sub_property ] = $parent_markup['audience'][ $sub_property ];
+				}
+			}
+			if ( ! empty( $audience ) ) {
+				// `@type` first, matching build_audience_block()'s own
+				// key order — array_merge() keeps a colliding string
+				// key's ORIGINAL position (here, first) while still
+				// taking the later array's value, so this is a no-op
+				// re-confirmation when `$audience` already carries
+				// `@type` from its own resolution.
+				$entry['audience'] = array_merge( array( '@type' => 'PeopleAudience' ), $audience );
+			}
 		}
 
 		// Offer-level inheritance operates on the variant's own
@@ -1527,6 +2145,99 @@ class WC_AI_Storefront_JsonLd {
 				continue;
 			}
 			$entry[ $schema_prop ] = $this->display_name_for_attribute_value( $slug, $value );
+		}
+	}
+
+	/**
+	 * Emit `audience` on a variant entry from the variation's own resolved
+	 * Gender / Age group attribute values.
+	 *
+	 * **Why not {@see emit_attributes()}**: that method assumes
+	 * `$product->get_attributes()` returns `WC_Product_Attribute[]`
+	 * (visible/variation-flag-bearing objects), which holds for a parent
+	 * `WC_Product` but not for a `WC_Product_Variation` — the latter's
+	 * `get_attributes()` is inherited, unoverridden, from the base class
+	 * and returns a flat `slug => value` STRING map instead (WC core's
+	 * own `WC_Product_Variation::get_variation_attributes()` iterates
+	 * that same prop as plain key/value pairs, and feeds the values
+	 * straight into `add_query_arg()` / `urlencode()` — never through an
+	 * object). Calling `emit_attributes()` against a variation would
+	 * fatal the first time it tries `$attribute->get_visible()` on a
+	 * string. Reading postmeta directly via
+	 * {@see read_variation_audience_attributes()} — the same approach
+	 * {@see read_variation_core_attributes()} already uses for
+	 * color/size/material/pattern — sidesteps the shape mismatch
+	 * entirely.
+	 *
+	 * A variation that does not itself carry a recognised Gender / Age
+	 * group value (the common case: these are usually constant across a
+	 * product's variants, with size/color as the actual variation axes)
+	 * emits nothing here; {@see add_inherited_variant_fields()} fills the
+	 * gap from the parent's own resolved `audience` afterwards, per
+	 * Schema.org sub-property.
+	 *
+	 * Every candidate is routed through
+	 * {@see display_name_for_attribute_value()} — the same helper
+	 * {@see add_variant_core_typed_properties()} already uses for
+	 * color/size/material/pattern — before it is even tested for typed
+	 * output, not just after a winner is chosen: the fall-through
+	 * resolution in {@see resolve_audience_winner()} must test the exact
+	 * value that will ultimately be emitted, since a raw `pa_*` postmeta
+	 * value is the term SLUG (e.g. `mens`), not its display name
+	 * (`"Men's"`), and {@see build_age_sub_property()} matches against
+	 * {@see AUDIENCE_AGE_GROUPS} by display name (mirroring the parent's
+	 * own `emit_attributes()`, which resolves through
+	 * `$product->get_attribute()` — already the term NAME). Without this
+	 * conversion a merchant who renames a term would get two different
+	 * `suggestedGender` strings on the same product — the parent showing
+	 * the chosen name, the variant leaking the raw slug.
+	 *
+	 * **Fall-through**: like {@see emit_attributes()}, every candidate
+	 * present on this variation's own postmeta is collected (not just the
+	 * single highest-priority one) and resolved via
+	 * {@see resolve_audience_winner()} — shared with the parent path so
+	 * the fall-through rule cannot drift between the two again (#625
+	 * review: the variant path previously picked a strict-priority winner
+	 * with no fall-through, so an unmappable higher-priority value could
+	 * block a mappable lower-priority one on a variant even after that
+	 * exact bug was fixed for the parent).
+	 *
+	 * @param array      $entry     Variant markup, modified by reference.
+	 * @param WC_Product $variation The variation.
+	 */
+	private function add_variant_audience( array &$entry, $variation ): void {
+		if ( ! method_exists( $variation, 'get_id' ) ) {
+			return;
+		}
+
+		// Same pa_-vs-bare precedence as emit_attributes() (see
+		// AUDIENCE_ATTRIBUTE_MAP): every slug actually present on this
+		// variation's own postmeta is collected as a candidate, keyed by
+		// field — not reduced to a single winner here. Values are
+		// resolved to display form up front (see this method's docblock)
+		// so resolve_audience_winner()'s typability test and the eventual
+		// emission agree on the same string.
+		$candidates = array(
+			'gender'    => array(),
+			'age_group' => array(),
+		);
+		foreach ( self::read_variation_audience_attributes( (int) $variation->get_id() ) as $slug_lower => $value ) {
+			$field    = self::AUDIENCE_ATTRIBUTE_MAP[ $slug_lower ]['field'];
+			$priority = self::AUDIENCE_ATTRIBUTE_MAP[ $slug_lower ]['priority'];
+
+			$candidates[ $field ][] = array(
+				'slug'     => $slug_lower,
+				'value'    => $this->display_name_for_attribute_value( $slug_lower, $value ),
+				'priority' => $priority,
+			);
+		}
+
+		$gender_winner = self::resolve_audience_winner( 'gender', $candidates['gender'] );
+		$age_winner    = self::resolve_audience_winner( 'age_group', $candidates['age_group'] );
+
+		$audience = self::build_audience_block( $gender_winner['value'], $age_winner['value'] );
+		if ( ! empty( $audience ) ) {
+			$entry['audience'] = $audience;
 		}
 	}
 
