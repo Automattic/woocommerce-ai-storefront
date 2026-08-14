@@ -1,6 +1,7 @@
 <?php
 /**
- * Verifies attribute seeding is scheduled on init from the version-bump branch.
+ * Verifies attribute seeding runs — immediately or deferred to init — from
+ * the version-bump branch, and never silently drops on activation.
  *
  * Deviation from the task brief: the brief's callback target was
  * `array( WC_AI_Storefront_Attribute_Seeder::class, 'seed' )`. Wiring that
@@ -14,6 +15,21 @@
  * WC_AI_Storefront::run_attribute_seeding() was added as the same kind of
  * void adapter and is what `init` actually calls. See its docblock in
  * includes/class-wc-ai-storefront.php for the full rationale.
+ *
+ * A second deviation, added after the initial implementation shipped:
+ * unconditionally deferring to `add_action( 'init', ... )` was itself a
+ * critical bug. `register_activation_hook` callbacks
+ * (wc_ai_storefront_activate() in woocommerce-ai-storefront.php) run AFTER
+ * `init` has already fired for that request, so a plain add_action() there
+ * registers a callback that never runs — a merchant who activates the
+ * plugin got zero attributes, silently, forever (the version option is
+ * still written on the next line, consuming the one-shot version-mismatch
+ * branch for good). schedule_attribute_seeding() now branches on
+ * `did_action( 'init' )`: run the seeder immediately when init already
+ * fired, defer via add_action() otherwise. See the method docblock in
+ * includes/class-wc-ai-storefront.php for the full rationale, and
+ * test_seeding_runs_immediately_when_init_already_fired below for the
+ * regression coverage that was missing when the bug shipped.
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -35,8 +51,14 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 		parent::tearDown();
 	}
 
-	public function test_seeding_is_deferred_to_init_never_called_inline(): void {
+	public function test_seeding_is_deferred_to_init_when_init_has_not_fired(): void {
 		$hooked = array();
+
+		// Explicit precondition: init has NOT fired yet for this request —
+		// the normal plugins_loaded entry point. See
+		// test_seeding_runs_immediately_when_init_already_fired below for
+		// the other entry point (activation), where init HAS already fired.
+		Functions\when( 'did_action' )->justReturn( 0 );
 
 		Functions\when( 'add_action' )->alias(
 			static function ( $hook, $callback, $priority = 10 ) use ( &$hooked ) {
@@ -72,6 +94,35 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	/**
+	 * Regression test for the critical activation bug described in the file
+	 * docblock above: the register_activation_hook callback runs AFTER
+	 * `init` has already fired for that request, so unconditionally
+	 * deferring via add_action( 'init', ... ) registers a callback that
+	 * never runs. Nothing crashed — the plugin just silently seeded nothing
+	 * on activation, every time. This test proves the immediate path exists
+	 * and is taken instead: when init has already fired, seeding runs
+	 * inline, with no dependence on a hook that will never fire again.
+	 */
+	public function test_seeding_runs_immediately_when_init_already_fired(): void {
+		Functions\when( 'did_action' )->justReturn( 1 );
+
+		// Must NOT register anything on `init` — that hook has already
+		// dispatched to every subscriber for this request.
+		Functions\expect( 'add_action' )->never();
+
+		// Proves seeding actually ran rather than being silently skipped:
+		// seed()'s first statement is apply_filters( SEED_FILTER, true ).
+		// Returning false short-circuits before any WC calls.
+		Functions\expect( 'apply_filters' )
+			->once()
+			->with( WC_AI_Storefront_Attribute_Seeder::SEED_FILTER, true )
+			->andReturn( false );
+		Functions\expect( 'wc_create_attribute' )->never();
+
+		WC_AI_Storefront::schedule_attribute_seeding();
+	}
+
 	public function test_run_attribute_seeding_forwards_to_the_seeder(): void {
 		// seed()'s first statement is apply_filters( self::SEED_FILTER, true ).
 		// Expecting exactly that call, and returning false to short-circuit
@@ -98,22 +149,51 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 	 * This is that pin for the deferral contract this whole task exists to
 	 * build.
 	 */
-	public function test_real_orchestrator_defers_seeding_to_init_and_calls_it_between_create_tables_and_version_write(): void {
+	public function test_real_orchestrator_branches_on_init_state_and_calls_scheduler_between_create_tables_and_version_write(): void {
 		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/class-wc-ai-storefront.php' );
 
-		// The scheduling method itself must defer via add_action( 'init', ... )
-		// rather than ever calling the seeder directly.
+		// Isolate schedule_attribute_seeding()'s own body by slicing up to
+		// the START of run_attribute_seeding()'s signature. Needed because
+		// run_attribute_seeding() ALSO calls
+		// WC_AI_Storefront_Attribute_Seeder::seed() a few lines later in the
+		// same file — a whole-file substring search could not tell the two
+		// call sites apart.
+		$method_start = strpos( $source, 'public static function schedule_attribute_seeding(): void {' );
+		$next_method_start = strpos( $source, 'public static function run_attribute_seeding(): void {' );
+		$this->assertNotFalse( $method_start, 'schedule_attribute_seeding() not found.' );
+		$this->assertNotFalse( $next_method_start, 'run_attribute_seeding() not found.' );
+		$this->assertGreaterThan( $method_start, $next_method_start, 'Expected run_attribute_seeding() to follow schedule_attribute_seeding() in the file.' );
+		$method_body = substr( $source, $method_start, $next_method_start - $method_start );
+
+		// Immediate path: when `init` has already fired (the
+		// register_activation_hook entry point — see the file docblock
+		// above), seeding must run inline rather than being registered on a
+		// hook that will never fire again this request.
+		$this->assertStringContainsString(
+			"if ( did_action( 'init' ) ) {",
+			$method_body,
+			'schedule_attribute_seeding() must branch on did_action( "init" ).'
+		);
+		$this->assertStringContainsString(
+			'WC_AI_Storefront_Attribute_Seeder::seed();',
+			$method_body,
+			'The did_action( "init" ) branch must call the seeder directly.'
+		);
+
+		// Deferred path: unchanged — when `init` has not fired yet (the
+		// normal plugins_loaded entry point), defer via the
+		// run_attribute_seeding() void adapter.
 		$this->assertStringContainsString(
 			"add_action( 'init', array( self::class, 'run_attribute_seeding' ) );",
-			$source,
-			'schedule_attribute_seeding() must defer to init via the run_attribute_seeding() adapter.'
+			$method_body,
+			'schedule_attribute_seeding() must still defer to init when init has not fired.'
 		);
 
 		// And the adapter itself must forward to the real seeder — the
 		// deferral is worthless if the callback does something else.
 		$this->assertStringContainsString(
 			'WC_AI_Storefront_Attribute_Seeder::seed();',
-			$source,
+			substr( $source, $next_method_start ),
 			'run_attribute_seeding() must call WC_AI_Storefront_Attribute_Seeder::seed().'
 		);
 

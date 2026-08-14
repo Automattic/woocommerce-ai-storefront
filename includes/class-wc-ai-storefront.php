@@ -273,34 +273,73 @@ class WC_AI_Storefront {
 	}
 
 	/**
-	 * Schedules attribute seeding for `init`.
+	 * Runs attribute seeding immediately if `init` has already fired for
+	 * this request, otherwise schedules it for `init`.
 	 *
 	 * Called from the version-mismatch branch, which fires on a fresh
 	 * install (stored version empty) and after every upgrade (stored
 	 * version differs) — exactly the two moments seeding should run.
+	 * That branch has two entry points with different timing relative to
+	 * `init`:
 	 *
-	 * The work CANNOT happen inline there. That branch runs on
-	 * `plugins_loaded`, and creating taxonomy terms that early is unsafe:
-	 * WooCommerce registers its attribute taxonomies on `init`, and
+	 *   1. plugins_loaded -> wc_ai_storefront_init() -> get_instance() ->
+	 *      __construct() -> register_rewrite_rules(). Runs BEFORE `init`
+	 *      on every normal request.
+	 *   2. wc_ai_storefront_activate(), the register_activation_hook
+	 *      callback in woocommerce-ai-storefront.php, which reaches the
+	 *      same call chain. WordPress fires activation hooks from deep
+	 *      inside wp-admin/plugins.php (or the WP-CLI equivalent) — by
+	 *      then `init` has ALREADY completed for that request. Verified
+	 *      empirically against a live install: `did_action( 'init' )` was
+	 *      already 1 by the time this method ran on activation.
+	 *
+	 * The work CANNOT run inline unconditionally, because of entry point
+	 * 1: creating taxonomy terms on `plugins_loaded` is unsafe.
+	 * WooCommerce registers its attribute taxonomies on `init`
+	 * (`WC_Post_Types::register_taxonomies()`, priority 5), and
 	 * `wp_insert_term()` against an unregistered taxonomy fails. This
 	 * mirrors the existing `flush_rewrite_rules` deferral a few lines
 	 * below, which exists for the same class of reason.
 	 *
-	 * Do not "fix" that crash by wrapping the call in a `taxonomy_exists()`
-	 * guard and moving it inline — that trades a loud failure for a silent
-	 * one. Before `init`, WooCommerce has not yet registered its attribute
-	 * taxonomies, so `taxonomy_exists()` returns a false negative for an
-	 * attribute that was already seeded on a prior request.
-	 * `create_attribute()` would then re-run `wc_create_attribute()`,
-	 * inserting a duplicate row into `wc_attribute_taxonomies` on every
-	 * request that takes this branch, with no crash and no test to catch
-	 * it. Deferring to `init` is what keeps `taxonomy_exists()` accurate
-	 * and the seeding idempotent.
+	 * The work CANNOT be unconditionally deferred either, because of
+	 * entry point 2: `add_action( 'init', ... )` there registers a
+	 * callback against a hook that has already dispatched to every
+	 * subscriber for this request and will not fire again — the callback
+	 * silently never runs. Nothing crashes: `update_option(
+	 * 'wc_ai_storefront_version', ... )` a few lines below still
+	 * executes, so the one-shot version-mismatch branch is consumed and
+	 * will not be retried on the next request either. A merchant who
+	 * installs and activates the plugin would get zero attributes,
+	 * permanently, with no error anywhere to point at.
+	 *
+	 * `did_action( 'init' )` is therefore the branch condition — not
+	 * `taxonomy_exists()` or any other proxy for "has WooCommerce
+	 * registered its taxonomies yet". This does NOT reopen the
+	 * duplicate-row concern the original deferral exists to prevent: this
+	 * method is only ever reached from `plugins_loaded` or later, never
+	 * from inside the `init` dispatch itself, so by the time either
+	 * branch below actually creates an attribute — immediately here, or
+	 * later in run_attribute_seeding() via the deferred callback —
+	 * WooCommerce's `init`:5 taxonomy registration has already run for
+	 * this request, and `taxonomy_exists()` inside
+	 * `WC_AI_Storefront_Attribute_Seeder::create_attribute()` is
+	 * accurate either way.
+	 *
+	 * Do not "simplify" this back to an unconditional `add_action()`. It
+	 * looks equivalent under the normal request path and a test suite
+	 * that only exercises that path stays green, but it silently drops
+	 * seeding on every activation. See
+	 * AttributeSeederHookTest::test_seeding_runs_immediately_when_init_already_fired
+	 * for the regression test that pins this.
 	 *
 	 * Public so the deferral contract can be tested directly.
 	 */
 	public static function schedule_attribute_seeding(): void {
-		add_action( 'init', array( self::class, 'run_attribute_seeding' ) );
+		if ( did_action( 'init' ) ) {
+			WC_AI_Storefront_Attribute_Seeder::seed();
+		} else {
+			add_action( 'init', array( self::class, 'run_attribute_seeding' ) );
+		}
 	}
 
 	/**
@@ -412,8 +451,10 @@ class WC_AI_Storefront {
 			WC_AI_Storefront_Crawl_Logger::create_tables();
 
 			// Create the plugin's recommended product attributes on fresh
-			// install and on every upgrade. Deferred to `init` — see the
-			// method docblock for why it cannot run inline here.
+			// install and on every upgrade. Runs immediately or deferred
+			// to `init`, depending on whether `init` has already fired
+			// for this request — see the method docblock for why both
+			// paths exist.
 			self::schedule_attribute_seeding();
 
 			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
