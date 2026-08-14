@@ -60,12 +60,24 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
-	 * Accepted `suggestedGender` values.
-	 *
-	 * Google accepts exactly these three and requires them in English
+	 * `suggestedGender` values Google documents and accepts, in English,
 	 * regardless of store language. Schema.org's own comment on
-	 * `suggestedGender` gives the same three as its examples, so the
-	 * merchant's value passes through unchanged.
+	 * `suggestedGender` gives the same three as its examples.
+	 *
+	 * This list controls CASING normalisation only, not whether a value
+	 * emits at all: {@see build_audience_block()} lowercases a
+	 * case-insensitive match against this list to Google's canonical
+	 * form, but a value that isn't in this list still emits as
+	 * `suggestedGender`, verbatim and trimmed. `schema:suggestedGender`
+	 * is Text-ranged, so an unrecognised value is still structurally
+	 * valid markup — Google's own Merchant Center / Search Console
+	 * diagnostics are the intended place to tell the merchant it's
+	 * wrong, not silent validation here. Contrast with
+	 * {@see AUDIENCE_AGE_GROUPS}, whose keys really do gate emission,
+	 * because `suggestedAge` is a `QuantitativeValue` with no honest
+	 * default for an unmapped bucket. See {@see build_audience_block()}
+	 * for the full reasoning — this asymmetry is deliberate, not an
+	 * inconsistency to "fix".
 	 *
 	 * @var string[]
 	 */
@@ -114,26 +126,56 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
-	 * Attribute slugs recognised as Gender and Age group.
+	 * Attribute slugs recognised as Gender and Age group, mapped to the
+	 * field they feed and their precedence when a product carries both
+	 * the `pa_` and the bare form for the same field.
 	 *
-	 * `pa_gender` and `pa_age_group` are what
-	 * {@see WC_AI_Storefront_Attribute_Seeder} creates, so they are
-	 * canonical on any store running this plugin version. The bare forms
-	 * cover a merchant using a custom product-level attribute instead of
-	 * a global one, mirroring how CORE_ATTRIBUTE_MAP lists both
-	 * `pa_color` and `color`.
+	 * The plugin creates and seeds `pa_gender` / `pa_age_group` itself
+	 * (see {@see WC_AI_Storefront_Attribute_Seeder}) — Google treats them
+	 * as required for Apparel & Accessories even though WooCommerce core
+	 * takes no position on either. Because we create these two
+	 * attributes, seed their terms with exactly Google's accepted
+	 * values, and point merchants at them in the user guide, `pa_gender`
+	 * / `pa_age_group` are constrained to valid values by construction
+	 * and are the authoritative source. The bare `gender` / `age_group`
+	 * forms are the compatibility path for a merchant who built (or
+	 * already had) a custom product-level attribute of their own,
+	 * instead of adopting the seeded ones — mirroring how
+	 * CORE_ATTRIBUTE_MAP lists both `pa_color` and `color`.
+	 *
+	 * `priority` (lower wins) encodes that precedence: if a product
+	 * carries both `pa_gender` and a bare `gender` with different
+	 * values, `pa_gender` (priority 0) is the one
+	 * {@see build_audience_block()} sees; the bare `gender` (priority 1)
+	 * is outranked. The outranked value is NOT discarded — it cannot
+	 * occupy the single `audience` slot alongside its winner, so
+	 * {@see emit_attributes()} routes it to `additionalProperty` instead,
+	 * keyed by its own slug so the collision never causes either value
+	 * to silently vanish.
 	 *
 	 * Keys are compared after lowercasing and after collapsing spaces and
 	 * hyphens to underscores, so a custom attribute the merchant labelled
 	 * "Age group" still matches.
 	 *
-	 * @var array<string, string>
+	 * @var array<string, array{field: string, priority: int}>
 	 */
 	private const AUDIENCE_ATTRIBUTE_MAP = array(
-		'pa_gender'    => 'gender',
-		'gender'       => 'gender',
-		'pa_age_group' => 'age_group',
-		'age_group'    => 'age_group',
+		'pa_gender'    => array(
+			'field'    => 'gender',
+			'priority' => 0,
+		),
+		'gender'       => array(
+			'field'    => 'gender',
+			'priority' => 1,
+		),
+		'pa_age_group' => array(
+			'field'    => 'age_group',
+			'priority' => 0,
+		),
+		'age_group'    => array(
+			'field'    => 'age_group',
+			'priority' => 1,
+		),
 	);
 
 	/**
@@ -858,10 +900,13 @@ class WC_AI_Storefront_JsonLd {
 	 * Per-attribute decision tree:
 	 *   1. Hidden / variation-defining / empty value → skip entirely.
 	 *   2. Maps to Gender or Age group (see AUDIENCE_ATTRIBUTE_MAP) →
-	 *      held in a pending collector; routed to `audience` or
-	 *      `additionalProperty` after the loop, once
-	 *      {@see build_audience_block()} has judged which values it
-	 *      recognises.
+	 *      held in a pending collector keyed by slug (not field), so a
+	 *      losing attribute in a `pa_`-vs-bare collision is judged, and
+	 *      routed to `additionalProperty`, independently of its winner.
+	 *      The highest-precedence (lowest `priority`) value per field is
+	 *      what actually reaches {@see build_audience_block()}; routing
+	 *      of every pending entry is decided after the loop, once that
+	 *      call has run.
 	 *   3. Maps to a typed property AND value is single-valued AND no
 	 *      upstream owner of the typed key → emit as typed property,
 	 *      skip additionalProperty for this slug.
@@ -885,11 +930,25 @@ class WC_AI_Storefront_JsonLd {
 		$variation_attrs = self::get_variation_attribute_slugs( $product );
 
 		$additional_properties = array();
-		$audience_values       = array(
-			'gender'    => '',
-			'age_group' => '',
+		// Highest-precedence (lowest `priority`) value seen so far, per
+		// field. `priority` starts above any real value (0 or 1) so the
+		// first attribute encountered for a field always wins initially.
+		$audience_winners = array(
+			'gender'    => array(
+				'slug'     => '',
+				'value'    => '',
+				'priority' => PHP_INT_MAX,
+			),
+			'age_group' => array(
+				'slug'     => '',
+				'value'    => '',
+				'priority' => PHP_INT_MAX,
+			),
 		);
-		$audience_pending      = array();
+		// Keyed by SLUG (not field): a `pa_`-vs-bare collision must not
+		// let one attribute's pending entry overwrite the other's — each
+		// is judged for additionalProperty on its own, after the loop.
+		$audience_pending = array();
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
 				continue;
@@ -909,13 +968,25 @@ class WC_AI_Storefront_JsonLd {
 			// arrives as `age group`.
 			$audience_key = str_replace( array( ' ', '-' ), '_', $slug );
 			if ( isset( self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ] ) ) {
-				$field = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ];
-				if ( '' === $audience_values[ $field ] ) {
-					$audience_values[ $field ] = $value;
+				$field    = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['field'];
+				$priority = self::AUDIENCE_ATTRIBUTE_MAP[ $audience_key ]['priority'];
+
+				// `pa_gender` / `pa_age_group` are the attributes this
+				// plugin creates and seeds with Google's accepted values,
+				// so they are authoritative by construction; a bare
+				// `gender` / `age_group` attribute is the compatibility
+				// fallback for a merchant's own pre-existing custom
+				// attribute. See AUDIENCE_ATTRIBUTE_MAP for the full
+				// rationale.
+				if ( $priority < $audience_winners[ $field ]['priority'] ) {
+					$audience_winners[ $field ] = array(
+						'slug'     => $slug,
+						'value'    => $value,
+						'priority' => $priority,
+					);
 				}
-				// Fall through to additionalProperty only if the value turns
-				// out to be unrecognised; decided after the loop.
-				$audience_pending[ $field ] = array(
+
+				$audience_pending[ $slug ] = array(
 					'@type' => 'PropertyValue',
 					'name'  => wc_attribute_label( $attribute->get_name(), $product ),
 					'value' => $value,
@@ -947,21 +1018,33 @@ class WC_AI_Storefront_JsonLd {
 			);
 		}
 
-		// Emit the typed audience block when either value is recognised.
-		// Anything unrecognised falls back to additionalProperty so the
-		// merchant's data still reaches agents in some form.
+		// Build the typed block from each field's highest-precedence
+		// value. Gender always types once non-empty (see
+		// build_audience_block()); age group types only when the bucket
+		// is recognised — an unrecognised bucket falls back to
+		// additionalProperty below like any other unmapped attribute.
 		$audience = self::build_audience_block(
-			$audience_values['gender'],
-			$audience_values['age_group']
+			$audience_winners['gender']['value'],
+			$audience_winners['age_group']['value']
 		);
 		if ( ! empty( $audience ) ) {
 			$markup['audience'] = $audience;
 		}
-		foreach ( $audience_pending as $field => $property ) {
-			$recognised = ( 'gender' === $field )
-				? isset( $audience['suggestedGender'] )
-				: isset( $audience['suggestedAge'] );
-			if ( ! $recognised ) {
+
+		// A pending entry is excluded from additionalProperty only when
+		// its slug is the winning slug for its field AND that field
+		// actually typed. Every other pending entry — outranked by a
+		// same-field sibling, or the winner itself when its field didn't
+		// type — still needs to reach agents somehow.
+		$typed_winner_slugs = array();
+		if ( isset( $audience['suggestedGender'] ) ) {
+			$typed_winner_slugs[] = $audience_winners['gender']['slug'];
+		}
+		if ( isset( $audience['suggestedAge'] ) ) {
+			$typed_winner_slugs[] = $audience_winners['age_group']['slug'];
+		}
+		foreach ( $audience_pending as $slug => $property ) {
+			if ( ! in_array( $slug, $typed_winner_slugs, true ) ) {
 				$additional_properties[] = $property;
 			}
 		}
@@ -999,23 +1082,52 @@ class WC_AI_Storefront_JsonLd {
 	 * published but invisible to Google for that purpose, which for an
 	 * apparel product means disapproval rather than a thinner listing.
 	 *
-	 * Unrecognised values are dropped rather than mapped. "Children" looks
-	 * like `kids` until "Youth" or "Junior" turns up, and guessing wrong
-	 * about a product's intended audience is worse than emitting nothing.
-	 * The caller still routes the raw value to `additionalProperty`, so
-	 * the merchant's data is never discarded — only left untyped.
+	 * Gender and age group are gatekept asymmetrically. This is
+	 * deliberate — do not "fix" it into matching, and do not remove it:
 	 *
-	 * @param string $gender    Raw Gender attribute value.
-	 * @param string $age_group Raw Age group attribute value.
-	 * @return array The PeopleAudience block, or an empty array when
-	 *               neither input yields a recognised value.
+	 *   - `suggestedGender` is Text-ranged, so ANY non-empty, trimmed
+	 *     value is structurally valid markup — there is nothing to
+	 *     reject. A value matching {@see AUDIENCE_GENDER_VALUES}
+	 *     case-insensitively is normalised to Google's canonical
+	 *     lowercase form; anything else passes through exactly as the
+	 *     merchant typed it, trimmed. We do not pre-validate against
+	 *     Google's three accepted values before emitting: Merchant
+	 *     Center / Search Console will flag an unrecognised value
+	 *     directly to the merchant, and that diagnostic — plus our
+	 *     documentation, plus a future Product Editor surface — is the
+	 *     intended correction path. Silently dropping or guessing at the
+	 *     value here would deny the merchant all three feedback
+	 *     channels.
+	 *   - `suggestedAge` is a `QuantitativeValue` — it needs `minValue` /
+	 *     `maxValue` / `unitCode`. An unmapped bucket like "Grown-up" has
+	 *     no numbers to compute, so there is nothing honest to emit for
+	 *     it. This is a data-model constraint, not a validation choice:
+	 *     unlike gender, there is no verbatim fallback shape for a
+	 *     QuantitativeValue. The caller ({@see emit_attributes()}) routes
+	 *     an unrecognised age group to `additionalProperty` instead, so
+	 *     the merchant's data still reaches agents, just untyped.
+	 *
+	 * @param string $gender    Raw Gender attribute value — already the
+	 *                          highest-precedence value when the caller
+	 *                          resolved a collision between `pa_gender`
+	 *                          and a bare `gender` attribute (see
+	 *                          AUDIENCE_ATTRIBUTE_MAP for the precedence
+	 *                          rule).
+	 * @param string $age_group Raw Age group attribute value, same
+	 *                          precedence contract as $gender.
+	 * @return array The PeopleAudience block. Empty only when $gender is
+	 *               empty (after trim) AND $age_group did not map to a
+	 *               recognised bucket.
 	 */
 	private static function build_audience_block( string $gender, string $age_group ): array {
 		$block = array();
 
-		$gender_key = strtolower( trim( $gender ) );
-		if ( in_array( $gender_key, self::AUDIENCE_GENDER_VALUES, true ) ) {
-			$block['suggestedGender'] = $gender_key;
+		$gender_trimmed = trim( $gender );
+		if ( '' !== $gender_trimmed ) {
+			$gender_lower             = strtolower( $gender_trimmed );
+			$block['suggestedGender'] = in_array( $gender_lower, self::AUDIENCE_GENDER_VALUES, true )
+				? $gender_lower
+				: $gender_trimmed;
 		}
 
 		$age_key = strtolower( trim( $age_group ) );

@@ -53,14 +53,28 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
-	public function test_unrecognised_gender_is_dropped_not_guessed(): void {
-		// "Womens" reads fine to a human and is not an accepted value.
-		// Guessing wrong about a product's audience is worse than silence;
-		// the caller still routes the raw value to additionalProperty.
-		foreach ( array( 'Womens', 'ladies', 'M', 'n/a', '' ) as $value ) {
+	public function test_unrecognised_gender_passes_through_verbatim(): void {
+		// "Womens" reads fine to a human and is not one of Google's three
+		// accepted values, but `schema:suggestedGender` is Text-ranged —
+		// there is no structural reason to reject it. Google's own
+		// Merchant Center / Search Console diagnostics are the intended
+		// place to flag it to the merchant, not silent validation here
+		// (see build_audience_block()'s docblock for the full rationale).
+		// This supersedes the old contract, where these same inputs
+		// asserted an EMPTY block (dropped, not guessed).
+		foreach ( array( 'Womens', 'ladies', 'M', 'n/a' ) as $value ) {
 			$block = $this->build( $value, '' );
-			$this->assertSame( array(), $block, "input: {$value}" );
+			$this->assertSame( 'PeopleAudience', $block['@type'], "input: {$value}" );
+			$this->assertSame( $value, $block['suggestedGender'], "input: {$value}" );
+			$this->assertArrayNotHasKey( 'suggestedAge', $block, "input: {$value}" );
 		}
+	}
+
+	public function test_unrecognised_gender_is_trimmed(): void {
+		// Normalisation still applies to an unrecognised value: trim,
+		// just not lowercase-and-validate.
+		$block = $this->build( '  Womens  ', '' );
+		$this->assertSame( 'Womens', $block['suggestedGender'] );
 	}
 
 	/**
@@ -109,7 +123,12 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_unrecognised_age_group_is_dropped_not_guessed(): void {
 		// "Children" looks mappable to kids until "Youth" or "Junior"
-		// turns up. Do not guess a product's intended audience.
+		// turns up. Do not guess a product's intended audience. Unlike
+		// gender, this is a data-model constraint, not a policy choice:
+		// `suggestedAge` is a QuantitativeValue and there is no honest
+		// numeric fallback for an unmapped bucket — see
+		// build_audience_block()'s docblock for the full asymmetry
+		// rationale.
 		foreach ( array( 'Children', 'Youth', 'Baby', 'Grown-up', '' ) as $value ) {
 			$this->assertSame( array(), $this->build( '', $value ), "input: {$value}" );
 		}
@@ -134,8 +153,11 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_no_usable_values_returns_empty_array(): void {
+		// The only remaining "nothing to report" case: gender is now
+		// always "usable" once non-empty (see build_audience_block()),
+		// even when Google wouldn't recognise it — only a truly empty
+		// gender AND an unmapped age group yield an empty block.
 		$this->assertSame( array(), $this->build( '', '' ) );
-		$this->assertSame( array(), $this->build( 'Womens', 'Grown-up' ) );
 	}
 
 	/**
@@ -223,23 +245,86 @@ class JsonLdAudienceTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'audience', $markup );
 	}
 
-	public function test_no_audience_key_when_values_are_unrecognised(): void {
+	public function test_pa_gender_takes_precedence_over_bare_gender(): void {
+		// The plugin seeds pa_gender with exactly Google's accepted
+		// values, so it is authoritative; a bare `gender` attribute is a
+		// merchant's own pre-existing custom attribute and is the
+		// fallback. When both are present, pa_gender wins — and the
+		// outranked bare value still reaches additionalProperty rather
+		// than vanishing.
 		$markup = $this->emit(
 			array(
-				'pa_gender'    => 'Womens',
+				'pa_gender' => 'female',
+				'gender'    => 'unisex',
+			)
+		);
+
+		$this->assertSame( 'female', $markup['audience']['suggestedGender'] );
+		$by_name = array_column( $markup['additionalProperty'], 'value', 'name' );
+		$this->assertSame( 'unisex', $by_name['gender'] );
+	}
+
+	public function test_pa_age_group_takes_precedence_over_bare_age_group(): void {
+		$markup = $this->emit(
+			array(
+				'pa_age_group' => 'adult',
+				'age_group'    => 'kids',
+			)
+		);
+
+		$this->assertSame( 13.0, $markup['audience']['suggestedAge']['minValue'] );
+		$by_name = array_column( $markup['additionalProperty'], 'value', 'name' );
+		$this->assertSame( 'kids', $by_name['age_group'] );
+	}
+
+	public function test_unrecognised_gender_emits_typed_not_additional_property(): void {
+		// Gender no longer gatekeeps: "Womens" is structurally valid
+		// `suggestedGender` markup, so it types and does NOT duplicate
+		// into additionalProperty. This supersedes the old contract
+		// (formerly test_unrecognised_values_still_reach_additional_property),
+		// which asserted the opposite for this exact input.
+		$markup = $this->emit( array( 'pa_gender' => 'Womens' ) );
+
+		$this->assertSame( 'Womens', $markup['audience']['suggestedGender'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $markup );
+	}
+
+	public function test_unrecognised_age_group_still_reaches_additional_property(): void {
+		// Age group keeps the old gate: `suggestedAge` needs real
+		// numbers, and "Grown-up" has none, so it falls back to
+		// additionalProperty exactly like any other unmapped attribute.
+		// Paired with a recognised gender so the presence of `audience`
+		// itself isn't the only thing being checked.
+		$markup = $this->emit(
+			array(
+				'gender'       => 'female',
 				'pa_age_group' => 'Grown-up',
 			)
 		);
 
-		$this->assertArrayNotHasKey( 'audience', $markup );
+		$this->assertSame( 'female', $markup['audience']['suggestedGender'] );
+		$this->assertArrayNotHasKey( 'suggestedAge', $markup['audience'] );
+		$names = array_column( $markup['additionalProperty'], 'name' );
+		$this->assertContains( 'pa_age_group', $names );
 	}
 
-	public function test_unrecognised_values_still_reach_additional_property(): void {
-		// The merchant's data is never discarded, only left untyped.
-		$markup = $this->emit( array( 'pa_gender' => 'Womens' ) );
+	public function test_unrecognised_gender_and_recognised_age_group_both_emit_correctly(): void {
+		// Supersedes the old test_no_audience_key_when_values_are_unrecognised,
+		// which asserted NO audience key for this same gender value — that
+		// was the old gatekept contract. Gender now always types, so the
+		// block is present with both fields correctly populated and
+		// nothing duplicated to additionalProperty.
+		$markup = $this->emit(
+			array(
+				'pa_gender'    => 'Womens',
+				'pa_age_group' => 'adult',
+			)
+		);
 
-		$names = array_column( $markup['additionalProperty'], 'name' );
-		$this->assertContains( 'pa_gender', $names );
+		$this->assertSame( 'PeopleAudience', $markup['audience']['@type'] );
+		$this->assertSame( 'Womens', $markup['audience']['suggestedGender'] );
+		$this->assertSame( 13.0, $markup['audience']['suggestedAge']['minValue'] );
+		$this->assertArrayNotHasKey( 'additionalProperty', $markup );
 	}
 
 	public function test_recognised_values_do_not_also_emit_additional_property(): void {
