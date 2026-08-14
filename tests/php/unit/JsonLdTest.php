@@ -868,6 +868,26 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( array(), $result );
 	}
 
+	public function test_detect_varies_by_override_maps_multi_word_bare_audience_axis(): void {
+		// Regression test (fix round 1, #618): same hyphen-vs-underscore
+		// trap as test_variant_entry_emits_audience_from_multi_word_bare_attribute_postmeta(),
+		// exercised through the override path instead of build_variant_entry().
+		// A merchant's "Age group"-labelled custom attribute writes
+		// `attribute_age-group` postmeta on each child (sanitize_title()
+		// hyphenates the space), not `attribute_age_group`.
+		$this->post_meta_by_id[301]['attribute_age-group'] = 'kids';
+		$this->post_meta_by_id[302]['attribute_age-group'] = 'adult';
+
+		$product = $this->make_product( [
+			'children'             => [ 301, 302 ],
+			'variation_attributes' => array(),
+		] );
+
+		$result = $this->invoke_detect_varies_by( $product );
+
+		$this->assertSame( array( 'https://schema.org/suggestedAge' ), $result );
+	}
+
 	// ------------------------------------------------------------------
 	// build_variant_entry() — per-variation Product blocks (#328)
 	// ------------------------------------------------------------------
@@ -1193,6 +1213,37 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
 		$this->assertArrayNotHasKey( 'audience', $entry );
+	}
+
+	public function test_variant_entry_emits_audience_from_multi_word_bare_attribute_postmeta(): void {
+		// Regression test (fix round 1, #618): a merchant's custom
+		// (non-taxonomy) attribute literally labelled "Age group" writes
+		// its variation postmeta under the HYPHENATED slug
+		// `attribute_age-group` — WooCommerce builds that key via
+		// wc_variation_attribute_name() = 'attribute_' . sanitize_title(),
+		// and sanitize_title_with_dashes() converts whitespace to a
+		// hyphen, not an underscore — even though AUDIENCE_ATTRIBUTE_MAP's
+		// own key is the underscored `age_group`. Before this fix,
+		// read_variation_audience_attributes() only ever probed the
+		// underscore form and silently found nothing: `variesBy` still
+		// listed suggestedAge (Path 1 normalises via varies_by_property()),
+		// but no hasVariant[].audience.suggestedAge ever attached to any
+		// variant — a self-contradictory ProductGroup. `pa_age_group` is
+		// unaffected (its slug is fixed programmatically) and `gender`
+		// cannot collide (single word); this is specifically the
+		// multi-word bare-attribute case.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			// make_variation()'s helper prefixes with 'attribute_' but
+			// does not otherwise touch the key — 'age-group' here mirrors
+			// exactly what sanitize_title( 'Age group' ) produces.
+			'variation_attributes' => array( 'age-group' => 'kids' ),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 5.0, $entry['audience']['suggestedAge']['minValue'] );
 	}
 
 	public function test_variant_entry_offer_carries_price_currency_availability(): void {

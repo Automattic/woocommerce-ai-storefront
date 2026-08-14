@@ -1349,6 +1349,50 @@ class WC_AI_Storefront_JsonLd {
 	 * Read a variation's core-typed attribute values directly from
 	 * postmeta — bypassing the parent's "Used for variations" flag.
 	 *
+	 * Thin wrapper around {@see read_variation_attributes_from_map()}
+	 * scoped to {@see CORE_ATTRIBUTE_MAP} (color / size / material /
+	 * pattern) — they have canonical Schema.org typed properties;
+	 * unmapped custom attributes intentionally honor the parent's flag.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return array<string,string> Slug → trimmed value, only for non-empty
+	 *                              core typed slugs.
+	 */
+	private static function read_variation_core_attributes( int $variation_id ): array {
+		return self::read_variation_attributes_from_map( $variation_id, self::CORE_ATTRIBUTE_MAP );
+	}
+
+	/**
+	 * Read a variation's Gender / Age group attribute values directly from
+	 * postmeta — the audience counterpart to
+	 * {@see read_variation_core_attributes()}.
+	 *
+	 * Thin wrapper around {@see read_variation_attributes_from_map()}
+	 * scoped to {@see AUDIENCE_ATTRIBUTE_MAP}.
+	 *
+	 * Per-SLUG, not per-field: a `pa_gender`-vs-bare-`gender` collision
+	 * (both present with different values) is left for the caller to
+	 * resolve via {@see AUDIENCE_ATTRIBUTE_MAP}'s `priority` — this
+	 * function only reports what postmeta actually holds.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return array<string,string> Slug → trimmed value, only for non-empty
+	 *                               recognised audience slugs.
+	 */
+	private static function read_variation_audience_attributes( int $variation_id ): array {
+		return self::read_variation_attributes_from_map( $variation_id, self::AUDIENCE_ATTRIBUTE_MAP );
+	}
+
+	/**
+	 * Read a variation's attribute values directly from postmeta for
+	 * every slug in the given map — bypassing the parent's "Used for
+	 * variations" flag. Shared implementation behind
+	 * {@see read_variation_core_attributes()} and
+	 * {@see read_variation_audience_attributes()}, which differ only in
+	 * which const map they scan; collapsing them here means the postmeta
+	 * key lookup (including its hyphen fallback, below) is fixed once
+	 * instead of drifting between two copies.
+	 *
 	 * `WC_Product_Variation::get_attributes()` (and its
 	 * `get_variation_attributes()` wrapper) only surface attributes
 	 * whose parent has `is_variation: 1`. The per-variation postmeta
@@ -1358,58 +1402,47 @@ class WC_AI_Storefront_JsonLd {
 	 * when the merchant configured variations correctly but forgot to
 	 * flag the parent attribute.
 	 *
-	 * Scoped to the four core typed slugs ({@see CORE_ATTRIBUTE_MAP})
-	 * because they have canonical Schema.org typed properties; unmapped
-	 * custom attributes intentionally honor the parent's flag.
+	 * **Hyphen fallback**: WooCommerce builds that meta key via
+	 * `wc_variation_attribute_name()` = `'attribute_' . sanitize_title( $name )`,
+	 * and `sanitize_title_with_dashes()` converts whitespace to a HYPHEN,
+	 * not an underscore. Our map keys use underscores (matching Google's
+	 * canonical `age_group`-style names), so a merchant's multi-word
+	 * custom attribute — e.g. one literally labelled "Age group" — writes
+	 * its variation postmeta to `attribute_age-group`, not
+	 * `attribute_age_group`. This is the exact scenario
+	 * {@see AUDIENCE_ATTRIBUTE_MAP}'s own docblock cites to justify the
+	 * bare-slug fallback existing at all, and it applies equally to any
+	 * future multi-word CORE_ATTRIBUTE_MAP entry — none of the current
+	 * four (color/size/material/pattern) happens to be multi-word, which
+	 * is why this only surfaced on the audience side. We do not guess
+	 * which form a given merchant's attribute used — a plain single-word
+	 * key never collides (there is nothing to hyphenate), and a
+	 * multi-word key probes the exact form first, falling back to the
+	 * hyphenated form only when the exact form is empty.
 	 *
-	 * @param int $variation_id The variation post ID.
-	 * @return array<string,string> Slug → trimmed value, only for non-empty
-	 *                              core typed slugs.
+	 * @param int                 $variation_id The variation post ID.
+	 * @param array<string,mixed> $map          A const attribute-slug map
+	 *                                          (only the key set is used;
+	 *                                          CORE_ATTRIBUTE_MAP and
+	 *                                          AUDIENCE_ATTRIBUTE_MAP have
+	 *                                          different value shapes).
+	 * @return array<string,string> Slug (the map's key, not the postmeta
+	 *                              key that matched) → trimmed value, only
+	 *                              for non-empty recognised slugs.
 	 */
-	private static function read_variation_core_attributes( int $variation_id ): array {
+	private static function read_variation_attributes_from_map( int $variation_id, array $map ): array {
 		if ( $variation_id <= 0 || ! function_exists( 'get_post_meta' ) ) {
 			return array();
 		}
 		$out = array();
-		foreach ( self::CORE_ATTRIBUTE_MAP as $slug_lower => $_schema_property ) {
+		foreach ( $map as $slug_lower => $_unused ) {
 			$value     = get_post_meta( $variation_id, 'attribute_' . $slug_lower, true );
 			$value_str = is_string( $value ) ? trim( $value ) : '';
-			if ( '' === $value_str ) {
-				continue;
+			if ( '' === $value_str && false !== strpos( $slug_lower, '_' ) ) {
+				$hyphenated = str_replace( '_', '-', $slug_lower );
+				$value      = get_post_meta( $variation_id, 'attribute_' . $hyphenated, true );
+				$value_str  = is_string( $value ) ? trim( $value ) : '';
 			}
-			$out[ $slug_lower ] = $value_str;
-		}
-		return $out;
-	}
-
-	/**
-	 * Read a variation's Gender / Age group attribute values directly from
-	 * postmeta — the audience counterpart to
-	 * {@see read_variation_core_attributes()}, for the same reason: WC's
-	 * parent-level "Used for variations" flag gates
-	 * `get_variation_attributes()` / `get_variation_attribute_slugs()` but
-	 * not the underlying `attribute_<slug>` postmeta, so reading it
-	 * directly is the only way to see a value the merchant entered but
-	 * forgot to flag as a variation axis.
-	 *
-	 * Per-SLUG, not per-field: a `pa_gender`-vs-bare-`gender` collision
-	 * (both present with different values) is left for the caller to
-	 * resolve via {@see AUDIENCE_ATTRIBUTE_MAP}'s `priority` — this
-	 * function only reports what postmeta actually holds, mirroring
-	 * {@see read_variation_core_attributes()}'s own scope.
-	 *
-	 * @param int $variation_id The variation post ID.
-	 * @return array<string,string> Slug → trimmed value, only for non-empty
-	 *                               recognised audience slugs.
-	 */
-	private static function read_variation_audience_attributes( int $variation_id ): array {
-		if ( $variation_id <= 0 || ! function_exists( 'get_post_meta' ) ) {
-			return array();
-		}
-		$out = array();
-		foreach ( self::AUDIENCE_ATTRIBUTE_MAP as $slug_lower => $_meta ) {
-			$value     = get_post_meta( $variation_id, 'attribute_' . $slug_lower, true );
-			$value_str = is_string( $value ) ? trim( $value ) : '';
 			if ( '' === $value_str ) {
 				continue;
 			}
