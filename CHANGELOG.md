@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.35.0] – 2026-08-14
+
 ### Added
 
 - **Weight and dimensions now emit on `OfferShippingDetails` and on each variant (#614, #615).**
@@ -25,11 +29,22 @@
 
 ### Fixed
 
+- **Only the dimension axes WooCommerce actually holds are emitted.**
+  - `has_dimensions()` in WooCommerce core is true when **any one** of length, width or height is set. The emitter published all three off that single gate, and WooCommerce stores an unset axis as an empty string — which casts to `0`. A merchant who recorded only a height was therefore publishing `depth: 0` and `width: 0`: fabricated measurements, presented as real ones.
+  - Each axis is now emitted independently, gated on its own value. A `0` the merchant actually typed still emits — the check is for an empty value, not a falsy one, so a deliberate (if unphysical) zero is preserved rather than silently dropped.
+  - Present since dimensions were first emitted, and made more convincing by the numeric cast below: `"depth": ""` reads as obviously absent, `"depth": 0` reads as a measurement. Caught in review before it reached three placements instead of one.
+
 - **Product dimension values now emit as JSON numbers instead of quoted strings (#613).**
   - `depth`, `width`, and `height` published their `QuantitativeValue.value` as a string literal (`"value": "10"`) while `weight` on the same product published a number (`"value": 1.5`). Two adjacent properties in one block disagreed on type.
   - `QuantitativeValue.value` is Number-ranged. The markup was not invalid, since the property also accepts `Text`, but a consumer that doesn't coerce read a string where every sibling gave a number.
   - The weight cast was added as audit bug #4 for exactly this reason — WooCommerce persists both weight and dimensions as free-form decimal strings (`.5`, `10`). `get_dimensions( false )` returns those props untouched, and the fix was never applied to the dimension branch. All three now cast through `(float)`.
   - No change to which products emit dimensions, to unit codes, or to any other field.
+
+### Changed
+
+- **Dev tooling: bump `squizlabs/php_codesniffer` to 3.13.6 for CVE-2026-67434 (#611).** An OS-command-injection advisory (high severity, affecting `<3.13.6` and `>=4.0.0,<4.0.2`) was published 2026-08-05 and failed the `composer audit` CI gate on every open PR. The package is `require-dev` only and is not shipped in the plugin zip, so no released version exposed merchants to it; the risk was confined to running lint locally or in CI.
+
+- **Dev tooling: clear ten npm advisories from the dev dependency tree (#616).** Transitive `devDependencies` only — nothing in the tree reaches the built bundle. Six alerts remain and are tracked in #596: `extract-zip` has no upstream fix at all, and `adm-zip`, `@opentelemetry/core` and `webpack-dev-server` each need a `@wordpress/scripts` semver-major that would be a larger change than the risk warrants. All are dev-scope, and the CI security gate scopes npm auditing to production dependencies.
 
 ### Tests
 

@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.34.3
+Stable tag: 0.35.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,16 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.35.0 - 2026-08-14 =
+**New**
+* Six product attributes are now created for you: Gender, Age group, Color, Size, Material and Pattern. A new WooCommerce store starts with no attributes at all, and Google requires several of these on clothing and accessories. Gender and Age group come pre-filled with exactly the values Google accepts, so you pick from a list instead of guessing. The other four come with a short starter list you can extend. Any attribute you already created is left completely untouched, including its values.
+* Gender and age group are now published in the form Google reads. Previously these reached your product data as generic extra details, which Google does not recognise as the gender and age group it asks for. On clothing and accessories a missing one of these gets the product disapproved, and disapproved products stop showing across Google, so this can be the difference between your products appearing and not.
+* Product weight and dimensions are now published as shipping information as well as product information, matching how Google asks for each. Every variation of a variable product now carries them too, using its own values when you have set them and the parent product's otherwise.
+
+**Fixed**
+* Only the dimensions you actually entered are published. If you had recorded a height but no length or width, the missing ones were being published as zero, which reads as a real measurement rather than a blank. Now only what you entered is published. A zero you deliberately typed is still kept.
+* Product dimensions are now published as numbers rather than text, matching how weight was already published. Some tools read a quoted value as text and could not compare or convert it.
 
 = 0.34.3 - 2026-07-29 =
 **Fixed**
