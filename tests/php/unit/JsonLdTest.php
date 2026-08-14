@@ -161,6 +161,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				return '';
 			}
 		);
+		// Paired with the `get_post_meta` stub above, against the same
+		// `$this->post_meta_by_id` table — but via `array_key_exists()`
+		// rather than `isset()`, so it correctly reports TRUE for a key a
+		// test explicitly set to '' (WooCommerce's "Any <attribute>"
+		// placeholder). `isset()` alone can't distinguish "key present,
+		// holding ''" from "key never set", which is exactly the
+		// distinction `read_variation_attributes_from_map()`'s hyphen
+		// fallback now relies on `metadata_exists()` to make (#625 review
+		// finding 1). A key never populated by a test (absent from the
+		// table entirely) correctly reports FALSE, i.e. genuinely missing.
+		Functions\when( 'metadata_exists' )->alias(
+			static function ( $meta_type, $object_id, $key ) use ( $test ) {
+				return array_key_exists( (int) $object_id, $test->post_meta_by_id )
+					&& array_key_exists( $key, $test->post_meta_by_id[ (int) $object_id ] );
+			}
+		);
 		// Default `wp_get_post_parent_id()` to 0 — these tests use
 		// non-variation product mocks. Override-scope resolution
 		// happens at the `enhance_product_data` entry point.
@@ -1201,6 +1217,107 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
 		$this->assertSame( 'female', $entry['audience']['suggestedGender'] );
+	}
+
+	public function test_variant_explicit_any_age_group_does_not_fall_through_to_hyphenated_key(): void {
+		// #625 review finding 1: get_post_meta() with $single = true
+		// returns '' both when a meta key is ABSENT and when it is
+		// PRESENT holding WooCommerce's own empty-string "Any <attribute>"
+		// placeholder. Before this fix, an explicit "Any Age group" (the
+		// bare `age_group` meta key present, set to '') was
+		// indistinguishable from a missing key, so the hyphen fallback
+		// fired and could pick up an unrelated, colliding attribute's
+		// value sitting at the hyphenated `attribute_age-group` key.
+		// `metadata_exists()` now distinguishes "absent" from "present but
+		// empty" and respects the explicit "any" — no fallback, and this
+		// slug contributes nothing.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_gender' => 'female',
+				// Explicit "Any Age group" — the key IS present, just empty.
+				'age_group' => '',
+				// A DIFFERENT, colliding attribute's value sitting at the
+				// hyphenated form. Must never leak into `age_group`'s slot.
+				'age-group' => 'kids',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'female', $entry['audience']['suggestedGender'] );
+		$this->assertArrayNotHasKey( 'suggestedAge', $entry['audience'] );
+	}
+
+	public function test_variant_entry_falls_through_to_mappable_bare_age_group(): void {
+		// #625 review finding 2: add_variant_audience() previously picked
+		// a single winner per field by strict priority comparison alone
+		// (no fall-through), so an unmappable pa_age_group ("Grown-up")
+		// blocked a mappable bare age_group on the same VARIATION — the
+		// exact bug already fixed for the parent path in
+		// emit_attributes() (see JsonLdAudienceTest's
+		// test_unmappable_winner_falls_through_to_mappable_bare_attribute).
+		// Both paths now share resolve_audience_winner().
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_age_group' => 'Grown-up',
+				'age_group'    => 'adult',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 13.0, $entry['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_variant_entry_precedence_unchanged_when_winner_is_mappable(): void {
+		// Guard against the fall-through becoming the default path on the
+		// variant side too: when pa_age_group DOES map, it must still win
+		// outright over a mappable bare age_group, exactly as before this
+		// fix. Mirrors JsonLdAudienceTest's
+		// test_precedence_unchanged_when_winner_is_mappable for the parent
+		// path.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_age_group' => 'kids',
+				'age_group'    => 'adult',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 5.0, $entry['audience']['suggestedAge']['minValue'] );
+	}
+
+	public function test_variant_entry_gender_never_uses_fall_through(): void {
+		// Gender always types for any non-empty value (see
+		// build_gender_sub_property()), so even when the higher-priority
+		// pa_gender value isn't one of Google's three canonical strings,
+		// it still "types" verbatim and must win outright on the variant
+		// path too — the fall-through added for age group must never
+		// activate for gender here either. Mirrors JsonLdAudienceTest's
+		// test_gender_never_uses_fall_through for the parent path.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		$parent    = $this->make_product();
+		$variation = $this->make_variation( [
+			'variation_attributes' => array(
+				'pa_gender' => 'Womens',
+				'gender'    => 'male',
+			),
+		] );
+
+		$entry = $this->invoke_build_variant_entry( $variation, $parent );
+
+		$this->assertSame( 'Womens', $entry['audience']['suggestedGender'] );
 	}
 
 	public function test_variant_audience_uses_term_display_name_not_slug(): void {

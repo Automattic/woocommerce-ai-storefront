@@ -1025,46 +1025,13 @@ class WC_AI_Storefront_JsonLd {
 		// Resolve each field's candidates in precedence order (lowest
 		// `priority` first), falling through past a candidate that
 		// produces no typed output — e.g. `pa_age_group` set to an
-		// unrecognised bucket like "Grown-up" — to the next one. Gender
-		// always types for any non-empty value (see
-		// build_gender_sub_property()), so its highest-priority
-		// candidate always wins outright and this loop never actually
-		// falls through for it; the fall-through only ever activates for
-		// age group. This does not reopen the pa_-vs-bare precedence
-		// ruling — `pa_` still wins whenever its value is usable.
-		$priority_ascending = static function ( array $a, array $b ): int {
-			return $a['priority'] <=> $b['priority'];
-		};
-		usort( $audience_candidates['gender'], $priority_ascending );
-		usort( $audience_candidates['age_group'], $priority_ascending );
-
-		$gender_winner = array(
-			'slug'  => '',
-			'value' => '',
-		);
-		foreach ( $audience_candidates['gender'] as $candidate ) {
-			if ( ! empty( self::build_gender_sub_property( $candidate['value'] ) ) ) {
-				$gender_winner = array(
-					'slug'  => $candidate['slug'],
-					'value' => $candidate['value'],
-				);
-				break;
-			}
-		}
-
-		$age_winner = array(
-			'slug'  => '',
-			'value' => '',
-		);
-		foreach ( $audience_candidates['age_group'] as $candidate ) {
-			if ( ! empty( self::build_age_sub_property( $candidate['value'] ) ) ) {
-				$age_winner = array(
-					'slug'  => $candidate['slug'],
-					'value' => $candidate['value'],
-				);
-				break;
-			}
-		}
+		// unrecognised bucket like "Grown-up" — to the next one. This
+		// does not reopen the pa_-vs-bare precedence ruling — `pa_`
+		// still wins whenever its value is usable. Shared with the
+		// per-variant path via {@see resolve_audience_winner()} so the
+		// two rules cannot drift apart again (see its docblock).
+		$gender_winner = self::resolve_audience_winner( 'gender', $audience_candidates['gender'] );
+		$age_winner    = self::resolve_audience_winner( 'age_group', $audience_candidates['age_group'] );
 
 		$audience = self::build_audience_block( $gender_winner['value'], $age_winner['value'] );
 
@@ -1201,6 +1168,62 @@ class WC_AI_Storefront_JsonLd {
 		$suggested_age['unitCode'] = $bucket['unit'];
 
 		return array( 'suggestedAge' => $suggested_age );
+	}
+
+	/**
+	 * Picks the field's winning candidate — the highest-priority one
+	 * whose value actually produces typed output — falling through past
+	 * a candidate that doesn't (e.g. `pa_age_group` set to an
+	 * unrecognised bucket like "Grown-up") to the next-priority one.
+	 *
+	 * Shared by {@see emit_attributes()} (parent/simple-product path) and
+	 * {@see add_variant_audience()} (per-variant path) so the two cannot
+	 * drift apart again: this exact fall-through rule was originally
+	 * written twice, and only the parent copy got the fix for #618's
+	 * "unmappable priority-0 candidate blocks a mappable priority-1 one"
+	 * bug — see PR #625 review.
+	 *
+	 * Gender always types for any non-empty value (see
+	 * {@see build_gender_sub_property()}), so its highest-priority
+	 * candidate always wins outright here and the fall-through never
+	 * actually activates for it — a structural consequence of the data
+	 * model, not a gender special-case in this helper.
+	 *
+	 * @param string $field      Either 'gender' or 'age_group' — selects
+	 *                           which typed builder
+	 *                           ({@see build_gender_sub_property()} /
+	 *                           {@see build_age_sub_property()}) tests
+	 *                           each candidate.
+	 * @param array<int, array{slug: string, value: string, priority: int}> $candidates
+	 *                           Every candidate seen for this field, unsorted.
+	 * @return array{slug: string, value: string} The winning slug/value,
+	 *                           or both '' when no candidate produced
+	 *                           typed output.
+	 */
+	private static function resolve_audience_winner( string $field, array $candidates ): array {
+		usort(
+			$candidates,
+			static function ( array $a, array $b ): int {
+				return $a['priority'] <=> $b['priority'];
+			}
+		);
+
+		foreach ( $candidates as $candidate ) {
+			$typed = 'gender' === $field
+				? self::build_gender_sub_property( $candidate['value'] )
+				: self::build_age_sub_property( $candidate['value'] );
+			if ( ! empty( $typed ) ) {
+				return array(
+					'slug'  => $candidate['slug'],
+					'value' => $candidate['value'],
+				);
+			}
+		}
+
+		return array(
+			'slug'  => '',
+			'value' => '',
+		);
 	}
 
 	/**
@@ -1532,21 +1555,28 @@ class WC_AI_Storefront_JsonLd {
 	 * multi-word key probes the exact form first, falling back to the
 	 * hyphenated form only when the exact form is empty.
 	 *
-	 * **Known limitation — "absent" vs "explicitly any"**: `get_post_meta()`
-	 * with `$single = true` returns `''` both when the meta key was never
-	 * set and when it was set to WooCommerce's own "Any <attribute>"
-	 * placeholder (also stored as `''`). The hyphen fallback above cannot
-	 * tell those two cases apart, so it only misbehaves in a contrived
-	 * collision: two distinct custom attributes mapping to the same map
-	 * slug on one variation — one underscore-labelled (e.g. `age_group`)
-	 * explicitly set to "Any", the other space-labelled (`Age group` →
-	 * `attribute_age-group`) holding a real value. The exact-form probe
-	 * reads the underscore attribute's "Any" placeholder as empty, falls
-	 * back to the hyphenated key, and returns the space-labelled
-	 * attribute's value under the underscore attribute's slug. Not fixed
-	 * here — distinguishing the two would need `metadata_exists()` rather
-	 * than a value check, and this scenario requires two colliding
-	 * custom attributes on the same variation to occur at all.
+	 * **"Absent" vs "explicitly any"**: `get_post_meta()` with
+	 * `$single = true` returns `''` both when the meta key was never set
+	 * and when it was set to WooCommerce's own "Any <attribute>"
+	 * placeholder (also stored as `''`), and WooCommerce's own meaning
+	 * for that placeholder is "this variation matches any value of the
+	 * axis" — so an explicit "any" must never be treated as if the key
+	 * were missing. A value check alone can't tell the two apart, which
+	 * matters for the hyphen fallback: without distinguishing them, the
+	 * fallback could fire on an explicit "any" and pick up a DIFFERENT,
+	 * colliding custom attribute's value sitting at the hyphenated key
+	 * (e.g. an underscore-labelled `age_group` explicitly set to "Any"
+	 * sitting alongside a space-labelled "Age group" → `attribute_age-group`
+	 * holding a real value). We resolve this with `metadata_exists()`,
+	 * which reports whether the meta ROW exists regardless of its value —
+	 * the hyphen fallback below only fires when the underscore-form key
+	 * genuinely does not exist; when it exists and holds `''`, that is
+	 * respected as an explicit "any" and this slug contributes nothing.
+	 * `metadata_exists()` is guarded by `function_exists()` like the other
+	 * optional WP functions this file calls; when unavailable, we cannot
+	 * distinguish the two cases and fall back to the old best-effort
+	 * behaviour (always probe the hyphenated form on an empty value)
+	 * rather than break.
 	 *
 	 * @param int                 $variation_id The variation post ID.
 	 * @param array<string,mixed> $map          A const attribute-slug map
@@ -1564,12 +1594,22 @@ class WC_AI_Storefront_JsonLd {
 		}
 		$out = array();
 		foreach ( $map as $slug_lower => $_unused ) {
-			$value     = get_post_meta( $variation_id, 'attribute_' . $slug_lower, true );
+			$key       = 'attribute_' . $slug_lower;
+			$value     = get_post_meta( $variation_id, $key, true );
 			$value_str = is_string( $value ) ? trim( $value ) : '';
 			if ( '' === $value_str && false !== strpos( $slug_lower, '_' ) ) {
-				$hyphenated = str_replace( '_', '-', $slug_lower );
-				$value      = get_post_meta( $variation_id, 'attribute_' . $hyphenated, true );
-				$value_str  = is_string( $value ) ? trim( $value ) : '';
+				// Only probe the hyphenated form when the underscore-form
+				// key genuinely does not exist. When it exists and holds
+				// '', that is WooCommerce's own explicit "any" for this
+				// axis — respect it, don't fall through to a possibly
+				// unrelated attribute's value (see this method's docblock).
+				$underscore_key_missing = ! function_exists( 'metadata_exists' )
+					|| ! metadata_exists( 'post', $variation_id, $key );
+				if ( $underscore_key_missing ) {
+					$hyphenated = str_replace( '_', '-', $slug_lower );
+					$value      = get_post_meta( $variation_id, 'attribute_' . $hyphenated, true );
+					$value_str  = is_string( $value ) ? trim( $value ) : '';
+				}
 			}
 			if ( '' === $value_str ) {
 				continue;
@@ -2136,18 +2176,31 @@ class WC_AI_Storefront_JsonLd {
 	 * gap from the parent's own resolved `audience` afterwards, per
 	 * Schema.org sub-property.
 	 *
-	 * The winning value is routed through
+	 * Every candidate is routed through
 	 * {@see display_name_for_attribute_value()} — the same helper
 	 * {@see add_variant_core_typed_properties()} already uses for
-	 * color/size/material/pattern — before it reaches
-	 * {@see build_audience_block()}. `read_variation_audience_attributes()`
-	 * returns the raw postmeta value, which for a `pa_*` slug is the term
-	 * SLUG, not its display name (e.g. `mens`, not "Men's"). The parent's
-	 * own `emit_attributes()` resolves through `$product->get_attribute()`,
-	 * which WC core already resolves to the term NAME. Without this
-	 * conversion a merchant who renames a term gets two different
+	 * color/size/material/pattern — before it is even tested for typed
+	 * output, not just after a winner is chosen: the fall-through
+	 * resolution in {@see resolve_audience_winner()} must test the exact
+	 * value that will ultimately be emitted, since a raw `pa_*` postmeta
+	 * value is the term SLUG (e.g. `mens`), not its display name
+	 * (`"Men's"`), and {@see build_age_sub_property()} matches against
+	 * {@see AUDIENCE_AGE_GROUPS} by display name (mirroring the parent's
+	 * own `emit_attributes()`, which resolves through
+	 * `$product->get_attribute()` — already the term NAME). Without this
+	 * conversion a merchant who renames a term would get two different
 	 * `suggestedGender` strings on the same product — the parent showing
 	 * the chosen name, the variant leaking the raw slug.
+	 *
+	 * **Fall-through**: like {@see emit_attributes()}, every candidate
+	 * present on this variation's own postmeta is collected (not just the
+	 * single highest-priority one) and resolved via
+	 * {@see resolve_audience_winner()} — shared with the parent path so
+	 * the fall-through rule cannot drift between the two again (#625
+	 * review: the variant path previously picked a strict-priority winner
+	 * with no fall-through, so an unmappable higher-priority value could
+	 * block a mappable lower-priority one on a variant even after that
+	 * exact bug was fixed for the parent).
 	 *
 	 * @param array      $entry     Variant markup, modified by reference.
 	 * @param WC_Product $variation The variation.
@@ -2158,37 +2211,31 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		// Same pa_-vs-bare precedence as emit_attributes() (see
-		// AUDIENCE_ATTRIBUTE_MAP): the winning value per field is
-		// whichever slug has the lowest `priority` among the slugs
-		// actually present on this variation's own postmeta.
-		$winners = array(
-			'gender'    => array(
-				'slug'     => '',
-				'value'    => '',
-				'priority' => PHP_INT_MAX,
-			),
-			'age_group' => array(
-				'slug'     => '',
-				'value'    => '',
-				'priority' => PHP_INT_MAX,
-			),
+		// AUDIENCE_ATTRIBUTE_MAP): every slug actually present on this
+		// variation's own postmeta is collected as a candidate, keyed by
+		// field — not reduced to a single winner here. Values are
+		// resolved to display form up front (see this method's docblock)
+		// so resolve_audience_winner()'s typability test and the eventual
+		// emission agree on the same string.
+		$candidates = array(
+			'gender'    => array(),
+			'age_group' => array(),
 		);
 		foreach ( self::read_variation_audience_attributes( (int) $variation->get_id() ) as $slug_lower => $value ) {
 			$field    = self::AUDIENCE_ATTRIBUTE_MAP[ $slug_lower ]['field'];
 			$priority = self::AUDIENCE_ATTRIBUTE_MAP[ $slug_lower ]['priority'];
-			if ( $priority < $winners[ $field ]['priority'] ) {
-				$winners[ $field ] = array(
-					'slug'     => $slug_lower,
-					'value'    => $value,
-					'priority' => $priority,
-				);
-			}
+
+			$candidates[ $field ][] = array(
+				'slug'     => $slug_lower,
+				'value'    => $this->display_name_for_attribute_value( $slug_lower, $value ),
+				'priority' => $priority,
+			);
 		}
 
-		$gender    = $this->display_name_for_attribute_value( $winners['gender']['slug'], $winners['gender']['value'] );
-		$age_group = $this->display_name_for_attribute_value( $winners['age_group']['slug'], $winners['age_group']['value'] );
+		$gender_winner = self::resolve_audience_winner( 'gender', $candidates['gender'] );
+		$age_winner    = self::resolve_audience_winner( 'age_group', $candidates['age_group'] );
 
-		$audience = self::build_audience_block( $gender, $age_group );
+		$audience = self::build_audience_block( $gender_winner['value'], $age_winner['value'] );
 		if ( ! empty( $audience ) ) {
 			$entry['audience'] = $audience;
 		}
