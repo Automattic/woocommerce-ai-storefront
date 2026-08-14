@@ -273,6 +273,44 @@ class WC_AI_Storefront {
 	}
 
 	/**
+	 * Schedules attribute seeding for `init`.
+	 *
+	 * Called from the version-mismatch branch, which fires on a fresh
+	 * install (stored version empty) and after every upgrade (stored
+	 * version differs) — exactly the two moments seeding should run.
+	 *
+	 * The work CANNOT happen inline there. That branch runs on
+	 * `plugins_loaded`, and creating taxonomy terms that early is unsafe:
+	 * WooCommerce registers its attribute taxonomies on `init`, and
+	 * `wp_insert_term()` against an unregistered taxonomy fails. This
+	 * mirrors the existing `flush_rewrite_rules` deferral a few lines
+	 * below, which exists for the same class of reason.
+	 *
+	 * Public so the deferral contract can be tested directly.
+	 */
+	public static function schedule_attribute_seeding(): void {
+		add_action( 'init', array( self::class, 'run_attribute_seeding' ) );
+	}
+
+	/**
+	 * `init` callback wrapper around WC_AI_Storefront_Attribute_Seeder::seed().
+	 *
+	 * WordPress action callbacks discard their return value, but seed()
+	 * intentionally returns an int (the count of attributes created) for
+	 * direct callers, e.g. a future manual re-seed action. Hooking seed()
+	 * onto `add_action` directly would mix those two calling conventions;
+	 * every other static method this class hooks as an action callback
+	 * (WC_AI_Storefront_Crawl_Logger::prune_raw_log(), ::rollup(),
+	 * WC_AI_Storefront_Attribution::bust_stats_cache()) is `: void` for the
+	 * same reason. This is that void adapter.
+	 *
+	 * Public for the same reason as schedule_attribute_seeding().
+	 */
+	public static function run_attribute_seeding(): void {
+		WC_AI_Storefront_Attribute_Seeder::seed();
+	}
+
+	/**
 	 * Register rewrite rules and serve callbacks unconditionally.
 	 *
 	 * The rewrite rules for /llms.txt and /.well-known/ucp must exist
@@ -361,6 +399,12 @@ class WC_AI_Storefront {
 			// Version option is bumped AFTER create_tables() so that a transient
 			// DB failure leaves the version unchanged and the next request retries.
 			WC_AI_Storefront_Crawl_Logger::create_tables();
+
+			// Create the plugin's recommended product attributes on fresh
+			// install and on every upgrade. Deferred to `init` — see the
+			// method docblock for why it cannot run inline here.
+			self::schedule_attribute_seeding();
+
 			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
 
 			// Schedule the rewrite-rules flush for `init` priority 99.

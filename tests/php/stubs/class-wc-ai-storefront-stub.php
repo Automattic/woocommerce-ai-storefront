@@ -55,6 +55,23 @@ class WC_AI_Storefront {
 
 	const ADMIN_PAGE_SLUG = 'wc-ai-storefront';
 
+	// Mirrors the real orchestrator method (add_action(...) is a single global
+	// function call with no divergent logic), so the init-deferral contract is
+	// behaviorally testable here. The real registration + call-site position
+	// inside register_rewrite_rules() are guarded by source assertions in
+	// AttributeSeederHookTest against includes/class-wc-ai-storefront.php.
+	public static function schedule_attribute_seeding(): void {
+		add_action( 'init', array( self::class, 'run_attribute_seeding' ) );
+	}
+
+	// Mirrors the real orchestrator method — a void adapter so the `init`
+	// callback never exposes WC_AI_Storefront_Attribute_Seeder::seed()'s int
+	// return (PHPStan's WordPress extension flags non-void action callbacks
+	// as a real error; see the production docblock for the full rationale).
+	public static function run_attribute_seeding(): void {
+		WC_AI_Storefront_Attribute_Seeder::seed();
+	}
+
 	// Mirrors the real orchestrator method (a pure static transform), so the
 	// Plugins-screen "Settings" link is behaviorally testable here. The real
 	// registration + slug-sharing are guarded by source assertions in
