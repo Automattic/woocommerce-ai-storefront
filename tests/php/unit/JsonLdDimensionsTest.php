@@ -167,4 +167,82 @@ class JsonLdDimensionsTest extends \PHPUnit\Framework\TestCase {
 			$this->assertSame( $block, $markup[ $key ], "{$key} differs between builder and wrapper" );
 		}
 	}
+
+	/**
+	 * Runs add_shipping_details() and returns the resulting block.
+	 *
+	 * @param mixed $product Product mock.
+	 * @return array|null
+	 */
+	private function shipping_block( $product ) {
+		// `WC()` is deliberately NOT stubbed here — add_shipping_details()
+		// never calls it (get_shipping_zones() goes through the
+		// WC_Shipping_Zones stub directly), and Brain Monkey's WC()
+		// stub leaks across the suite as MissingFunctionExpectations
+		// for unrelated tests. See build_postal_address()'s docblock.
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$jsonld = new WC_AI_Storefront_JsonLd();
+		$markup = array( 'offers' => array( array( '@type' => 'Offer' ) ) );
+		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'add_shipping_details' );
+		$method->setAccessible( true );
+		$method->invokeArgs( $jsonld, array( &$markup, 'US', $product ) );
+
+		return $markup['offers'][0]['shippingDetails'] ?? null;
+	}
+
+	public function test_shipping_details_carries_weight_and_dimensions(): void {
+		$product = $this->make_product(
+			'1.5',
+			array(
+				'length' => '10',
+				'width'  => '8',
+				'height' => '3',
+			)
+		);
+		$product->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		$block = $this->shipping_block( $product );
+
+		$this->assertSame( 'OfferShippingDetails', $block['@type'] );
+		$this->assertSame( 1.5, $block['weight']['value'] );
+		$this->assertSame( 'KGM', $block['weight']['unitCode'] );
+		$this->assertSame( 10.0, $block['depth']['value'] );
+		$this->assertSame( 8.0, $block['width']['value'] );
+		$this->assertSame( 3.0, $block['height']['value'] );
+	}
+
+	public function test_shipping_details_omits_dimensions_when_product_has_none(): void {
+		$product = $this->make_product( null, null );
+		$product->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		$block = $this->shipping_block( $product );
+
+		$this->assertSame( 'OfferShippingDetails', $block['@type'] );
+		foreach ( array( 'weight', 'depth', 'width', 'height' ) as $key ) {
+			$this->assertArrayNotHasKey( $key, $block );
+		}
+	}
+
+	public function test_shipping_details_keeps_its_existing_keys(): void {
+		// Regression guard: adding dimensions must not displace the
+		// destination or rate the block already carried.
+		$product = $this->make_product( '1', null );
+		$product->shouldReceive( 'needs_shipping' )->andReturn( true );
+
+		$block = $this->shipping_block( $product );
+
+		$this->assertSame( 'DefinedRegion', $block['shippingDestination']['@type'] );
+		$this->assertSame( 'US', $block['shippingDestination']['addressCountry'] );
+	}
+
+	public function test_no_shipping_block_at_all_for_a_virtual_product(): void {
+		// A shippingDetails block on a no-ship product is contradictory,
+		// and existing behaviour suppresses the whole block. Dimensions
+		// must not resurrect it.
+		$product = $this->make_product( '1.5', null );
+		$product->shouldReceive( 'needs_shipping' )->andReturn( false );
+
+		$this->assertNull( $this->shipping_block( $product ) );
+	}
 }

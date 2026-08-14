@@ -2653,6 +2653,16 @@ class WC_AI_Storefront_JsonLd {
 			);
 		}
 
+		// Google's shipping_* attributes describe the parcel, and
+		// WooCommerce's single set of dimension fields is what its own
+		// shipping methods use to compute rates — the product editor
+		// files them under the Shipping tab. Publishing them here as well
+		// as on Product is the same data serving two questions: how big
+		// the item is, and how big the thing being shipped is. For a
+		// single-item order they are the same numbers; the divergence is
+		// packaging overhead, which is the approximation GMC accepts too.
+		$block = array_merge( $block, $this->build_dimension_blocks( $product ) );
+
 		$markup['offers'][0]['shippingDetails'] = $block;
 	}
 
