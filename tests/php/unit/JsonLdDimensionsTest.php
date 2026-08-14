@@ -299,4 +299,66 @@ class JsonLdDimensionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( array(), $this->build( $variation ) );
 	}
+
+	public function test_only_the_axes_woocommerce_actually_has_are_emitted(): void {
+		// has_dimensions() is true when ANY ONE axis is set:
+		//
+		//   ( get_length() || get_height() || get_width() ) && ! get_virtual()
+		//
+		// WooCommerce stores an unset axis as '', and (float) '' is 0.0.
+		// Emitting all three off that gate publishes a fabricated
+		// `depth: 0` for a product whose merchant only recorded a height.
+		$product = $this->make_product(
+			null,
+			array(
+				'length' => '',
+				'width'  => '',
+				'height' => '30',
+			)
+		);
+
+		$blocks = $this->build( $product );
+
+		$this->assertArrayNotHasKey( 'depth', $blocks, 'An unset length must not emit as depth 0.' );
+		$this->assertArrayNotHasKey( 'width', $blocks, 'An unset width must not emit as 0.' );
+		$this->assertSame( 30.0, $blocks['height']['value'] );
+	}
+
+	public function test_a_partially_dimensioned_product_emits_each_set_axis(): void {
+		// Two of three set: both emit, the third stays absent rather than
+		// becoming a zero.
+		$product = $this->make_product(
+			null,
+			array(
+				'length' => '12',
+				'width'  => '',
+				'height' => '4.5',
+			)
+		);
+
+		$blocks = $this->build( $product );
+
+		$this->assertSame( 12.0, $blocks['depth']['value'] );
+		$this->assertSame( 4.5, $blocks['height']['value'] );
+		$this->assertArrayNotHasKey( 'width', $blocks );
+	}
+
+	public function test_a_zero_typed_by_the_merchant_is_not_treated_as_absent(): void {
+		// Guards the emptiness test itself: '0' is a value the merchant
+		// entered, however unphysical, and must not be filtered out by a
+		// loose check that conflates '0' with ''.
+		$product = $this->make_product(
+			null,
+			array(
+				'length' => '0',
+				'width'  => '5',
+				'height' => '5',
+			)
+		);
+
+		$blocks = $this->build( $product );
+
+		$this->assertArrayHasKey( 'depth', $blocks );
+		$this->assertSame( 0.0, $blocks['depth']['value'] );
+	}
 }

@@ -79,9 +79,7 @@ Below is a representative full output for a published product after the plugin's
     "inventoryLevel": { "@type": "QuantitativeValue", "value": 12 },
     "shippingDetails": {
       "@type": "OfferShippingDetails",
-      "shippingDestination": [{
-        "@type": "DefinedRegion", "addressCountry": "US"
-      }],
+      "shippingDestination": { "@type": "DefinedRegion", "addressCountry": "US" },
       // Same values as Product-level weight/depth/width/height below —
       // one set of WC dimension fields answering two questions: how big
       // the item is, and how big the parcel is. See "weight, depth,

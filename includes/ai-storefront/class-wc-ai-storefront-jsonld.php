@@ -903,23 +903,37 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		if ( $product->has_dimensions() ) {
-			$dimensions       = $product->get_dimensions( false );
-			$dimension_unit   = $this->get_dimension_unit_code();
-			$blocks['depth']  = array(
-				'@type'    => 'QuantitativeValue',
-				'value'    => (float) $dimensions['length'],
-				'unitCode' => $dimension_unit,
-			);
-			$blocks['width']  = array(
-				'@type'    => 'QuantitativeValue',
-				'value'    => (float) $dimensions['width'],
-				'unitCode' => $dimension_unit,
-			);
-			$blocks['height'] = array(
-				'@type'    => 'QuantitativeValue',
-				'value'    => (float) $dimensions['height'],
-				'unitCode' => $dimension_unit,
-			);
+			$dimensions     = $product->get_dimensions( false );
+			$dimension_unit = $this->get_dimension_unit_code();
+
+			// WC's `length` is Schema.org's `depth` — Schema.org has
+			// depth/width/height and no "length".
+			//
+			// Each axis is emitted independently because `has_dimensions()`
+			// is true when ANY ONE of the three is set:
+			//
+			//   ( get_length() || get_height() || get_width() ) && ! get_virtual()
+			//
+			// WooCommerce stores an unset axis as '', and `(float) ''` is
+			// `0.0`. Emitting the whole set on that gate would publish
+			// `depth: 0` for a product whose merchant only recorded a
+			// height — a fabricated measurement, and a more convincing one
+			// than the empty string this used to emit before the value was
+			// cast to a number.
+			foreach ( array(
+				'depth'  => 'length',
+				'width'  => 'width',
+				'height' => 'height',
+			) as $schema_key => $wc_key ) {
+				if ( '' === trim( (string) $dimensions[ $wc_key ] ) ) {
+					continue;
+				}
+				$blocks[ $schema_key ] = array(
+					'@type'    => 'QuantitativeValue',
+					'value'    => (float) $dimensions[ $wc_key ],
+					'unitCode' => $dimension_unit,
+				);
+			}
 		}
 
 		return $blocks;
@@ -932,7 +946,14 @@ class WC_AI_Storefront_JsonLd {
 	 * @param WC_Product $product The product object.
 	 */
 	private function add_dimensions( array &$markup, $product ): void {
-		$markup = array_merge( $markup, $this->build_dimension_blocks( $product ) );
+		// Assigned key by key rather than via array_merge(): merging would
+		// copy the whole markup array — nested `offers` and all — to add at
+		// most four keys, and array_merge() also renumbers integer keys,
+		// which would silently reindex anything an upstream filter had
+		// added to `woocommerce_structured_data_product`.
+		foreach ( $this->build_dimension_blocks( $product ) as $key => $block ) {
+			$markup[ $key ] = $block;
+		}
 	}
 
 	/**
