@@ -445,7 +445,7 @@ Pick whichever preserves the navigation your shoppers expect. Either way, the AI
 
 ### Set the product attributes shopping surfaces read
 
-Categories tell an agent *what kind of thing* a product is. Attributes tell it *which one*. For apparel, four attributes carry most of the weight, and Google Merchant Center expects all four:
+Categories tell an agent *what kind of thing* a product is. Attributes tell it *which one*. For apparel, four attributes carry most of the weight. Google Merchant Center requires all four, and the same values feed everything else Google does with your products:
 
 | Attribute | Set it on | Accepted values |
 |---|---|---|
@@ -454,7 +454,13 @@ Categories tell an agent *what kind of thing* a product is. Attributes tell it *
 | Gender | All apparel and accessories | `male`, `female`, `unisex` |
 | Age group | All apparel and accessories | `newborn`, `infant`, `toddler`, `kids`, `adult` |
 
-Once an attribute is on the product it travels on its own. Your product-feed plugin reads it when it builds your Merchant Center feed, and AI Storefront publishes it in the product's structured data for AI agents.
+Leaving these blank costs you more than an incomplete listing. Google disapproves a product that is missing an attribute it requires, and in Google's own words, disapproved products stop showing across Google. The product is not ranked lower, it is absent from Shopping ads and free listings until the attribute is filled in.
+
+Once an attribute is on the product it travels on its own, by two routes. If you run a product-feed plugin, it reads the attribute when it builds your Merchant Center feed. Separately, AI Storefront publishes the attribute in the product's structured data, which AI agents read directly and which Google crawls to add and update products in Merchant Center.
+
+That second route matters most if you are not running a feed plugin, because then your structured data is how Google learns about your products at all. It still helps if you are: Google fills gaps in your listings from what it crawls, so the more complete your product attributes, the more complete your Merchant Center data.
+
+This reaches well past Merchant Center. The same product data is what Google draws on for product snippets in Search, Popular products, the Shopping knowledge panel, Google Images and Lens, and the AI answers that recommend products to shoppers. An attribute you leave blank is a detail none of those surfaces can show, and one no AI assistant can match against a shopper asking for a specific thing.
 
 Four rules worth knowing as you fill them in:
 
