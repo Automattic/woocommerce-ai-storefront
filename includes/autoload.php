@@ -53,6 +53,7 @@ spl_autoload_register(
 			'WC_AI_Storefront_MCP_Session'            => '/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-session.php',
 			'WC_AI_Storefront_MCP_Tools'              => '/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php',
 			'WC_AI_Storefront_MCP_Server'             => '/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php',
+			'WC_AI_Storefront_Attribute_Seeder'       => '/ai-storefront/class-wc-ai-storefront-attribute-seeder.php',
 		);
 
 		if ( isset( $classmap[ $class_name ] ) ) {

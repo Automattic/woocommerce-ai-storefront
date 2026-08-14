@@ -2,7 +2,7 @@
 
 Filters and actions exposed by WooCommerce AI Storefront for extending plugins.
 
-The plugin exposes a deliberately small surface — eighteen filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
+The plugin exposes a deliberately small surface — nineteen filters and two actions. Each was chosen because it intercepts a specific extension point that's hard or impossible to reach from outside (e.g. the merchant's `/llms.txt` content, the UCP manifest body, the JSON-LD product markup). Where WP/WC core filters already exist for the same surface, we don't duplicate them.
 
 ## Filters
 
@@ -549,6 +549,30 @@ add_filter( 'wc_ai_storefront_accepted_currencies', function ( $list ) {
     return array_values( array_unique( $codes ) );
 } );
 ```
+
+---
+
+### `wc_ai_storefront_seed_attributes`
+
+Controls whether the plugin creates its recommended global product attributes on activation and upgrade.
+
+```php
+apply_filters( 'wc_ai_storefront_seed_attributes', bool $should_seed );
+```
+
+| Param | Type | Description |
+|-------|------|-------------|
+| `$should_seed` | `bool` | Whether to create any missing attributes. Default `true`. |
+
+**Returns:** `false` to skip seeding entirely.
+
+**When to use:** a store that will never sell apparel and does not want six unused attribute taxonomies in its admin. Note this only prevents creation; it does not remove attributes already created by an earlier version.
+
+```php
+add_filter( 'wc_ai_storefront_seed_attributes', '__return_false' );
+```
+
+**What gets created.** Gender and Age group carry Google's complete accepted value sets, since Google defines those exhaustively. Color, Size, Material and Pattern carry a small starting set that merchants are expected to extend, because Google treats those as free text and asks that values match the merchant's own product page. An attribute whose taxonomy already exists is skipped entirely, terms included, because its terms may be variation axes.
 
 ---
 
