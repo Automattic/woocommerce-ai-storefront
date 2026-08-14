@@ -77,9 +77,20 @@ Below is a representative full output for a published product after the plugin's
     "validFrom": "2026-07-01T00:00:00+00:00",
     "validThrough": "2026-07-31T23:59:59+00:00",
     "inventoryLevel": { "@type": "QuantitativeValue", "value": 12 },
-    "shippingDetails": { "@type": "OfferShippingDetails", "shippingDestination": [{
-      "@type": "DefinedRegion", "addressCountry": "US"
-    }]},
+    "shippingDetails": {
+      "@type": "OfferShippingDetails",
+      "shippingDestination": [{
+        "@type": "DefinedRegion", "addressCountry": "US"
+      }],
+      // Same values as Product-level weight/depth/width/height below —
+      // one set of WC dimension fields answering two questions: how big
+      // the item is, and how big the parcel is. See "weight, depth,
+      // width, height" in the field reference.
+      "weight":  { "@type": "QuantitativeValue", "value": 0.6, "unitCode": "KGM" },
+      "depth":   { "@type": "QuantitativeValue", "value": 5,   "unitCode": "CMT" },
+      "width":   { "@type": "QuantitativeValue", "value": 30,  "unitCode": "CMT" },
+      "height":  { "@type": "QuantitativeValue", "value": 60,  "unitCode": "CMT" }
+    },
     // Inline (Option A) shape — shown when no return-policy page is configured.
     // With a page configured the builder emits link-only instead:
     //   { "@type": "MerchantReturnPolicy", "merchantReturnLink": "<page URL>" }
@@ -235,6 +246,9 @@ Schema.org `QuantitativeValue` blocks with `unitCode` set to UN/CEFACT codes (`K
 
 - **Each emitted independently** if the product has a non-empty value for that dimension.
 - **Unit codes** map from WC's wordpress unit setting (kg, lbs, cm, in, m, mm) via `get_weight_unit_code()` / `get_dimension_unit_code()`.
+- **WC's `length` is Schema.org's `depth`.** Schema.org has no `length` property for physical products, so WooCommerce's length field is published under `depth`.
+- **Built once, used twice.** `build_dimension_blocks()` constructs these four blocks from the product's own weight/dimensions; both call sites below merge the same array in rather than rebuilding it, so the two placements cannot disagree with each other.
+- **The same values also appear on `offers[0].shippingDetails`** (#614) and on each `hasVariant` entry (#615) — see [`offers[0].shippingDetails`](#offers0shippingdetails) and [`ProductGroup` / `hasVariant` / `variesBy`](#productgroup--hasvariant--variesby-variable-products) below. Schema.org defines `weight`/`height`/`width`/`depth` on both `Product` and `OfferShippingDetails` because they answer two different questions — how big the item is, versus how big the parcel being shipped is — and Google's Merchant Center attributes draw the identical line (`product_weight` vs `shipping_weight`, and so on for the three dimensions). WooCommerce has exactly one set of dimension fields — filed on the product editor's **Shipping** tab, and consumed by WooCommerce's own shipping methods to compute rates — so populating both Schema.org properties from that one set is faithful to what the data means in WooCommerce, not a second independent measurement. The approximation this makes (item size stands in for parcel size — packaging overhead unaccounted for) is the same one GMC's `shipping_*` attributes are built to tolerate.
 
 ### `color`, `material`, `pattern`, `size` (typed Schema.org properties)
 
@@ -338,7 +352,8 @@ Each entry under `hasVariant` is itself a Product with:
 - `@type: "Product"`, `@id` and `url` (variation permalink), `name` (WC's variation display name, e.g. `"Hoodie - Blue, Logo: Yes"`), `sku`, `image` (variation-specific when set; falls back to parent gallery image).
 - **Inherited parent base fields** (`add_inherited_variant_fields()`): `description`, `brand`, and `category` are copied from the parent `ProductGroup`. The from-scratch variant rebuild would otherwise drop the WC-core base fields a simple product keeps — which made Google report every variant as having "no description" (#443). `description` prefers the variation's own (formatted identically to WC core via `wp_strip_all_tags( do_shortcode() )`) and falls back to the parent's. Every copy is `isset`/`empty`-guarded and never overwrites a value the variant already set.
 - The typed Schema.org property for the variation's differentiating attribute (`color` / `size` / `material` / `pattern`) — same mapping as the parent's typed-property emission.
-- An `offers` array (single-element) whose member carries `price`, `priceCurrency`, `availability`, `shippingDetails`, `hasMerchantReturnPolicy`, and `checkoutPageURLTemplate` (Schema.org `Offer` property — a URL template per [RFC 6570](https://datatracker.ietf.org/doc/html/rfc6570) that points at the variation's checkout page). The offer also inherits `seller` from the parent (store-level) and a `url` (the variation permalink), plus `priceValidUntil` sourced **per-variant** from the variation's own sale-end date (`get_date_on_sale_to()`) — falling back to the parent's value (the store default for non-sale products) only when the variation has no sale window of its own. Inheriting the parent's date verbatim would misreport validity for a variation running its own sale (#443).
+- **`weight` / `depth` / `width` / `height`** (#615) — each `hasVariant` entry carries its own resolved dimensions at the top level, in the same shape as the parent's (see [dimensions](#weight-depth-width-height-dimensions) above): the variation's own value where it set one, the parent's otherwise. The inheritance needs no branching of ours — `WC_Product_Variation`'s getters fall back to `parent_data` in `'view'` context when the variation's own value is empty, and `has_weight()` / `has_dimensions()` route through those same getters, carrying the virtual/downloadable guard with them. Every variant emits, including values it only inherited: a consumer reading one `hasVariant` entry in isolation gets a self-contained node rather than one that reads as "this SKU has no shipping data." Virtual and downloadable variations emit neither, same as a virtual/downloadable simple product.
+- An `offers` array (single-element) whose member carries `price`, `priceCurrency`, `availability`, `shippingDetails` (including the variant's own weight/dimensions, since `add_shipping_details()` runs per-variant — see [`offers[0].shippingDetails`](#offers0shippingdetails) above), `hasMerchantReturnPolicy`, and `checkoutPageURLTemplate` (Schema.org `Offer` property — a URL template per [RFC 6570](https://datatracker.ietf.org/doc/html/rfc6570) that points at the variation's checkout page). The offer also inherits `seller` from the parent (store-level) and a `url` (the variation permalink), plus `priceValidUntil` sourced **per-variant** from the variation's own sale-end date (`get_date_on_sale_to()`) — falling back to the parent's value (the store default for non-sale products) only when the variation has no sale window of its own. Inheriting the parent's date verbatim would misreport validity for a variation running its own sale (#443).
 - **Three-state `availability`** (#601). The variant Offer maps WooCommerce's full `stock_status` — `InStock`, `OutOfStock`, or `BackOrder` — rather than the two-state view `is_in_stock()` returns. That bool is TRUE for backorders (it reports `'outofstock' !== stock_status` through the `woocommerce_product_is_in_stock` filter), so branching on it alone published `InStock` for a backordered variant, contradicting the negative `inventoryLevel` on the same Offer. The out-of-stock branch is checked first and wins outright: because that filter can decouple the bool from `stock_status`, a third party can legitimately force it false while the status still reads `onbackorder`, and that combination must not be upgraded to a purchasable-sounding `BackOrder`. Semantically equivalent to WC core's `WC_Structured_Data::generate_product_data()`, which has handled the parent Offer this way since WC 7.8 — below this plugin's WC floor, so simple products and parent Offers were never affected.
 - A `potentialAction: BuyAction` whose `target.urlTemplate` points at the **variation ID** so an AI agent's deep-link resolves to that specific SKU instead of the parent's "choose your color" detour.
 
@@ -516,6 +531,14 @@ Schema.org `ShippingDeliveryTime` → `QuantitativeValue` emitted when the merch
 - **Value**: `{ "@type": "QuantitativeValue", "minValue": <min>, "maxValue": <max>, "unitCode": "DAY" }`.
 - **Guard**: invalid pairs stored in the database (e.g. `{min:5, max:2}`) are silently skipped — the block is omitted rather than emitting broken structured data.
 - **Source**: `add_handling_time()`. Sanitization is enforced by `WC_AI_Storefront_Handling_Time::sanitize()` at save time (0–365 clamp, max raised to min when below).
+
+#### `offers[0].shippingDetails.weight` / `.depth` / `.width` / `.height`
+
+The same `weight`/`depth`/`width`/`height` `QuantitativeValue` blocks described under [dimensions](#weight-depth-width-height-dimensions) above, repeated on the shipping-details block (#614).
+
+- **Emitted when** `has_weight()` / `has_dimensions()` — the same gate as the Product-level fields, since both draw from the same underlying WC data via the shared `build_dimension_blocks()` builder.
+- **Why the same numbers twice**: `Product.weight` answers how heavy the item is; `OfferShippingDetails.weight` answers how heavy the parcel is. WooCommerce doesn't model a packed parcel separately from the item — there is exactly one set of dimension fields, filed under the product editor's **Shipping** tab, and WooCommerce's own shipping methods consume those same fields to compute rates. Publishing that one set of numbers at both places is faithful to what the data means in WooCommerce; inventing a second, independent "box size" would be a claim the store doesn't make. For a single-item order the two numbers are identical by construction; any divergence in reality is packaging overhead the merchant hasn't modeled — the same approximation Google's own `shipping_*` Merchant Center attributes are built to accept.
+- **Source**: `build_dimension_blocks()`, merged into the block by `add_shipping_details()` — the same builder that populates the Product-level fields.
 
 ### `offers[0].priceSpecification`, `offers[0].addOn`, `offers[0].eligibleDuration` (WC Subscriptions)
 
@@ -860,6 +883,7 @@ Three external tools cover this output:
 For automated checks, the plugin's PHPUnit suite covers:
 
 - `JsonLdTest.php` -- per-method coverage of `enhance_product_data`, `add_buy_action`, `add_inventory_level`, `add_dimensions`, etc.
+- `JsonLdDimensionsTest.php` -- `build_dimension_blocks()` / `add_dimensions()` / `add_shipping_details()` coverage: value casting, unit-code mapping, the virtual/downloadable guard, and that the Product-level and `OfferShippingDetails` placements agree.
 - `JsonLdReturnPolicyTest.php` -- Schema.org allow-list enforcement on `returnFees` / `returnMethod`.
 - `JsonLdNormalizationTest.php` -- HTML entity decoding, currency normalization, edge cases.
 

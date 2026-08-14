@@ -2,6 +2,12 @@
 
 ### Added
 
+- **Weight and dimensions now emit on `OfferShippingDetails` and on each variant (#614, #615).**
+  - Schema.org defines `weight`, `height`, `width` and `depth` on `OfferShippingDetails` as well as on `Product`, and Google draws the same distinction: `product_*` describes the item, `shipping_*` describes the parcel. Both now carry the same values.
+  - WooCommerce has exactly one set of dimension fields — filed under the product editor's **Shipping** tab, and consumed by WooCommerce's own shipping methods to compute rates — so that one set legitimately answers both questions. For a single-item order the numbers are identical; any divergence is packaging overhead, the same approximation Google Merchant Center already accepts.
+  - **Each variant now carries dimensions too.** A consumer reading a single `hasVariant` entry — the node holding the purchasable offer — previously saw none. Values resolve per variant: its own if set, the parent's otherwise, which is WooCommerce's own getter inheritance rather than logic this plugin wrote. Every variant emits, including inherited values, so a variant read in isolation never looks like it has no shipping data.
+  - Virtual and downloadable products, whether simple or a variation, continue to emit no shipping/dimension data — the existing `needs_shipping()` / `has_weight()` / `has_dimensions()` gates are unchanged.
+
 - **The six recommended product attributes are now created automatically (#623).**
   - A fresh WooCommerce store ships with no product attributes at all, so merchants build them ad hoc, name them freely, and type values freely. The plugin now creates `pa_gender`, `pa_age_group`, `pa_color`, `pa_size`, `pa_material` and `pa_pattern` if they are missing. Seeding is attempted on activation, on every plugin upgrade, and whenever a merchant toggles the syndication enabled setting (the same internal flag that triggers a rewrite-rule flush) — not just on a version change. This is a no-op almost every time, since each attribute is skipped once it exists; the one visible case is a merchant who deliberately deleted one of these attributes seeing it recreated on the next such trigger. Use the `wc_ai_storefront_seed_attributes` filter (below) to opt out first if that's not wanted.
   - **Gender and Age group carry Google's complete accepted values** (`male`/`female`/`unisex`, and `newborn`/`infant`/`toddler`/`kids`/`adult`), because Google defines those lists exhaustively. Merchants should not need to add to them.

@@ -876,6 +876,18 @@ class WC_AI_Storefront_JsonLd {
 	 * is empty, and `has_weight()` / `has_dimensions()` route through
 	 * those same getters.
 	 *
+	 * Deliberately does NOT gate on `wc_product_weight_enabled()` /
+	 * `wc_product_dimensions_enabled()`, despite #614's acceptance
+	 * criteria asking for it. Both are bare `apply_filters( ..., true )`
+	 * wrappers consumed only in wp-admin product-editor views, controlling
+	 * whether the input fields render there — not whether stored data is
+	 * used or displayed publicly. WooCommerce's own frontend "Additional
+	 * information" tab ignores them and renders on `has_weight()` /
+	 * `has_dimensions()` alone, exactly as this method does. Honouring
+	 * them here would invent a suppression semantic WooCommerce has
+	 * nowhere else, and would make this markup less complete than the
+	 * page's own visible content.
+	 *
 	 * @param WC_Product $product The product or variation.
 	 * @return array<string, array> Any of weight/depth/width/height.
 	 */
