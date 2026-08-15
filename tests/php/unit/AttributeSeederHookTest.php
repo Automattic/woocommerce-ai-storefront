@@ -242,6 +242,60 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	/**
+	 * Pins the ORDERING of the #629 guard in the REAL file, not just its
+	 * presence. This test exists because
+	 * test_scheduling_is_skipped_entirely_when_no_seeding_is_needed below
+	 * only exercises tests/php/stubs/class-wc-ai-storefront-stub.php — the
+	 * whole suite is shadowed onto that stub (see the docblock above
+	 * test_real_orchestrator_branches_on_init_state_and_calls_scheduler_between_create_tables_and_version_write()
+	 * for why) — so it says nothing about includes/class-wc-ai-storefront.php,
+	 * the file that actually ships.
+	 *
+	 * A bare assertStringContainsString() for
+	 * WC_AI_Storefront_Attribute_Seeder::needs_seeding() would still pass if
+	 * the guard were moved anywhere else in the method, including AFTER the
+	 * did_action( 'init' ) branch, or into run_attribute_seeding() — where it
+	 * would no longer stop add_action() from being registered on an
+	 * already-seeded store. The guard's entire value is running BEFORE
+	 * scheduling anything (see the guard's own comment in
+	 * includes/class-wc-ai-storefront.php), so ordering — not presence — is
+	 * the property this test has to assert to mean anything.
+	 */
+	public function test_real_orchestrator_checks_needs_seeding_before_scheduling_anything(): void {
+		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/class-wc-ai-storefront.php' );
+
+		// Same isolation as the test above: slice schedule_attribute_seeding()'s
+		// own body so a needs_seeding() call reached via run_attribute_seeding()
+		// -> seed() a few lines later in the same file can't be mistaken for
+		// this one.
+		$method_start      = strpos( $source, 'public static function schedule_attribute_seeding(): void {' );
+		$next_method_start = strpos( $source, 'public static function run_attribute_seeding(): void {' );
+		$this->assertNotFalse( $method_start, 'schedule_attribute_seeding() not found.' );
+		$this->assertNotFalse( $next_method_start, 'run_attribute_seeding() not found.' );
+		$method_body = substr( $source, $method_start, $next_method_start - $method_start );
+
+		$needs_seeding_pos = strpos( $method_body, 'WC_AI_Storefront_Attribute_Seeder::needs_seeding()' );
+		$did_action_pos    = strpos( $method_body, "did_action( 'init' )" );
+
+		$this->assertNotFalse(
+			$needs_seeding_pos,
+			'schedule_attribute_seeding() must call WC_AI_Storefront_Attribute_Seeder::needs_seeding().'
+		);
+		$this->assertNotFalse(
+			$did_action_pos,
+			'schedule_attribute_seeding() must branch on did_action( "init" ).'
+		);
+		$this->assertLessThan(
+			$did_action_pos,
+			$needs_seeding_pos,
+			'needs_seeding() must be checked BEFORE the did_action( "init" ) branch. ' .
+			'Checking it later — including inside run_attribute_seeding() — still ' .
+			'lets an already-seeded store schedule a no-op add_action() call, which ' .
+			'is exactly the race that produced the duplicate pa_gender row in #628.'
+		);
+	}
+
 	public function test_scheduling_is_skipped_entirely_when_no_seeding_is_needed(): void {
 		// The core of #629: when the store is already seeded, nothing is
 		// scheduled at all. Several concurrent requests then have nothing
