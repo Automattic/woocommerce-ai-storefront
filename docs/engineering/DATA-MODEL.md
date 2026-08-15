@@ -2,7 +2,9 @@
 
 Inventory of every persisted artifact this plugin writes — options, transients, post meta, order meta, scheduled events. For each: where it's defined, who reads/writes it, lifetime, and behavior on uninstall.
 
-The surface is deliberately small: four options, nine transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
+The surface is deliberately small: five options, nine transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
+
+> **Known gap.** The IndexNow feature's persisted keys (`wc_ai_storefront_indexnow_key`, `_pending`, `_last_result`, `_submit_all`, and the `_flush` cron) are not yet documented below, so the counts above cover only what this document actually enumerates. Tracked separately.
 
 The two custom tables back the Discovery analytics surface. They were added in 0.8.6 alongside the crawler-side visibility stats. Pre-0.8.6 installs got both tables created on the version-bump dbDelta path; the schema is rebuildable on every version bump and the tables are dropped on uninstall.
 

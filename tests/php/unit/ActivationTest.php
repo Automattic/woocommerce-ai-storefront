@@ -211,10 +211,19 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 	 * Extract the body of the version-mismatch branch from the main
 	 * orchestrator file. The branch is the `if ( $needs_flush || ... )
 	 * { ... }` block inside register_rewrite_rules().
+	 *
+	 * The right-hand operand is matched loosely because it has been both
+	 * an inline comparison and, since #629, a `$version_changed` flag —
+	 * the branch is opened for two unrelated reasons and one tenant
+	 * inside it (attribute seeding) must run for only one of them, which
+	 * needs the comparison hoisted into a variable. What these tests care
+	 * about is the branch's BODY, so pinning the exact operand spelling
+	 * only makes them brittle against a refactor that changes nothing
+	 * they assert.
 	 */
 	private function extract_version_mismatch_branch(): string {
 		if ( ! preg_match(
-			'/if\s*\(\s*\$needs_flush\s*\|\|\s*\$stored_version\s*!==\s*WC_AI_STOREFRONT_VERSION\s*\)\s*\{/',
+			'/if\s*\(\s*\$needs_flush\s*\|\|\s*[^)]+\)\s*\{/',
 			$this->orchestrator_file,
 			$matches,
 			PREG_OFFSET_CAPTURE

@@ -336,4 +336,52 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 			$hooked[0][1]
 		);
 	}
+
+	public function test_seeding_is_gated_on_the_version_change_not_the_whole_branch(): void {
+		// The version-mismatch branch opens for TWO unrelated reasons:
+		// a version change, and $needs_flush — which the syndication
+		// settings toggle sets. Seeding must be gated on the first only.
+		//
+		// The toggle path has the same multi-request exposure as the
+		// version path: every request sees the transient until the first
+		// one deletes it. Seeding from a settings save would therefore
+		// re-open the race #629 exists to close, on any store whose seed
+		// flag happens to be stale. A settings toggle is not an install
+		// event and has no business provisioning taxonomies.
+		//
+		// Asserted against the SHIPPED file, not the test stub — the
+		// suite loads only the stub, so a behavioural test here would
+		// prove nothing about what merchants run. Same reason as
+		// test_real_file_guards_seeding_before_scheduling().
+		$source = file_get_contents(
+			dirname( __DIR__, 3 ) . '/includes/class-wc-ai-storefront.php'
+		);
+
+		$this->assertIsString( $source );
+
+		$call_pos = strpos( $source, 'self::schedule_attribute_seeding();' );
+		$this->assertNotFalse(
+			$call_pos,
+			'schedule_attribute_seeding() call not found in the shipped file.'
+		);
+
+		// Walk back from the call to the nearest preceding `if (`, and
+		// confirm it tests the version flag rather than the whole branch.
+		$preceding = substr( $source, 0, $call_pos );
+		$guard_pos = strrpos( $preceding, 'if ( $version_changed ) {' );
+
+		$this->assertNotFalse(
+			$guard_pos,
+			'schedule_attribute_seeding() must sit inside `if ( $version_changed )`, '
+				. 'so a syndication-settings toggle cannot trigger seeding.'
+		);
+
+		// Nothing may reopen the branch between that guard and the call.
+		$between = substr( $preceding, $guard_pos );
+		$this->assertStringNotContainsString(
+			'}',
+			$between,
+			'The $version_changed guard must still be open at the seeding call.'
+		);
+	}
 }

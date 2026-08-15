@@ -450,7 +450,12 @@ class WC_AI_Storefront {
 		$needs_flush    = get_transient( 'wc_ai_storefront_flush_rewrite' );
 		$stored_version = get_option( 'wc_ai_storefront_version', '' );
 
-		if ( $needs_flush || $stored_version !== WC_AI_STOREFRONT_VERSION ) {
+		// Kept as its own flag because the branch opens for two unrelated
+		// reasons and one tenant inside it must only run for this one.
+		// See the attribute-seeding call below.
+		$version_changed = $stored_version !== WC_AI_STOREFRONT_VERSION;
+
+		if ( $needs_flush || $version_changed ) {
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );
 
 			// Create or upgrade crawl-log tables on every version bump.
@@ -465,12 +470,19 @@ class WC_AI_Storefront {
 			// `init` has already fired for this request — see the
 			// method docblock for why both paths exist.
 			//
-			// Also reached by the syndication-settings toggle via
-			// $needs_flush, not just by a version change. Harmless: the
-			// seed flag makes it a no-op on an already-seeded store, and
-			// on a store that somehow is not seeded, doing it here is
-			// correct rather than unwanted.
-			self::schedule_attribute_seeding();
+			// Gated on the VERSION change specifically, not on the whole
+			// branch. The branch also opens for $needs_flush, which the
+			// syndication-settings toggle sets — and that path has the
+			// same multi-request exposure as the version path, because
+			// every request sees the transient until the first one
+			// deletes it. Seeding from a settings save would therefore
+			// re-open the very race this fix closes, on a store where
+			// the seed flag happens to be stale. A settings toggle is
+			// not an install event and has no business provisioning
+			// taxonomies. See #629.
+			if ( $version_changed ) {
+				self::schedule_attribute_seeding();
+			}
 
 			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );
 
