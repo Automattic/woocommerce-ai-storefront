@@ -19,6 +19,15 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		// Brain Monkey registers a function suite-wide once ANY test mocks it,
+		// so every test that reaches weight_grams() must have an expectation —
+		// same trap this file already documents for wp_get_post_terms. Default
+		// to a kg store; tests asserting conversion re-stub with their own unit.
+		Functions\when( 'wc_get_weight' )->alias(
+			static function ( $weight ) {
+				return (float) $weight * 1000.0;
+			}
+		);
 		// NOTE: `wp_strip_all_tags` is a real function defined in
 		// tests/php/stubs.php (loaded before Patchwork), so it CANNOT be
 		// redefined via Brain Monkey — attempting `Functions\when()` on it
@@ -34,6 +43,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 
 	private function product( int $id, array $category_ids ) {
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( $id );
 		$p->shouldReceive( 'get_category_ids' )->andReturn( $category_ids );
 		return $p;
@@ -74,6 +88,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 22 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Day Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'day-hoodie' );
@@ -127,6 +146,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// One variation: Medium / Red. Attribute keys are namespaced with
 		// the `attribute_` prefix, mirroring WC's get_variation_attributes().
 		$variation = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$variation->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
+		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$variation->shouldReceive( 'get_parent_id' )->andReturn( 90 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 101 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
 			[
@@ -145,6 +169,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_product' )->justReturn( $variation );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 90 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Range Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'range-hoodie' );
@@ -184,6 +213,12 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'm / red', $v['title'] );
 		$this->assertSame( '52.00', $v['price'] );
 		$this->assertSame( 'HD-M-RED', $v['sku'] );
+		// A variation points at its PARENT, unlike a simple product's
+		// synthesized variant, which points at itself.
+		$this->assertSame( 90, $v['product_id'] );
+		// menu_order is 0 (WooCommerce's "unset"), so position falls through
+		// to the 1-based loop index rather than emitting a 0.
+		$this->assertSame( 1, $v['position'] );
 		$this->assertTrue( $v['available'] );
 	}
 
@@ -249,6 +284,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 26 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
@@ -292,6 +332,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$variation = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$variation->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
+		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$variation->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 3890 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
 			[ 'attribute_pa_size' => 'sm' ]
@@ -310,6 +355,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_product' )->justReturn( $variation );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 26 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
@@ -336,6 +386,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 26 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
@@ -455,6 +510,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function mappable_product_with_images( int $featured_id, array $gallery_ids ) {
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 500 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
@@ -561,13 +621,97 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotSame( 'Footwear', $type );
 	}
 
+	// ------------------------------------------------------------------
+	// Shopify variant scalars — grams, taxable, position, product_id (#627)
+	// ------------------------------------------------------------------
+
+	public function test_grams_converts_from_the_stores_configured_weight_unit(): void {
+		// The store is configured in lbs, so 2 lbs must emit as 907 g.
+		// Assuming kilograms here would silently corrupt every non-metric
+		// store, which is why wc_get_weight() is called without a $from_unit
+		// and left to read `woocommerce_weight_unit` itself.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wc_get_weight' )->alias(
+			static function ( $weight, $to_unit, $from_unit = '' ) {
+				return (float) $weight * 453.59237; // lbs -> g
+			}
+		);
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'weight' => '2' ] )
+		);
+
+		$this->assertSame( 907, $out['variants'][0]['grams'] );
+	}
+
+	public function test_grams_is_integer_zero_when_no_weight_is_recorded(): void {
+		// Verified against a live Shopify feed: 6 of 413 variants carry
+		// grams:0 and none carry null, three of those being physical goods
+		// that simply have no weight recorded. So 0 — never null, never an
+		// omitted key — is the faithful shape.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wc_get_weight' )->alias(
+			static function ( $weight ) {
+				return (float) $weight * 1000.0;
+			}
+		);
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'weight' => '' ] )
+		);
+
+		$this->assertArrayHasKey( 'grams', $out['variants'][0] );
+		$this->assertSame( 0, $out['variants'][0]['grams'] );
+	}
+
+	public function test_taxable_reflects_the_products_tax_status(): void {
+		$this->stub_empty_taxonomy_lookups();
+
+		$taxable = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'tax_status' => 'taxable' ] )
+		);
+		$exempt  = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'tax_status' => 'none' ] )
+		);
+
+		$this->assertTrue( $taxable['variants'][0]['taxable'] );
+		$this->assertFalse( $exempt['variants'][0]['taxable'] );
+	}
+
+	public function test_simple_variant_carries_product_id_and_position_one(): void {
+		// A simple product's synthesized variant points at the product itself
+		// and is always first, since there is exactly one of them.
+		$this->stub_empty_taxonomy_lookups();
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'id' => 4242 ] )
+		);
+
+		$this->assertSame( 4242, $out['variants'][0]['product_id'] );
+		$this->assertSame( 1, $out['variants'][0]['position'] );
+	}
+
+	/**
+	 * Stub the taxonomy/meta lookups map_product() makes for vendor, tags and
+	 * product_type so a fixture with no terms takes the empty branches. Brain
+	 * Monkey demands an expectation for any function some other test in the
+	 * suite has registered, so these must be present even when the assertions
+	 * under test never touch them.
+	 */
+	private function stub_empty_taxonomy_lookups(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+	}
+
 	/**
 	 * Build a simple WC_Product mock fully wired for map_product(), with
 	 * overridable price/stock/sale fields. Uncategorized + untagged + no
 	 * images so the type/vendor/image paths take their empty branches unless
 	 * the caller stubs otherwise.
 	 *
-	 * @param array $overrides price|regular_price|on_sale|in_stock|purchasable.
+	 * @param array $overrides price|regular_price|on_sale|in_stock|purchasable|weight|tax_status|id.
 	 * @return \Mockery\MockInterface
 	 */
 	private function mappable_simple_product( array $overrides = [] ) {
@@ -578,12 +722,20 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				'on_sale'       => false,
 				'in_stock'      => true,
 				'purchasable'   => true,
+				'weight'        => '',
+				'tax_status'    => 'taxable',
+				'id'            => 500,
 			],
 			$overrides
 		);
 
 		$p = \Mockery::mock( 'WC_Product' );
-		$p->shouldReceive( 'get_id' )->andReturn( 500 );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( $o['tax_status'] );
+		$p->shouldReceive( 'get_weight' )->andReturn( $o['weight'] );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
+		$p->shouldReceive( 'get_id' )->andReturn( $o['id'] );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
@@ -706,7 +858,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return [];
 			}
 
-			public function get_image_id(): int {
+			public function get_image_id( string $context = 'view' ): int {
 				return 0;
 			}
 

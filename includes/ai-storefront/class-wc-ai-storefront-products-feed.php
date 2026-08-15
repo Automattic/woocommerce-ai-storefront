@@ -794,6 +794,8 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return array
 	 */
 	private static function build_simple_variant( $product ): array {
+		// Key order mirrors Shopify's so a field-by-field diff against a live
+		// feed reads cleanly.
 		return [
 			'id'                => (int) $product->get_id(),
 			'title'             => 'Default Title',
@@ -801,11 +803,102 @@ class WC_AI_Storefront_Products_Feed {
 			'option2'           => null,
 			'option3'           => null,
 			'sku'               => (string) $product->get_sku(),
-			'price'             => self::money( self::base_price( $product ) ),
-			'compare_at_price'  => self::compare_at( $product ),
-			'available'         => (bool) ( $product->is_in_stock() && $product->is_purchasable() ),
 			'requires_shipping' => method_exists( $product, 'needs_shipping' ) ? (bool) $product->needs_shipping() : true,
+			'taxable'           => self::is_taxable( $product ),
+			'available'         => (bool) ( $product->is_in_stock() && $product->is_purchasable() ),
+			'price'             => self::money( self::base_price( $product ) ),
+			'grams'             => self::weight_grams( $product ),
+			'compare_at_price'  => self::compare_at( $product ),
+			'position'          => 1,
+			'product_id'        => (int) $product->get_id(),
+			'created_at'        => self::variant_created_at( $product ),
+			'updated_at'        => self::variant_updated_at( $product ),
 		];
+	}
+
+	/**
+	 * Weight in integer grams, converted FROM the store's configured unit.
+	 *
+	 * wc_get_weight() reads `woocommerce_weight_unit` when $from_unit is
+	 * omitted, so a store configured in lbs or oz converts correctly —
+	 * assuming kg would silently corrupt every non-metric store. It returns a
+	 * float and Shopify types grams as an integer, so the round-and-cast is
+	 * required rather than cosmetic.
+	 *
+	 * An unset weight yields 0, matching Shopify: a live feed sample had 6 of
+	 * 413 variants at grams:0 and none at null, three of them physical goods
+	 * that simply have no weight recorded.
+	 *
+	 * Safe to call with either a product or a variation. A variation's
+	 * get_weight() falls back to its parent, which is correct here — the
+	 * shipping weight of a variation with no weight of its own IS the
+	 * parent's. Contrast get_image_id(), where the identical fallback is a
+	 * trap (see build_image_owner_map()).
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return int
+	 */
+	private static function weight_grams( $item ): int {
+		if ( ! method_exists( $item, 'get_weight' ) || ! function_exists( 'wc_get_weight' ) ) {
+			return 0;
+		}
+		return (int) round( (float) wc_get_weight( (float) $item->get_weight(), 'g' ) );
+	}
+
+	/**
+	 * A variation's 1-based position.
+	 *
+	 * WooCommerce stores 0 as "unset" menu order, while Shopify positions
+	 * start at 1, so an unset order falls through to the loop index rather
+	 * than emitting a 0 that would sort ahead of every real position.
+	 *
+	 * @param WC_Product $variation The variation.
+	 * @param int        $index     1-based index within the variation loop.
+	 * @return int
+	 */
+	private static function variant_position( $variation, int $index ): int {
+		if ( ! method_exists( $variation, 'get_menu_order' ) ) {
+			return $index;
+		}
+		$order = (int) $variation->get_menu_order();
+		return $order > 0 ? $order : $index;
+	}
+
+	/**
+	 * Whether the item is taxable.
+	 *
+	 * WooCommerce has no per-variation tax status — the variation data store
+	 * never reads `_tax_status` and unconditionally copies the parent's — so
+	 * this can never diverge from the product-level value. That is a fact
+	 * about WC core, not a limitation of this feed.
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return bool
+	 */
+	private static function is_taxable( $item ): bool {
+		return method_exists( $item, 'get_tax_status' )
+			? 'taxable' === $item->get_tax_status()
+			: true;
+	}
+
+	/**
+	 * A variant's created timestamp, or null when the getter is absent.
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return string|null
+	 */
+	private static function variant_created_at( $item ): ?string {
+		return self::iso_date( method_exists( $item, 'get_date_created' ) ? $item->get_date_created() : null );
+	}
+
+	/**
+	 * A variant's modified timestamp, or null when the getter is absent.
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return string|null
+	 */
+	private static function variant_updated_at( $item ): ?string {
+		return self::iso_date( method_exists( $item, 'get_date_modified' ) ? $item->get_date_modified() : null );
 	}
 
 	/**
@@ -910,11 +1003,13 @@ class WC_AI_Storefront_Products_Feed {
 		$attr_keys = array_keys( $product->get_variation_attributes() );
 		$variants  = [];
 
+		$index = 0;
 		foreach ( $product->get_children() as $child_id ) {
 			$variation = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $child_id ) : null;
 			if ( ! $variation ) {
 				continue;
 			}
+			++$index;
 			// Selected values keyed by attribute_<slug>, e.g. attribute_pa_size => m.
 			$attributes = $variation->get_variation_attributes();
 
@@ -944,10 +1039,18 @@ class WC_AI_Storefront_Products_Feed {
 				'option2'           => $options[1],
 				'option3'           => $options[2],
 				'sku'               => (string) $variation->get_sku(),
-				'price'             => self::money( self::base_price( $variation ) ),
-				'compare_at_price'  => self::compare_at( $variation ),
-				'available'         => (bool) ( $variation->is_in_stock() && $variation->is_purchasable() ),
 				'requires_shipping' => method_exists( $variation, 'needs_shipping' ) ? (bool) $variation->needs_shipping() : true,
+				'taxable'           => self::is_taxable( $variation ),
+				'available'         => (bool) ( $variation->is_in_stock() && $variation->is_purchasable() ),
+				'price'             => self::money( self::base_price( $variation ) ),
+				'grams'             => self::weight_grams( $variation ),
+				'compare_at_price'  => self::compare_at( $variation ),
+				'position'          => self::variant_position( $variation, $index ),
+				'product_id'        => method_exists( $variation, 'get_parent_id' )
+					? (int) $variation->get_parent_id()
+					: (int) $product->get_id(),
+				'created_at'        => self::variant_created_at( $variation ),
+				'updated_at'        => self::variant_updated_at( $variation ),
 			];
 		}
 

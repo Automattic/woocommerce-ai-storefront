@@ -441,7 +441,15 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return '';
 		}
 
-		public function get_image_id(): int {
+		/**
+		 * The $context parameter matters: WC_Product_Variation overrides this
+		 * to fall back to the parent's image in 'view' context, so the feed
+		 * mapper passes 'edit' when it needs to know whether a variation owns
+		 * an image of its own. The base product has no parent and ignores it.
+		 *
+		 * @param string $context 'view' or 'edit'.
+		 */
+		public function get_image_id( string $context = 'view' ): int {
 			return 0;
 		}
 
@@ -537,6 +545,19 @@ if ( ! class_exists( 'WC_Product' ) ) {
 
 		public function get_weight(): string {
 			return '';
+		}
+
+		// Consumed by the products-feed mapper's Shopify variant shape.
+		public function get_tax_status(): string {
+			return 'taxable';
+		}
+
+		public function get_menu_order(): int {
+			return 0;
+		}
+
+		public function get_parent_id(): int {
+			return 0;
 		}
 
 		public function has_dimensions(): bool {

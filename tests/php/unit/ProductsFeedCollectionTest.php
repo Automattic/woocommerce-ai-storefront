@@ -23,6 +23,15 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		// Brain Monkey registers a function suite-wide once ANY test mocks it,
+		// so every test that reaches weight_grams() must have an expectation —
+		// same trap this file already documents for wp_get_post_terms. Default
+		// to a kg store; tests asserting conversion re-stub with their own unit.
+		Functions\when( 'wc_get_weight' )->alias(
+			static function ( $weight ) {
+				return (float) $weight * 1000.0;
+			}
+		);
 		$this->feed = new WC_AI_Storefront_Products_Feed();
 
 		WC_AI_Storefront::$test_settings = [
@@ -291,6 +300,11 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function simple_product( int $id, string $handle ) {
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( $id );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Product ' . $id );
 		$p->shouldReceive( 'get_slug' )->andReturn( $handle );
