@@ -599,7 +599,15 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		 * If you're adding production code that calls this method,
 		 * use the `method_exists()` capability gate, not this stub.
 		 *
-		 * @return array<string, array<int, string>>
+		 * The return shape depends on the receiver, which is why this is a
+		 * union rather than one array type. A variable PARENT returns each
+		 * attribute's available values (`pa_size => ['s','m']`), while a
+		 * VARIATION returns the single value it has selected, keyed with the
+		 * `attribute_` prefix (`attribute_pa_size => 'm'`). Declaring only the
+		 * parent's shape would let PHPStan prove away the guards that callers
+		 * legitimately need for the variation form.
+		 *
+		 * @return array<string, array<int, string>|string>
 		 */
 		public function get_variation_attributes(): array {
 			return [];

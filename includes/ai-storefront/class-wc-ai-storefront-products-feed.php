@@ -1081,7 +1081,7 @@ class WC_AI_Storefront_Products_Feed {
 	 * separately would double the wc_get_product() calls per product.
 	 *
 	 * @param WC_Product $product The variable product.
-	 * @return array
+	 * @return WC_Product[]
 	 */
 	private static function collect_variations( $product ): array {
 		$variations = [];
@@ -1118,7 +1118,7 @@ class WC_AI_Storefront_Products_Feed {
 	 * populated. base_price() in this file bypasses a view-context filter the
 	 * same way, for the same class of reason.
 	 *
-	 * @param array $variations Variation objects.
+	 * @param WC_Product[] $variations Variation objects.
 	 * @return array attachment id => list of owning variation ids.
 	 */
 	private static function build_image_owner_map( array $variations ): array {
@@ -1142,7 +1142,7 @@ class WC_AI_Storefront_Products_Feed {
 	 * same order as build_options(); unused slots are null.
 	 *
 	 * @param WC_Product $product    The variable product.
-	 * @param array      $variations Variations already hydrated by
+	 * @param WC_Product[] $variations Variations already hydrated by
 	 *                               collect_variations(), so this does not
 	 *                               re-resolve what the owner map needed.
 	 * @return array
@@ -1164,8 +1164,14 @@ class WC_AI_Storefront_Products_Feed {
 				if ( $i > 2 ) {
 					break; // Shopify supports exactly 3 option positions.
 				}
-				$value         = $attributes[ 'attribute_' . sanitize_title( $key ) ] ?? ( $attributes[ 'attribute_' . $key ] ?? '' );
-				$options[ $i ] = '' !== $value ? self::decode( (string) $value ) : null;
+				$raw = $attributes[ 'attribute_' . sanitize_title( $key ) ] ?? ( $attributes[ 'attribute_' . $key ] ?? '' );
+				// A VARIATION's attribute map is flat (attribute_pa_size => 'm'),
+				// unlike a variable PARENT's (pa_size => ['s','m']). Both share
+				// one method name, so guard rather than assume: a non-scalar
+				// here means the map isn't the flat form and there is no single
+				// selected value to place in this option slot.
+				$value         = is_scalar( $raw ) ? (string) $raw : '';
+				$options[ $i ] = '' !== $value ? self::decode( $value ) : null;
 				++$i;
 			}
 
