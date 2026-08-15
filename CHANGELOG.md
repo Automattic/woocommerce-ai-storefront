@@ -1,6 +1,26 @@
 ## [Unreleased]
 
+### Added
+
+- **`/products.json` now emits the full Shopify variant and image shape (#627).**
+  - Variants gain `grams`, `taxable`, `position`, `product_id`, `created_at`, `updated_at` and `featured_image`. Images gain `width`, `height`, `position`, `product_id`, `created_at`, `updated_at`, `alt` and `variant_ids` — previously each image was just `{ id, src }`.
+  - `grams` converts from the store's configured weight unit rather than assuming kilograms, and rounds to an integer because Shopify types the field as one. An unrecorded weight emits `0`, matching a live feed where 6 of 413 variants carry `grams: 0` and none carry `null`.
+  - **`images[]` now also includes photos assigned to individual variations.** WooCommerce keeps those outside the parent gallery, while Shopify guarantees a variant's image is always one of the product's images. Without this, `variant_ids` would come back empty on every image for a typical store and the field would do nothing. Expect `images[]` to grow on variable products whose variations have their own photos.
+  - `variant_ids` reverses WooCommerce's relation — each variation points at one image; Shopify lists, per image, every variant using it — so one colourway photo maps to all of its sizes. That is how an agent picks the right photo when a shopper chooses a colour.
+  - `alt` is emitted in **both** positions, deliberately diverging from Shopify, which carries it on `featured_image` but omits it from `images[]`. Alt text is often the only description of what is actually in a photo, which is exactly what an agent that cannot see the image needs.
+  - A simple product's variant emits `featured_image: null` even when the product has photos, matching Shopify on 73 of 73 single-variant products measured. The field marks a photo belonging to one variant, and a simple product has no sibling to differ from — its photos are already in `images[]`.
+  - Cost: about 8 extra queries on a 17-product store. Those are first reads of variation-owned attachments that were never fetched before because they were never emitted, not repeat reads of existing ones.
+
 ### Fixed
+
+- **Simple products were missing their `options` key (#627).**
+  - Shopify emits `options` on every product, including ones with nothing to choose, as `[{ "name": "Title", "position": 1, "values": ["Default Title"] }]`. We omitted it while still emitting a variant whose `option1` was `"Default Title"` — half the convention, leaving that value with nothing to say what it meant.
+  - The cost was a crash rather than a missing fact. A client written against Shopify's shape assumes the key exists, so `product.options.map(…)` threw and `product["options"]` raised `KeyError` — on exactly the products a single-SKU store sells most of.
+  - #627 originally scoped this out as "already at parity". That was measured against a catalogue with zero single-variant products in 250, so the sample could not show it.
+
+- **Variable products could emit duplicate variant `position` values (#627).**
+  - A four-variation product emitted positions `[1, 1, 2, 3]`. WooCommerce already returns children sorted by menu order, and its menu order is 0-based while Shopify positions start at 1, so reading the raw value and falling back to a 1-based index for "unset" mixed two numbering schemes and collided. Position is now the loop index alone, which is both dense and unique.
+  - Found by comparing real output against a live store, not by the test suite — every fixture returned menu order 0, which never produced the collision.
 
 - **Attribute seeding no longer races on every release — it can still race, just rarely (#629).**
   - Seeding was keyed to the plugin version, and that check runs on *every* request until one of them writes the new version. After an upgrade, several concurrent requests could each conclude that seeding had not happened yet and each start it. On a live store that produced two `Gender` attributes (#628).
