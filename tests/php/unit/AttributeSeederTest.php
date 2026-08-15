@@ -255,10 +255,19 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 	 * tests can focus on orchestration. $existing lists taxonomies that
 	 * already exist.
 	 *
+	 * Also stubs get_option()/update_option() — seed() now guards on
+	 * needs_seeding() and records SEED_VERSION on the way out (see #629),
+	 * and every caller of this helper calls seed() directly. get_option()
+	 * returns '' so the guard reports "needs seeding" and orchestration
+	 * still runs; update_option() is a no-op recorder these tests don't
+	 * assert against (that behaviour has its own dedicated test below).
+	 *
 	 * @param string[] $existing Taxonomy names to report as existing.
 	 * @param array    $created  Populated by reference with created slugs.
 	 */
 	private function stub_creation_environment( array $existing, array &$created ): void {
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'update_option' )->justReturn( true );
 		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
 			static fn( $slug ) => 'pa_' . $slug
 		);
@@ -340,5 +349,69 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 0, WC_AI_Storefront_Attribute_Seeder::seed() );
 		$this->assertSame( array(), $created );
+	}
+
+	public function test_needs_seeding_is_true_when_option_absent(): void {
+		Functions\when( 'get_option' )->justReturn( '' );
+
+		$this->assertTrue( WC_AI_Storefront_Attribute_Seeder::needs_seeding() );
+	}
+
+	public function test_needs_seeding_is_false_when_option_matches_seed_version(): void {
+		Functions\when( 'get_option' )->justReturn(
+			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION
+		);
+
+		$this->assertFalse( WC_AI_Storefront_Attribute_Seeder::needs_seeding() );
+	}
+
+	public function test_needs_seeding_is_true_when_option_holds_an_older_seed_version(): void {
+		// The flag stores the SEED SET version, not the plugin version, so a
+		// plugin release that does not change the attribute set leaves this
+		// untouched and no seeding is attempted.
+		Functions\when( 'get_option' )->justReturn( 'not-the-current-seed-version' );
+
+		$this->assertTrue( WC_AI_Storefront_Attribute_Seeder::needs_seeding() );
+	}
+
+	public function test_seed_returns_zero_without_touching_anything_when_already_seeded(): void {
+		Functions\when( 'get_option' )->justReturn(
+			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION
+		);
+		// The whole point: no filter, no taxonomy probe, no insert.
+		Functions\expect( 'apply_filters' )->never();
+		Functions\expect( 'taxonomy_exists' )->never();
+		Functions\expect( 'wc_create_attribute' )->never();
+
+		$this->assertSame( 0, WC_AI_Storefront_Attribute_Seeder::seed() );
+	}
+
+	public function test_seed_records_the_seed_version_after_a_successful_run(): void {
+		$recorded = array();
+
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'apply_filters' )->justReturn( true );
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
+			static fn( $slug ) => 'pa_' . $slug
+		);
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		Functions\when( 'term_exists' )->justReturn( null );
+		Functions\when( 'register_taxonomy' )->justReturn( null );
+		Functions\when( 'wp_insert_term' )->justReturn( array( 'term_id' => 1 ) );
+		Functions\when( 'wc_create_attribute' )->justReturn( 1 );
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 0 );
+		Functions\when( '__' )->returnArg();
+		Functions\when( 'update_option' )->alias(
+			static function ( $name, $value ) use ( &$recorded ) {
+				$recorded[ $name ] = $value;
+			}
+		);
+
+		WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertSame(
+			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION,
+			$recorded[ WC_AI_Storefront_Attribute_Seeder::SEEDED_OPTION ] ?? null
+		);
 	}
 }

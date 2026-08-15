@@ -42,6 +42,40 @@ class WC_AI_Storefront_Attribute_Seeder {
 	const SEED_FILTER = 'wc_ai_storefront_seed_attributes';
 
 	/**
+	 * Version of the ATTRIBUTE SET, not of the plugin.
+	 *
+	 * Bump this only when `get_definitions()` changes — a new attribute, a
+	 * renamed label, a changed term list. A plugin release that leaves the
+	 * set alone leaves this alone, and no store attempts seeding on upgrade.
+	 *
+	 * Keying on the attribute set rather than the plugin version is what
+	 * makes seeding a rare event instead of a per-release one. See #629.
+	 *
+	 * @var string
+	 */
+	const SEED_VERSION = '1';
+
+	/**
+	 * Option recording the SEED_VERSION last successfully applied.
+	 *
+	 * @var string
+	 */
+	const SEEDED_OPTION = 'wc_ai_storefront_attributes_seeded';
+
+	/**
+	 * Whether the current attribute set still needs applying to this store.
+	 *
+	 * Public so callers can skip scheduling work entirely rather than
+	 * scheduling a no-op — the difference that stops several concurrent
+	 * requests from all deciding to seed. See #629.
+	 *
+	 * @return bool
+	 */
+	public static function needs_seeding(): bool {
+		return get_option( self::SEEDED_OPTION, '' ) !== self::SEED_VERSION;
+	}
+
+	/**
 	 * Attribute definitions, in creation order.
 	 *
 	 * Keys are the bare slug WITHOUT the `pa_` prefix — `wc_create_attribute()`
@@ -256,6 +290,10 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * @return int Number of attributes created.
 	 */
 	public static function seed(): int {
+		if ( ! self::needs_seeding() ) {
+			return 0;
+		}
+
 		/**
 		 * Filters whether the plugin seeds its recommended product attributes.
 		 *
@@ -277,6 +315,10 @@ class WC_AI_Storefront_Attribute_Seeder {
 				++$created;
 			}
 		}
+
+		// Recorded even when $created is 0: every attribute already existing
+		// is a successful outcome, not a reason to retry on the next request.
+		update_option( self::SEEDED_OPTION, self::SEED_VERSION );
 
 		return $created;
 	}

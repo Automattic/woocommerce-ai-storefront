@@ -111,9 +111,16 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 		// dispatched to every subscriber for this request.
 		Functions\expect( 'add_action' )->never();
 
+		// seed() now guards on needs_seeding() before anything else (see
+		// #629); stub get_option() to report "not yet seeded" so that
+		// guard doesn't short-circuit before the apply_filters() call this
+		// test is asserting on.
+		Functions\when( 'get_option' )->justReturn( '' );
+
 		// Proves seeding actually ran rather than being silently skipped:
-		// seed()'s first statement is apply_filters( SEED_FILTER, true ).
-		// Returning false short-circuits before any WC calls.
+		// once needs_seeding() clears, seed()'s next statement is
+		// apply_filters( SEED_FILTER, true ). Returning false
+		// short-circuits before any WC calls.
 		Functions\expect( 'apply_filters' )
 			->once()
 			->with( WC_AI_Storefront_Attribute_Seeder::SEED_FILTER, true )
@@ -124,9 +131,16 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_run_attribute_seeding_forwards_to_the_seeder(): void {
-		// seed()'s first statement is apply_filters( self::SEED_FILTER, true ).
-		// Expecting exactly that call, and returning false to short-circuit
-		// before any WC calls, proves run_attribute_seeding() reaches
+		// seed() now guards on needs_seeding() before anything else (see
+		// #629); stub get_option() to report "not yet seeded" so that
+		// guard doesn't short-circuit before the apply_filters() call this
+		// test is asserting on.
+		Functions\when( 'get_option' )->justReturn( '' );
+
+		// Once needs_seeding() clears, seed()'s next statement is
+		// apply_filters( self::SEED_FILTER, true ). Expecting exactly that
+		// call, and returning false to short-circuit before any WC calls,
+		// proves run_attribute_seeding() reaches
 		// WC_AI_Storefront_Attribute_Seeder::seed() rather than silently
 		// no-op'ing or calling something else.
 		Functions\expect( 'apply_filters' )
