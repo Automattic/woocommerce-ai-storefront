@@ -2,7 +2,7 @@
 
 Inventory of every persisted artifact this plugin writes — options, transients, post meta, order meta, scheduled events. For each: where it's defined, who reads/writes it, lifetime, and behavior on uninstall.
 
-The surface is deliberately small: three options, nine transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
+The surface is deliberately small: four options, nine transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
 
 The two custom tables back the Discovery analytics surface. They were added in 0.8.6 alongside the crawler-side visibility stats. Pre-0.8.6 installs got both tables created on the version-bump dbDelta path; the schema is rebuildable on every version bump and the tables are dropped on uninstall.
 
@@ -123,6 +123,21 @@ Tracks the currently-installed plugin version. Used to detect upgrades and trigg
 - **Uninstall:** deleted by `uninstall.php`
 
 The version check runs in the rewrite path (not the activation hook) because WordPress fires `register_activation_hook` only on fresh activation, not on in-place zip upgrades. To catch upgrades reliably the check has to run on every boot.
+
+### `wc_ai_storefront_attributes_seeded`
+
+Records the attribute-set version last applied to this store.
+
+- **Type:** string, e.g. `'1'`
+- **Autoload:** `auto` — no explicit `$autoload` argument passed to `update_option()`; WordPress's per-option heuristic autoloads a value this small
+- **Defined in:** `WC_AI_Storefront_Attribute_Seeder::SEEDED_OPTION` ([`includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php`](../../includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php))
+- **Written by:** `WC_AI_Storefront_Attribute_Seeder::seed()`, at the end of a run — including a run that creates nothing, but not when the `wc_ai_storefront_seed_attributes` filter (see Taxonomies and terms, below) blocks the run before it starts
+- **Read by:** `::needs_seeding()`, checked before any seeding work is scheduled
+- **Uninstall:** NOT deleted — the attributes it records outlive the plugin
+
+This tracks `SEED_VERSION`, the version of the **attribute set**, not the plugin version. A release that does not change `get_definitions()` leaves this matching, and no store attempts seeding on upgrade.
+
+That distinction is the point. Seeding used to be keyed to the plugin version, so every release re-opened the question on every request until one of them answered it — and several concurrent requests could each decide to seed, which is how a duplicate attribute reached production (#628). Bump `SEED_VERSION` only when the attribute set genuinely changes.
 
 ### `wc_ai_storefront_products_feed_version`
 
@@ -366,13 +381,13 @@ Each is a standard WooCommerce attribute taxonomy: a row in `{prefix}woocommerce
 Gender and Age group carry Google's exhaustive accepted values — a merchant should not need to add to them, and a value outside the list is one Google rejects. The other four are open vocabularies: Google treats them as free text and asks that the submitted value match the merchant's own product page, so these are a deliberately small starting point rather than a canonical list. Size uses abbreviations per Google's consistency guidance, which is the opposite of the `Small`/`Medium`/`Large` form WooCommerce's own sample data creates.
 
 - **Written by:** `WC_AI_Storefront_Attribute_Seeder::seed()`, on `init`
-- **When:** plugin activation and every version upgrade, plus any syndication-setting toggle (all three share the internal flush flag)
+- **When:** on activation, and on any later request where the stored seed version differs from `SEED_VERSION` — which for most releases is never. See `wc_ai_storefront_attributes_seeded`, above.
 - **Read by:** `WC_AI_Storefront_JsonLd` for typed `color`/`size`/`material`/`pattern` properties and the `Product.audience` block
 - **Existing attributes:** never touched, per attribute rather than all-or-nothing. Terms may be variation axes on live products, so adding to or renaming them would break variations and orphan product data.
 - **Opt out:** `add_filter( 'wc_ai_storefront_seed_attributes', '__return_false' );` — prevents creation, does not remove attributes an earlier version already created.
 - **Uninstall:** NOT deleted. By then terms may be attached to products and used as variation axes; removing them would orphan product data for a plugin removal.
 
-A merchant who deliberately deletes one of these sees it recreated on the next upgrade or settings toggle. The filter is the way to prevent that.
+A merchant who deliberately deletes one of these does not see it recreated on the next ordinary upgrade or settings toggle: the seed flag already matches `SEED_VERSION`, so `seed()` returns before probing anything. It reappears only when `SEED_VERSION` itself changes — a rare event, tied to a genuine change in the attribute set, not to every release. The filter remains the way to prevent that recreation too.
 
 ---
 

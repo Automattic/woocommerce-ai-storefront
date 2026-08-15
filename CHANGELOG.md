@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Attribute seeding no longer re-runs on every release, and can no longer duplicate an attribute (#629).**
+  - Seeding was keyed to the plugin version, and that check runs on *every* request until one of them writes the new version. After an upgrade, several concurrent requests could each conclude that seeding had not happened yet and each start it. On a live store that produced two `Gender` attributes (#628).
+  - It is now keyed to a version of the **attribute set** rather than of the plugin. A release that does not change the set leaves the flag matching, so no store attempts seeding at all on upgrade.
+  - Activation seeds explicitly, in a single request with nothing racing it. The check happens *before* any work is scheduled, so an already-seeded store schedules nothing rather than scheduling a no-op.
+  - The version branch stays as a backstop, because WordPress does not re-run the activation hook on an update. Activation covers fresh installs; the backstop is how a future change to the attribute set would reach stores that already have the plugin.
+  - No merchant action needed: only the pre-release test store ran the affected version.
+
 ---
 
 ## [0.35.0] – 2026-08-14
