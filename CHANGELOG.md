@@ -2,11 +2,13 @@
 
 ### Fixed
 
-- **Attribute seeding no longer re-runs on every release, and can no longer duplicate an attribute (#629).**
+- **Attribute seeding no longer races on every release — it can still race, just rarely (#629).**
   - Seeding was keyed to the plugin version, and that check runs on *every* request until one of them writes the new version. After an upgrade, several concurrent requests could each conclude that seeding had not happened yet and each start it. On a live store that produced two `Gender` attributes (#628).
-  - It is now keyed to a version of the **attribute set** rather than of the plugin. A release that does not change the set leaves the flag matching, so no store attempts seeding at all on upgrade.
-  - Activation seeds explicitly, in a single request with nothing racing it. The check happens *before* any work is scheduled, so an already-seeded store schedules nothing rather than scheduling a no-op.
-  - The version branch stays as a backstop, because WordPress does not re-run the activation hook on an update. Activation covers fresh installs; the backstop is how a future change to the attribute set would reach stores that already have the plugin.
+  - It is now keyed to a version of the **attribute set** rather than of the plugin, and the check happens before any work is scheduled: an already-seeded store schedules nothing at all, rather than scheduling a no-op that could still race.
+  - **The honest comparison: the window did not get narrower.** `needs_seeding()` is a read, and the flag it checks is written only at the very end of `seed()`, after all six `create_attribute()` calls have run. Pre-fix, the window closed the moment the *plugin*-version option was written, on `plugins_loaded`. Post-fix, on the deferred (non-activation) path, it closes later — after the six creates, on `init` — which is wider, not narrower. What actually improved is frequency: the window used to open on every release, on every store; now it opens only when a future change to the attribute set bumps `SEED_VERSION`.
+  - Activation now calls `seed()` directly, which is a real improvement for the common case: only the activating request itself normally runs it, instead of every request racing until one of them wins. It is not race-free, though. WordPress core writes the plugin into `active_plugins` *before* it fires the activation hook, so a request that lands in that gap loads the plugin, sees the version mismatch, finds `needs_seeding()` still true, and defers its own seed run to `init` — racing the activation request's inline call.
+  - The version-mismatch check stays as a backstop, because WordPress does not re-run the activation hook on an in-place upgrade — activation alone can never reach a store that already has the plugin. That backstop has no activation hook to serialise it, so a future `SEED_VERSION` bump reopens the same shape of race #628 hit, across every store, on whichever concurrent post-upgrade request gets there first.
+  - **This release attempts one seeding run everywhere, not zero.** The new flag has never been written before, so every existing 0.35.0 store finds `needs_seeding()` true on this upgrade. It's harmless — #623 already created all six taxonomies, so every `create_attribute()` call returns `false` and nothing new is created — but it is a real run, not the skip that later releases at the same `SEED_VERSION` will get.
   - No merchant action needed: only the pre-release test store ran the affected version.
 
 ---

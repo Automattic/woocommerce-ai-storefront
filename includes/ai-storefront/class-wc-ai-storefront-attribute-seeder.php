@@ -51,6 +51,12 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * Keying on the attribute set rather than the plugin version is what
 	 * makes seeding a rare event instead of a per-release one. See #629.
 	 *
+	 * Bumping it is what reopens the concurrency window described on
+	 * needs_seeding() and seed() below: every store's first
+	 * post-upgrade request races to seed again, with no activation hook
+	 * available anywhere in the fleet to serialise them. Treat a bump as
+	 * a deliberate, occasional act, not a routine one.
+	 *
 	 * @var string
 	 */
 	const SEED_VERSION = '1';
@@ -284,8 +290,17 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * Creates every missing attribute.
 	 *
 	 * Idempotent: safe to call on every activation and every upgrade.
-	 * The decision is per attribute, so a store that already has Color
-	 * but not Size gets Size created and Color left alone.
+	 * That is not the same as running every time it is called, though —
+	 * see needs_seeding() above. Once the SEED_VERSION flag matches,
+	 * this returns 0 immediately and the loop below never runs, for any
+	 * store.
+	 *
+	 * The per-attribute decision applies WITHIN a run that actually
+	 * reaches the loop: while a run is happening, a store that already
+	 * has Color but not Size gets Size created and Color left alone.
+	 * Once the flag matches, no run happens at all, so a store missing
+	 * an attribute stays missing it — this does not re-check or
+	 * self-heal on every call, only on the runs needs_seeding() allows.
 	 *
 	 * @return int Number of attributes created.
 	 */

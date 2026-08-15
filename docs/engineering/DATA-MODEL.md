@@ -118,7 +118,7 @@ Migrating on read (rather than activation) means rollback-then-forward across pl
 Tracks the currently-installed plugin version. Used to detect upgrades and trigger one-time post-upgrade work (rewrite-rule flush, cache bust).
 
 - **Type:** string (`X.Y.Z`)
-- **Autoload:** `yes`
+- **Autoload:** `auto` — no explicit `$autoload` argument passed to `update_option()`; WordPress's per-option heuristic autoloads a value this small
 - **Written by:** `WC_AI_Storefront::register_rewrite_rules()` after detecting `WC_AI_STOREFRONT_VERSION !== get_option('wc_ai_storefront_version')`
 - **Uninstall:** deleted by `uninstall.php`
 

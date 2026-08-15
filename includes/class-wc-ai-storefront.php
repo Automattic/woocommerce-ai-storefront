@@ -460,10 +460,10 @@ class WC_AI_Storefront {
 			WC_AI_Storefront_Crawl_Logger::create_tables();
 
 			// Create the plugin's recommended product attributes on fresh
-			// install and on every upgrade. Runs immediately or deferred
-			// to `init`, depending on whether `init` has already fired
-			// for this request — see the method docblock for why both
-			// paths exist.
+			// install and when the attribute set changes. Runs
+			// immediately or deferred to `init`, depending on whether
+			// `init` has already fired for this request — see the
+			// method docblock for why both paths exist.
 			//
 			// Also reached by the syndication-settings toggle via
 			// $needs_flush, not just by a version change. Harmless: the

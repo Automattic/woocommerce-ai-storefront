@@ -107,6 +107,22 @@ function wc_ai_storefront_missing_wc_notice() {
  * This was a latent bug from 1.0.0 → 1.1.x that only surfaced on
  * in-place zip upgrades; see the "old UCP file served after upgrade"
  * diagnosis in the 1.2.0 work.
+ *
+ * "In-place upgrade" above means specifically a manual zip re-upload
+ * over an existing install (Plugins > Add New > Upload Plugin > Replace
+ * current with uploaded) — WordPress deactivates then reactivates the
+ * plugin for that flow, so this hook fires. An automatic update
+ * (WordPress core auto-updates, or this plugin's own self-updater,
+ * `WC_AI_Storefront_Updater`) replaces the files in place without
+ * deactivating the plugin, so this hook does NOT fire for that path.
+ * Both statements are true, of different mechanisms — do not read them
+ * as contradicting each other. That second one is exactly why
+ * `WC_AI_Storefront::register_rewrite_rules()`'s version-mismatch
+ * branch still has a job on updates, even though this hook also runs
+ * on some of them: it is the only thing that reaches a store that
+ * auto-updated rather than being manually re-uploaded, including the
+ * attribute-seeding backstop added in #629. Do not remove that branch
+ * as "redundant" with this hook.
  */
 function wc_ai_storefront_activate() {
 	if ( ! class_exists( 'WooCommerce' ) ) {
