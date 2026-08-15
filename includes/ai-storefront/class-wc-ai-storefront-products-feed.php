@@ -693,6 +693,18 @@ class WC_AI_Storefront_Products_Feed {
 		$created  = method_exists( $product, 'get_date_created' ) ? $product->get_date_created() : null;
 		$modified = method_exists( $product, 'get_date_modified' ) ? $product->get_date_modified() : null;
 
+		// Order matters here: the variations produce the ownership map, the map
+		// completes the image list's variant_ids, and the finished image list
+		// is what a variant's featured_image points into.
+		$variations = $is_variable ? self::collect_variations( $product ) : [];
+		$owner_map  = self::build_image_owner_map( $variations );
+
+		// Build the full image list first, then slice for output. Compact mode
+		// truncates the array's LENGTH only — never a retained entry's
+		// richness, and never its `position`, which must still rank it within
+		// the complete gallery.
+		$all_images = self::build_images( $product, $owner_map );
+
 		$data = [
 			'id'           => (int) $product->get_id(),
 			'title'        => self::decode( (string) $product->get_name() ),
@@ -705,15 +717,30 @@ class WC_AI_Storefront_Products_Feed {
 			'product_type' => self::resolve_product_type( $product ),
 			'tags'         => self::resolve_tags( $product ),
 			'variants'     => $is_variable
-				? self::build_variants( $product )
+				? self::build_variants( $product, $variations, $all_images )
 				: [ self::build_simple_variant( $product ) ],
-			'images'       => self::build_images( $product, $compact ),
+			'images'       => $compact ? array_slice( $all_images, 0, 1 ) : $all_images,
 		];
 
-		$options = $is_variable ? self::build_options( $product ) : [];
-		if ( ! empty( $options ) ) {
-			$data['options'] = $options;
-		}
+		// Shopify emits options[] on EVERY product. One with nothing to choose
+		// gets a placeholder naming the single implicit option — the
+		// product-level half of the same `Default Title` convention
+		// build_simple_variant() already follows, verified on 73 of 73
+		// single-variant products on a live feed.
+		//
+		// The key is always present, never omitted: a client written against
+		// Shopify's shape assumes it exists, so `product.options.map(…)`
+		// throws and `product["options"]` raises KeyError on exactly the
+		// products a single-SKU store sells most of.
+		$data['options'] = $is_variable
+			? self::build_options( $product )
+			: [
+				[
+					'name'     => 'Title',
+					'position' => 1,
+					'values'   => [ 'Default Title' ],
+				],
+			];
 
 		/**
 		 * Filter a single mapped Shopify-shaped product before it enters the
@@ -794,6 +821,8 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return array
 	 */
 	private static function build_simple_variant( $product ): array {
+		// Key order mirrors Shopify's so a field-by-field diff against a live
+		// feed reads cleanly.
 		return [
 			'id'                => (int) $product->get_id(),
 			'title'             => 'Default Title',
@@ -801,11 +830,89 @@ class WC_AI_Storefront_Products_Feed {
 			'option2'           => null,
 			'option3'           => null,
 			'sku'               => (string) $product->get_sku(),
-			'price'             => self::money( self::base_price( $product ) ),
-			'compare_at_price'  => self::compare_at( $product ),
-			'available'         => (bool) ( $product->is_in_stock() && $product->is_purchasable() ),
 			'requires_shipping' => method_exists( $product, 'needs_shipping' ) ? (bool) $product->needs_shipping() : true,
+			'taxable'           => self::is_taxable( $product ),
+			// Always null, matching Shopify: 73 of 73 single-variant products
+			// on a live feed emit null here, every one of them with product
+			// images present. The field marks a photo specific to ONE variant,
+			// and a simple product has no sibling variant to differ from — its
+			// photos are already in images[].
+			'featured_image'    => null,
+			'available'         => (bool) ( $product->is_in_stock() && $product->is_purchasable() ),
+			'price'             => self::money( self::base_price( $product ) ),
+			'grams'             => self::weight_grams( $product ),
+			'compare_at_price'  => self::compare_at( $product ),
+			'position'          => 1,
+			'product_id'        => (int) $product->get_id(),
+			'created_at'        => self::variant_created_at( $product ),
+			'updated_at'        => self::variant_updated_at( $product ),
 		];
+	}
+
+	/**
+	 * Weight in integer grams, converted FROM the store's configured unit.
+	 *
+	 * wc_get_weight() reads `woocommerce_weight_unit` when $from_unit is
+	 * omitted, so a store configured in lbs or oz converts correctly —
+	 * assuming kg would silently corrupt every non-metric store. It returns a
+	 * float and Shopify types grams as an integer, so the round-and-cast is
+	 * required rather than cosmetic.
+	 *
+	 * An unset weight yields 0, matching Shopify: a live feed sample had 6 of
+	 * 413 variants at grams:0 and none at null, three of them physical goods
+	 * that simply have no weight recorded.
+	 *
+	 * Safe to call with either a product or a variation. A variation's
+	 * get_weight() falls back to its parent, which is correct here — the
+	 * shipping weight of a variation with no weight of its own IS the
+	 * parent's. Contrast get_image_id(), where the identical fallback is a
+	 * trap (see build_image_owner_map()).
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return int
+	 */
+	private static function weight_grams( $item ): int {
+		if ( ! method_exists( $item, 'get_weight' ) || ! function_exists( 'wc_get_weight' ) ) {
+			return 0;
+		}
+		return (int) round( (float) wc_get_weight( (float) $item->get_weight(), 'g' ) );
+	}
+
+	/**
+	 * Whether the item is taxable.
+	 *
+	 * WooCommerce has no per-variation tax status — the variation data store
+	 * never reads `_tax_status` and unconditionally copies the parent's — so
+	 * this can never diverge from the product-level value. That is a fact
+	 * about WC core, not a limitation of this feed.
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return bool
+	 */
+	private static function is_taxable( $item ): bool {
+		return method_exists( $item, 'get_tax_status' )
+			? 'taxable' === $item->get_tax_status()
+			: true;
+	}
+
+	/**
+	 * A variant's created timestamp, or null when the getter is absent.
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return string|null
+	 */
+	private static function variant_created_at( $item ): ?string {
+		return self::iso_date( method_exists( $item, 'get_date_created' ) ? $item->get_date_created() : null );
+	}
+
+	/**
+	 * A variant's modified timestamp, or null when the getter is absent.
+	 *
+	 * @param WC_Product $item Product or variation.
+	 * @return string|null
+	 */
+	private static function variant_updated_at( $item ): ?string {
+		return self::iso_date( method_exists( $item, 'get_date_modified' ) ? $item->get_date_modified() : null );
 	}
 
 	/**
@@ -865,35 +972,201 @@ class WC_AI_Storefront_Products_Feed {
 	 * Build images[] from the featured image + gallery (needed by both simple
 	 * and variable products, so defined here with the simple-product path).
 	 *
-	 * @param WC_Product $product The product.
-	 * @param bool       $compact When true (list feeds), emit only the first
-	 *                            VALID image (featured if set, else first valid
-	 *                            gallery); the single-product feed keeps all.
+	 * Sources are the featured image, then the gallery, then any image owned
+	 * by an individual variation. That last source matters: WooCommerce sets
+	 * variation images in the variation editor, outside the parent gallery,
+	 * whereas Shopify guarantees a variant's image is always one of the
+	 * product's images (verified 110 of 110 against a live feed). Without the
+	 * union, variant_ids would be empty on every image for a typical store.
+	 *
+	 * Compact truncation is deliberately NOT applied here — the caller slices
+	 * the result. `position` must rank an image within the full gallery, not
+	 * within whatever survived truncation, so the numbering has to be assigned
+	 * before any slicing.
+	 *
+	 * @param WC_Product $product   The product.
+	 * @param array      $owner_map attachment id => list of owning variation ids.
 	 * @return array
 	 */
-	private static function build_images( $product, bool $compact = false ): array {
-		$ids    = array_unique(
-			array_filter(
-				array_merge(
-					[ (int) $product->get_image_id() ],
-					array_map( 'intval', (array) $product->get_gallery_image_ids() )
+	private static function build_images( $product, array $owner_map = [] ): array {
+		$ids = array_values(
+			array_unique(
+				array_filter(
+					array_merge(
+						[ (int) $product->get_image_id() ],
+						array_map( 'intval', (array) $product->get_gallery_image_ids() ),
+						array_map( 'intval', array_keys( $owner_map ) )
+					)
 				)
 			)
 		);
-		$images = [];
+
+		$images   = [];
+		$position = 1;
 		foreach ( $ids as $id ) {
 			$src = wp_get_attachment_image_url( $id, 'full' );
-			if ( is_string( $src ) && '' !== $src ) {
-				$images[] = [
-					'id'  => $id,
-					'src' => $src,
-				];
-				if ( $compact ) {
-					break; // first VALID image only: featured if set, else first valid gallery.
-				}
+			if ( ! is_string( $src ) || '' === $src ) {
+				continue;
+			}
+			$images[] = self::build_image_record( $id, $src, $product, $position, $owner_map );
+			++$position;
+		}
+
+		return $images;
+	}
+
+	/**
+	 * One image record, used verbatim in both `images[]` and a variant's
+	 * `featured_image` — Shopify uses the same struct in both positions.
+	 *
+	 * Every read here lands on a cache the caller already primed: the
+	 * wp_get_attachment_image_url() call above runs get_post() and
+	 * wp_get_attachment_metadata() internally, and WP's meta API caches all of
+	 * an object's meta rows on first read. Moving these reads before that URL
+	 * lookup, or onto ids it skipped, would turn each one back into a query.
+	 *
+	 * Shopify omits `alt` from images[] and includes it on featured_image. We
+	 * emit it in both: alt text is often the only description of what is
+	 * actually IN a photo, which is precisely what a vision-less agent needs,
+	 * so withholding it from the more commonly read position to imitate an
+	 * inconsistency would serve nobody.
+	 *
+	 * @param int        $id        Attachment id.
+	 * @param string     $src       Resolved full-size URL.
+	 * @param WC_Product $product   Owning product.
+	 * @param int        $position  1-based rank within the full gallery.
+	 * @param array      $owner_map attachment id => list of owning variation ids.
+	 * @return array
+	 */
+	private static function build_image_record( int $id, string $src, $product, int $position, array $owner_map ): array {
+		$meta = wp_get_attachment_metadata( $id );
+		$post = get_post( $id );
+		$alt  = get_post_meta( $id, '_wp_attachment_image_alt', true );
+
+		return [
+			'id'          => $id,
+			'product_id'  => (int) $product->get_id(),
+			'position'    => $position,
+			'created_at'  => is_object( $post ) ? self::gmt_date( $post->post_date_gmt ?? null ) : null,
+			'updated_at'  => is_object( $post ) ? self::gmt_date( $post->post_modified_gmt ?? null ) : null,
+			'alt'         => ( is_string( $alt ) && '' !== $alt ) ? self::decode( $alt ) : null,
+			'width'       => ( is_array( $meta ) && isset( $meta['width'] ) ) ? (int) $meta['width'] : null,
+			'height'      => ( is_array( $meta ) && isset( $meta['height'] ) ) ? (int) $meta['height'] : null,
+			'src'         => $src,
+			'variant_ids' => array_values( $owner_map[ $id ] ?? [] ),
+		];
+	}
+
+	/**
+	 * Format a WordPress GMT date string as RFC 3339 UTC, or null.
+	 *
+	 * The sibling of iso_date(), which takes a WC_DateTime. Attachments carry
+	 * post_date_gmt/post_modified_gmt strings instead, and an unset one is
+	 * '0000-00-00 00:00:00' — which must not render as a year-zero timestamp,
+	 * for the same reason iso_date() drops epoch 0.
+	 *
+	 * @param mixed $gmt Raw post_date_gmt / post_modified_gmt.
+	 * @return string|null
+	 */
+	private static function gmt_date( $gmt ): ?string {
+		if ( ! is_string( $gmt ) || '' === $gmt || 0 === strpos( $gmt, '0000-00-00' ) ) {
+			return null;
+		}
+		$ts = strtotime( $gmt . ' UTC' );
+		// Mirrors iso_date()'s guard rather than testing truthiness: a failed
+		// parse returns false, and a pre-epoch date returns a NEGATIVE
+		// timestamp, which is truthy. Emitting one would hand an agent a
+		// created_at older than any sync cursor it holds — the same
+		// diff-sync poisoning the $ts > 0 check exists to prevent.
+		return ( false !== $ts && $ts > 0 ) ? gmdate( 'Y-m-d\TH:i:s\Z', $ts ) : null;
+	}
+
+	/**
+	 * Hydrate a variable product's variations once.
+	 *
+	 * Both the image-owner map and the variant list need them, and resolving
+	 * separately would double the wc_get_product() calls per product.
+	 *
+	 * @param WC_Product $product The variable product.
+	 * @return WC_Product[]
+	 */
+	private static function collect_variations( $product ): array {
+		$variations = [];
+		foreach ( $product->get_children() as $child_id ) {
+			$variation = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $child_id ) : null;
+			if ( $variation ) {
+				$variations[] = $variation;
 			}
 		}
-		return $images;
+		return $variations;
+	}
+
+	/**
+	 * Reverse WooCommerce's image relation into Shopify's.
+	 *
+	 * WooCommerce points each variation at one image. Shopify lists, per
+	 * image, every variant that uses it — one colourway photo covering all of
+	 * its sizes. That reverse index is how an agent picks the right photo when
+	 * a shopper chooses a colour.
+	 *
+	 * The 'edit' context is mandatory, not stylistic. WC_Product_Variation
+	 * overrides get_image_id() to fall back to the PARENT's image whenever the
+	 * variation has none of its own and the context is 'view':
+	 *
+	 *     if ( 'view' === $context && ! $image_id ) {
+	 *         $image_id = apply_filters( …, $this->parent_data['image_id'], $this );
+	 *     }
+	 *
+	 * So asking the obvious way — "does this variation have an image?" — gets
+	 * "yes, the parent's" from every photo-less variation. That would populate
+	 * featured_image where it must be null AND list the entire catalogue of
+	 * photo-less variations under the featured image's variant_ids. Neither
+	 * failure looks wrong in a smoke test, because both fields come back
+	 * populated. base_price() in this file bypasses a view-context filter the
+	 * same way, for the same class of reason.
+	 *
+	 * @param WC_Product[] $variations Variation objects.
+	 * @return array attachment id => list of owning variation ids.
+	 */
+	private static function build_image_owner_map( array $variations ): array {
+		$map = [];
+		foreach ( $variations as $variation ) {
+			if ( ! method_exists( $variation, 'get_image_id' ) ) {
+				continue;
+			}
+			$own_id = (int) $variation->get_image_id( 'edit' );
+			if ( $own_id > 0 ) {
+				$map[ $own_id ][] = (int) $variation->get_id();
+			}
+		}
+		return $map;
+	}
+
+	/**
+	 * A variation's own image record, or null.
+	 *
+	 * A lookup into the product's finished image list rather than a fresh
+	 * build: the record there already carries the gallery-wide `position` and
+	 * the complete `variant_ids`, so rebuilding would repeat the attachment
+	 * reads and risk a position that disagrees with images[].
+	 *
+	 * Null covers both "no image of its own" ($own_id of 0) and an own image
+	 * whose URL failed to resolve, leaving it absent from the list.
+	 *
+	 * @param int   $own_id Variation's own image id, read in 'edit' context.
+	 * @param array $images The product's full image list.
+	 * @return array|null
+	 */
+	private static function variant_featured_image( int $own_id, array $images ): ?array {
+		if ( $own_id <= 0 ) {
+			return null;
+		}
+		foreach ( $images as $image ) {
+			if ( (int) $image['id'] === $own_id ) {
+				return $image;
+			}
+		}
+		return null;
 	}
 
 	/**
@@ -902,19 +1175,22 @@ class WC_AI_Storefront_Products_Feed {
 	 * option1/2/3 are filled from the variation's attribute values in the
 	 * same order as build_options(); unused slots are null.
 	 *
-	 * @param WC_Product $product The variable product.
+	 * @param WC_Product $product    The variable product.
+	 * @param WC_Product[] $variations Variations already hydrated by
+	 *                               collect_variations(), so this does not
+	 *                               re-resolve what the owner map needed.
+	 * @param array        $images    The product's full image list, which each
+	 *                               variant's featured_image points into.
 	 * @return array
 	 */
-	private static function build_variants( $product ): array {
+	private static function build_variants( $product, array $variations, array $images = [] ): array {
 		// Attribute names in declared order, e.g. pa_size then pa_color.
 		$attr_keys = array_keys( $product->get_variation_attributes() );
 		$variants  = [];
 
-		foreach ( $product->get_children() as $child_id ) {
-			$variation = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $child_id ) : null;
-			if ( ! $variation ) {
-				continue;
-			}
+		$index = 0;
+		foreach ( $variations as $variation ) {
+			++$index;
 			// Selected values keyed by attribute_<slug>, e.g. attribute_pa_size => m.
 			$attributes = $variation->get_variation_attributes();
 
@@ -924,8 +1200,14 @@ class WC_AI_Storefront_Products_Feed {
 				if ( $i > 2 ) {
 					break; // Shopify supports exactly 3 option positions.
 				}
-				$value         = $attributes[ 'attribute_' . sanitize_title( $key ) ] ?? ( $attributes[ 'attribute_' . $key ] ?? '' );
-				$options[ $i ] = '' !== $value ? self::decode( (string) $value ) : null;
+				$raw = $attributes[ 'attribute_' . sanitize_title( $key ) ] ?? ( $attributes[ 'attribute_' . $key ] ?? '' );
+				// A VARIATION's attribute map is flat (attribute_pa_size => 'm'),
+				// unlike a variable PARENT's (pa_size => ['s','m']). Both share
+				// one method name, so guard rather than assume: a non-scalar
+				// here means the map isn't the flat form and there is no single
+				// selected value to place in this option slot.
+				$value         = is_scalar( $raw ) ? (string) $raw : '';
+				$options[ $i ] = '' !== $value ? self::decode( $value ) : null;
 				++$i;
 			}
 
@@ -944,10 +1226,28 @@ class WC_AI_Storefront_Products_Feed {
 				'option2'           => $options[1],
 				'option3'           => $options[2],
 				'sku'               => (string) $variation->get_sku(),
-				'price'             => self::money( self::base_price( $variation ) ),
-				'compare_at_price'  => self::compare_at( $variation ),
-				'available'         => (bool) ( $variation->is_in_stock() && $variation->is_purchasable() ),
 				'requires_shipping' => method_exists( $variation, 'needs_shipping' ) ? (bool) $variation->needs_shipping() : true,
+				'taxable'           => self::is_taxable( $variation ),
+				'featured_image'    => self::variant_featured_image(
+					method_exists( $variation, 'get_image_id' ) ? (int) $variation->get_image_id( 'edit' ) : 0,
+					$images
+				),
+				'available'         => (bool) ( $variation->is_in_stock() && $variation->is_purchasable() ),
+				'price'             => self::money( self::base_price( $variation ) ),
+				'grams'             => self::weight_grams( $variation ),
+				'compare_at_price'  => self::compare_at( $variation ),
+				// The loop index, NOT get_menu_order(). WooCommerce already
+				// returns children sorted by menu_order, and its menu_order is
+				// 0-based while Shopify positions start at 1 — so reading the
+				// raw value emits a 0-and-1 pair that collides with the
+				// 1-based fallback used for unset orders. Two variants sharing
+				// position 1 is what that produced on a real store.
+				'position'          => $index,
+				'product_id'        => method_exists( $variation, 'get_parent_id' )
+					? (int) $variation->get_parent_id()
+					: (int) $product->get_id(),
+				'created_at'        => self::variant_created_at( $variation ),
+				'updated_at'        => self::variant_updated_at( $variation ),
 			];
 		}
 

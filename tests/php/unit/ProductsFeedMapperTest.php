@@ -19,6 +19,22 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		// Brain Monkey registers a function suite-wide once ANY test mocks it,
+		// so every test that reaches weight_grams() must have an expectation —
+		// same trap this file already documents for wp_get_post_terms. Default
+		// to a kg store; tests asserting conversion re-stub with their own unit.
+		Functions\when( 'wc_get_weight' )->alias(
+			static function ( $weight, $to_unit = 'g', $from_unit = '' ) {
+				// Signature matches wc_get_weight() so the stub can't silently
+				// ignore a unit the production call asks for. Store is kg.
+				return 'g' === $to_unit ? (float) $weight * 1000.0 : (float) $weight;
+			}
+		);
+		// Attachment reads behind the Shopify image record (#627). In production
+		// these are cache hits primed by wp_get_attachment_image_url(); here they
+		// only need to exist. Tests asserting width/height/dates re-stub them.
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( false );
+		Functions\when( 'get_post' )->justReturn( null );
 		// NOTE: `wp_strip_all_tags` is a real function defined in
 		// tests/php/stubs.php (loaded before Patchwork), so it CANNOT be
 		// redefined via Brain Monkey — attempting `Functions\when()` on it
@@ -34,6 +50,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 
 	private function product( int $id, array $category_ids ) {
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( $id );
 		$p->shouldReceive( 'get_category_ids' )->andReturn( $category_ids );
 		return $p;
@@ -74,6 +95,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 22 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Day Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'day-hoodie' );
@@ -102,7 +128,20 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '48.00', $out['variants'][0]['price'] );
 		$this->assertNull( $out['variants'][0]['compare_at_price'] );
 		$this->assertTrue( $out['variants'][0]['available'] );
-		$this->assertArrayNotHasKey( 'options', $out );      // Simple -> no options[].
+		// Shopify emits options[] on every product, including ones with
+		// nothing to choose. This assertion previously demanded the key be
+		// ABSENT, which is the defect #627 fixes — see
+		// test_simple_product_emits_the_default_title_options_placeholder.
+		$this->assertSame(
+			[
+				[
+					'name'     => 'Title',
+					'position' => 1,
+					'values'   => [ 'Default Title' ],
+				],
+			],
+			$out['options']
+		);
 	}
 
 	public function test_map_variable_product_emits_options_and_positional_variants(): void {
@@ -127,6 +166,14 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// One variation: Medium / Red. Attribute keys are namespaced with
 		// the `attribute_` prefix, mirroring WC's get_variation_attributes().
 		$variation = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$variation->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
+		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$variation->shouldReceive( 'get_parent_id' )->andReturn( 90 );
+		// No image of its own — 'edit' context reports the raw prop, which
+		// is what build_image_owner_map() asks for.
+		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 101 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
 			[
@@ -145,6 +192,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_product' )->justReturn( $variation );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 90 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Range Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'range-hoodie' );
@@ -184,6 +236,12 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'm / red', $v['title'] );
 		$this->assertSame( '52.00', $v['price'] );
 		$this->assertSame( 'HD-M-RED', $v['sku'] );
+		// A variation points at its PARENT, unlike a simple product's
+		// synthesized variant, which points at itself.
+		$this->assertSame( 90, $v['product_id'] );
+		// menu_order is 0 (WooCommerce's "unset"), so position falls through
+		// to the 1-based loop index rather than emitting a 0.
+		$this->assertSame( 1, $v['position'] );
 		$this->assertTrue( $v['available'] );
 	}
 
@@ -249,6 +307,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 26 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
@@ -292,6 +355,14 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$variation = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$variation->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
+		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$variation->shouldReceive( 'get_parent_id' )->andReturn( 0 );
+		// No image of its own — 'edit' context reports the raw prop, which
+		// is what build_image_owner_map() asks for.
+		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 3890 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
 			[ 'attribute_pa_size' => 'sm' ]
@@ -310,6 +381,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_product' )->justReturn( $variation );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 26 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
@@ -336,6 +412,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
 
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 26 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
@@ -455,6 +536,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function mappable_product_with_images( int $featured_id, array $gallery_ids ) {
 		$p = \Mockery::mock( 'WC_Product' );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$p->shouldReceive( 'get_weight' )->andReturn( '' );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
 		$p->shouldReceive( 'get_id' )->andReturn( 500 );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
@@ -561,13 +647,591 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotSame( 'Footwear', $type );
 	}
 
+	public function test_variant_positions_are_unique_and_one_based(): void {
+		// Regression guard for a duplicate-position bug caught on a real store:
+		// two variants both reported position 1. WooCommerce already returns
+		// children sorted by menu_order, and its menu_order is 0-based, so
+		// reading the raw value (falling back to a 1-based index when it is 0)
+		// mixed two numbering schemes — menu_order 0 became 1 via the fallback
+		// and menu_order 1 stayed 1. The loop index alone is correct.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0, 'menu_order' => 0 ],
+				[ 'id' => 502, 'edit_image' => 0, 'menu_order' => 1 ],
+				[ 'id' => 503, 'edit_image' => 0, 'menu_order' => 2 ],
+			],
+			11,
+			[]
+		);
+
+		$positions = array_column( $out['variants'], 'position' );
+		$this->assertSame( [ 1, 2, 3 ], $positions );
+		$this->assertSame(
+			$positions,
+			array_values( array_unique( $positions ) ),
+			'Positions must be unique — an agent sorts on them.'
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// options[] — the Default Title placeholder on simple products (#627)
+	// ------------------------------------------------------------------
+
+	public function test_simple_product_emits_the_default_title_options_placeholder(): void {
+		// Shopify emits options[] on every product, including ones with no
+		// choices to make — verified on 73 of 73 single-variant products at a
+		// live single-SKU catalogue. Omitting the key breaks clients written
+		// against Shopify's shape, which assume it is always present.
+		$this->stub_empty_taxonomy_lookups();
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_simple_product() );
+
+		$this->assertArrayHasKey( 'options', $out );
+		$this->assertSame(
+			[
+				[
+					'name'     => 'Title',
+					'position' => 1,
+					'values'   => [ 'Default Title' ],
+				],
+			],
+			$out['options']
+		);
+		// The placeholder must agree with the variant already synthesized on
+		// the simple path — emitting one half of the convention would leave
+		// option1 with nothing declaring what it means.
+		$this->assertSame( 'Default Title', $out['variants'][0]['option1'] );
+	}
+
+	public function test_variable_product_options_are_not_replaced_by_the_placeholder(): void {
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0 ],
+			],
+			11,
+			[]
+		);
+
+		$this->assertSame( 'Size', $out['options'][0]['name'] );
+		$this->assertNotSame( 'Title', $out['options'][0]['name'] );
+	}
+
+	// ------------------------------------------------------------------
+	// featured_image — null on the simple path, a lookup on the variable one
+	// ------------------------------------------------------------------
+
+	public function test_simple_variant_featured_image_is_null_despite_product_images(): void {
+		// Verified against a live feed: 73 of 73 single-variant products emit
+		// null here, and all 73 of those products HAVE images — so null is a
+		// deliberate signal, not missing data. The field marks a photo
+		// specific to one variant, and a simple product has no sibling to
+		// differ from. Its photos are already in images[].
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12 ] ) );
+
+		$this->assertNotEmpty( $out['images'], 'The product still publishes its photos.' );
+		$this->assertArrayHasKey( 'featured_image', $out['variants'][0] );
+		$this->assertNull( $out['variants'][0]['featured_image'] );
+	}
+
+	public function test_variant_featured_image_is_the_matching_gallery_entry(): void {
+		// featured_image is a LOOKUP into images[], not a second build, so its
+		// position is the image's rank in the product gallery and its
+		// variant_ids list every sibling sharing the photo.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 77 ],
+				[ 'id' => 502, 'edit_image' => 77 ],
+			],
+			11,
+			[]
+		);
+
+		$featured = $out['variants'][0]['featured_image'];
+		$this->assertSame( 77, $featured['id'] );
+		$this->assertSame( 2, $featured['position'], 'Rank in the product gallery, not per variant.' );
+		$this->assertSame( [ 501, 502 ], $featured['variant_ids'] );
+		// Same struct in both positions — identical to the images[] entry.
+		$this->assertSame( $out['images'][1], $featured );
+	}
+
+	public function test_variant_featured_image_is_null_without_an_own_photo(): void {
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0, 'view_image' => 11 ],
+			],
+			11,
+			[]
+		);
+
+		$this->assertNull(
+			$out['variants'][0]['featured_image'],
+			"A variation inheriting the parent's photo owns nothing."
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// variant_ids — the reverse image relation, and the 'edit'-context trap
+	// ------------------------------------------------------------------
+
+	public function test_variation_without_its_own_image_owns_nothing(): void {
+		// THE load-bearing test for #627. WC_Product_Variation::get_image_id()
+		// falls back to the PARENT's image in 'view' context, so asking the
+		// obvious way gets "yes, the parent's" from a photo-less variation.
+		// That would list this variation under the featured image's
+		// variant_ids — and the failure is invisible to a smoke test, because
+		// the field comes back populated either way.
+		//
+		// The double answers 99 in 'view' (the parent fallback) and 0 in
+		// 'edit' (the raw prop), exactly as WooCommerce does. A test whose
+		// double ignored the context argument would pass against the bug.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0, 'view_image' => 99 ],
+			],
+			99,
+			[]
+		);
+
+		$this->assertSame( [ 99 ], array_column( $out['images'], 'id' ) );
+		$this->assertSame(
+			[],
+			$out['images'][0]['variant_ids'],
+			'A parent-fallback image must never be reported as variation-owned.'
+		);
+	}
+
+	public function test_variant_ids_group_every_variation_sharing_an_image(): void {
+		// One colourway photo covers several sizes. This many-to-many reverse
+		// index is how an agent picks the right photo for a chosen colour;
+		// WooCommerce only models the forward direction.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 77 ],
+				[ 'id' => 502, 'edit_image' => 77 ],
+				[ 'id' => 503, 'edit_image' => 88 ],
+			],
+			0,
+			[]
+		);
+
+		$by_id = array_column( $out['images'], 'variant_ids', 'id' );
+		$this->assertSame( [ 501, 502 ], $by_id[77] );
+		$this->assertSame( [ 503 ], $by_id[88] );
+	}
+
+	public function test_variation_owned_images_join_the_product_gallery(): void {
+		// WooCommerce keeps variation images OUT of the parent gallery, while
+		// Shopify guarantees a variant's image is always one of the product's
+		// images (110 of 110 on a live feed). Without this union variant_ids
+		// would be empty on every image for a typical store, so the field
+		// would do nothing at all.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 77 ],
+			],
+			11,
+			[ 12 ]
+		);
+
+		$this->assertSame(
+			[ 11, 12, 77 ],
+			array_column( $out['images'], 'id' ),
+			'Featured, then gallery, then variation-owned.'
+		);
+		$this->assertSame( [ 1, 2, 3 ], array_column( $out['images'], 'position' ) );
+		$this->assertSame( [ 501 ], $out['images'][2]['variant_ids'] );
+	}
+
+	/**
+	 * Map a variable product whose variations have the given ids and image
+	 * ownership, plus a featured image and gallery on the parent.
+	 *
+	 * Each $variations entry takes `id`, `edit_image` and optionally
+	 * `view_image` — the value get_image_id() returns in the default 'view'
+	 * context, defaulting to the same as `edit_image`. Setting them apart is
+	 * what lets a test prove the production code asks for 'edit'.
+	 *
+	 * @param array $variations  Variation specs.
+	 * @param int   $featured_id Parent's featured image id (0 for none).
+	 * @param int[] $gallery_ids Parent's gallery image ids.
+	 * @return array The mapped product.
+	 */
+	private function map_variable_product_with_variations( array $variations, int $featured_id, array $gallery_ids ): array {
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				return "https://ex.test/{$id}.jpg";
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'sanitize_title' )->alias(
+			static function ( $t ) {
+				return strtolower( str_replace( ' ', '-', (string) $t ) );
+			}
+		);
+		Functions\when( 'wc_attribute_label' )->justReturn( 'Size' );
+
+		$doubles = [];
+		foreach ( $variations as $spec ) {
+			$v = \Mockery::mock( 'WC_Product' );
+			$v->shouldReceive( 'get_id' )->andReturn( $spec['id'] );
+			$v->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( $spec['edit_image'] );
+			$v->shouldReceive( 'get_image_id' )->withNoArgs()->andReturn( $spec['view_image'] ?? $spec['edit_image'] );
+			$v->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'attribute_pa_size' => 'm' ] );
+			$v->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+			$v->shouldReceive( 'get_weight' )->andReturn( '' );
+			$v->shouldReceive( 'get_menu_order' )->andReturn( $spec['menu_order'] ?? 0 );
+			$v->shouldReceive( 'get_parent_id' )->andReturn( 90 );
+			$v->shouldReceive( 'get_sku' )->andReturn( 'SKU-' . $spec['id'] );
+			$v->shouldReceive( 'get_price' )->andReturn( '10' );
+			$v->shouldReceive( 'get_regular_price' )->andReturn( '10' );
+			$v->shouldReceive( 'is_on_sale' )->andReturn( false );
+			$v->shouldReceive( 'is_in_stock' )->andReturn( true );
+			$v->shouldReceive( 'is_purchasable' )->andReturn( true );
+			$v->shouldReceive( 'needs_shipping' )->andReturn( true );
+			$doubles[ $spec['id'] ] = $v;
+		}
+		Functions\when( 'wc_get_product' )->alias(
+			static function ( $id ) use ( $doubles ) {
+				return $doubles[ $id ] ?? null;
+			}
+		);
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 90 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Hoodie' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'hoodie' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( $featured_id );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( $gallery_ids );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
+		$p->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'pa_size' => [ 'm' ] ] );
+		$p->shouldReceive( 'get_children' )->andReturn( array_keys( $doubles ) );
+
+		return WC_AI_Storefront_Products_Feed::map_product( $p );
+	}
+
+	// ------------------------------------------------------------------
+	// Shopify image records — width/height/position/dates/alt (#627)
+	// ------------------------------------------------------------------
+
+	public function test_image_record_carries_the_full_shopify_field_set(): void {
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn(
+			[
+				'width'  => 4000,
+				'height' => 2500,
+			]
+		);
+		Functions\when( 'get_post' )->justReturn(
+			(object) [
+				'post_date_gmt'     => '2026-06-18 17:40:09',
+				'post_modified_gmt' => '2026-06-18 17:40:12',
+			]
+		);
+		Functions\when( 'get_post_meta' )->justReturn( 'A red mug' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		// Key order mirrors Shopify's featured_image so a field-by-field diff
+		// against a live feed reads cleanly.
+		$this->assertSame(
+			[ 'id', 'product_id', 'position', 'created_at', 'updated_at', 'alt', 'width', 'height', 'src', 'variant_ids' ],
+			array_keys( $out['images'][0] )
+		);
+		$this->assertSame( 4000, $out['images'][0]['width'] );
+		$this->assertSame( 2500, $out['images'][0]['height'] );
+		$this->assertSame( '2026-06-18T17:40:09Z', $out['images'][0]['created_at'] );
+		$this->assertSame( '2026-06-18T17:40:12Z', $out['images'][0]['updated_at'] );
+		$this->assertSame( 'A red mug', $out['images'][0]['alt'] );
+		$this->assertSame( 1, $out['images'][0]['position'] );
+		$this->assertSame( 500, $out['images'][0]['product_id'] );
+	}
+
+	public function test_image_record_nulls_absent_metadata_rather_than_erroring(): void {
+		// wp_get_attachment_metadata() returns FALSE (not []) when the meta row
+		// is missing, and width/height are absent even from a real array for
+		// SVGs and programmatically inserted attachments.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.svg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( false );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		$this->assertNull( $out['images'][0]['width'] );
+		$this->assertNull( $out['images'][0]['height'] );
+		$this->assertNull( $out['images'][0]['created_at'] );
+		$this->assertNull( $out['images'][0]['updated_at'] );
+		$this->assertNull( $out['images'][0]['alt'] );
+		$this->assertSame( 'https://ex.test/a.svg', $out['images'][0]['src'] );
+	}
+
+	public function test_image_dates_drop_the_zero_placeholder(): void {
+		// WordPress writes '0000-00-00 00:00:00' for an unset date. Rendering
+		// that as a year-zero timestamp would poison an agent's diff-sync
+		// cursor, the same reason iso_date() drops epoch 0.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn(
+			(object) [
+				'post_date_gmt'     => '0000-00-00 00:00:00',
+				'post_modified_gmt' => '0000-00-00 00:00:00',
+			]
+		);
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		$this->assertNull( $out['images'][0]['created_at'] );
+		$this->assertNull( $out['images'][0]['updated_at'] );
+	}
+
+	public function test_image_dates_drop_pre_epoch_timestamps(): void {
+		// A pre-1970 date parses to a NEGATIVE timestamp, which is truthy —
+		// so a plain truthiness check would emit it. That would hand an agent
+		// a created_at older than any sync cursor it holds, the same
+		// diff-sync poisoning iso_date()'s `$ts > 0` guard prevents.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn(
+			(object) [
+				'post_date_gmt'     => '1969-07-20 20:17:40',
+				'post_modified_gmt' => '1970-01-01 00:00:00',
+			]
+		);
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		$this->assertNull( $out['images'][0]['created_at'], 'Pre-epoch dates are dropped.' );
+		$this->assertNull( $out['images'][0]['updated_at'], 'Epoch 0 itself is dropped too.' );
+	}
+
+	public function test_image_positions_are_dense_over_resolved_images_only(): void {
+		// Image 12 fails to resolve, so 13 must be position 2 — the numbering
+		// counts images that made it into the feed, not raw gallery slots.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				return 12 === $id ? '' : "https://ex.test/{$id}.jpg";
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12, 13 ] ) );
+
+		$this->assertSame( [ 11, 13 ], array_column( $out['images'], 'id' ) );
+		$this->assertSame( [ 1, 2 ], array_column( $out['images'], 'position' ) );
+	}
+
+	public function test_compact_truncates_length_without_thinning_the_record(): void {
+		// Compact mode truncates the array's LENGTH only — the one entry it
+		// keeps must carry the complete field set, not fall back to {id, src}.
+		//
+		// Position is 1 here because the broken featured image never enters
+		// the resolved list, so image 12 genuinely is first. Dense numbering
+		// over emitted images is what Shopify does; the ordering rule itself
+		// is pinned by test_image_positions_are_dense_over_resolved_images_only.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				return 11 === $id ? '' : "https://ex.test/{$id}.jpg";
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [ 'width' => 800, 'height' => 600 ] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12, 13 ] ), true );
+
+		$this->assertCount( 1, $out['images'] );
+		$this->assertSame( 12, $out['images'][0]['id'] );
+		$this->assertSame( 1, $out['images'][0]['position'] );
+		// Truncating length must not truncate per-entry richness.
+		$this->assertSame( 800, $out['images'][0]['width'] );
+		$this->assertArrayHasKey( 'variant_ids', $out['images'][0] );
+	}
+
+	public function test_compact_falls_through_to_a_variation_owned_image(): void {
+		// The list feeds keep the first image that RESOLVES, and since #627
+		// the candidate list ends with variation-owned photos. So when the
+		// featured image and the whole gallery fail to resolve, the survivor
+		// is a variation's own photo — better than emitting no image at all
+		// for a product that plainly has one.
+		//
+		// Untested until Copilot flagged the API-REFERENCE wording that still
+		// said "featured if set, else the first valid gallery image".
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				// 11 (featured) and 12 (gallery) are broken; 77 is a
+				// variation's own photo and resolves.
+				return 77 === $id ? 'https://ex.test/77.jpg' : '';
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'sanitize_title' )->alias(
+			static function ( $t ) {
+				return strtolower( str_replace( ' ', '-', (string) $t ) );
+			}
+		);
+		Functions\when( 'wc_attribute_label' )->justReturn( 'Size' );
+
+		$variation = \Mockery::mock( 'WC_Product' );
+		$variation->shouldReceive( 'get_id' )->andReturn( 501 );
+		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 77 );
+		$variation->shouldReceive( 'get_image_id' )->withNoArgs()->andReturn( 77 );
+		$variation->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'attribute_pa_size' => 'm' ] );
+		$variation->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
+		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$variation->shouldReceive( 'get_parent_id' )->andReturn( 90 );
+		$variation->shouldReceive( 'get_sku' )->andReturn( 'SKU-501' );
+		$variation->shouldReceive( 'get_price' )->andReturn( '10' );
+		$variation->shouldReceive( 'get_regular_price' )->andReturn( '10' );
+		$variation->shouldReceive( 'is_on_sale' )->andReturn( false );
+		$variation->shouldReceive( 'is_in_stock' )->andReturn( true );
+		$variation->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$variation->shouldReceive( 'needs_shipping' )->andReturn( true );
+		Functions\when( 'wc_get_product' )->justReturn( $variation );
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 90 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Hoodie' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'hoodie' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( 11 );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [ 12 ] );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
+		$p->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'pa_size' => [ 'm' ] ] );
+		$p->shouldReceive( 'get_children' )->andReturn( [ 501 ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
+
+		$this->assertCount( 1, $out['images'] );
+		$this->assertSame( 77, $out['images'][0]['id'] );
+		$this->assertSame( 1, $out['images'][0]['position'], 'It is the first image that resolved.' );
+		$this->assertSame( [ 501 ], $out['images'][0]['variant_ids'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Shopify variant scalars — grams, taxable, position, product_id (#627)
+	// ------------------------------------------------------------------
+
+	public function test_grams_converts_from_the_stores_configured_weight_unit(): void {
+		// The store is configured in lbs, so 2 lbs must emit as 907 g.
+		// Assuming kilograms here would silently corrupt every non-metric
+		// store, which is why wc_get_weight() is called without a $from_unit
+		// and left to read `woocommerce_weight_unit` itself.
+		$this->stub_empty_taxonomy_lookups();
+		$seen = [];
+		Functions\when( 'wc_get_weight' )->alias(
+			static function ( $weight, $to_unit, $from_unit = '' ) use ( &$seen ) {
+				$seen[] = [ $to_unit, $from_unit ];
+				return (float) $weight * 453.59237; // lbs -> g
+			}
+		);
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'weight' => '2' ] )
+		);
+
+		$this->assertSame( 907, $out['variants'][0]['grams'] );
+		// Pin the call itself, not just its result: 'g' as the target, and an
+		// EMPTY source unit so wc_get_weight() reads woocommerce_weight_unit
+		// rather than us hardcoding an assumption about the store.
+		$this->assertSame( [ [ 'g', '' ] ], $seen );
+	}
+
+	public function test_grams_is_integer_zero_when_no_weight_is_recorded(): void {
+		// Verified against a live Shopify feed: 6 of 413 variants carry
+		// grams:0 and none carry null, three of those being physical goods
+		// that simply have no weight recorded. So 0 — never null, never an
+		// omitted key — is the faithful shape.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wc_get_weight' )->alias(
+			static function ( $weight, $to_unit = 'g', $from_unit = '' ) {
+				// Signature matches wc_get_weight() so the stub can't silently
+				// ignore a unit the production call asks for. Store is kg.
+				return 'g' === $to_unit ? (float) $weight * 1000.0 : (float) $weight;
+			}
+		);
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'weight' => '' ] )
+		);
+
+		$this->assertArrayHasKey( 'grams', $out['variants'][0] );
+		$this->assertSame( 0, $out['variants'][0]['grams'] );
+	}
+
+	public function test_taxable_reflects_the_products_tax_status(): void {
+		$this->stub_empty_taxonomy_lookups();
+
+		$taxable = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'tax_status' => 'taxable' ] )
+		);
+		$exempt  = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'tax_status' => 'none' ] )
+		);
+
+		$this->assertTrue( $taxable['variants'][0]['taxable'] );
+		$this->assertFalse( $exempt['variants'][0]['taxable'] );
+	}
+
+	public function test_simple_variant_carries_product_id_and_position_one(): void {
+		// A simple product's synthesized variant points at the product itself
+		// and is always first, since there is exactly one of them.
+		$this->stub_empty_taxonomy_lookups();
+
+		$out = WC_AI_Storefront_Products_Feed::map_product(
+			$this->mappable_simple_product( [ 'id' => 4242 ] )
+		);
+
+		$this->assertSame( 4242, $out['variants'][0]['product_id'] );
+		$this->assertSame( 1, $out['variants'][0]['position'] );
+	}
+
+	/**
+	 * Stub the taxonomy/meta lookups map_product() makes for vendor, tags and
+	 * product_type so a fixture with no terms takes the empty branches. Brain
+	 * Monkey demands an expectation for any function some other test in the
+	 * suite has registered, so these must be present even when the assertions
+	 * under test never touch them.
+	 */
+	private function stub_empty_taxonomy_lookups(): void {
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_term' )->justReturn( false );
+		Functions\when( 'apply_filters' )->returnArg( 2 );
+		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+	}
+
 	/**
 	 * Build a simple WC_Product mock fully wired for map_product(), with
 	 * overridable price/stock/sale fields. Uncategorized + untagged + no
 	 * images so the type/vendor/image paths take their empty branches unless
 	 * the caller stubs otherwise.
 	 *
-	 * @param array $overrides price|regular_price|on_sale|in_stock|purchasable.
+	 * @param array $overrides price|regular_price|on_sale|in_stock|purchasable|weight|tax_status|id.
 	 * @return \Mockery\MockInterface
 	 */
 	private function mappable_simple_product( array $overrides = [] ) {
@@ -578,12 +1242,20 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				'on_sale'       => false,
 				'in_stock'      => true,
 				'purchasable'   => true,
+				'weight'        => '',
+				'tax_status'    => 'taxable',
+				'id'            => 500,
 			],
 			$overrides
 		);
 
 		$p = \Mockery::mock( 'WC_Product' );
-		$p->shouldReceive( 'get_id' )->andReturn( 500 );
+		// Shopify variant scalars (#627); defaults unless a test overrides.
+		$p->shouldReceive( 'get_tax_status' )->andReturn( $o['tax_status'] );
+		$p->shouldReceive( 'get_weight' )->andReturn( $o['weight'] );
+		$p->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$p->shouldReceive( 'get_parent_id' )->andReturn( 0 );
+		$p->shouldReceive( 'get_id' )->andReturn( $o['id'] );
 		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
@@ -706,7 +1378,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return [];
 			}
 
-			public function get_image_id(): int {
+			public function get_image_id( string $context = 'view' ): int {
 				return 0;
 			}
 

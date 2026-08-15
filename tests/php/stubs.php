@@ -441,7 +441,15 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return '';
 		}
 
-		public function get_image_id(): int {
+		/**
+		 * The $context parameter matters: WC_Product_Variation overrides this
+		 * to fall back to the parent's image in 'view' context, so the feed
+		 * mapper passes 'edit' when it needs to know whether a variation owns
+		 * an image of its own. The base product has no parent and ignores it.
+		 *
+		 * @param string $context 'view' or 'edit'.
+		 */
+		public function get_image_id( string $context = 'view' ): int {
 			return 0;
 		}
 
@@ -539,6 +547,19 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return '';
 		}
 
+		// Consumed by the products-feed mapper's Shopify variant shape.
+		public function get_tax_status(): string {
+			return 'taxable';
+		}
+
+		public function get_menu_order(): int {
+			return 0;
+		}
+
+		public function get_parent_id(): int {
+			return 0;
+		}
+
 		public function has_dimensions(): bool {
 			return false;
 		}
@@ -578,7 +599,15 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		 * If you're adding production code that calls this method,
 		 * use the `method_exists()` capability gate, not this stub.
 		 *
-		 * @return array<string, array<int, string>>
+		 * The return shape depends on the receiver, which is why this is a
+		 * union rather than one array type. A variable PARENT returns each
+		 * attribute's available values (`pa_size => ['s','m']`), while a
+		 * VARIATION returns the single value it has selected, keyed with the
+		 * `attribute_` prefix (`attribute_pa_size => 'm'`). Declaring only the
+		 * parent's shape would let PHPStan prove away the guards that callers
+		 * legitimately need for the variation form.
+		 *
+		 * @return array<string, array<int, string>|string>
 		 */
 		public function get_variation_attributes(): array {
 			return [];
