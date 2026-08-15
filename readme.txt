@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 9.9
-Stable tag: 0.35.0
+Stable tag: 0.36.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,17 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.36.0 - 2026-08-15 =
+**New**
+* The catalog file that AI shopping assistants read now carries far more about each product. Weight, tax status, and the date each item was added or last changed are published for the first time, along with the size of every photo and its alt text. Assistants that compare shipping cost or freshness across stores previously saw none of this from yours.
+* Photos attached to individual variations are now published, and each photo says which variations use it. If you sell a shirt in three colours with a photo per colour, an assistant can now show the right photo when a shopper picks a colour. Before, it only ever saw your main product images.
+* Weight is converted from whatever unit your store is set to. If you record weight in pounds or ounces, it is now published correctly rather than being read as kilograms.
+
+**Fixed**
+* Products without variations were missing a piece of information some assistants require, and the ones that require it would stop reading your catalog rather than skip the product. Most affected are stores selling single-version products, where every product was affected.
+* Variations of the same product could be published with duplicate positions, so an assistant sorting them could show them in the wrong order.
+* Attribute setup no longer runs on every page load after an update. A store updating the plugin could briefly create a second copy of an attribute — the cause of the duplicate "Gender" attribute some stores saw. If you have duplicates from a previous version, delete the extra one in Products → Attributes; nothing recreates it.
 
 = 0.35.0 - 2026-08-14 =
 **New**

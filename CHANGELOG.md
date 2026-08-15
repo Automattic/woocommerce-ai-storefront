@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.36.0] – 2026-08-15
+
 ### Added
 
 - **`/products.json` now emits the full Shopify variant and image shape (#627).**

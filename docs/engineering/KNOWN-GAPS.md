@@ -108,7 +108,11 @@ If Shopify changes the shape in a way agents come to depend on, we'd need to fol
 
 ### Mitigations available today
 
-The "pragmatic full" subset already shipped: we populate the fields a trained parser actually keys on (`variants[].price`, `available`, `images[].src`, `handle`, `body_html`, `vendor`, `option1/2/3`) and omit Shopify-internal fields with no WC meaning (`admin_graphql_api_id`, `template_suffix`, `published_scope`). This is an accepted risk, not a bug: the same data is available through the UCP surfaces (which *are* spec-pinned), so the feed degrading would not strand agents that also speak UCP.
+Since #627 the feed is at **full key parity** with a live Shopify feed across products, `options[]`, `variants[]`, `images[]`, and a variant's `featured_image` — measured by diffing our output's key sets against `deathwishcoffee.com`, not read off Shopify's docs. Shopify-internal fields with no WooCommerce meaning are still omitted (`admin_graphql_api_id`, `template_suffix`, `published_scope`), and we emit `alt` in both image positions where Shopify carries it in only one.
+
+That measurement is the mitigation, and it has to be repeated rather than trusted. #627 found the previous parity claim was assessed against a catalogue with zero single-variant products, which structurally hid a missing `options[]` key on every simple product. **Sample against a store whose product mix matches the gap you're checking for** — a single-SKU catalogue for the simple-product paths, a variant-heavy one for the image and option paths.
+
+This remains an accepted risk, not a bug: the same data is available through the UCP surfaces (which *are* spec-pinned), so the feed degrading would not strand agents that also speak UCP.
 
 ---
 
