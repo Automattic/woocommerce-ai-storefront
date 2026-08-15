@@ -126,7 +126,20 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( '48.00', $out['variants'][0]['price'] );
 		$this->assertNull( $out['variants'][0]['compare_at_price'] );
 		$this->assertTrue( $out['variants'][0]['available'] );
-		$this->assertArrayNotHasKey( 'options', $out );      // Simple -> no options[].
+		// Shopify emits options[] on every product, including ones with
+		// nothing to choose. This assertion previously demanded the key be
+		// ABSENT, which is the defect #627 fixes — see
+		// test_simple_product_emits_the_default_title_options_placeholder.
+		$this->assertSame(
+			[
+				[
+					'name'     => 'Title',
+					'position' => 1,
+					'values'   => [ 'Default Title' ],
+				],
+			],
+			$out['options']
+		);
 	}
 
 	public function test_map_variable_product_emits_options_and_positional_variants(): void {
@@ -630,6 +643,49 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 42 ] ) );
 		$this->assertSame( 'Accessories', $type );
 		$this->assertNotSame( 'Footwear', $type );
+	}
+
+	// ------------------------------------------------------------------
+	// options[] — the Default Title placeholder on simple products (#627)
+	// ------------------------------------------------------------------
+
+	public function test_simple_product_emits_the_default_title_options_placeholder(): void {
+		// Shopify emits options[] on every product, including ones with no
+		// choices to make — verified on 73 of 73 single-variant products at a
+		// live single-SKU catalogue. Omitting the key breaks clients written
+		// against Shopify's shape, which assume it is always present.
+		$this->stub_empty_taxonomy_lookups();
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_simple_product() );
+
+		$this->assertArrayHasKey( 'options', $out );
+		$this->assertSame(
+			[
+				[
+					'name'     => 'Title',
+					'position' => 1,
+					'values'   => [ 'Default Title' ],
+				],
+			],
+			$out['options']
+		);
+		// The placeholder must agree with the variant already synthesized on
+		// the simple path — emitting one half of the convention would leave
+		// option1 with nothing declaring what it means.
+		$this->assertSame( 'Default Title', $out['variants'][0]['option1'] );
+	}
+
+	public function test_variable_product_options_are_not_replaced_by_the_placeholder(): void {
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0 ],
+			],
+			11,
+			[]
+		);
+
+		$this->assertSame( 'Size', $out['options'][0]['name'] );
+		$this->assertNotSame( 'Title', $out['options'][0]['name'] );
 	}
 
 	// ------------------------------------------------------------------

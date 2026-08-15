@@ -722,10 +722,25 @@ class WC_AI_Storefront_Products_Feed {
 			'images'       => $compact ? array_slice( $all_images, 0, 1 ) : $all_images,
 		];
 
-		$options = $is_variable ? self::build_options( $product ) : [];
-		if ( ! empty( $options ) ) {
-			$data['options'] = $options;
-		}
+		// Shopify emits options[] on EVERY product. One with nothing to choose
+		// gets a placeholder naming the single implicit option — the
+		// product-level half of the same `Default Title` convention
+		// build_simple_variant() already follows, verified on 73 of 73
+		// single-variant products on a live feed.
+		//
+		// The key is always present, never omitted: a client written against
+		// Shopify's shape assumes it exists, so `product.options.map(…)`
+		// throws and `product["options"]` raises KeyError on exactly the
+		// products a single-SKU store sells most of.
+		$data['options'] = $is_variable
+			? self::build_options( $product )
+			: [
+				[
+					'name'     => 'Title',
+					'position' => 1,
+					'values'   => [ 'Default Title' ],
+				],
+			];
 
 		/**
 		 * Filter a single mapped Shopify-shaped product before it enters the
