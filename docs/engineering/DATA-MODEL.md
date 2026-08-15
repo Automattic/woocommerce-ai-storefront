@@ -2,9 +2,7 @@
 
 Inventory of every persisted artifact this plugin writes — options, transients, post meta, order meta, scheduled events. For each: where it's defined, who reads/writes it, lifetime, and behavior on uninstall.
 
-The surface is deliberately small: four options, nine transients, three scheduled events, one post-meta key, four order-meta keys, and two custom tables. No custom post types.
-
-> **Known gap.** The IndexNow feature's persisted keys (`wc_ai_storefront_indexnow_key`, `_pending`, `_last_result`, `_submit_all`, and the `_flush` cron) are not yet documented below, so the counts above cover only what this document actually enumerates. Tracked separately.
+The surface is deliberately small: seven options, twelve transients (five of them keyspace families rather than single keys), five scheduled events, one post-meta key, six order-meta keys, and two custom tables. No custom post types.
 
 The two custom tables back the Discovery analytics surface. They were added in 0.8.6 alongside the crawler-side visibility stats. Pre-0.8.6 installs got both tables created on the version-bump dbDelta path; the schema is rebuildable on every version bump and the tables are dropped on uninstall.
 
@@ -151,6 +149,41 @@ Monotonically-increasing integer that versions the Shopify `/products.json` feed
 - **Written by:** `WC_AI_Storefront_Cache_Invalidator::bump_products_feed_version()`
 - **Bumped on:** `save_post_product`, `woocommerce_update_product`, `woocommerce_delete_product`, `update_option_<SETTINGS_OPTION>`, and — for the v2 `/collections.json` and per-collection feeds — the `product_cat` term events `created_product_cat`, `edited_product_cat`, and `delete_product_cat` (a renamed or deleted category must refresh the collection list and its per-collection pages). Tag/brand term edits still flow through `woocommerce_update_product` on the affected products, so they don't need separate hooks.
 - **Read by:** all four feed cache getters when assembling their keys — `get_cached_feed_json()` (bulk), `get_cached_single_product()`, `get_cached_collection_products()`, and `get_cached_collections()` — so a single bump orphans every family at once
+- **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
+
+### `wc_ai_storefront_indexnow_key`
+
+The store's IndexNow API key, generated on first use. Also the filename of the verification file served at `/{key}.txt`, which is how IndexNow proves the submitter controls the domain.
+
+- **Type:** string — 32 lowercase hex characters, from `bin2hex( random_bytes( 16 ) )`
+- **Autoload:** `auto` — no explicit `$autoload` argument passed to `update_option()`; WordPress's per-option heuristic autoloads a value this small
+- **Defined in:** `WC_AI_Storefront_IndexNow::KEY_OPTION` ([`includes/ai-storefront/class-wc-ai-storefront-indexnow.php`](../../includes/ai-storefront/class-wc-ai-storefront-indexnow.php))
+- **Written by:** `::regenerate_key()` — called lazily by `get_key()` when the option is empty, and directly by the [`POST /regenerate-indexnow-key`](API-REFERENCE.md#post-regenerate-indexnow-key) admin route
+- **Read by:** `get_key()` (submission payload, generates if absent), `peek_key()` (settings GET payload — deliberately does *not* generate, so merely loading the settings screen never mints a key), and `serve_key_file()` for the `/{key}.txt` response
+- **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
+
+This lives in its own option rather than inside `wc_ai_storefront_settings` for two reasons: a settings save can never erase it through a read-modify-write of the blob, and it sidesteps the static `$settings_cache` that `WC_AI_Storefront` maintains, which would otherwise be a stale-read risk on the request that generates the key.
+
+### `wc_ai_storefront_indexnow_pending`
+
+The deduplicated queue of URLs awaiting submission. Writes accumulate here and a debounced cron drains them, so a bulk product import produces one submission rather than hundreds.
+
+- **Type:** `string[]` — a list of absolute URLs, capped at `MAX_URLS` (10,000); the overflow is dropped with a debug log rather than growing without bound
+- **Autoload:** normally `auto`, but **not fixed** — no explicit `$autoload` argument is passed, and on WP 6.6+ `update_option()` *re-evaluates* the stored value on every write when the current setting is one of the `auto*` family. `wp_filter_default_autoload_value_via_option_size()` returns `auto-off` once the serialized value exceeds 150,000 bytes (filterable via `wp_max_autoloaded_option_size`), which a large catalogue's queue passes at roughly 1,500–2,000 URLs. So this option autoloads while the queue is small and stops when it is large, flipping back as it drains. This is the one option here whose autoload state is a function of store size rather than a constant
+- **Defined in:** `WC_AI_Storefront_IndexNow::PENDING_OPTION`
+- **Written by:** `::enqueue()`, from product save/delete, category and brand term changes, and settings updates
+- **Read by:** `::take_pending()`, which reads and then `delete_option()`s in one step — so between flushes the option is **absent**, not an empty array. Code checking for queued work should use the default-`array()` read rather than testing for existence
+- **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
+
+### `wc_ai_storefront_indexnow_last_result`
+
+The outcome of the most recent submission attempt, for display on the Discovery settings tab. Overwritten each attempt — no history is kept.
+
+- **Type:** `array{ time: int, count: int, code: int, ok: bool }` — Unix timestamp, URLs in the batch, HTTP status (`0` for a transport error), and whether the endpoint accepted it (200/202)
+- **Autoload:** `auto` — no explicit `$autoload` argument passed to `update_option()`; WordPress's per-option heuristic autoloads a value this small
+- **Defined in:** `WC_AI_Storefront_IndexNow::LAST_RESULT_OPTION`
+- **Written by:** `::record_result()`, after **every** attempt — failures included, which is the point: a merchant needs to see a 403 as much as a 200
+- **Read by:** `::last_result()`, surfaced as `indexnow_last_result` in the settings GET payload and in the [`POST /indexnow-submit-all`](API-REFERENCE.md#post-indexnow-submit-all) response
 - **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
 
 ---
@@ -451,6 +484,27 @@ Hourly cron that rolls yesterday's and today's raw log into the summary table, k
 - **Schedule:** `hourly` by default. Override with the `wc_ai_storefront_rollup_interval` filter; allowed values are `hourly`, `twicedaily`, and `daily` — only these three cadences are safe within the 2-day rollup window. Any other value silently falls back to `hourly`. `schedule_crons()` runs on every request (it's wired into plugin bootstrap, not gated to admin), so each request compares the existing event's recurrence to the filtered value and auto-migrates mismatches. Filter changes therefore take effect on the very next request — no manual `wp cron` commands needed.
 - **Defined in:** `WC_AI_Storefront_Crawl_Logger`
 - **Uninstall:** cleared by `uninstall.php`
+
+### `wc_ai_storefront_indexnow_flush`
+
+Debounced one-shot that drains the pending URL queue and submits it as one batch.
+
+- **Schedule:** one-shot at `time() + FLUSH_DELAY` (60 seconds), scheduled by `::schedule_flush()` only when `wp_next_scheduled()` reports none pending. That guard is the debounce: a bulk import enqueues repeatedly but schedules once
+- **Defined in:** `WC_AI_Storefront_IndexNow::FLUSH_HOOK` ([`includes/ai-storefront/class-wc-ai-storefront-indexnow.php`](../../includes/ai-storefront/class-wc-ai-storefront-indexnow.php))
+- **Handler:** `::flush()`, which re-checks `is_enabled()` at run time — a store that disabled IndexNow during the 60-second window submits nothing and clears the queue
+- **Uninstall:** cleared by `uninstall.php` via `wp_clear_scheduled_hook()` (single-site and per-blog multisite paths)
+
+A 429 or transport error re-queues the batch with a fresh debounce; a 403 or 422 is logged and the URLs are dropped, since retrying a rejected key or malformed payload would just repeat.
+
+### `wc_ai_storefront_indexnow_submit_all`
+
+One-shot that submits the **entire** catalog — every published product, every non-empty product category and brand, plus the discovery surfaces.
+
+- **Schedule:** one-shot at `time() + 1`, scheduled by `::schedule_submit_all()` only when none is pending. The one-second delay puts the run after the current request commits, so `is_enabled()` reads the freshly-saved value rather than the pre-save one
+- **Defined in:** `WC_AI_Storefront_IndexNow::SUBMIT_ALL_HOOK`
+- **Scheduled by:** exactly one caller — `WC_AI_Storefront::update_settings()`, when `indexnow_enabled` transitions from not-`'yes'` to `'yes'` (the first-enable seed, #540). The "Submit entire catalog now" button does **not** use this cron; its REST route calls `::submit_all()` directly, in-request
+- **Handler:** `::submit_all()`
+- **Uninstall:** **not** cleared by `uninstall.php`, unlike the other four crons. In practice it cannot survive: `::deactivate()` clears both IndexNow hooks, and WordPress requires deactivation before deletion. The asymmetry is an inconsistency in `uninstall.php`'s defence-in-depth, not a live leak
 
 ---
 
