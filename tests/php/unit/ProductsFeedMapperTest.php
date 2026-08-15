@@ -156,6 +156,9 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
 		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_parent_id' )->andReturn( 90 );
+		// No image of its own — 'edit' context reports the raw prop, which
+		// is what build_image_owner_map() asks for.
+		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 101 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
 			[
@@ -342,6 +345,9 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
 		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_parent_id' )->andReturn( 0 );
+		// No image of its own — 'edit' context reports the raw prop, which
+		// is what build_image_owner_map() asks for.
+		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 3890 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
 			[ 'attribute_pa_size' => 'sm' ]
@@ -624,6 +630,151 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 42 ] ) );
 		$this->assertSame( 'Accessories', $type );
 		$this->assertNotSame( 'Footwear', $type );
+	}
+
+	// ------------------------------------------------------------------
+	// variant_ids — the reverse image relation, and the 'edit'-context trap
+	// ------------------------------------------------------------------
+
+	public function test_variation_without_its_own_image_owns_nothing(): void {
+		// THE load-bearing test for #627. WC_Product_Variation::get_image_id()
+		// falls back to the PARENT's image in 'view' context, so asking the
+		// obvious way gets "yes, the parent's" from a photo-less variation.
+		// That would list this variation under the featured image's
+		// variant_ids — and the failure is invisible to a smoke test, because
+		// the field comes back populated either way.
+		//
+		// The double answers 99 in 'view' (the parent fallback) and 0 in
+		// 'edit' (the raw prop), exactly as WooCommerce does. A test whose
+		// double ignored the context argument would pass against the bug.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0, 'view_image' => 99 ],
+			],
+			99,
+			[]
+		);
+
+		$this->assertSame( [ 99 ], array_column( $out['images'], 'id' ) );
+		$this->assertSame(
+			[],
+			$out['images'][0]['variant_ids'],
+			'A parent-fallback image must never be reported as variation-owned.'
+		);
+	}
+
+	public function test_variant_ids_group_every_variation_sharing_an_image(): void {
+		// One colourway photo covers several sizes. This many-to-many reverse
+		// index is how an agent picks the right photo for a chosen colour;
+		// WooCommerce only models the forward direction.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 77 ],
+				[ 'id' => 502, 'edit_image' => 77 ],
+				[ 'id' => 503, 'edit_image' => 88 ],
+			],
+			0,
+			[]
+		);
+
+		$by_id = array_column( $out['images'], 'variant_ids', 'id' );
+		$this->assertSame( [ 501, 502 ], $by_id[77] );
+		$this->assertSame( [ 503 ], $by_id[88] );
+	}
+
+	public function test_variation_owned_images_join_the_product_gallery(): void {
+		// WooCommerce keeps variation images OUT of the parent gallery, while
+		// Shopify guarantees a variant's image is always one of the product's
+		// images (110 of 110 on a live feed). Without this union variant_ids
+		// would be empty on every image for a typical store, so the field
+		// would do nothing at all.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 77 ],
+			],
+			11,
+			[ 12 ]
+		);
+
+		$this->assertSame(
+			[ 11, 12, 77 ],
+			array_column( $out['images'], 'id' ),
+			'Featured, then gallery, then variation-owned.'
+		);
+		$this->assertSame( [ 1, 2, 3 ], array_column( $out['images'], 'position' ) );
+		$this->assertSame( [ 501 ], $out['images'][2]['variant_ids'] );
+	}
+
+	/**
+	 * Map a variable product whose variations have the given ids and image
+	 * ownership, plus a featured image and gallery on the parent.
+	 *
+	 * Each $variations entry takes `id`, `edit_image` and optionally
+	 * `view_image` — the value get_image_id() returns in the default 'view'
+	 * context, defaulting to the same as `edit_image`. Setting them apart is
+	 * what lets a test prove the production code asks for 'edit'.
+	 *
+	 * @param array $variations  Variation specs.
+	 * @param int   $featured_id Parent's featured image id (0 for none).
+	 * @param int[] $gallery_ids Parent's gallery image ids.
+	 * @return array The mapped product.
+	 */
+	private function map_variable_product_with_variations( array $variations, int $featured_id, array $gallery_ids ): array {
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				return "https://ex.test/{$id}.jpg";
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'sanitize_title' )->alias(
+			static function ( $t ) {
+				return strtolower( str_replace( ' ', '-', (string) $t ) );
+			}
+		);
+		Functions\when( 'wc_attribute_label' )->justReturn( 'Size' );
+
+		$doubles = [];
+		foreach ( $variations as $spec ) {
+			$v = \Mockery::mock( 'WC_Product' );
+			$v->shouldReceive( 'get_id' )->andReturn( $spec['id'] );
+			$v->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( $spec['edit_image'] );
+			$v->shouldReceive( 'get_image_id' )->withNoArgs()->andReturn( $spec['view_image'] ?? $spec['edit_image'] );
+			$v->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'attribute_pa_size' => 'm' ] );
+			$v->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+			$v->shouldReceive( 'get_weight' )->andReturn( '' );
+			$v->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+			$v->shouldReceive( 'get_parent_id' )->andReturn( 90 );
+			$v->shouldReceive( 'get_sku' )->andReturn( 'SKU-' . $spec['id'] );
+			$v->shouldReceive( 'get_price' )->andReturn( '10' );
+			$v->shouldReceive( 'get_regular_price' )->andReturn( '10' );
+			$v->shouldReceive( 'is_on_sale' )->andReturn( false );
+			$v->shouldReceive( 'is_in_stock' )->andReturn( true );
+			$v->shouldReceive( 'is_purchasable' )->andReturn( true );
+			$v->shouldReceive( 'needs_shipping' )->andReturn( true );
+			$doubles[ $spec['id'] ] = $v;
+		}
+		Functions\when( 'wc_get_product' )->alias(
+			static function ( $id ) use ( $doubles ) {
+				return $doubles[ $id ] ?? null;
+			}
+		);
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 90 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Hoodie' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'hoodie' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( $featured_id );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( $gallery_ids );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
+		$p->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'pa_size' => [ 'm' ] ] );
+		$p->shouldReceive( 'get_children' )->andReturn( array_keys( $doubles ) );
+
+		return WC_AI_Storefront_Products_Feed::map_product( $p );
 	}
 
 	// ------------------------------------------------------------------

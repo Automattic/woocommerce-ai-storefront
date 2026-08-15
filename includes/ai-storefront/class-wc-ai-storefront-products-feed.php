@@ -693,11 +693,17 @@ class WC_AI_Storefront_Products_Feed {
 		$created  = method_exists( $product, 'get_date_created' ) ? $product->get_date_created() : null;
 		$modified = method_exists( $product, 'get_date_modified' ) ? $product->get_date_modified() : null;
 
+		// Order matters here: the variations produce the ownership map, the map
+		// completes the image list's variant_ids, and the finished image list
+		// is what a variant's featured_image points into.
+		$variations = $is_variable ? self::collect_variations( $product ) : [];
+		$owner_map  = self::build_image_owner_map( $variations );
+
 		// Build the full image list first, then slice for output. Compact mode
 		// truncates the array's LENGTH only — never a retained entry's
 		// richness, and never its `position`, which must still rank it within
 		// the complete gallery.
-		$all_images = self::build_images( $product );
+		$all_images = self::build_images( $product, $owner_map );
 
 		$data = [
 			'id'           => (int) $product->get_id(),
@@ -711,7 +717,7 @@ class WC_AI_Storefront_Products_Feed {
 			'product_type' => self::resolve_product_type( $product ),
 			'tags'         => self::resolve_tags( $product ),
 			'variants'     => $is_variable
-				? self::build_variants( $product )
+				? self::build_variants( $product, $variations )
 				: [ self::build_simple_variant( $product ) ],
 			'images'       => $compact ? array_slice( $all_images, 0, 1 ) : $all_images,
 		];
@@ -1069,25 +1075,85 @@ class WC_AI_Storefront_Products_Feed {
 	}
 
 	/**
+	 * Hydrate a variable product's variations once.
+	 *
+	 * Both the image-owner map and the variant list need them, and resolving
+	 * separately would double the wc_get_product() calls per product.
+	 *
+	 * @param WC_Product $product The variable product.
+	 * @return array
+	 */
+	private static function collect_variations( $product ): array {
+		$variations = [];
+		foreach ( $product->get_children() as $child_id ) {
+			$variation = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $child_id ) : null;
+			if ( $variation ) {
+				$variations[] = $variation;
+			}
+		}
+		return $variations;
+	}
+
+	/**
+	 * Reverse WooCommerce's image relation into Shopify's.
+	 *
+	 * WooCommerce points each variation at one image. Shopify lists, per
+	 * image, every variant that uses it — one colourway photo covering all of
+	 * its sizes. That reverse index is how an agent picks the right photo when
+	 * a shopper chooses a colour.
+	 *
+	 * The 'edit' context is mandatory, not stylistic. WC_Product_Variation
+	 * overrides get_image_id() to fall back to the PARENT's image whenever the
+	 * variation has none of its own and the context is 'view':
+	 *
+	 *     if ( 'view' === $context && ! $image_id ) {
+	 *         $image_id = apply_filters( …, $this->parent_data['image_id'], $this );
+	 *     }
+	 *
+	 * So asking the obvious way — "does this variation have an image?" — gets
+	 * "yes, the parent's" from every photo-less variation. That would populate
+	 * featured_image where it must be null AND list the entire catalogue of
+	 * photo-less variations under the featured image's variant_ids. Neither
+	 * failure looks wrong in a smoke test, because both fields come back
+	 * populated. base_price() in this file bypasses a view-context filter the
+	 * same way, for the same class of reason.
+	 *
+	 * @param array $variations Variation objects.
+	 * @return array attachment id => list of owning variation ids.
+	 */
+	private static function build_image_owner_map( array $variations ): array {
+		$map = [];
+		foreach ( $variations as $variation ) {
+			if ( ! method_exists( $variation, 'get_image_id' ) ) {
+				continue;
+			}
+			$own_id = (int) $variation->get_image_id( 'edit' );
+			if ( $own_id > 0 ) {
+				$map[ $own_id ][] = (int) $variation->get_id();
+			}
+		}
+		return $map;
+	}
+
+	/**
 	 * Build variants[] for a variable product from its variation children.
 	 *
 	 * option1/2/3 are filled from the variation's attribute values in the
 	 * same order as build_options(); unused slots are null.
 	 *
-	 * @param WC_Product $product The variable product.
+	 * @param WC_Product $product    The variable product.
+	 * @param array      $variations Variations already hydrated by
+	 *                               collect_variations(), so this does not
+	 *                               re-resolve what the owner map needed.
 	 * @return array
 	 */
-	private static function build_variants( $product ): array {
+	private static function build_variants( $product, array $variations ): array {
 		// Attribute names in declared order, e.g. pa_size then pa_color.
 		$attr_keys = array_keys( $product->get_variation_attributes() );
 		$variants  = [];
 
 		$index = 0;
-		foreach ( $product->get_children() as $child_id ) {
-			$variation = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $child_id ) : null;
-			if ( ! $variation ) {
-				continue;
-			}
+		foreach ( $variations as $variation ) {
 			++$index;
 			// Selected values keyed by attribute_<slug>, e.g. attribute_pa_size => m.
 			$attributes = $variation->get_variation_attributes();
