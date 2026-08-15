@@ -32,6 +32,11 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 				return (float) $weight * 1000.0;
 			}
 		);
+		// Attachment reads behind the Shopify image record (#627). In production
+		// these are cache hits primed by wp_get_attachment_image_url(); here they
+		// only need to exist. Tests asserting width/height/dates re-stub them.
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( false );
+		Functions\when( 'get_post' )->justReturn( null );
 		$this->feed = new WC_AI_Storefront_Products_Feed();
 
 		WC_AI_Storefront::$test_settings = [

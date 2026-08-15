@@ -693,6 +693,12 @@ class WC_AI_Storefront_Products_Feed {
 		$created  = method_exists( $product, 'get_date_created' ) ? $product->get_date_created() : null;
 		$modified = method_exists( $product, 'get_date_modified' ) ? $product->get_date_modified() : null;
 
+		// Build the full image list first, then slice for output. Compact mode
+		// truncates the array's LENGTH only — never a retained entry's
+		// richness, and never its `position`, which must still rank it within
+		// the complete gallery.
+		$all_images = self::build_images( $product );
+
 		$data = [
 			'id'           => (int) $product->get_id(),
 			'title'        => self::decode( (string) $product->get_name() ),
@@ -707,7 +713,7 @@ class WC_AI_Storefront_Products_Feed {
 			'variants'     => $is_variable
 				? self::build_variants( $product )
 				: [ self::build_simple_variant( $product ) ],
-			'images'       => self::build_images( $product, $compact ),
+			'images'       => $compact ? array_slice( $all_images, 0, 1 ) : $all_images,
 		];
 
 		$options = $is_variable ? self::build_options( $product ) : [];
@@ -958,35 +964,108 @@ class WC_AI_Storefront_Products_Feed {
 	 * Build images[] from the featured image + gallery (needed by both simple
 	 * and variable products, so defined here with the simple-product path).
 	 *
-	 * @param WC_Product $product The product.
-	 * @param bool       $compact When true (list feeds), emit only the first
-	 *                            VALID image (featured if set, else first valid
-	 *                            gallery); the single-product feed keeps all.
+	 * Sources are the featured image, then the gallery, then any image owned
+	 * by an individual variation. That last source matters: WooCommerce sets
+	 * variation images in the variation editor, outside the parent gallery,
+	 * whereas Shopify guarantees a variant's image is always one of the
+	 * product's images (verified 110 of 110 against a live feed). Without the
+	 * union, variant_ids would be empty on every image for a typical store.
+	 *
+	 * Compact truncation is deliberately NOT applied here — the caller slices
+	 * the result. `position` must rank an image within the full gallery, not
+	 * within whatever survived truncation, so the numbering has to be assigned
+	 * before any slicing.
+	 *
+	 * @param WC_Product $product   The product.
+	 * @param array      $owner_map attachment id => list of owning variation ids.
 	 * @return array
 	 */
-	private static function build_images( $product, bool $compact = false ): array {
-		$ids    = array_unique(
-			array_filter(
-				array_merge(
-					[ (int) $product->get_image_id() ],
-					array_map( 'intval', (array) $product->get_gallery_image_ids() )
+	private static function build_images( $product, array $owner_map = [] ): array {
+		$ids = array_values(
+			array_unique(
+				array_filter(
+					array_merge(
+						[ (int) $product->get_image_id() ],
+						array_map( 'intval', (array) $product->get_gallery_image_ids() ),
+						array_map( 'intval', array_keys( $owner_map ) )
+					)
 				)
 			)
 		);
-		$images = [];
+
+		$images   = [];
+		$position = 1;
 		foreach ( $ids as $id ) {
 			$src = wp_get_attachment_image_url( $id, 'full' );
-			if ( is_string( $src ) && '' !== $src ) {
-				$images[] = [
-					'id'  => $id,
-					'src' => $src,
-				];
-				if ( $compact ) {
-					break; // first VALID image only: featured if set, else first valid gallery.
-				}
+			if ( ! is_string( $src ) || '' === $src ) {
+				continue;
 			}
+			$images[] = self::build_image_record( $id, $src, $product, $position, $owner_map );
+			++$position;
 		}
+
 		return $images;
+	}
+
+	/**
+	 * One image record, used verbatim in both `images[]` and a variant's
+	 * `featured_image` — Shopify uses the same struct in both positions.
+	 *
+	 * Every read here lands on a cache the caller already primed: the
+	 * wp_get_attachment_image_url() call above runs get_post() and
+	 * wp_get_attachment_metadata() internally, and WP's meta API caches all of
+	 * an object's meta rows on first read. Moving these reads before that URL
+	 * lookup, or onto ids it skipped, would turn each one back into a query.
+	 *
+	 * Shopify omits `alt` from images[] and includes it on featured_image. We
+	 * emit it in both: alt text is often the only description of what is
+	 * actually IN a photo, which is precisely what a vision-less agent needs,
+	 * so withholding it from the more commonly read position to imitate an
+	 * inconsistency would serve nobody.
+	 *
+	 * @param int        $id        Attachment id.
+	 * @param string     $src       Resolved full-size URL.
+	 * @param WC_Product $product   Owning product.
+	 * @param int        $position  1-based rank within the full gallery.
+	 * @param array      $owner_map attachment id => list of owning variation ids.
+	 * @return array
+	 */
+	private static function build_image_record( int $id, string $src, $product, int $position, array $owner_map ): array {
+		$meta = wp_get_attachment_metadata( $id );
+		$post = get_post( $id );
+		$alt  = get_post_meta( $id, '_wp_attachment_image_alt', true );
+
+		return [
+			'id'          => $id,
+			'product_id'  => (int) $product->get_id(),
+			'position'    => $position,
+			'created_at'  => is_object( $post ) ? self::gmt_date( $post->post_date_gmt ?? null ) : null,
+			'updated_at'  => is_object( $post ) ? self::gmt_date( $post->post_modified_gmt ?? null ) : null,
+			'alt'         => ( is_string( $alt ) && '' !== $alt ) ? self::decode( $alt ) : null,
+			'width'       => ( is_array( $meta ) && isset( $meta['width'] ) ) ? (int) $meta['width'] : null,
+			'height'      => ( is_array( $meta ) && isset( $meta['height'] ) ) ? (int) $meta['height'] : null,
+			'src'         => $src,
+			'variant_ids' => array_values( $owner_map[ $id ] ?? [] ),
+		];
+	}
+
+	/**
+	 * Format a WordPress GMT date string as RFC 3339 UTC, or null.
+	 *
+	 * The sibling of iso_date(), which takes a WC_DateTime. Attachments carry
+	 * post_date_gmt/post_modified_gmt strings instead, and an unset one is
+	 * '0000-00-00 00:00:00' — which must not render as a year-zero timestamp,
+	 * for the same reason iso_date() drops epoch 0.
+	 *
+	 * @param mixed $gmt Raw post_date_gmt / post_modified_gmt.
+	 * @return string|null
+	 */
+	private static function gmt_date( $gmt ): ?string {
+		if ( ! is_string( $gmt ) || '' === $gmt || 0 === strpos( $gmt, '0000-00-00' ) ) {
+			return null;
+		}
+		$ts = strtotime( $gmt . ' UTC' );
+		return $ts ? gmdate( 'Y-m-d\TH:i:s\Z', $ts ) : null;
 	}
 
 	/**

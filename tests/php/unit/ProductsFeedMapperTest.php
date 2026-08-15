@@ -28,6 +28,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return (float) $weight * 1000.0;
 			}
 		);
+		// Attachment reads behind the Shopify image record (#627). In production
+		// these are cache hits primed by wp_get_attachment_image_url(); here they
+		// only need to exist. Tests asserting width/height/dates re-stub them.
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( false );
+		Functions\when( 'get_post' )->justReturn( null );
 		// NOTE: `wp_strip_all_tags` is a real function defined in
 		// tests/php/stubs.php (loaded before Patchwork), so it CANNOT be
 		// redefined via Brain Monkey — attempting `Functions\when()` on it
@@ -619,6 +624,132 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 42 ] ) );
 		$this->assertSame( 'Accessories', $type );
 		$this->assertNotSame( 'Footwear', $type );
+	}
+
+	// ------------------------------------------------------------------
+	// Shopify image records — width/height/position/dates/alt (#627)
+	// ------------------------------------------------------------------
+
+	public function test_image_record_carries_the_full_shopify_field_set(): void {
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn(
+			[
+				'width'  => 4000,
+				'height' => 2500,
+			]
+		);
+		Functions\when( 'get_post' )->justReturn(
+			(object) [
+				'post_date_gmt'     => '2026-06-18 17:40:09',
+				'post_modified_gmt' => '2026-06-18 17:40:12',
+			]
+		);
+		Functions\when( 'get_post_meta' )->justReturn( 'A red mug' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		// Key order mirrors Shopify's featured_image so a field-by-field diff
+		// against a live feed reads cleanly.
+		$this->assertSame(
+			[ 'id', 'product_id', 'position', 'created_at', 'updated_at', 'alt', 'width', 'height', 'src', 'variant_ids' ],
+			array_keys( $out['images'][0] )
+		);
+		$this->assertSame( 4000, $out['images'][0]['width'] );
+		$this->assertSame( 2500, $out['images'][0]['height'] );
+		$this->assertSame( '2026-06-18T17:40:09Z', $out['images'][0]['created_at'] );
+		$this->assertSame( '2026-06-18T17:40:12Z', $out['images'][0]['updated_at'] );
+		$this->assertSame( 'A red mug', $out['images'][0]['alt'] );
+		$this->assertSame( 1, $out['images'][0]['position'] );
+		$this->assertSame( 500, $out['images'][0]['product_id'] );
+	}
+
+	public function test_image_record_nulls_absent_metadata_rather_than_erroring(): void {
+		// wp_get_attachment_metadata() returns FALSE (not []) when the meta row
+		// is missing, and width/height are absent even from a real array for
+		// SVGs and programmatically inserted attachments.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.svg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( false );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		$this->assertNull( $out['images'][0]['width'] );
+		$this->assertNull( $out['images'][0]['height'] );
+		$this->assertNull( $out['images'][0]['created_at'] );
+		$this->assertNull( $out['images'][0]['updated_at'] );
+		$this->assertNull( $out['images'][0]['alt'] );
+		$this->assertSame( 'https://ex.test/a.svg', $out['images'][0]['src'] );
+	}
+
+	public function test_image_dates_drop_the_zero_placeholder(): void {
+		// WordPress writes '0000-00-00 00:00:00' for an unset date. Rendering
+		// that as a year-zero timestamp would poison an agent's diff-sync
+		// cursor, the same reason iso_date() drops epoch 0.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn(
+			(object) [
+				'post_date_gmt'     => '0000-00-00 00:00:00',
+				'post_modified_gmt' => '0000-00-00 00:00:00',
+			]
+		);
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		$this->assertNull( $out['images'][0]['created_at'] );
+		$this->assertNull( $out['images'][0]['updated_at'] );
+	}
+
+	public function test_image_positions_are_dense_over_resolved_images_only(): void {
+		// Image 12 fails to resolve, so 13 must be position 2 — the numbering
+		// counts images that made it into the feed, not raw gallery slots.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				return 12 === $id ? '' : "https://ex.test/{$id}.jpg";
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12, 13 ] ) );
+
+		$this->assertSame( [ 11, 13 ], array_column( $out['images'], 'id' ) );
+		$this->assertSame( [ 1, 2 ], array_column( $out['images'], 'position' ) );
+	}
+
+	public function test_compact_truncates_length_without_thinning_the_record(): void {
+		// Compact mode truncates the array's LENGTH only — the one entry it
+		// keeps must carry the complete field set, not fall back to {id, src}.
+		//
+		// Position is 1 here because the broken featured image never enters
+		// the resolved list, so image 12 genuinely is first. Dense numbering
+		// over emitted images is what Shopify does; the ordering rule itself
+		// is pinned by test_image_positions_are_dense_over_resolved_images_only.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				return 11 === $id ? '' : "https://ex.test/{$id}.jpg";
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [ 'width' => 800, 'height' => 600 ] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12, 13 ] ), true );
+
+		$this->assertCount( 1, $out['images'] );
+		$this->assertSame( 12, $out['images'][0]['id'] );
+		$this->assertSame( 1, $out['images'][0]['position'] );
+		// Truncating length must not truncate per-entry richness.
+		$this->assertSame( 800, $out['images'][0]['width'] );
+		$this->assertArrayHasKey( 'variant_ids', $out['images'][0] );
 	}
 
 	// ------------------------------------------------------------------
