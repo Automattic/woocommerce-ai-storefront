@@ -1068,6 +1068,71 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'variant_ids', $out['images'][0] );
 	}
 
+	public function test_compact_falls_through_to_a_variation_owned_image(): void {
+		// The list feeds keep the first image that RESOLVES, and since #627
+		// the candidate list ends with variation-owned photos. So when the
+		// featured image and the whole gallery fail to resolve, the survivor
+		// is a variation's own photo — better than emitting no image at all
+		// for a product that plainly has one.
+		//
+		// Untested until Copilot flagged the API-REFERENCE wording that still
+		// said "featured if set, else the first valid gallery image".
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->alias(
+			static function ( $id ) {
+				// 11 (featured) and 12 (gallery) are broken; 77 is a
+				// variation's own photo and resolves.
+				return 77 === $id ? 'https://ex.test/77.jpg' : '';
+			}
+		);
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'sanitize_title' )->alias(
+			static function ( $t ) {
+				return strtolower( str_replace( ' ', '-', (string) $t ) );
+			}
+		);
+		Functions\when( 'wc_attribute_label' )->justReturn( 'Size' );
+
+		$variation = \Mockery::mock( 'WC_Product' );
+		$variation->shouldReceive( 'get_id' )->andReturn( 501 );
+		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 77 );
+		$variation->shouldReceive( 'get_image_id' )->withNoArgs()->andReturn( 77 );
+		$variation->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'attribute_pa_size' => 'm' ] );
+		$variation->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
+		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
+		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+		$variation->shouldReceive( 'get_parent_id' )->andReturn( 90 );
+		$variation->shouldReceive( 'get_sku' )->andReturn( 'SKU-501' );
+		$variation->shouldReceive( 'get_price' )->andReturn( '10' );
+		$variation->shouldReceive( 'get_regular_price' )->andReturn( '10' );
+		$variation->shouldReceive( 'is_on_sale' )->andReturn( false );
+		$variation->shouldReceive( 'is_in_stock' )->andReturn( true );
+		$variation->shouldReceive( 'is_purchasable' )->andReturn( true );
+		$variation->shouldReceive( 'needs_shipping' )->andReturn( true );
+		Functions\when( 'wc_get_product' )->justReturn( $variation );
+
+		$p = \Mockery::mock( 'WC_Product' );
+		$p->shouldReceive( 'get_id' )->andReturn( 90 );
+		$p->shouldReceive( 'get_name' )->andReturn( 'Hoodie' );
+		$p->shouldReceive( 'get_slug' )->andReturn( 'hoodie' );
+		$p->shouldReceive( 'get_description' )->andReturn( '' );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_image_id' )->andReturn( 11 );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [ 12 ] );
+		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
+		$p->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'pa_size' => [ 'm' ] ] );
+		$p->shouldReceive( 'get_children' )->andReturn( [ 501 ] );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
+
+		$this->assertCount( 1, $out['images'] );
+		$this->assertSame( 77, $out['images'][0]['id'] );
+		$this->assertSame( 1, $out['images'][0]['position'], 'It is the first image that resolved.' );
+		$this->assertSame( [ 501 ], $out['images'][0]['variant_ids'] );
+	}
+
 	// ------------------------------------------------------------------
 	// Shopify variant scalars — grams, taxable, position, product_id (#627)
 	// ------------------------------------------------------------------
