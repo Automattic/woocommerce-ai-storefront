@@ -331,15 +331,35 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_seed_is_a_noop_when_everything_already_exists(): void {
-		$created = array();
+		$created  = array();
+		$recorded = array();
 		$this->stub_creation_environment(
 			array( 'pa_gender', 'pa_age_group', 'pa_color', 'pa_size', 'pa_material', 'pa_pattern' ),
 			$created
 		);
 		Functions\when( 'apply_filters' )->justReturn( true );
+		// Overrides stub_creation_environment()'s default update_option()
+		// stub so this test can inspect what was recorded, not just that a
+		// call didn't fatal.
+		Functions\when( 'update_option' )->alias(
+			static function ( $name, $value ) use ( &$recorded ) {
+				$recorded[ $name ] = $value;
+			}
+		);
 
 		$this->assertSame( 0, WC_AI_Storefront_Attribute_Seeder::seed() );
 		$this->assertSame( array(), $created );
+		// The dangerous case: zero attributes created is still a successful
+		// run, and the flag must be recorded so this store stops being
+		// re-evaluated on every subsequent request. A naive
+		// `if ( $created > 0 )` guard around the update_option() call in
+		// seed() would pass every other test in this file and silently
+		// reopen the concurrency bug this whole feature exists to close.
+		$this->assertSame(
+			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION,
+			$recorded[ WC_AI_Storefront_Attribute_Seeder::SEEDED_OPTION ] ?? null,
+			'update_option() must record SEED_VERSION even when nothing was created.'
+		);
 	}
 
 	public function test_seed_does_nothing_when_filter_returns_false(): void {
@@ -378,10 +398,12 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_option' )->justReturn(
 			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION
 		);
-		// The whole point: no filter, no taxonomy probe, no insert.
+		// The whole point: no filter, no taxonomy probe, no insert, and no
+		// re-recording of a flag that's already correct.
 		Functions\expect( 'apply_filters' )->never();
 		Functions\expect( 'taxonomy_exists' )->never();
 		Functions\expect( 'wc_create_attribute' )->never();
+		Functions\expect( 'update_option' )->never();
 
 		$this->assertSame( 0, WC_AI_Storefront_Attribute_Seeder::seed() );
 	}
