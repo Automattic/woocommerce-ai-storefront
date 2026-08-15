@@ -633,6 +633,65 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// featured_image — null on the simple path, a lookup on the variable one
+	// ------------------------------------------------------------------
+
+	public function test_simple_variant_featured_image_is_null_despite_product_images(): void {
+		// Verified against a live feed: 73 of 73 single-variant products emit
+		// null here, and all 73 of those products HAVE images — so null is a
+		// deliberate signal, not missing data. The field marks a photo
+		// specific to one variant, and a simple product has no sibling to
+		// differ from. Its photos are already in images[].
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn( null );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12 ] ) );
+
+		$this->assertNotEmpty( $out['images'], 'The product still publishes its photos.' );
+		$this->assertArrayHasKey( 'featured_image', $out['variants'][0] );
+		$this->assertNull( $out['variants'][0]['featured_image'] );
+	}
+
+	public function test_variant_featured_image_is_the_matching_gallery_entry(): void {
+		// featured_image is a LOOKUP into images[], not a second build, so its
+		// position is the image's rank in the product gallery and its
+		// variant_ids list every sibling sharing the photo.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 77 ],
+				[ 'id' => 502, 'edit_image' => 77 ],
+			],
+			11,
+			[]
+		);
+
+		$featured = $out['variants'][0]['featured_image'];
+		$this->assertSame( 77, $featured['id'] );
+		$this->assertSame( 2, $featured['position'], 'Rank in the product gallery, not per variant.' );
+		$this->assertSame( [ 501, 502 ], $featured['variant_ids'] );
+		// Same struct in both positions — identical to the images[] entry.
+		$this->assertSame( $out['images'][1], $featured );
+	}
+
+	public function test_variant_featured_image_is_null_without_an_own_photo(): void {
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0, 'view_image' => 11 ],
+			],
+			11,
+			[]
+		);
+
+		$this->assertNull(
+			$out['variants'][0]['featured_image'],
+			"A variation inheriting the parent's photo owns nothing."
+		);
+	}
+
+	// ------------------------------------------------------------------
 	// variant_ids — the reverse image relation, and the 'edit'-context trap
 	// ------------------------------------------------------------------
 

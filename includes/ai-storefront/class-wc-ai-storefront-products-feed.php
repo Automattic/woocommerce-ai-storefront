@@ -717,7 +717,7 @@ class WC_AI_Storefront_Products_Feed {
 			'product_type' => self::resolve_product_type( $product ),
 			'tags'         => self::resolve_tags( $product ),
 			'variants'     => $is_variable
-				? self::build_variants( $product, $variations )
+				? self::build_variants( $product, $variations, $all_images )
 				: [ self::build_simple_variant( $product ) ],
 			'images'       => $compact ? array_slice( $all_images, 0, 1 ) : $all_images,
 		];
@@ -817,6 +817,12 @@ class WC_AI_Storefront_Products_Feed {
 			'sku'               => (string) $product->get_sku(),
 			'requires_shipping' => method_exists( $product, 'needs_shipping' ) ? (bool) $product->needs_shipping() : true,
 			'taxable'           => self::is_taxable( $product ),
+			// Always null, matching Shopify: 73 of 73 single-variant products
+			// on a live feed emit null here, every one of them with product
+			// images present. The field marks a photo specific to ONE variant,
+			// and a simple product has no sibling variant to differ from — its
+			// photos are already in images[].
+			'featured_image'    => null,
 			'available'         => (bool) ( $product->is_in_stock() && $product->is_purchasable() ),
 			'price'             => self::money( self::base_price( $product ) ),
 			'grams'             => self::weight_grams( $product ),
@@ -1136,6 +1142,33 @@ class WC_AI_Storefront_Products_Feed {
 	}
 
 	/**
+	 * A variation's own image record, or null.
+	 *
+	 * A lookup into the product's finished image list rather than a fresh
+	 * build: the record there already carries the gallery-wide `position` and
+	 * the complete `variant_ids`, so rebuilding would repeat the attachment
+	 * reads and risk a position that disagrees with images[].
+	 *
+	 * Null covers both "no image of its own" ($own_id of 0) and an own image
+	 * whose URL failed to resolve, leaving it absent from the list.
+	 *
+	 * @param int   $own_id Variation's own image id, read in 'edit' context.
+	 * @param array $images The product's full image list.
+	 * @return array|null
+	 */
+	private static function variant_featured_image( int $own_id, array $images ): ?array {
+		if ( $own_id <= 0 ) {
+			return null;
+		}
+		foreach ( $images as $image ) {
+			if ( (int) $image['id'] === $own_id ) {
+				return $image;
+			}
+		}
+		return null;
+	}
+
+	/**
 	 * Build variants[] for a variable product from its variation children.
 	 *
 	 * option1/2/3 are filled from the variation's attribute values in the
@@ -1145,9 +1178,11 @@ class WC_AI_Storefront_Products_Feed {
 	 * @param WC_Product[] $variations Variations already hydrated by
 	 *                               collect_variations(), so this does not
 	 *                               re-resolve what the owner map needed.
+	 * @param array        $images    The product's full image list, which each
+	 *                               variant's featured_image points into.
 	 * @return array
 	 */
-	private static function build_variants( $product, array $variations ): array {
+	private static function build_variants( $product, array $variations, array $images = [] ): array {
 		// Attribute names in declared order, e.g. pa_size then pa_color.
 		$attr_keys = array_keys( $product->get_variation_attributes() );
 		$variants  = [];
@@ -1192,6 +1227,10 @@ class WC_AI_Storefront_Products_Feed {
 				'sku'               => (string) $variation->get_sku(),
 				'requires_shipping' => method_exists( $variation, 'needs_shipping' ) ? (bool) $variation->needs_shipping() : true,
 				'taxable'           => self::is_taxable( $variation ),
+				'featured_image'    => self::variant_featured_image(
+					method_exists( $variation, 'get_image_id' ) ? (int) $variation->get_image_id( 'edit' ) : 0,
+					$images
+				),
 				'available'         => (bool) ( $variation->is_in_stock() && $variation->is_purchasable() ),
 				'price'             => self::money( self::base_price( $variation ) ),
 				'grams'             => self::weight_grams( $variation ),
