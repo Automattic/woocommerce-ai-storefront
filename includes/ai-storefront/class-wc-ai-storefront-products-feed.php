@@ -879,25 +879,6 @@ class WC_AI_Storefront_Products_Feed {
 	}
 
 	/**
-	 * A variation's 1-based position.
-	 *
-	 * WooCommerce stores 0 as "unset" menu order, while Shopify positions
-	 * start at 1, so an unset order falls through to the loop index rather
-	 * than emitting a 0 that would sort ahead of every real position.
-	 *
-	 * @param WC_Product $variation The variation.
-	 * @param int        $index     1-based index within the variation loop.
-	 * @return int
-	 */
-	private static function variant_position( $variation, int $index ): int {
-		if ( ! method_exists( $variation, 'get_menu_order' ) ) {
-			return $index;
-		}
-		$order = (int) $variation->get_menu_order();
-		return $order > 0 ? $order : $index;
-	}
-
-	/**
 	 * Whether the item is taxable.
 	 *
 	 * WooCommerce has no per-variation tax status — the variation data store
@@ -1250,7 +1231,13 @@ class WC_AI_Storefront_Products_Feed {
 				'price'             => self::money( self::base_price( $variation ) ),
 				'grams'             => self::weight_grams( $variation ),
 				'compare_at_price'  => self::compare_at( $variation ),
-				'position'          => self::variant_position( $variation, $index ),
+				// The loop index, NOT get_menu_order(). WooCommerce already
+				// returns children sorted by menu_order, and its menu_order is
+				// 0-based while Shopify positions start at 1 — so reading the
+				// raw value emits a 0-and-1 pair that collides with the
+				// 1-based fallback used for unset orders. Two variants sharing
+				// position 1 is what that produced on a real store.
+				'position'          => $index,
 				'product_id'        => method_exists( $variation, 'get_parent_id' )
 					? (int) $variation->get_parent_id()
 					: (int) $product->get_id(),

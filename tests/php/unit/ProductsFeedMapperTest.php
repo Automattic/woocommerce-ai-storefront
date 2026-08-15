@@ -645,6 +645,32 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotSame( 'Footwear', $type );
 	}
 
+	public function test_variant_positions_are_unique_and_one_based(): void {
+		// Regression guard for a duplicate-position bug caught on a real store:
+		// two variants both reported position 1. WooCommerce already returns
+		// children sorted by menu_order, and its menu_order is 0-based, so
+		// reading the raw value (falling back to a 1-based index when it is 0)
+		// mixed two numbering schemes — menu_order 0 became 1 via the fallback
+		// and menu_order 1 stayed 1. The loop index alone is correct.
+		$out = $this->map_variable_product_with_variations(
+			[
+				[ 'id' => 501, 'edit_image' => 0, 'menu_order' => 0 ],
+				[ 'id' => 502, 'edit_image' => 0, 'menu_order' => 1 ],
+				[ 'id' => 503, 'edit_image' => 0, 'menu_order' => 2 ],
+			],
+			11,
+			[]
+		);
+
+		$positions = array_column( $out['variants'], 'position' );
+		$this->assertSame( [ 1, 2, 3 ], $positions );
+		$this->assertSame(
+			$positions,
+			array_values( array_unique( $positions ) ),
+			'Positions must be unique — an agent sorts on them.'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// options[] — the Default Title placeholder on simple products (#627)
 	// ------------------------------------------------------------------
@@ -859,7 +885,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 			$v->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'attribute_pa_size' => 'm' ] );
 			$v->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
 			$v->shouldReceive( 'get_weight' )->andReturn( '' );
-			$v->shouldReceive( 'get_menu_order' )->andReturn( 0 );
+			$v->shouldReceive( 'get_menu_order' )->andReturn( $spec['menu_order'] ?? 0 );
 			$v->shouldReceive( 'get_parent_id' )->andReturn( 90 );
 			$v->shouldReceive( 'get_sku' )->andReturn( 'SKU-' . $spec['id'] );
 			$v->shouldReceive( 'get_price' )->andReturn( '10' );
