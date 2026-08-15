@@ -48,6 +48,39 @@ Core principle: AI agents discover and recommend. The merchant owns the transact
 - **No em-dashes (`—`) in merchant-facing copy or readme.txt.** The plugin's `Description:` header has rendering edge cases with em-dashes (CSV-split tools, ASCII renderers); the convention extends to all merchant-facing UI strings, error messages, and the user guide. En-dashes (`–`) and hyphens (`-`) are fine.
 - Sentence case for tab labels, button labels, headings. Title Case is wrong here.
 
+### How to write in chat, PRs, issues, and docs
+
+This applies to everything an agent writes for a human to read, not just merchant-facing strings. The rules below come from established sources, not taste. Each one names where it comes from so you can check it.
+
+**Answer first.** Put the answer in the first sentence. No restating the question, no preamble, no throat-clearing about what you are about to do.
+
+**Old information starts a sentence, new information ends it.** Readers look for context at the front and emphasis at the back. From [Gopen and Swan](https://www.gatsby.ucl.ac.uk/~pel/misc/gopen_swan.pdf): "Readers interpret prose more easily and more uniformly if information is placed where they expect it." Put the point you want remembered at the end of the sentence, not buried mid-clause.
+
+**Short sentences.** Aim for 15 to 20 words. [Nielsen Norman Group](https://www.nngroup.com/articles/plain-language-experts/) measured this with domain experts in science, technology and medicine, and found "even highly educated online readers crave succinct information that is easy to scan, just like everyone else." Writing densely for a technical reader is not a courtesy to them.
+
+**Cut words that carry nothing.** Joseph Williams' concision rules: delete words that mean little ("actually", "certain", "really"); delete redundant pairs ("each and every"); delete words implied by others ("final outcome"); replace a phrase with a word ("there is a need for voters to" becomes "voters must"); turn negatives into affirmatives ("not many" becomes "few").
+
+**Cut metadiscourse.** Phrases that describe the discussion instead of being the discussion: "it is worth noting", "as you can see", "I should mention", "let me explain". Delete them and start with the content.
+
+**Plain words over impressive ones.** Orwell's rules apply directly: never use a long word where a short one will do; if it is possible to cut a word out, cut it; never use the passive where you can use the active; never use a jargon word if an everyday equivalent exists. His diagnosis of the alternative: "A mass of Latin words falls upon the facts like soft snow, blurring the outlines and covering up all the details."
+
+**Banned words and constructions**, most from [Google's developer documentation style guide](https://developers.google.com/style/tone):
+
+- "simply", "just", "easy", "obviously", "of course" — they tell a stuck reader the problem is them
+- "please note", "it is worth noting", "importantly", "notably"
+- "materially", "genuinely", "precisely", "squarely", "load-bearing" when a plain word works
+- Hedges stacked on hedges: "arguably roughly", "probably somewhat"
+- Metaphors and figurative language in technical explanation
+- Exclamation marks
+
+**Formatting is not emphasis.** Prose by default. Bullets only for lists that are genuinely lists. Tables only for genuinely tabular data. No bold on phrases mid-sentence; bold is for labels. Headers only when a document has real sections.
+
+**Say it once.** Do not summarise what you just said, restate the conclusion in different words, or add a closing paragraph that repeats the opening.
+
+**Explain when asked.** Answer the question that was asked. Do not pre-empt follow-ups, justify at length, or narrate your reasoning unless the reasoning is the point.
+
+**Then cut.** Orwell's fourth question to a scrupulous writer: "Could I put it more shortly?" Reread before sending and remove what is not load-bearing. Most drafts lose a third with nothing missing.
+
 ## Commit messages
 
 [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/). Format:
