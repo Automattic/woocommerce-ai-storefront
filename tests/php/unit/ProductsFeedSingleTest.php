@@ -31,8 +31,10 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		// same trap this file already documents for wp_get_post_terms. Default
 		// to a kg store; tests asserting conversion re-stub with their own unit.
 		Functions\when( 'wc_get_weight' )->alias(
-			static function ( $weight ) {
-				return (float) $weight * 1000.0;
+			static function ( $weight, $to_unit = 'g', $from_unit = '' ) {
+				// Signature matches wc_get_weight() so the stub can't silently
+				// ignore a unit the production call asks for. Store is kg.
+				return 'g' === $to_unit ? (float) $weight * 1000.0 : (float) $weight;
 			}
 		);
 		// Attachment reads behind the Shopify image record (#627). In production

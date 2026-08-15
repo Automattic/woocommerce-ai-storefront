@@ -1073,7 +1073,12 @@ class WC_AI_Storefront_Products_Feed {
 			return null;
 		}
 		$ts = strtotime( $gmt . ' UTC' );
-		return $ts ? gmdate( 'Y-m-d\TH:i:s\Z', $ts ) : null;
+		// Mirrors iso_date()'s guard rather than testing truthiness: a failed
+		// parse returns false, and a pre-epoch date returns a NEGATIVE
+		// timestamp, which is truthy. Emitting one would hand an agent a
+		// created_at older than any sync cursor it holds — the same
+		// diff-sync poisoning the $ts > 0 check exists to prevent.
+		return ( false !== $ts && $ts > 0 ) ? gmdate( 'Y-m-d\TH:i:s\Z', $ts ) : null;
 	}
 
 	/**

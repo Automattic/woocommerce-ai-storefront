@@ -24,8 +24,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// same trap this file already documents for wp_get_post_terms. Default
 		// to a kg store; tests asserting conversion re-stub with their own unit.
 		Functions\when( 'wc_get_weight' )->alias(
-			static function ( $weight ) {
-				return (float) $weight * 1000.0;
+			static function ( $weight, $to_unit = 'g', $from_unit = '' ) {
+				// Signature matches wc_get_weight() so the stub can't silently
+				// ignore a unit the production call asks for. Store is kg.
+				return 'g' === $to_unit ? (float) $weight * 1000.0 : (float) $weight;
 			}
 		);
 		// Attachment reads behind the Shopify image record (#627). In production
@@ -997,6 +999,28 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNull( $out['images'][0]['updated_at'] );
 	}
 
+	public function test_image_dates_drop_pre_epoch_timestamps(): void {
+		// A pre-1970 date parses to a NEGATIVE timestamp, which is truthy —
+		// so a plain truthiness check would emit it. That would hand an agent
+		// a created_at older than any sync cursor it holds, the same
+		// diff-sync poisoning iso_date()'s `$ts > 0` guard prevents.
+		$this->stub_empty_taxonomy_lookups();
+		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'get_post' )->justReturn(
+			(object) [
+				'post_date_gmt'     => '1969-07-20 20:17:40',
+				'post_modified_gmt' => '1970-01-01 00:00:00',
+			]
+		);
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+
+		$this->assertNull( $out['images'][0]['created_at'], 'Pre-epoch dates are dropped.' );
+		$this->assertNull( $out['images'][0]['updated_at'], 'Epoch 0 itself is dropped too.' );
+	}
+
 	public function test_image_positions_are_dense_over_resolved_images_only(): void {
 		// Image 12 fails to resolve, so 13 must be position 2 — the numbering
 		// counts images that made it into the feed, not raw gallery slots.
@@ -1054,8 +1078,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// store, which is why wc_get_weight() is called without a $from_unit
 		// and left to read `woocommerce_weight_unit` itself.
 		$this->stub_empty_taxonomy_lookups();
+		$seen = [];
 		Functions\when( 'wc_get_weight' )->alias(
-			static function ( $weight, $to_unit, $from_unit = '' ) {
+			static function ( $weight, $to_unit, $from_unit = '' ) use ( &$seen ) {
+				$seen[] = [ $to_unit, $from_unit ];
 				return (float) $weight * 453.59237; // lbs -> g
 			}
 		);
@@ -1065,6 +1091,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 907, $out['variants'][0]['grams'] );
+		// Pin the call itself, not just its result: 'g' as the target, and an
+		// EMPTY source unit so wc_get_weight() reads woocommerce_weight_unit
+		// rather than us hardcoding an assumption about the store.
+		$this->assertSame( [ [ 'g', '' ] ], $seen );
 	}
 
 	public function test_grams_is_integer_zero_when_no_weight_is_recorded(): void {
@@ -1074,8 +1104,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// omitted key — is the faithful shape.
 		$this->stub_empty_taxonomy_lookups();
 		Functions\when( 'wc_get_weight' )->alias(
-			static function ( $weight ) {
-				return (float) $weight * 1000.0;
+			static function ( $weight, $to_unit = 'g', $from_unit = '' ) {
+				// Signature matches wc_get_weight() so the stub can't silently
+				// ignore a unit the production call asks for. Store is kg.
+				return 'g' === $to_unit ? (float) $weight * 1000.0 : (float) $weight;
 			}
 		);
 
