@@ -55,19 +55,27 @@ class WC_AI_Storefront {
 
 	const ADMIN_PAGE_SLUG = 'wc-ai-storefront';
 
-	// Mirrors the real orchestrator's conditional: run the seeder
-	// immediately when `init` has already fired (true on the
-	// register_activation_hook path, which runs long after `init` has
-	// completed for that request — a plain add_action( 'init', ... )
-	// there would register a callback that never runs), otherwise defer
-	// via add_action() as before (true on the normal plugins_loaded ->
-	// __construct() path, which runs before `init`). Both branches are
-	// single global function calls with no divergent logic beyond the
-	// branch itself, so the contract is behaviorally testable here. The
-	// real registration + call-site position inside
-	// register_rewrite_rules() are guarded by source assertions in
-	// AttributeSeederHookTest against includes/class-wc-ai-storefront.php.
+	// Mirrors the real orchestrator's conditional. First, a guard checked
+	// BEFORE scheduling anything: when the store is already seeded, this
+	// returns without touching add_action() at all, so an already-seeded
+	// store has nothing for concurrent requests to race over (see #629).
+	// Past that guard: run the seeder immediately when `init` has already
+	// fired (true on the register_activation_hook path, which runs long
+	// after `init` has completed for that request — a plain
+	// add_action( 'init', ... ) there would register a callback that
+	// never runs), otherwise defer via add_action() as before (true on
+	// the normal plugins_loaded -> __construct() path, which runs before
+	// `init`). All three branches are single global function calls with
+	// no divergent logic beyond the branch itself, so the contract is
+	// behaviorally testable here. The real registration + call-site
+	// position inside register_rewrite_rules() are guarded by source
+	// assertions in AttributeSeederHookTest against
+	// includes/class-wc-ai-storefront.php.
 	public static function schedule_attribute_seeding(): void {
+		if ( ! WC_AI_Storefront_Attribute_Seeder::needs_seeding() ) {
+			return;
+		}
+
 		if ( did_action( 'init' ) ) {
 			WC_AI_Storefront_Attribute_Seeder::seed();
 		} else {

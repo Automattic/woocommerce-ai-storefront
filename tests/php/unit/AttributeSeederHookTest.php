@@ -54,6 +54,12 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 	public function test_seeding_is_deferred_to_init_when_init_has_not_fired(): void {
 		$hooked = array();
 
+		// schedule_attribute_seeding() now checks needs_seeding() before
+		// anything else (see #629); stub get_option() to report "not yet
+		// seeded" so that guard doesn't short-circuit before reaching the
+		// did_action() branch this test is asserting on.
+		Functions\when( 'get_option' )->justReturn( '' );
+
 		// Explicit precondition: init has NOT fired yet for this request —
 		// the normal plugins_loaded entry point. See
 		// test_seeding_runs_immediately_when_init_already_fired below for
@@ -233,6 +239,47 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 			$version_write_pos,
 			$schedule_call_pos,
 			'Seeding must be scheduled before the version option is written.'
+		);
+	}
+
+	public function test_scheduling_is_skipped_entirely_when_no_seeding_is_needed(): void {
+		// The core of #629: when the store is already seeded, nothing is
+		// scheduled at all. Several concurrent requests then have nothing
+		// to race over, rather than each scheduling a no-op that races.
+		Functions\when( 'get_option' )->justReturn(
+			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION
+		);
+
+		$hooked = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook ) use ( &$hooked ) {
+				$hooked[] = $hook;
+			}
+		);
+		Functions\expect( 'wc_create_attribute' )->never();
+
+		WC_AI_Storefront::schedule_attribute_seeding();
+
+		$this->assertNotContains( 'init', $hooked );
+	}
+
+	public function test_scheduling_still_happens_when_seeding_is_needed(): void {
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'did_action' )->justReturn( 0 );
+
+		$hooked = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook, $callback ) use ( &$hooked ) {
+				$hooked[] = array( $hook, $callback );
+			}
+		);
+
+		WC_AI_Storefront::schedule_attribute_seeding();
+
+		$this->assertSame( 'init', $hooked[0][0] );
+		$this->assertSame(
+			array( WC_AI_Storefront::class, 'run_attribute_seeding' ),
+			$hooked[0][1]
 		);
 	}
 }

@@ -335,6 +335,15 @@ class WC_AI_Storefront {
 	 * Public so the deferral contract can be tested directly.
 	 */
 	public static function schedule_attribute_seeding(): void {
+		// Check BEFORE scheduling, not inside the callback. A no-op that is
+		// scheduled is still a no-op that several concurrent requests each
+		// schedule and each run — which is how the duplicate in #628
+		// happened. Deciding here means an already-seeded store hooks
+		// nothing at all. See #629.
+		if ( ! WC_AI_Storefront_Attribute_Seeder::needs_seeding() ) {
+			return;
+		}
+
 		if ( did_action( 'init' ) ) {
 			WC_AI_Storefront_Attribute_Seeder::seed();
 		} else {
@@ -455,6 +464,12 @@ class WC_AI_Storefront {
 			// to `init`, depending on whether `init` has already fired
 			// for this request — see the method docblock for why both
 			// paths exist.
+			//
+			// Also reached by the syndication-settings toggle via
+			// $needs_flush, not just by a version change. Harmless: the
+			// seed flag makes it a no-op on an already-seeded store, and
+			// on a store that somehow is not seeded, doing it here is
+			// correct rather than unwanted.
 			self::schedule_attribute_seeding();
 
 			update_option( 'wc_ai_storefront_version', WC_AI_STOREFRONT_VERSION );

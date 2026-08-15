@@ -116,6 +116,15 @@ function wc_ai_storefront_activate() {
 	$instance = WC_AI_Storefront::get_instance();
 	$instance->init_components();
 
+	// Seed attributes here rather than relying on the boot-time version
+	// branch. Activation is a single request with nothing racing it, which
+	// is exactly the property the version branch lacks. Guarded by the seed
+	// flag, so re-activation is a no-op.
+	//
+	// NOTE: this deliberately does NOT write `wc_ai_storefront_version` —
+	// see this function's docblock for why doing so breaks the cache bust.
+	WC_AI_Storefront_Attribute_Seeder::seed();
+
 	flush_rewrite_rules();
 }
 register_activation_hook( __FILE__, 'wc_ai_storefront_activate' );
