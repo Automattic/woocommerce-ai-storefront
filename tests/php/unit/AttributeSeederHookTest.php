@@ -54,6 +54,12 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 	public function test_seeding_is_deferred_to_init_when_init_has_not_fired(): void {
 		$hooked = array();
 
+		// schedule_attribute_seeding() now checks needs_seeding() before
+		// anything else (see #629); stub get_option() to report "not yet
+		// seeded" so that guard doesn't short-circuit before reaching the
+		// did_action() branch this test is asserting on.
+		Functions\when( 'get_option' )->justReturn( '' );
+
 		// Explicit precondition: init has NOT fired yet for this request —
 		// the normal plugins_loaded entry point. See
 		// test_seeding_runs_immediately_when_init_already_fired below for
@@ -111,9 +117,16 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 		// dispatched to every subscriber for this request.
 		Functions\expect( 'add_action' )->never();
 
+		// seed() now guards on needs_seeding() before anything else (see
+		// #629); stub get_option() to report "not yet seeded" so that
+		// guard doesn't short-circuit before the apply_filters() call this
+		// test is asserting on.
+		Functions\when( 'get_option' )->justReturn( '' );
+
 		// Proves seeding actually ran rather than being silently skipped:
-		// seed()'s first statement is apply_filters( SEED_FILTER, true ).
-		// Returning false short-circuits before any WC calls.
+		// once needs_seeding() clears, seed()'s next statement is
+		// apply_filters( SEED_FILTER, true ). Returning false
+		// short-circuits before any WC calls.
 		Functions\expect( 'apply_filters' )
 			->once()
 			->with( WC_AI_Storefront_Attribute_Seeder::SEED_FILTER, true )
@@ -124,9 +137,16 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_run_attribute_seeding_forwards_to_the_seeder(): void {
-		// seed()'s first statement is apply_filters( self::SEED_FILTER, true ).
-		// Expecting exactly that call, and returning false to short-circuit
-		// before any WC calls, proves run_attribute_seeding() reaches
+		// seed() now guards on needs_seeding() before anything else (see
+		// #629); stub get_option() to report "not yet seeded" so that
+		// guard doesn't short-circuit before the apply_filters() call this
+		// test is asserting on.
+		Functions\when( 'get_option' )->justReturn( '' );
+
+		// Once needs_seeding() clears, seed()'s next statement is
+		// apply_filters( self::SEED_FILTER, true ). Expecting exactly that
+		// call, and returning false to short-circuit before any WC calls,
+		// proves run_attribute_seeding() reaches
 		// WC_AI_Storefront_Attribute_Seeder::seed() rather than silently
 		// no-op'ing or calling something else.
 		Functions\expect( 'apply_filters' )
@@ -219,6 +239,149 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 			$version_write_pos,
 			$schedule_call_pos,
 			'Seeding must be scheduled before the version option is written.'
+		);
+	}
+
+	/**
+	 * Pins the ORDERING of the #629 guard in the REAL file, not just its
+	 * presence. This test exists because
+	 * test_scheduling_is_skipped_entirely_when_no_seeding_is_needed below
+	 * only exercises tests/php/stubs/class-wc-ai-storefront-stub.php — the
+	 * whole suite is shadowed onto that stub (see the docblock above
+	 * test_real_orchestrator_branches_on_init_state_and_calls_scheduler_between_create_tables_and_version_write()
+	 * for why) — so it says nothing about includes/class-wc-ai-storefront.php,
+	 * the file that actually ships.
+	 *
+	 * A bare assertStringContainsString() for
+	 * WC_AI_Storefront_Attribute_Seeder::needs_seeding() would still pass if
+	 * the guard were moved anywhere else in the method, including AFTER the
+	 * did_action( 'init' ) branch, or into run_attribute_seeding() — where it
+	 * would no longer stop add_action() from being registered on an
+	 * already-seeded store. The guard's entire value is running BEFORE
+	 * scheduling anything (see the guard's own comment in
+	 * includes/class-wc-ai-storefront.php), so ordering — not presence — is
+	 * the property this test has to assert to mean anything.
+	 */
+	public function test_real_orchestrator_checks_needs_seeding_before_scheduling_anything(): void {
+		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/class-wc-ai-storefront.php' );
+
+		// Same isolation as the test above: slice schedule_attribute_seeding()'s
+		// own body so a needs_seeding() call reached via run_attribute_seeding()
+		// -> seed() a few lines later in the same file can't be mistaken for
+		// this one.
+		$method_start      = strpos( $source, 'public static function schedule_attribute_seeding(): void {' );
+		$next_method_start = strpos( $source, 'public static function run_attribute_seeding(): void {' );
+		$this->assertNotFalse( $method_start, 'schedule_attribute_seeding() not found.' );
+		$this->assertNotFalse( $next_method_start, 'run_attribute_seeding() not found.' );
+		$method_body = substr( $source, $method_start, $next_method_start - $method_start );
+
+		$needs_seeding_pos = strpos( $method_body, 'WC_AI_Storefront_Attribute_Seeder::needs_seeding()' );
+		$did_action_pos    = strpos( $method_body, "did_action( 'init' )" );
+
+		$this->assertNotFalse(
+			$needs_seeding_pos,
+			'schedule_attribute_seeding() must call WC_AI_Storefront_Attribute_Seeder::needs_seeding().'
+		);
+		$this->assertNotFalse(
+			$did_action_pos,
+			'schedule_attribute_seeding() must branch on did_action( "init" ).'
+		);
+		$this->assertLessThan(
+			$did_action_pos,
+			$needs_seeding_pos,
+			'needs_seeding() must be checked BEFORE the did_action( "init" ) branch. ' .
+			'Checking it later — including inside run_attribute_seeding() — still ' .
+			'lets an already-seeded store schedule a no-op add_action() call, which ' .
+			'is exactly the race that produced the duplicate pa_gender row in #628.'
+		);
+	}
+
+	public function test_scheduling_is_skipped_entirely_when_no_seeding_is_needed(): void {
+		// The core of #629: when the store is already seeded, nothing is
+		// scheduled at all. Several concurrent requests then have nothing
+		// to race over, rather than each scheduling a no-op that races.
+		Functions\when( 'get_option' )->justReturn(
+			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION
+		);
+
+		$hooked = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook ) use ( &$hooked ) {
+				$hooked[] = $hook;
+			}
+		);
+		Functions\expect( 'wc_create_attribute' )->never();
+
+		WC_AI_Storefront::schedule_attribute_seeding();
+
+		$this->assertNotContains( 'init', $hooked );
+	}
+
+	public function test_scheduling_still_happens_when_seeding_is_needed(): void {
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'did_action' )->justReturn( 0 );
+
+		$hooked = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook, $callback ) use ( &$hooked ) {
+				$hooked[] = array( $hook, $callback );
+			}
+		);
+
+		WC_AI_Storefront::schedule_attribute_seeding();
+
+		$this->assertSame( 'init', $hooked[0][0] );
+		$this->assertSame(
+			array( WC_AI_Storefront::class, 'run_attribute_seeding' ),
+			$hooked[0][1]
+		);
+	}
+
+	public function test_seeding_is_gated_on_the_version_change_not_the_whole_branch(): void {
+		// The version-mismatch branch opens for TWO unrelated reasons:
+		// a version change, and $needs_flush — which the syndication
+		// settings toggle sets. Seeding must be gated on the first only.
+		//
+		// The toggle path has the same multi-request exposure as the
+		// version path: every request sees the transient until the first
+		// one deletes it. Seeding from a settings save would therefore
+		// re-open the race #629 exists to close, on any store whose seed
+		// flag happens to be stale. A settings toggle is not an install
+		// event and has no business provisioning taxonomies.
+		//
+		// Asserted against the SHIPPED file, not the test stub — the
+		// suite loads only the stub, so a behavioural test here would
+		// prove nothing about what merchants run. Same reason as
+		// test_real_file_guards_seeding_before_scheduling().
+		$source = file_get_contents(
+			dirname( __DIR__, 3 ) . '/includes/class-wc-ai-storefront.php'
+		);
+
+		$this->assertIsString( $source );
+
+		$call_pos = strpos( $source, 'self::schedule_attribute_seeding();' );
+		$this->assertNotFalse(
+			$call_pos,
+			'schedule_attribute_seeding() call not found in the shipped file.'
+		);
+
+		// Walk back from the call to the nearest preceding `if (`, and
+		// confirm it tests the version flag rather than the whole branch.
+		$preceding = substr( $source, 0, $call_pos );
+		$guard_pos = strrpos( $preceding, 'if ( $version_changed ) {' );
+
+		$this->assertNotFalse(
+			$guard_pos,
+			'schedule_attribute_seeding() must sit inside `if ( $version_changed )`, '
+				. 'so a syndication-settings toggle cannot trigger seeding.'
+		);
+
+		// Nothing may reopen the branch between that guard and the call.
+		$between = substr( $preceding, $guard_pos );
+		$this->assertStringNotContainsString(
+			'}',
+			$between,
+			'The $version_changed guard must still be open at the seeding call.'
 		);
 	}
 }

@@ -107,6 +107,22 @@ function wc_ai_storefront_missing_wc_notice() {
  * This was a latent bug from 1.0.0 → 1.1.x that only surfaced on
  * in-place zip upgrades; see the "old UCP file served after upgrade"
  * diagnosis in the 1.2.0 work.
+ *
+ * "In-place upgrade" above means specifically a manual zip re-upload
+ * over an existing install (Plugins > Add New > Upload Plugin > Replace
+ * current with uploaded) — WordPress deactivates then reactivates the
+ * plugin for that flow, so this hook fires. An automatic update
+ * (WordPress core auto-updates, or this plugin's own self-updater,
+ * `WC_AI_Storefront_Updater`) replaces the files in place without
+ * deactivating the plugin, so this hook does NOT fire for that path.
+ * Both statements are true, of different mechanisms — do not read them
+ * as contradicting each other. That second one is exactly why
+ * `WC_AI_Storefront::register_rewrite_rules()`'s version-mismatch
+ * branch still has a job on updates, even though this hook also runs
+ * on some of them: it is the only thing that reaches a store that
+ * auto-updated rather than being manually re-uploaded, including the
+ * attribute-seeding backstop added in #629. Do not remove that branch
+ * as "redundant" with this hook.
  */
 function wc_ai_storefront_activate() {
 	if ( ! class_exists( 'WooCommerce' ) ) {
@@ -115,6 +131,29 @@ function wc_ai_storefront_activate() {
 
 	$instance = WC_AI_Storefront::get_instance();
 	$instance->init_components();
+
+	// Explicit call, rather than relying only on get_instance() above. On a
+	// FRESH install this is actually a no-op: get_instance() already reaches
+	// this same seeder inline, through register_rewrite_rules()'s
+	// version-mismatch branch (true here since the version option has never
+	// been written) calling schedule_attribute_seeding(), which itself runs
+	// seed() immediately because did_action( 'init' ) is already true this
+	// deep into a register_activation_hook callback — see that method's
+	// docblock. By the time execution reaches this line, needs_seeding()
+	// has already gone false.
+	//
+	// The value is on RE-activation. Deactivating and reactivating does not
+	// touch `wc_ai_storefront_version`, so on the next activation the
+	// version-mismatch branch is false and schedule_attribute_seeding() is
+	// never reached that way — reactivation would otherwise get no chance
+	// to reconsider seeding at all. Calling seed() directly here decouples
+	// every activation, first or repeat, from that heuristic: seeding is
+	// reconsidered on its own terms each time, safely, because seed() is
+	// guarded by the seed flag and no-ops once it has already run.
+	//
+	// NOTE: this deliberately does NOT write `wc_ai_storefront_version` —
+	// see this function's docblock for why doing so breaks the cache bust.
+	WC_AI_Storefront_Attribute_Seeder::seed();
 
 	flush_rewrite_rules();
 }
