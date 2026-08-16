@@ -21,6 +21,13 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Storefront_Shipping_Policy {
 
 	/**
+	 * First WooCommerce release with `WC_Shipping_Zones::get_shipping_zones()`
+	 * — the plural form returning objects. Commit 205db58026, September 2025.
+	 */
+	const ZONES_MIN_WC = '10.3';
+
+
+	/**
 	 * Parse a WooCommerce shipping cost string into something publishable.
 	 *
 	 * `WC_Shipping_Flat_Rate::$cost` is an expression, not a number. It
@@ -207,6 +214,15 @@ class WC_AI_Storefront_Shipping_Policy {
 	 * @return array
 	 */
 	public function build_conditions(): array {
+		if ( ! $this->zones_readable() ) {
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'Shipping zones unavailable: WC_Shipping_Zones::get_shipping_zones() requires WooCommerce ' . self::ZONES_MIN_WC . '+.'
+				);
+			}
+			return array();
+		}
+
 		$conditions = array();
 
 		foreach ( $this->get_shipping_zones() as $zone ) {
@@ -654,25 +670,28 @@ class WC_AI_Storefront_Shipping_Policy {
 	 *
 	 * @return array
 	 */
+	/**
+	 * Whether this WooCommerce can be asked for zone objects.
+	 *
+	 * `get_shipping_zones()` only exists in WooCommerce 10.3+, while the
+	 * plugin's floor is 9.9 — and `WC requires at least` raises an admin
+	 * notice rather than blocking activation. Calling it below that fatals
+	 * inside wp_head, white-screening the homepage and every product page.
+	 *
+	 * The VERSION is checked, not the method: `tests/php/stubs.php` declares
+	 * `get_shipping_zones()` unconditionally, so `method_exists()` is always
+	 * true under test and PHPStan reports the guard as redundant.
+	 *
+	 * Overridable so a test can exercise both sides without redefining a
+	 * constant, which PHP cannot do per-case.
+	 *
+	 * @return bool
+	 */
+	protected function zones_readable(): bool {
+		return defined( 'WC_VERSION' ) && version_compare( (string) WC_VERSION, self::ZONES_MIN_WC, '>=' );
+	}
+
 	protected function get_shipping_zones(): array {
-		// `WC_Shipping_Zones::get_shipping_zones()` (plural, returning
-		// objects) landed in WooCommerce 10.3.0, while this plugin's floor is
-		// 9.9 — and `WC requires at least` only raises an admin notice, it
-		// does not block activation. Calling it on 9.9-10.2 is a fatal in
-		// wp_head, which white-screens the homepage and every product page.
-		//
-		// The version is checked rather than the method because the test
-		// stubs define `get_shipping_zones()` unconditionally, so both
-		// `method_exists()` and PHPStan resolve it as always present. Naming
-		// the version also states the actual requirement.
-		if ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, '10.3', '<' ) ) {
-			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
-				WC_AI_Storefront_Logger::debug(
-					'Shipping zones unavailable: WC_Shipping_Zones::get_shipping_zones() requires WooCommerce 10.3+.'
-				);
-			}
-			return array();
-		}
 		$zones   = array_values( WC_Shipping_Zones::get_shipping_zones() );
 		$zones[] = new WC_Shipping_Zone( 0 );
 		return $zones;

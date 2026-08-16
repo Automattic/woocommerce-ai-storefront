@@ -495,29 +495,154 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'handlingTime', $block );
 	}
 
-	public function test_zone_reader_is_gated_on_the_woocommerce_version(): void {
+	public function test_zones_are_not_read_below_the_required_woocommerce(): void {
 		// WC_Shipping_Zones::get_shipping_zones() only exists in WooCommerce
-		// 10.3+, while the plugin's floor is 9.9 and the `WC requires at
-		// least` header does not block activation. Calling it on 9.9-10.2 is
-		// a fatal inside wp_head, white-screening the homepage and every
-		// product page.
-		//
-		// Source-level assertion because the guard reads a constant defined
-		// at bootstrap, which a unit test cannot vary per-case.
-		$source = file_get_contents(
-			dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-shipping-policy.php'
+		// 10.3+, while the plugin's floor is 9.9 and `WC requires at least`
+		// does not block activation. Calling it below that fatals inside
+		// wp_head, white-screening the homepage and every product page.
+		$zone   = $this->zone( 0, array(), array( $this->flat_method( '20' ) ) );
+		$policy = new class( array( $zone ) ) extends WC_AI_Storefront_Shipping_Policy {
+			/** @var array */
+			private array $zones;
+
+			public function __construct( array $zones ) {
+				$this->zones = $zones;
+			}
+
+			protected function zones_readable(): bool {
+				return false;
+			}
+
+			protected function get_shipping_zones(): array {
+				return $this->zones;
+			}
+		};
+
+		$this->assertSame(
+			array(),
+			$policy->build_conditions(),
+			'A rate-bearing zone must still produce nothing below the required version.'
+		);
+	}
+
+	public function test_the_version_seam_accepts_the_minimum_and_rejects_below_it(): void {
+		// Behavioural, so it survives a cosmetic change to how the comparison
+		// is spelled. A source-regex test on the literal fails against a
+		// correct implementation that writes '10.3.0' instead of '10.3'.
+		$probe = new class() extends WC_AI_Storefront_Shipping_Policy {
+			public function readable_at( string $version ): bool {
+				return version_compare( $version, self::ZONES_MIN_WC, '>=' );
+			}
+		};
+
+		$this->assertTrue( $probe->readable_at( '10.3' ) );
+		$this->assertTrue( $probe->readable_at( '10.3.0' ) );
+		$this->assertTrue( $probe->readable_at( '10.9.1' ) );
+		$this->assertFalse( $probe->readable_at( '10.2.0' ) );
+		$this->assertFalse( $probe->readable_at( '9.9' ) );
+	}
+
+	public function test_shipping_globally_disabled_suppresses_the_block(): void {
+		// A merchant who goes digital-only keeps their zones — the onboarding
+		// wizard created them and nothing removes them.
+		$zone   = $this->zone( 0, array(), array( $this->flat_method( '20' ) ) );
+		$policy = $this->policy( array( $zone ) );
+		\Brain\Monkey\Functions\when( 'wc_shipping_enabled' )->justReturn( false );
+
+		$this->assertNull( $policy->build( array() ) );
+	}
+
+	public function test_flat_rate_with_shipping_class_costs_is_skipped(): void {
+		// calculate_shipping() ADDS class_cost_<id> to the base cost, so
+		// cost=5 with class_cost_12=15 charges 20. Which class applies depends
+		// on the cart, so no static number is honest.
+		$method                     = $this->flat_method( '5' );
+		$method->instance_settings  = array( 'class_cost_12' => '15' );
+		$zone                       = $this->zone( 1, array( array( 'country', 'US' ) ), array( $method ) );
+
+		$this->assertSame( array(), $this->policy( array( $zone ) )->build_conditions() );
+	}
+
+	public function test_empty_and_unrelated_instance_settings_do_not_disqualify(): void {
+		// An empty class cost is "not set" and adds nothing; unrelated keys
+		// must not be mistaken for one.
+		$method                    = $this->flat_method( '5' );
+		$method->instance_settings = array(
+			'class_cost_12' => '',
+			'no_class_cost' => '',
+			'title'         => 'Flat rate',
+		);
+		$zone                      = $this->zone( 1, array( array( 'country', 'US' ) ), array( $method ) );
+
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		$this->assertSame( 5.0, $out[0]['shippingRate']['value'] );
+	}
+
+	public function test_multi_country_zone_with_a_threshold_bands_every_country(): void {
+		// Where the fan-out and the banding meet. Emitting only the first
+		// destination for banded conditions would drop Canada into whatever
+		// the catch-all charges.
+		$zone = $this->zone(
+			5,
+			array( array( 'country', 'US' ), array( 'country', 'CA' ) ),
+			array( $this->free_method( 'min_amount', '20' ), $this->flat_method( '20' ) )
 		);
 
-		$this->assertMatchesRegularExpression(
-			"/version_compare\(\s*WC_VERSION,\s*'10\.3',\s*'<'\s*\)/",
-			$source,
-			'The zone reader must refuse to run below WooCommerce 10.3.'
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		$this->assertCount( 4, $out );
+		// array_merge puts every free band first, then every paid band.
+		$this->assertSame(
+			array( 'US', 'CA', 'US', 'CA' ),
+			array_column( array_column( $out, 'shippingDestination' ), 'addressCountry' )
 		);
-		$this->assertStringNotContainsString(
-			"class_exists( 'WC_Shipping_Zones' )",
-			$source,
-			'A class check does not catch this: WC_Shipping_Zones has existed since WC 2.6.'
+		$this->assertSame( array( 0.0, 0.0, 20.0, 20.0 ), array_column( array_column( $out, 'shippingRate' ), 'value' ) );
+	}
+
+	public function test_coupon_only_free_shipping_is_never_published(): void {
+		// A coupon is not a property of the store's standing policy, and the
+		// amount plays no part in this mode.
+		$zone = $this->zone(
+			1,
+			array( array( 'country', 'US' ) ),
+			array( $this->free_method( 'coupon', '20' ), $this->flat_method( '9' ) )
 		);
+
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		$this->assertCount( 1, $out );
+		$this->assertSame( 9.0, $out[0]['shippingRate']['value'] );
+		$this->assertArrayNotHasKey( 'orderValue', $out[0] );
+	}
+
+	public function test_negative_costs_are_rejected(): void {
+		$this->assertNull( WC_AI_Storefront_Shipping_Policy::parse_cost( '-5' ) );
+	}
+
+	public function test_every_monetary_amount_carries_a_currency(): void {
+		// Google requires it, and nothing else asserts it.
+		$zone = $this->zone(
+			1,
+			array( array( 'country', 'US' ) ),
+			array( $this->free_method( 'min_amount', '20' ), $this->flat_method( '20' ) )
+		);
+
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		foreach ( $out as $condition ) {
+			$this->assertSame( 'USD', $condition['shippingRate']['currency'] );
+			$this->assertSame( 'USD', $condition['orderValue']['currency'] );
+		}
+	}
+
+	public function test_non_catchall_zone_with_no_locations_is_skipped(): void {
+		// Only zone 0 means "anywhere else". An ordinary zone with no
+		// locations is unconfigured, and publishing it as the catch-all would
+		// hand its rate to the whole world.
+		$zone = $this->zone( 7, array(), array( $this->flat_method( '5' ) ) );
+
+		$this->assertSame( array(), $this->policy( array( $zone ) )->build_conditions() );
 	}
 
 	// ------------------------------------------------------------------
