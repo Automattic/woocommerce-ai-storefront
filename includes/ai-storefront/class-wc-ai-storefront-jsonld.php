@@ -3161,6 +3161,13 @@ class WC_AI_Storefront_JsonLd {
 			// both omit `accepted_currencies` on single-currency stores to avoid
 			// falsely advertising multi-currency support to agent consumers.
 			'currenciesAccepted' => implode( ' ', WC_AI_Storefront_Multi_Currency::get_accepted_currencies() ),
+			// Shipping rates belong on the Organization, not the product.
+			// WooCommerce prices shipping by zone AND order value, and a
+			// product-level shippingRate is one MonetaryAmount — it cannot say
+			// "free over $20, otherwise $20". ShippingConditions can, one band
+			// at a time. Google wants this on a single page rather than every
+			// page, and this block is already emitted exactly once.
+			// Assigned below so an underivable policy omits the key entirely.
 			'potentialAction'    => array(
 				'@type'       => 'SearchAction',
 				'target'      => array(
@@ -3243,6 +3250,16 @@ class WC_AI_Storefront_JsonLd {
 		$org_policy_block = $this->build_return_policy_block( $policy, $store_country, null );
 		if ( null !== $org_policy_block ) {
 			$store_data['hasMerchantReturnPolicy'] = $org_policy_block;
+		}
+
+		// `hasShippingService` — the store's real zones as Google's
+		// ShippingConditions. Null when no rate could be derived honestly
+		// (every method cart-dependent, or no zones at all); the key is then
+		// omitted rather than emitted empty, which would claim the store
+		// ships nowhere. See WC_AI_Storefront_Shipping_Policy.
+		$shipping_service = ( new WC_AI_Storefront_Shipping_Policy() )->build( $settings );
+		if ( null !== $shipping_service ) {
+			$store_data['hasShippingService'] = $shipping_service;
 		}
 
 		// `sameAs` (social profile URLs) — auto-sourced from common

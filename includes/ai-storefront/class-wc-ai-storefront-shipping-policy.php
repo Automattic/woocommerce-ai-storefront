@@ -72,6 +72,78 @@ class WC_AI_Storefront_Shipping_Policy {
 	}
 
 	/**
+	 * The whole `ShippingService` block, or null when there is nothing
+	 * honest to say.
+	 *
+	 * Returns null rather than an empty `shippingConditions` array: an empty
+	 * array is a positive claim that the store ships nowhere, which is the
+	 * opposite of "we could not derive the rates".
+	 *
+	 * Note `handlingTime` is a `ServicePeriod` here, while the product-level
+	 * block emits a bare `QuantitativeValue`. That is not an inconsistency to
+	 * tidy up — Google's own examples differ per surface, and each side
+	 * matches the one it appears on.
+	 *
+	 * @param array|null $settings Plugin settings; read when omitted.
+	 * @return array|null
+	 */
+	public function build( ?array $settings = null ): ?array {
+		$conditions = $this->build_conditions();
+		if ( empty( $conditions ) ) {
+			return null;
+		}
+
+		$block = array( '@type' => 'ShippingService' );
+
+		if ( null === $settings && class_exists( 'WC_AI_Storefront' ) ) {
+			$settings = WC_AI_Storefront::get_settings();
+		}
+
+		$handling = $this->handling_time_block( is_array( $settings ) ? $settings : array() );
+		if ( null !== $handling ) {
+			$block['handlingTime'] = $handling;
+		}
+
+		$block['shippingConditions'] = $conditions;
+
+		return $block;
+	}
+
+	/**
+	 * Handling time as a `ServicePeriod`, or null when unconfigured.
+	 *
+	 * Applies the same `min > 0 && max > 0 && min <= max` guard the product
+	 * block uses, so the two surfaces can never disagree about how long the
+	 * store takes to dispatch.
+	 *
+	 * `businessDays` and `cutoffTime` are the other two ServicePeriod
+	 * properties. Both are Recommended and WooCommerce stores neither, so
+	 * they stay absent until there is a setting behind them.
+	 *
+	 * @param array $settings Plugin settings.
+	 * @return array|null
+	 */
+	private function handling_time_block( array $settings ): ?array {
+		$handling = $settings['handling_time'] ?? array();
+		$min      = isset( $handling['min'] ) ? (int) $handling['min'] : 0;
+		$max      = isset( $handling['max'] ) ? (int) $handling['max'] : 0;
+
+		if ( $min <= 0 || $max <= 0 || $min > $max ) {
+			return null;
+		}
+
+		return array(
+			'@type'    => 'ServicePeriod',
+			'duration' => array(
+				'@type'    => 'QuantitativeValue',
+				'minValue' => $min,
+				'maxValue' => $max,
+				'unitCode' => 'DAY',
+			),
+		);
+	}
+
+	/**
 	 * Every zone's shipping rules as Google `ShippingConditions`.
 	 *
 	 * A zone yields either one condition (a single price for that

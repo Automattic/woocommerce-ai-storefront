@@ -299,6 +299,55 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// build() — the ShippingService wrapper
+	// ------------------------------------------------------------------
+
+	public function test_service_block_wraps_handling_time_in_a_service_period(): void {
+		// Org level uses ServicePeriod; the product block keeps its bare
+		// QuantitativeValue. Google documents both, differently, per surface —
+		// this divergence is deliberate, not an oversight to unify.
+		$block = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) )
+			->build( array( 'handling_time' => array( 'min' => 1, 'max' => 2 ) ) );
+
+		$this->assertSame( 'ShippingService', $block['@type'] );
+		$this->assertSame( 'ServicePeriod', $block['handlingTime']['@type'] );
+		$this->assertSame( 'QuantitativeValue', $block['handlingTime']['duration']['@type'] );
+		$this->assertSame( 1, $block['handlingTime']['duration']['minValue'] );
+		$this->assertSame( 2, $block['handlingTime']['duration']['maxValue'] );
+		$this->assertSame( 'DAY', $block['handlingTime']['duration']['unitCode'] );
+		$this->assertCount( 1, $block['shippingConditions'] );
+	}
+
+	public function test_no_zones_emits_nothing(): void {
+		// An empty shippingConditions array would claim the store ships
+		// nowhere, which is the opposite of "we could not derive rates".
+		$this->assertNull( $this->policy( array() )->build( array() ) );
+	}
+
+	public function test_no_parseable_rate_emits_nothing(): void {
+		$zone = $this->zone( 0, array(), array( $this->flat_method( '[qty]' ) ) );
+
+		$this->assertNull( $this->policy( array( $zone ) )->build( array() ) );
+	}
+
+	public function test_handling_time_omitted_when_unconfigured(): void {
+		$block = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) )
+			->build( array( 'handling_time' => array( 'min' => 0, 'max' => 0 ) ) );
+
+		$this->assertArrayNotHasKey( 'handlingTime', $block );
+		$this->assertArrayHasKey( 'shippingConditions', $block );
+	}
+
+	public function test_handling_time_omitted_when_range_is_inverted(): void {
+		// Same guard the product block applies, so the two surfaces can never
+		// disagree about dispatch time.
+		$block = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) )
+			->build( array( 'handling_time' => array( 'min' => 5, 'max' => 2 ) ) );
+
+		$this->assertArrayNotHasKey( 'handlingTime', $block );
+	}
+
+	// ------------------------------------------------------------------
 	// Fixtures
 	// ------------------------------------------------------------------
 
