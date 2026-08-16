@@ -856,7 +856,13 @@ if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 if ( ! class_exists( 'WC_Shipping_Method' ) ) {
 	class WC_Shipping_Method {
 		public string $id = '';
-		public bool $enabled = true;
+		/**
+		 * WooCommerce types this as the STRING 'yes'/'no', not a boolean —
+		 * WC_Shipping_Zone assigns `$raw->is_enabled ? 'yes' : 'no'`. Typing
+		 * it bool here would let a test pass against code that mishandles the
+		 * real value.
+		 */
+		public string $enabled = 'yes';
 	}
 }
 
@@ -881,6 +887,13 @@ if ( ! class_exists( 'WC_Shipping_Flat_Rate' ) ) {
 	class WC_Shipping_Flat_Rate extends WC_Shipping_Method {
 		public string $id = 'flat_rate';
 		public string $cost = '';
+		/**
+		 * Per-instance settings. Carries `class_cost_<term_id>` and
+		 * `no_class_cost`, which calculate_shipping() ADDS to `$cost`.
+		 *
+		 * @var array<string, string>
+		 */
+		public array $instance_settings = [];
 	}
 }
 

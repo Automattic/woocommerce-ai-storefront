@@ -16,6 +16,14 @@ if ( ! defined( 'WC_AI_STOREFRONT_TESTING' ) ) {
 // WordPress stubs (WP_Error, WP_REST_Request, etc.).
 require_once __DIR__ . '/stubs.php';
 
+// WooCommerce version the suite pretends to run against. The shipping-policy
+// and JSON-LD zone readers gate on this because
+// WC_Shipping_Zones::get_shipping_zones() only exists in WC 10.3+, and the
+// stubs define it unconditionally.
+if ( ! defined( 'WC_VERSION' ) ) {
+	define( 'WC_VERSION', '10.3.0' );
+}
+
 // Define WordPress constants.
 if ( ! defined( 'ABSPATH' ) ) {
 	define( 'ABSPATH', '/tmp/wordpress/' );

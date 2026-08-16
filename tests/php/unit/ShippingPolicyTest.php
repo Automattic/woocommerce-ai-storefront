@@ -67,13 +67,27 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 				'type'  => 'percent',
 				'value' => 0.10,
 			),
-			WC_AI_Storefront_Shipping_Policy::parse_cost( '[fee percent="10" min_fee="4"]' )
+			WC_AI_Storefront_Shipping_Policy::parse_cost( '[fee percent="10"]' )
 		);
 	}
 
-	public function test_percentage_accepts_single_quotes(): void {
-		$parsed = WC_AI_Storefront_Shipping_Policy::parse_cost( "[fee percent='25']" );
-		$this->assertSame( 0.25, $parsed['value'] );
+	public function test_percentage_accepts_single_and_absent_quotes(): void {
+		// WordPress's shortcode parser accepts unquoted attribute values, so
+		// `[fee percent=10]` is a cost a merchant can genuinely have stored.
+		$this->assertSame( 0.25, WC_AI_Storefront_Shipping_Policy::parse_cost( "[fee percent='25']" )['value'] );
+		$this->assertSame( 0.15, WC_AI_Storefront_Shipping_Policy::parse_cost( '[fee percent=15]' )['value'] );
+	}
+
+	public function test_percentage_with_a_fee_floor_or_ceiling_is_unusable(): void {
+		// `min_fee` is a floor applied AFTER the percentage, so
+		// `[fee percent="10" min_fee="20"]` — WooCommerce's own example in the
+		// cost-field help text — charges a flat 20 on every order below 200.
+		// Publishing 10% would understate the majority of real baskets, not
+		// merely blur an edge case. orderPercentage cannot express a clamp.
+		$this->assertNull( WC_AI_Storefront_Shipping_Policy::parse_cost( '[fee percent="10" min_fee="20"]' ) );
+		$this->assertNull( WC_AI_Storefront_Shipping_Policy::parse_cost( '[fee percent="10" max_fee="50"]' ) );
+		// An empty clamp is WooCommerce's own default and imposes nothing.
+		$this->assertSame( 0.10, WC_AI_Storefront_Shipping_Policy::parse_cost( '[fee percent="10" max_fee=""]' )['value'] );
 	}
 
 	public function test_cart_dependent_costs_are_unusable(): void {
@@ -177,7 +191,7 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_disabled_methods_are_ignored(): void {
 		$disabled          = $this->flat_method( '5' );
-		$disabled->enabled = false;
+		$disabled->enabled = 'no';
 		$zone              = $this->zone(
 			1,
 			array( array( 'country', 'US' ) ),
@@ -242,6 +256,140 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		$zone    = $this->zone( 1, array( array( 'country', 'US' ) ), array( $unknown ) );
 
 		$this->assertSame( array(), $this->policy( array( $zone ) )->build_conditions() );
+	}
+
+	public function test_both_mode_free_shipping_is_never_published(): void {
+		// WooCommerce evaluates 'both' as `$has_met_min_amount && $has_coupon`.
+		// A $60 order against a $50 threshold still pays full shipping without
+		// a free-shipping coupon, so a free band here would be a false claim —
+		// and the paid band capped at 49.99 would leave every larger order
+		// matching only the fabrication.
+		$zone = $this->zone(
+			1,
+			array( array( 'country', 'US' ) ),
+			array( $this->free_method( 'both', '50' ), $this->flat_method( '9' ) )
+		);
+
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		$this->assertCount( 1, $out );
+		$this->assertArrayNotHasKey( 'orderValue', $out[0] );
+		$this->assertSame( 9.0, $out[0]['shippingRate']['value'] );
+	}
+
+	public function test_either_mode_publishes_the_amount_half(): void {
+		// 'either' is `||`, so the amount alone genuinely suffices.
+		$zone = $this->zone(
+			1,
+			array( array( 'country', 'US' ) ),
+			array( $this->free_method( 'either', '50' ), $this->flat_method( '9' ) )
+		);
+
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		$this->assertCount( 2, $out );
+		$this->assertSame( 50.0, $out[0]['orderValue']['minValue'] );
+	}
+
+	public function test_zero_minimum_means_free_on_every_order(): void {
+		// WooCommerce defaults min_amount to '0' and the admin UI saves it that
+		// way. is_available() then tests `$total >= 0`, always true. Discarding
+		// it would publish the flat rate and invert the store's actual policy.
+		$zone = $this->zone(
+			1,
+			array( array( 'country', 'US' ) ),
+			array( $this->free_method( 'min_amount', '0' ), $this->flat_method( '9' ) )
+		);
+
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		$this->assertCount( 1, $out );
+		$this->assertSame( 0.0, $out[0]['shippingRate']['value'] );
+		$this->assertArrayNotHasKey( 'orderValue', $out[0] );
+	}
+
+	public function test_zone_mixing_a_literal_and_a_percentage_is_skipped(): void {
+		// A flat 100 against [fee percent="1"] is dearer on every basket under
+		// 10,000. Without an order total the two cannot be ranked, so picking
+		// either risks publishing a price checkout undercuts.
+		$zone = $this->zone(
+			1,
+			array( array( 'country', 'US' ) ),
+			array( $this->flat_method( '100' ), $this->flat_method( '[fee percent="1"]' ) )
+		);
+
+		$this->assertSame( array(), $this->policy( array( $zone ) )->build_conditions() );
+	}
+
+	public function test_continent_zone_is_skipped_not_published_worldwide(): void {
+		// `continent` is a first-class WooCommerce location type with no Google
+		// equivalent. Treating it as the catch-all would publish a Europe-only
+		// rate as the store's worldwide rate.
+		$zone = $this->zone( 3, array( array( 'continent', 'EU' ) ), array( $this->flat_method( '5' ) ) );
+
+		$this->assertSame( array(), $this->policy( array( $zone ) )->build_conditions() );
+	}
+
+	public function test_postcode_only_zone_is_skipped(): void {
+		// No country to scope the postcodes against.
+		$zone = $this->zone( 4, array( array( 'postcode', '10001' ) ), array( $this->flat_method( '5' ) ) );
+
+		$this->assertSame( array(), $this->policy( array( $zone ) )->build_conditions() );
+	}
+
+	public function test_multi_country_zone_emits_one_condition_per_country(): void {
+		// Google's addressCountry is singular. Collapsing to the first country
+		// would hand the others whatever the catch-all zone charges.
+		$zone = $this->zone(
+			5,
+			array( array( 'country', 'US' ), array( 'country', 'CA' ), array( 'country', 'MX' ) ),
+			array( $this->flat_method( '10' ) )
+		);
+
+		$out = $this->policy( array( $zone ) )->build_conditions();
+
+		$this->assertSame(
+			array( 'US', 'CA', 'MX' ),
+			array_column( array_column( $out, 'shippingDestination' ), 'addressCountry' )
+		);
+		foreach ( $out as $condition ) {
+			$this->assertSame( 10.0, $condition['shippingRate']['value'] );
+		}
+	}
+
+	public function test_state_codes_stay_with_their_own_country(): void {
+		// A zone holding US:NY and CA:ON must not publish Ontario as a US
+		// region, which pooling regions across countries would do.
+		$zone = $this->zone(
+			6,
+			array( array( 'state', 'US:NY' ), array( 'state', 'CA:ON' ) ),
+			array( $this->flat_method( '10' ) )
+		);
+
+		$out    = $this->policy( array( $zone ) )->build_conditions();
+		$by_cc  = array();
+		foreach ( $out as $condition ) {
+			$by_cc[ $condition['shippingDestination']['addressCountry'] ] = $condition['shippingDestination']['addressRegion'];
+		}
+
+		$this->assertSame( array( 'NY' ), $by_cc['US'] );
+		$this->assertSame( array( 'ON' ), $by_cc['CA'] );
+	}
+
+	public function test_band_ceiling_follows_the_stores_decimal_places(): void {
+		// A hardcoded 0.01 leaves 19.995 matching neither band on a
+		// three-decimal currency such as KWD.
+		$zone   = $this->zone(
+			1,
+			array( array( 'country', 'KW' ) ),
+			array( $this->free_method( 'min_amount', '20' ), $this->flat_method( '2' ) )
+		);
+		$policy = $this->policy( array( $zone ) );
+		\Brain\Monkey\Functions\when( 'wc_get_price_decimals' )->justReturn( 3 );
+
+		$out = $policy->build_conditions();
+
+		$this->assertSame( 19.999, $out[1]['orderValue']['maxValue'] );
 	}
 
 	public function test_reproduces_a_real_three_zone_store(): void {
@@ -347,6 +495,31 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'handlingTime', $block );
 	}
 
+	public function test_zone_reader_is_gated_on_the_woocommerce_version(): void {
+		// WC_Shipping_Zones::get_shipping_zones() only exists in WooCommerce
+		// 10.3+, while the plugin's floor is 9.9 and the `WC requires at
+		// least` header does not block activation. Calling it on 9.9-10.2 is
+		// a fatal inside wp_head, white-screening the homepage and every
+		// product page.
+		//
+		// Source-level assertion because the guard reads a constant defined
+		// at bootstrap, which a unit test cannot vary per-case.
+		$source = file_get_contents(
+			dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-shipping-policy.php'
+		);
+
+		$this->assertMatchesRegularExpression(
+			"/version_compare\(\s*WC_VERSION,\s*'10\.3',\s*'<'\s*\)/",
+			$source,
+			'The zone reader must refuse to run below WooCommerce 10.3.'
+		);
+		$this->assertStringNotContainsString(
+			"class_exists( 'WC_Shipping_Zones' )",
+			$source,
+			'A class check does not catch this: WC_Shipping_Zones has existed since WC 2.6.'
+		);
+	}
+
 	// ------------------------------------------------------------------
 	// Fixtures
 	// ------------------------------------------------------------------
@@ -405,6 +578,10 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function policy( array $zones ): WC_AI_Storefront_Shipping_Policy {
 		\Brain\Monkey\Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		\Brain\Monkey\Functions\when( 'wc_shipping_enabled' )->justReturn( true );
+		// Brain Monkey registers a function suite-wide once ANY test mocks it,
+		// so this must be unconditional. The decimals test re-stubs it after.
+		\Brain\Monkey\Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
 		return new class( $zones ) extends WC_AI_Storefront_Shipping_Policy {
 			/** @var array */

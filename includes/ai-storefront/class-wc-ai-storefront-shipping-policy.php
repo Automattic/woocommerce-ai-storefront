@@ -46,29 +46,60 @@ class WC_AI_Storefront_Shipping_Policy {
 		}
 
 		if ( is_numeric( $cost ) ) {
+			// Negatives are not a shipping price, and `is_numeric()` also
+			// accepts exponential notation ('1e3'), so parse to float and
+			// reject anything below zero rather than publishing it.
+			$value = (float) $cost;
+			if ( $value < 0 ) {
+				return null;
+			}
 			return array(
 				'type'  => 'literal',
-				'value' => (float) $cost,
+				'value' => $value,
 			);
 		}
 
-		// A bare fee shortcode and nothing else. `min_fee`/`max_fee` are
-		// deliberately ignored: they clamp the computed amount, which
-		// `orderPercentage` cannot express, but their presence does not make
-		// the percentage itself wrong — only less precise at the extremes.
+		// A bare fee shortcode and nothing else. A percentage COMBINED with
+		// other terms (e.g. `5 + [fee percent="10"]`) falls through to null:
+		// Google expresses a flat rate or a percentage, never their sum, so
+		// publishing either half alone would misstate the cost.
 		//
-		// A percentage COMBINED with other terms (e.g. `5 + [fee percent="10"]`)
-		// falls through to null on purpose. Google can express a flat rate or
-		// a percentage, not their sum, so publishing either half alone would
-		// misstate the real cost.
-		if ( preg_match( '/^\[fee\s+[^\]]*percent=(["\'])([0-9.]+)\1[^\]]*\]$/', $cost, $matches ) ) {
-			return array(
-				'type'  => 'percent',
-				'value' => (float) $matches[2] / 100,
-			);
+		// Quotes are optional because WordPress's shortcode parser accepts
+		// `[fee percent=10]`, and that is a cost a merchant can genuinely
+		// have stored.
+		if ( ! preg_match( '/^\[fee\s+([^\]]*)\]$/', $cost, $matches ) ) {
+			return null;
 		}
 
-		return null;
+		$attributes = $matches[1];
+
+		// `min_fee` and `max_fee` clamp the computed amount, and
+		// `orderPercentage` has no way to express a floor or a ceiling.
+		// A floor in particular dominates rather than trimming an edge:
+		// `[fee percent="10" min_fee="20"]` — WooCommerce's own example in
+		// the cost-field help text — charges a flat 20 on every order below
+		// 200, so publishing 10% would understate most real baskets.
+		if ( preg_match_all( '/(?:min|max)_fee=(?:"([^"]*)"|\'([^\']*)\'|([^\s\]]*))/', $attributes, $clamps, PREG_SET_ORDER ) ) {
+			foreach ( $clamps as $clamp ) {
+				// WooCommerce's own default is `max_fee=""`, which imposes
+				// nothing. Only a clamp with a value changes the price.
+				// PREG_SET_ORDER omits trailing unmatched groups entirely, so
+				// every alternative needs a default rather than just the last.
+				$value = ( $clamp[1] ?? '' ) . ( $clamp[2] ?? '' ) . ( $clamp[3] ?? '' );
+				if ( '' !== trim( $value ) ) {
+					return null;
+				}
+			}
+		}
+
+		if ( ! preg_match( '/(?:^|\s)percent=(["\']?)([0-9.]+)\1(?:\s|$)/', $attributes, $percent ) ) {
+			return null;
+		}
+
+		return array(
+			'type'  => 'percent',
+			'value' => (float) $percent[2] / 100,
+		);
 	}
 
 	/**
@@ -88,8 +119,24 @@ class WC_AI_Storefront_Shipping_Policy {
 	 * @return array|null
 	 */
 	public function build( ?array $settings = null ): ?array {
+		// A merchant who switches to digital-only keeps their zones — the
+		// onboarding wizard created them and nothing removes them. Reading
+		// zones directly would publish delivery this store no longer offers.
+		if ( function_exists( 'wc_shipping_enabled' ) && ! wc_shipping_enabled() ) {
+			return null;
+		}
+
 		$conditions = $this->build_conditions();
 		if ( empty( $conditions ) ) {
+			// Silence is correct — no rate could be stated honestly — but a
+			// merchant with configured zones and no markup needs to know why.
+			// Matches the debug-and-continue pattern used across this plugin's
+			// other emitters rather than failing quietly with no trace.
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'Shipping policy: no publishable conditions. Every zone had only cart-dependent costs (e.g. [qty]), per-shipping-class costs, or live-carrier methods, whose price cannot be stated without a real address and basket.'
+				);
+			}
 			return null;
 		}
 
@@ -181,8 +228,14 @@ class WC_AI_Storefront_Shipping_Policy {
 	 * @return array
 	 */
 	private function zone_conditions( WC_Shipping_Zone $zone ): array {
-		$destination = $this->zone_destination( $zone );
-		$cheapest    = null;   // Cheapest publishable paid rate.
+		$destinations = $this->zone_destinations( $zone );
+		if ( null === $destinations ) {
+			// Locations we cannot express — a continent, or postcodes with no
+			// country. Emitting these with no shippingDestination would
+			// publish the zone's rate as the store's worldwide rate.
+			return array();
+		}
+		$rates       = array(); // Every publishable paid rate in this zone.
 		$free_from   = null;   // Lowest order minimum that unlocks free shipping.
 		$free_always = false;
 
@@ -196,13 +249,35 @@ class WC_AI_Storefront_Shipping_Policy {
 					$free_always = true;
 					continue;
 				}
-				// Modes naming a minimum: 'min_amount', and the coupon
-				// variants 'either'/'both'. Only the amount is publishable —
-				// a coupon is not a property of the store's shipping policy,
-				// so 'either' is treated as its amount half.
-				if ( in_array( $method->requires, array( 'min_amount', 'either', 'both' ), true ) ) {
+				// Modes where the order amount ALONE unlocks free shipping.
+				//
+				// 'both' is deliberately excluded. WooCommerce evaluates it as
+				// `$has_met_min_amount && $has_coupon` (see
+				// WC_Shipping_Free_Shipping::is_available()), so a qualifying
+				// order still pays full shipping without a free-shipping
+				// coupon. Publishing a free band for it would be a plain false
+				// claim — and worse, the paid band would be capped just below
+				// the threshold, leaving every larger order matching only the
+				// fabricated free condition.
+				//
+				// 'either' is included because the amount by itself suffices
+				// there. The coupon half is not a property of the store's
+				// standing shipping policy.
+				if ( in_array( $method->requires, array( 'min_amount', 'either' ), true ) ) {
 					$amount = is_numeric( $method->min_amount ) ? (float) $method->min_amount : null;
-					if ( null !== $amount && $amount > 0 && ( null === $free_from || $amount < $free_from ) ) {
+					if ( null === $amount ) {
+						continue;
+					}
+					if ( $amount <= 0 ) {
+						// WooCommerce defaults min_amount to '0' and the admin
+						// UI lets it save that way. `is_available()` then tests
+						// `$total >= 0`, which is always true — the store ships
+						// free on every order. Discarding this would publish
+						// the zone's flat rate instead, inverting the policy.
+						$free_always = true;
+						continue;
+					}
+					if ( null === $free_from || $amount < $free_from ) {
 						// WooCommerce permits several min_amount methods in
 						// one zone. The lowest threshold is the one a shopper
 						// actually hits first, and overlapping bands would be
@@ -217,29 +292,27 @@ class WC_AI_Storefront_Shipping_Policy {
 			if ( null === $parsed ) {
 				continue;
 			}
-			if ( null === $cheapest || $this->cheaper( $parsed, $cheapest ) ) {
-				$cheapest = $parsed;
-			}
+			$rates[] = $parsed;
 		}
 
 		if ( $free_always ) {
-			return array(
-				$this->condition(
-					$destination,
-					$this->rate_block(
-						array(
-							'type'  => 'literal',
-							'value' => 0.0,
-						)
+			return $this->fan_out(
+				$destinations,
+				$this->rate_block(
+					array(
+						'type'  => 'literal',
+						'value' => 0.0,
 					)
-				),
+				)
 			);
 		}
 
+		$cheapest = $this->cheapest_rate( $rates );
+
 		if ( null !== $free_from && null !== $cheapest ) {
-			return array(
-				$this->condition(
-					$destination,
+			return array_merge(
+				$this->fan_out(
+					$destinations,
 					$this->rate_block(
 						array(
 							'type'  => 'literal',
@@ -248,13 +321,11 @@ class WC_AI_Storefront_Shipping_Policy {
 					),
 					array( 'minValue' => $free_from )
 				),
-				$this->condition(
-					$destination,
+				$this->fan_out(
+					$destinations,
 					$this->rate_block( $cheapest ),
-					// Google's ranges are inclusive, so the paid band stops a
-					// cent below the threshold rather than at it.
-					array( 'maxValue' => round( $free_from - 0.01, 2 ) )
-				),
+					array( 'maxValue' => $this->band_ceiling( $free_from ) )
+				)
 			);
 		}
 
@@ -268,7 +339,30 @@ class WC_AI_Storefront_Shipping_Policy {
 			return array();
 		}
 
-		return array( $this->condition( $destination, $this->rate_block( $cheapest ) ) );
+		return $this->fan_out( $destinations, $this->rate_block( $cheapest ) );
+	}
+
+	/**
+	 * One condition per destination, all carrying the same rate.
+	 *
+	 * An empty destination list means the catch-all zone, which yields a
+	 * single condition with no `shippingDestination`.
+	 *
+	 * @param array $destinations DefinedRegion blocks; empty for catch-all.
+	 * @param array $rate         shippingRate block.
+	 * @param array $order_value  minValue/maxValue pair, or empty.
+	 * @return array
+	 */
+	private function fan_out( array $destinations, array $rate, array $order_value = array() ): array {
+		if ( empty( $destinations ) ) {
+			return array( $this->condition( null, $rate, $order_value ) );
+		}
+
+		$conditions = array();
+		foreach ( $destinations as $destination ) {
+			$conditions[] = $this->condition( $destination, $rate, $order_value );
+		}
+		return $conditions;
 	}
 
 	/**
@@ -325,93 +419,164 @@ class WC_AI_Storefront_Shipping_Policy {
 	}
 
 	/**
-	 * Compare two parsed costs.
+	 * The cheapest publishable rate in a zone, or null.
 	 *
-	 * A percentage and a literal are not comparable without an order total,
-	 * so a literal always wins — it is the one that can be stated plainly.
+	 * Google applies the lowest matching rate, so a dearer method serving the
+	 * same destination and band is noise.
 	 *
-	 * @param array $candidate Parsed cost under consideration.
-	 * @param array $current   Parsed cost currently held as cheapest.
-	 * @return bool
+	 * A zone mixing a literal and a percentage returns null. The two cannot
+	 * be ranked without an order total — a flat 100 alongside
+	 * `[fee percent="1"]` is dearer on every basket under 10,000 — so picking
+	 * either would risk publishing a price the checkout undercuts. Saying
+	 * nothing for that zone is the consistent choice.
+	 *
+	 * @param array $rates Parsed costs.
+	 * @return array|null
 	 */
-	private function cheaper( array $candidate, array $current ): bool {
-		if ( $candidate['type'] !== $current['type'] ) {
-			return 'literal' === $candidate['type'];
+	private function cheapest_rate( array $rates ): ?array {
+		if ( empty( $rates ) ) {
+			return null;
 		}
-		return $candidate['value'] < $current['value'];
+
+		$types = array_unique( array_column( $rates, 'type' ) );
+		if ( count( $types ) > 1 ) {
+			return null;
+		}
+
+		$cheapest = $rates[0];
+		foreach ( $rates as $rate ) {
+			if ( $rate['value'] < $cheapest['value'] ) {
+				$cheapest = $rate;
+			}
+		}
+
+		return $cheapest;
 	}
 
 	/**
-	 * A zone's locations as a Google `DefinedRegion`, or null for the
-	 * catch-all zone.
+	 * The top of the paid band, one smallest currency unit below the
+	 * free-shipping threshold.
 	 *
-	 * Zone 0 covers everywhere not matched by another zone. Naming a country
-	 * there would be false, and Google reads a condition with no
-	 * `shippingDestination` as "anywhere else", which is exactly right.
+	 * Google's ranges are inclusive, so the paid band must stop short of the
+	 * threshold rather than at it. The step follows the store's configured
+	 * decimals: 0.01 hardcoded would leave 19.995 matching neither band on a
+	 * three-decimal currency, and would name an unrepresentable amount on a
+	 * zero-decimal one.
+	 *
+	 * @param float $threshold Free-shipping minimum.
+	 * @return float
+	 */
+	private function band_ceiling( float $threshold ): float {
+		$decimals = function_exists( 'wc_get_price_decimals' ) ? (int) wc_get_price_decimals() : 2;
+		$decimals = max( 0, min( 6, $decimals ) );
+		$step     = pow( 10, -$decimals );
+
+		return round( $threshold - $step, $decimals );
+	}
+
+	/**
+	 * A zone's locations as Google `DefinedRegion` blocks.
+	 *
+	 * Returns a LIST, because Google's `addressCountry` is singular while a
+	 * WooCommerce zone may name several countries. A multi-country zone
+	 * becomes one condition per country carrying the same rate, rather than
+	 * silently collapsing to the first — which on a `{US, CA, MX}` zone would
+	 * hand Canada whatever the catch-all zone charges.
+	 *
+	 * Three distinct outcomes, and conflating any two of them publishes a
+	 * false claim:
+	 *
+	 *   - `array()`     — zone 0, the catch-all. Emit a condition with NO
+	 *                     `shippingDestination`, which Google reads as
+	 *                     "anywhere else".
+	 *   - a non-empty list — ordinary zones.
+	 *   - `null`        — locations we cannot express. Skip the zone entirely.
+	 *
+	 * That last case is why this cannot simply return null for "no
+	 * destination". `continent` is a first-class WooCommerce location type
+	 * with no Google equivalent, and postcode-only zones give no country to
+	 * scope against. Treating either as the catch-all would publish a Europe
+	 * zone's rate as the store's worldwide rate.
 	 *
 	 * @param WC_Shipping_Zone $zone The zone.
 	 * @return array|null
 	 */
-	public function zone_destination( WC_Shipping_Zone $zone ): ?array {
+	public function zone_destinations( WC_Shipping_Zone $zone ): ?array {
+		// Identify the catch-all positively by id. An empty location list is
+		// also how an unsaved or misconfigured zone looks, but zone 0 is the
+		// only one WooCommerce genuinely means as "everywhere else".
+		if ( 0 === $zone->get_id() ) {
+			return array();
+		}
+
 		$locations = $zone->get_zone_locations();
 		if ( empty( $locations ) ) {
 			return null;
 		}
 
-		$countries = array();
-		$regions   = array();
-		$postcodes = array();
+		// Regions and postcodes are kept per country so a zone holding
+		// `US:NY` and `CA:ON` does not emit Ontario as a US region.
+		$by_country = array();
+		$postcodes  = array();
 
 		foreach ( $locations as $location ) {
 			switch ( $location->type ) {
 				case 'country':
-					$countries[] = $location->code;
+					$by_country[ $location->code ] = $by_country[ $location->code ] ?? array();
 					break;
 				case 'state':
-					// WooCommerce stores states as `US:NY`; Google wants the
-					// region alone, with the country carried separately.
+					// WooCommerce stores states as `US:NY`.
 					$parts = explode( ':', $location->code );
 					if ( 2 === count( $parts ) ) {
-						$countries[] = $parts[0];
-						$regions[]   = $parts[1];
+						$by_country[ $parts[0] ][] = $parts[1];
 					}
 					break;
 				case 'postcode':
 					$postcodes[] = $location->code;
 					break;
+				// 'continent' has no Google equivalent and is handled by the
+				// emptiness check below rather than guessed at.
 			}
 		}
 
-		$countries = array_values( array_unique( $countries ) );
-		if ( empty( $countries ) ) {
-			// Postcode-only zones exist but are meaningless to Google without
-			// a country to scope them.
+		if ( empty( $by_country ) ) {
 			return null;
 		}
 
-		$region = array(
-			'@type'          => 'DefinedRegion',
-			// Google's addressCountry is singular. A zone listing several
-			// countries collapses to the first; splitting into one condition
-			// per country is a possible refinement, not a correctness issue.
-			'addressCountry' => $countries[0],
-		);
-		if ( ! empty( $regions ) ) {
-			$region['addressRegion'] = array_values( array_unique( $regions ) );
-		}
-		if ( ! empty( $postcodes ) ) {
-			$region['postalCode'] = array_values( array_unique( $postcodes ) );
+		$destinations = array();
+		foreach ( $by_country as $country => $regions ) {
+			$region  = array(
+				'@type'          => 'DefinedRegion',
+				'addressCountry' => $country,
+			);
+			$regions = array_values( array_unique( $regions ) );
+			if ( ! empty( $regions ) ) {
+				$region['addressRegion'] = $regions;
+			}
+			// Postcodes are not country-tagged in WooCommerce, so they only
+			// attach unambiguously when the zone names a single country.
+			if ( ! empty( $postcodes ) && 1 === count( $by_country ) ) {
+				$region['postalCode'] = array_values( array_unique( $postcodes ) );
+			}
+			$destinations[] = $region;
 		}
 
-		return $region;
+		return $destinations;
 	}
 
 	/**
 	 * A method's parsed cost, or null when it has none we can publish.
 	 *
-	 * Only flat rate carries a static cost. Local pickup is not shipping,
-	 * and third-party table-rate and live-carrier methods compute against a
-	 * real address at request time, so neither can be stated here.
+	 * Only flat rate carries a static cost. Local pickup is not shipping, and
+	 * third-party table-rate and live-carrier methods compute against a real
+	 * address at request time.
+	 *
+	 * Shipping-class costs disqualify the method. `calculate_shipping()` adds
+	 * them ON TOP of the base cost — `$rate['cost'] += $class_cost` for type
+	 * 'class', or the highest class cost for type 'order' — and which class
+	 * applies depends on what is in the cart. A store with `cost = 5` and
+	 * `class_cost_12 = 15` charges 20, so publishing 5 would understate it by
+	 * more than the base rate itself.
 	 *
 	 * @param object $method Shipping method instance.
 	 * @return array|null
@@ -420,21 +585,61 @@ class WC_AI_Storefront_Shipping_Policy {
 		if ( ! $method instanceof WC_Shipping_Flat_Rate ) {
 			return null;
 		}
+
+		if ( $this->has_shipping_class_costs( $method ) ) {
+			return null;
+		}
+
 		return self::parse_cost( (string) $method->cost );
+	}
+
+	/**
+	 * Whether any per-shipping-class cost is configured on a flat rate.
+	 *
+	 * Settings are keyed `class_cost_<term_id>`, with `no_class_cost` for
+	 * products in no class. An empty string means "not set" and adds nothing.
+	 *
+	 * @param object $method Flat-rate method instance.
+	 * @return bool
+	 */
+	private function has_shipping_class_costs( $method ): bool {
+		$settings = array();
+		if ( property_exists( $method, 'instance_settings' ) && is_array( $method->instance_settings ) ) {
+			$settings = $method->instance_settings;
+		}
+
+		foreach ( $settings as $key => $value ) {
+			if ( 'no_class_cost' !== $key && 0 !== strpos( (string) $key, 'class_cost_' ) ) {
+				continue;
+			}
+			if ( '' !== trim( (string) $value ) ) {
+				return true;
+			}
+		}
+
+		return false;
 	}
 
 	/**
 	 * Whether a method is enabled.
 	 *
-	 * `get_shipping_methods( true )` already filters to enabled methods, so
-	 * this is a belt-and-braces read for method objects that expose the flag
-	 * without honouring the filter.
+	 * `WC_Shipping_Method::$enabled` is the STRING 'yes' or 'no', not a
+	 * boolean — WC_Shipping_Zone assigns it as `$raw->is_enabled ? 'yes' :
+	 * 'no'`. A truthiness check would therefore pass 'no' straight through,
+	 * since every non-empty string is truthy.
+	 *
+	 * `get_shipping_methods( true )` already filters at the SQL level, so
+	 * this guard should never fire in production. It exists for callers
+	 * passing an unfiltered list, and it needs to be right for that case.
 	 *
 	 * @param object $method Shipping method instance.
 	 * @return bool
 	 */
 	private function method_enabled( $method ): bool {
-		return ! property_exists( $method, 'enabled' ) || (bool) $method->enabled;
+		if ( ! property_exists( $method, 'enabled' ) ) {
+			return true;
+		}
+		return 'no' !== $method->enabled && false !== $method->enabled;
 	}
 
 	/**
@@ -450,7 +655,22 @@ class WC_AI_Storefront_Shipping_Policy {
 	 * @return array
 	 */
 	protected function get_shipping_zones(): array {
-		if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
+		// `WC_Shipping_Zones::get_shipping_zones()` (plural, returning
+		// objects) landed in WooCommerce 10.3.0, while this plugin's floor is
+		// 9.9 — and `WC requires at least` only raises an admin notice, it
+		// does not block activation. Calling it on 9.9-10.2 is a fatal in
+		// wp_head, which white-screens the homepage and every product page.
+		//
+		// The version is checked rather than the method because the test
+		// stubs define `get_shipping_zones()` unconditionally, so both
+		// `method_exists()` and PHPStan resolve it as always present. Naming
+		// the version also states the actual requirement.
+		if ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, '10.3', '<' ) ) {
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'Shipping zones unavailable: WC_Shipping_Zones::get_shipping_zones() requires WooCommerce 10.3+.'
+				);
+			}
 			return array();
 		}
 		$zones   = array_values( WC_Shipping_Zones::get_shipping_zones() );
