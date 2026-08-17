@@ -12,7 +12,8 @@ import {
 	applyHandlingTimeMax,
 	applyModeChange,
 	derivePreview,
-	deriveHandlingTimePreview,
+	applyBusinessDay,
+	deriveDeliveryTimePreview,
 } from '../policies-tab';
 
 describe( 'derivePreview', () => {
@@ -373,36 +374,113 @@ describe( 'applyHandlingTimeMax', () => {
 	} );
 } );
 
-describe( 'deriveHandlingTimePreview', () => {
+describe( 'deriveDeliveryTimePreview', () => {
 	it( 'returns null when min is 0', () => {
-		expect( deriveHandlingTimePreview( { min: 0, max: 3 } ) ).toBeNull();
+		expect( deriveDeliveryTimePreview( { min: 0, max: 3 } ) ).toBeNull();
 	} );
 
 	it( 'returns null when max is 0', () => {
-		expect( deriveHandlingTimePreview( { min: 2, max: 0 } ) ).toBeNull();
+		expect( deriveDeliveryTimePreview( { min: 2, max: 0 } ) ).toBeNull();
 	} );
 
 	it( 'returns null for empty object', () => {
-		expect( deriveHandlingTimePreview( {} ) ).toBeNull();
+		expect( deriveDeliveryTimePreview( {} ) ).toBeNull();
 	} );
 
 	it( 'returns null when min > max (pre-stored invalid pair, N2 guard)', () => {
-		expect( deriveHandlingTimePreview( { min: 5, max: 2 } ) ).toBeNull();
+		expect( deriveDeliveryTimePreview( { min: 5, max: 2 } ) ).toBeNull();
 	} );
 
-	it( 'returns QuantitativeValue when both min and max are positive', () => {
-		const result = deriveHandlingTimePreview( { min: 1, max: 3 } );
+	it( 'wraps the QuantitativeValue in a ShippingDeliveryTime block', () => {
+		// The helper returns the whole deliveryTime block now, because
+		// businessDays is a sibling of handlingTime rather than nested in it.
+		const result = deriveDeliveryTimePreview( { min: 1, max: 3 } );
 		expect( result ).toEqual( {
-			'@type': 'QuantitativeValue',
-			minValue: 1,
-			maxValue: 3,
-			unitCode: 'DAY',
+			'@type': 'ShippingDeliveryTime',
+			handlingTime: {
+				'@type': 'QuantitativeValue',
+				minValue: 1,
+				maxValue: 3,
+				unitCode: 'DAY',
+			},
 		} );
 	} );
 
 	it( 'returns same value for min === max', () => {
-		const result = deriveHandlingTimePreview( { min: 2, max: 2 } );
-		expect( result?.minValue ).toBe( 2 );
-		expect( result?.maxValue ).toBe( 2 );
+		const result = deriveDeliveryTimePreview( { min: 2, max: 2 } );
+		expect( result?.handlingTime?.minValue ).toBe( 2 );
+		expect( result?.handlingTime?.maxValue ).toBe( 2 );
+	} );
+
+	it( 'emits days in week order regardless of click order', () => {
+		const out = deriveDeliveryTimePreview( {
+			min: 1,
+			max: 2,
+			business_days: [ 'Friday', 'Monday' ],
+		} );
+		expect( out.businessDays ).toEqual( [ 'Monday', 'Friday' ] );
+	} );
+
+	it( 'emits days with no handling time', () => {
+		const out = deriveDeliveryTimePreview( {
+			min: 0,
+			max: 0,
+			business_days: [ 'Monday' ],
+		} );
+		expect( out.businessDays ).toEqual( [ 'Monday' ] );
+		expect( out.handlingTime ).toBeUndefined();
+	} );
+
+	it( 'omits businessDays when no day is selected', () => {
+		const out = deriveDeliveryTimePreview( {
+			min: 1,
+			max: 2,
+			business_days: [],
+		} );
+		expect( out.businessDays ).toBeUndefined();
+		expect( out.handlingTime.minValue ).toBe( 1 );
+	} );
+
+	it( 'returns null when neither is configured', () => {
+		expect(
+			deriveDeliveryTimePreview( { min: 0, max: 0, business_days: [] } )
+		).toBeNull();
+	} );
+} );
+
+describe( 'applyBusinessDay', () => {
+	it( 'adds a day in week order, not click order', () => {
+		let state = { min: 1, max: 2, business_days: [] };
+		state = applyBusinessDay( state, 'Friday', true );
+		state = applyBusinessDay( state, 'Monday', true );
+		expect( state.business_days ).toEqual( [ 'Monday', 'Friday' ] );
+	} );
+
+	it( 'removes a day', () => {
+		const state = applyBusinessDay(
+			{ business_days: [ 'Monday', 'Friday' ] },
+			'Monday',
+			false
+		);
+		expect( state.business_days ).toEqual( [ 'Friday' ] );
+	} );
+
+	it( 'ignores a duplicate add', () => {
+		const state = applyBusinessDay(
+			{ business_days: [ 'Monday' ] },
+			'Monday',
+			true
+		);
+		expect( state.business_days ).toEqual( [ 'Monday' ] );
+	} );
+
+	it( 'preserves the handling-time pair', () => {
+		const state = applyBusinessDay(
+			{ min: 2, max: 4, business_days: [] },
+			'Monday',
+			true
+		);
+		expect( state.min ).toBe( 2 );
+		expect( state.max ).toBe( 4 );
 	} );
 } );

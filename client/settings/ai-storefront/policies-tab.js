@@ -25,6 +25,7 @@ import {
 	Button,
 	Card,
 	CardBody,
+	CheckboxControl,
 	Notice,
 	SelectControl,
 	Spinner,
@@ -34,6 +35,30 @@ import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { colors, radii, shadows, spacing, typography } from './tokens';
 import { TabInputStyles } from './tab-input-styles';
+
+/**
+ * Weekdays a store can dispatch on.
+ *
+ * `value` is a schema.org `DayOfWeek` identifier and is stored and published
+ * verbatim. Only `label` is translated — a French store still publishes
+ * "Monday", because that is the token consumers resolve. Keeping the two in
+ * separate fields is deliberate: a single translated array would silently
+ * publish "Lundi" and stop being understood.
+ *
+ * Week order, so emission is deterministic regardless of click order.
+ */
+export const WEEKDAYS = [
+	{ value: 'Monday', label: __( 'Monday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Tuesday', label: __( 'Tuesday', 'woocommerce-ai-storefront' ) },
+	{
+		value: 'Wednesday',
+		label: __( 'Wednesday', 'woocommerce-ai-storefront' ),
+	},
+	{ value: 'Thursday', label: __( 'Thursday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Friday', label: __( 'Friday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Saturday', label: __( 'Saturday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Sunday', label: __( 'Sunday', 'woocommerce-ai-storefront' ) },
+];
 
 const POLICY_MODES = {
 	UNCONFIGURED: 'unconfigured',
@@ -365,7 +390,7 @@ export const applyModeChange = ( policy, newMode ) => {
 };
 
 /**
- * Pure helper: derive the JSON-LD `ShippingDeliveryTime.handlingTime` block
+ * Pure helper: derive the JSON-LD `ShippingDeliveryTime` block
  * from a draft handling-time state. Mirrors the server-side
  * `WC_AI_Storefront_JsonLd::add_handling_time()` emission contract.
  *
@@ -374,20 +399,35 @@ export const applyModeChange = ( policy, newMode ) => {
  * `if ( $min <= 0 || $max <= 0 || $min > $max ) return;`.
  *
  * @param {Object} handlingTime Draft handling-time state `{ min, max }`.
- * @return {Object|null} handlingTime QuantitativeValue block, or null.
+ * @return {Object|null} ShippingDeliveryTime block, or null when unconfigured.
  */
-export const deriveHandlingTimePreview = ( handlingTime ) => {
+export const deriveDeliveryTimePreview = ( handlingTime ) => {
 	const min = Math.trunc( Number( handlingTime?.min ) ) || 0;
 	const max = Math.trunc( Number( handlingTime?.max ) ) || 0;
-	if ( min <= 0 || max <= 0 || min > max ) {
-		return null;
+	const days = handlingTime?.business_days || [];
+
+	const block = { '@type': 'ShippingDeliveryTime' };
+
+	// Week-ordered, matching WC_AI_Storefront_Handling_Time::DAYS on the
+	// server. Click order must never reach the output.
+	const ordered = WEEKDAYS.map( ( d ) => d.value ).filter( ( d ) =>
+		days.includes( d )
+	);
+	if ( ordered.length > 0 ) {
+		block.businessDays = ordered;
 	}
-	return {
-		'@type': 'QuantitativeValue',
-		minValue: min,
-		maxValue: max,
-		unitCode: 'DAY',
-	};
+
+	if ( min > 0 && max > 0 && min <= max ) {
+		block.handlingTime = {
+			'@type': 'QuantitativeValue',
+			minValue: min,
+			maxValue: max,
+			unitCode: 'DAY',
+		};
+	}
+
+	// Only '@type' would remain if neither is configured.
+	return Object.keys( block ).length < 2 ? null : block;
 };
 
 /**
@@ -983,6 +1023,33 @@ export const applyHandlingTimeMax = ( current, val ) => {
 	return next;
 };
 
+/**
+ * Toggle one dispatch day, returning a week-ordered list.
+ *
+ * Rebuilt from WEEKDAYS rather than appending, so the stored order never
+ * follows click order — the server sanitizer does the same, and the two must
+ * agree or a save round-trip reorders the JSON for no reason.
+ *
+ * @param {Object}  current Current handling-time state.
+ * @param {string}  day     Canonical day token.
+ * @param {boolean} checked Whether the day is now selected.
+ * @return {Object} Updated handling-time state.
+ */
+export const applyBusinessDay = ( current, day, checked ) => {
+	const selected = new Set( current?.business_days || [] );
+	if ( checked ) {
+		selected.add( day );
+	} else {
+		selected.delete( day );
+	}
+	return {
+		...current,
+		business_days: WEEKDAYS.map( ( d ) => d.value ).filter( ( d ) =>
+			selected.has( d )
+		),
+	};
+};
+
 const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 	const handleMin = ( val ) =>
 		onChange( applyHandlingTimeMin( handlingTime, val ) );
@@ -1078,6 +1145,54 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 						'woocommerce-ai-storefront'
 					) }
 				</p>
+				<div style={ { marginTop: spacing.s4 } }>
+					<BaseControl.VisualLabel>
+						{ __(
+							'Days you dispatch orders',
+							'woocommerce-ai-storefront'
+						) }
+					</BaseControl.VisualLabel>
+					<div
+						style={ {
+							display: 'flex',
+							flexWrap: 'wrap',
+							gap: `${ spacing.s2 } ${ spacing.s4 }`,
+							marginTop: spacing.s2,
+						} }
+					>
+						{ WEEKDAYS.map( ( day ) => (
+							<CheckboxControl
+								key={ day.value }
+								__nextHasNoMarginBottom
+								label={ day.label }
+								checked={ (
+									handlingTime?.business_days || []
+								).includes( day.value ) }
+								onChange={ ( checked ) =>
+									onChange(
+										applyBusinessDay(
+											handlingTime,
+											day.value,
+											checked
+										)
+									)
+								}
+							/>
+						) ) }
+					</div>
+					<p
+						style={ {
+							margin: `${ spacing.s2 } 0 0`,
+							fontSize: '12px',
+							color: colors.textMuted,
+						} }
+					>
+						{ __(
+							'Handling time on its own is ambiguous — "ships in 1 day" on a Friday reads as Saturday dispatch. Ticking your working days removes the guesswork. Leave every day unticked to publish nothing.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+				</div>
 			</CardBody>
 		</Card>
 	);
