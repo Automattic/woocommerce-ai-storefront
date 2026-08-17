@@ -105,8 +105,9 @@ class WC_AI_Storefront {
 			// Handling time (min/max business days) for ShippingDeliveryTime.
 			// Both values 0 = not configured (no handlingTime block emitted).
 			'handling_time'            => array(
-				'min' => 0,
-				'max' => 0,
+				'min'           => 0,
+				'max'           => 0,
+				'business_days' => array(),
 			),
 		);
 	}

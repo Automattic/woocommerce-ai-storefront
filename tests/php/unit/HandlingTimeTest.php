@@ -12,15 +12,15 @@ class HandlingTimeTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_non_array_returns_zero_pair(): void {
-		$this->assertSame( [ 'min' => 0, 'max' => 0 ], WC_AI_Storefront_Handling_Time::sanitize( 'gibberish' ) );
+		$this->assertSame( [ 'min' => 0, 'max' => 0, 'business_days' => [] ], WC_AI_Storefront_Handling_Time::sanitize( 'gibberish' ) );
 	}
 
 	public function test_null_returns_zero_pair(): void {
-		$this->assertSame( [ 'min' => 0, 'max' => 0 ], WC_AI_Storefront_Handling_Time::sanitize( null ) );
+		$this->assertSame( [ 'min' => 0, 'max' => 0, 'business_days' => [] ], WC_AI_Storefront_Handling_Time::sanitize( null ) );
 	}
 
 	public function test_integer_returns_zero_pair(): void {
-		$this->assertSame( [ 'min' => 0, 'max' => 0 ], WC_AI_Storefront_Handling_Time::sanitize( 42 ) );
+		$this->assertSame( [ 'min' => 0, 'max' => 0, 'business_days' => [] ], WC_AI_Storefront_Handling_Time::sanitize( 42 ) );
 	}
 
 	// ------------------------------------------------------------------
@@ -40,7 +40,7 @@ class HandlingTimeTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_empty_array_returns_zero_pair(): void {
-		$this->assertSame( [ 'min' => 0, 'max' => 0 ], WC_AI_Storefront_Handling_Time::sanitize( [] ) );
+		$this->assertSame( [ 'min' => 0, 'max' => 0, 'business_days' => [] ], WC_AI_Storefront_Handling_Time::sanitize( [] ) );
 	}
 
 	// ------------------------------------------------------------------
@@ -94,7 +94,7 @@ class HandlingTimeTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_max_below_min_when_min_is_zero_no_reset(): void {
 		// max < min rule only triggers when both are > 0; min=0 means "not set".
-		$result = WC_AI_Storefront_Handling_Time::sanitize( [ 'min' => 0, 'max' => 0 ] );
+		$result = WC_AI_Storefront_Handling_Time::sanitize( [ 'min' => 0, 'max' => 0, 'business_days' => [] ] );
 		$this->assertSame( 0, $result['min'] );
 		$this->assertSame( 0, $result['max'] );
 	}
@@ -113,5 +113,79 @@ class HandlingTimeTest extends \PHPUnit\Framework\TestCase {
 		$result = WC_AI_Storefront_Handling_Time::sanitize( [ 'min' => '2', 'max' => '7' ] );
 		$this->assertSame( 2, $result['min'] );
 		$this->assertSame( 7, $result['max'] );
+	}
+
+	// ------------------------------------------------------------------
+	// business_days — which weekdays the store dispatches (#637)
+	// ------------------------------------------------------------------
+
+	public function test_business_days_are_canonical_and_week_ordered(): void {
+		// Emission order must not follow click order, or the same
+		// configuration produces different JSON on different stores and busts
+		// caches for nothing.
+		$out = WC_AI_Storefront_Handling_Time::sanitize(
+			[
+				'min'           => 1,
+				'max'           => 2,
+				'business_days' => [ 'Friday', 'Monday', 'Wednesday' ],
+			]
+		);
+
+		$this->assertSame( [ 'Monday', 'Wednesday', 'Friday' ], $out['business_days'] );
+	}
+
+	public function test_unknown_days_are_dropped_not_stored(): void {
+		// This array is published verbatim, so a typo would become a public
+		// claim.
+		$out = WC_AI_Storefront_Handling_Time::sanitize(
+			[ 'business_days' => [ 'Monday', 'gibberish', 'Funday', '', 42, null ] ]
+		);
+
+		$this->assertSame( [ 'Monday' ], $out['business_days'] );
+	}
+
+	public function test_day_names_are_case_normalised(): void {
+		// A hand-edited option or a REST caller can send any casing;
+		// schema.org DayOfWeek tokens are capitalised.
+		$out = WC_AI_Storefront_Handling_Time::sanitize(
+			[ 'business_days' => [ 'monday', 'TUESDAY', 'wEdNeSdAy', ' friday ' ] ]
+		);
+
+		$this->assertSame( [ 'Monday', 'Tuesday', 'Wednesday', 'Friday' ], $out['business_days'] );
+	}
+
+	public function test_duplicate_days_collapse(): void {
+		$out = WC_AI_Storefront_Handling_Time::sanitize(
+			[ 'business_days' => [ 'Monday', 'Monday', 'monday' ] ]
+		);
+
+		$this->assertSame( [ 'Monday' ], $out['business_days'] );
+	}
+
+	public function test_missing_business_days_defaults_to_empty(): void {
+		// Stores configured before #637 have { min, max } and no third key.
+		// Reading one must not warn or produce null.
+		$out = WC_AI_Storefront_Handling_Time::sanitize( [ 'min' => 1, 'max' => 2 ] );
+
+		$this->assertSame( [], $out['business_days'] );
+		$this->assertSame( 1, $out['min'] );
+	}
+
+	public function test_non_array_input_still_yields_the_days_key(): void {
+		$out = WC_AI_Storefront_Handling_Time::sanitize( 'gibberish' );
+
+		$this->assertSame( [], $out['business_days'] );
+	}
+
+	public function test_all_seven_days_are_kept(): void {
+		// A store that genuinely dispatches every day is a real answer, not a
+		// synonym for "unset".
+		$out = WC_AI_Storefront_Handling_Time::sanitize(
+			[ 'business_days' => WC_AI_Storefront_Handling_Time::DAYS ]
+		);
+
+		$this->assertCount( 7, $out['business_days'] );
+		$this->assertSame( 'Monday', $out['business_days'][0] );
+		$this->assertSame( 'Sunday', $out['business_days'][6] );
 	}
 }
