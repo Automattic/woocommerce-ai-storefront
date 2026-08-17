@@ -1113,9 +1113,8 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 				<h4
 					style={ {
 						margin: `0 0 ${ spacing.s2 }`,
-						fontSize: '13px',
-						fontWeight: 600,
-						color: colors.textPrimary,
+						...typography.eyebrowLabel,
+						color: colors.textSecondary,
 					} }
 				>
 					{ __( 'Handling time', 'woocommerce-ai-storefront' ) }
@@ -1140,7 +1139,7 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 							} }
 						>
 							{ __(
-								'Min handling time (days)',
+								'Minimum (days)',
 								'woocommerce-ai-storefront'
 							) }
 						</label>
@@ -1161,7 +1160,7 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 							} }
 						>
 							{ __(
-								'Max handling time (days)',
+								'Maximum (days)',
 								'woocommerce-ai-storefront'
 							) }
 						</label>
@@ -1188,9 +1187,8 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 					<h4
 						style={ {
 							margin: `0 0 ${ spacing.s2 }`,
-							fontSize: '13px',
-							fontWeight: 600,
-							color: colors.textPrimary,
+							...typography.eyebrowLabel,
+							color: colors.textSecondary,
 						} }
 					>
 						{ __( 'Dispatch days', 'woocommerce-ai-storefront' ) }
