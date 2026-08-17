@@ -6,6 +6,22 @@
  * the plugin classes under test. Brain Monkey handles function mocking;
  * these cover classes that Brain Monkey doesn't stub.
  *
+ * WARNING — these stubs describe WooCommerce's API without recording WHEN
+ * each method arrived, so they silently assert that everything here exists on
+ * every supported WooCommerce. `phpstan.neon.dist` lists this file under
+ * `scanFiles`, so static analysis inherits the same assumption and will even
+ * report a legitimate `method_exists()` guard as redundant.
+ *
+ * That combination shipped a fatal: `WC_Shipping_Zones::get_shipping_zones()`
+ * requires WooCommerce 10.3 while the plugin's floor is 9.9, and neither the
+ * suite nor PHPStan could see it (#638).
+ *
+ * When stubbing a WooCommerce method, check the version that introduced it and
+ * note it here. An `@since` scan of WooCommerce source is a useful first pass
+ * but not sufficient — `get_shipping_zones()` itself carries no `@since` tag,
+ * and 29 of 66 stubbed core methods are in the same position. For anything
+ * recent, confirm against `git tag --contains` on the introducing commit.
+ *
  * @package WooCommerce_AI_Storefront
  */
 
@@ -842,13 +858,115 @@ if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 		/** @var array<int, WC_Shipping_Zone> Keyed by zone id. Set in tests to inject zones without a DB. */
 		public static array $test_zones = [];
 
+		/**
+		 * Which WooCommerce this stub pretends to be, or null for "current".
+		 *
+		 * Set it below 10.3 and get_shipping_zones() throws, so a test can
+		 * prove the production version guard actually routes rather than
+		 * merely being consulted.
+		 *
+		 * @var string|null
+		 */
+		public static ?string $simulated_wc_version = null;
+
+		/**
+		 * Zone-id rows as the data store returns them, or null to derive from
+		 * $test_zones.
+		 *
+		 * Set it explicitly to list an id that get_zone() does NOT hold —
+		 * a zone deleted between the listing and the read, which real
+		 * WooCommerce permits and the production instanceof check exists for.
+		 *
+		 * @var array|null
+		 */
+		public static ?array $test_zone_rows = null;
+
+		/**
+		 * Data arrays keyed by zone id, as the admin UI consumes them.
+		 * `@since 2.6.0` — available on every WooCommerce this plugin
+		 * supports, unlike get_shipping_zones().
+		 *
+		 * @return array<int, array<string, mixed>>
+		 */
 		public static function get_zones(): array {
-			return [];
+			$zones = [];
+			foreach ( self::$test_zones as $id => $zone ) {
+				$zones[ $id ] = [ 'zone_id' => $id ];
+			}
+			return $zones;
 		}
 
-		/** @return WC_Shipping_Zone[] Keyed by zone id — mirrors WooCommerce core. */
+		/**
+		 * `@since 2.6.0`. Returns false for an unknown id, which callers
+		 * must narrow with `instanceof`.
+		 *
+		 * @param int $zone_id Zone ID.
+		 * @return WC_Shipping_Zone|bool
+		 */
+		public static function get_zone( $zone_id ) {
+			return self::$test_zones[ (int) $zone_id ] ?? false;
+		}
+
+		/**
+		 * Zone OBJECTS keyed by zone id.
+		 *
+		 * `@since 10.3.0` — NOT available on the plugin's declared WooCommerce
+		 * floor of 9.9, which is what made #638 possible.
+		 *
+		 * This stub REFUSES to answer when `$simulated_wc_version` is below
+		 * 10.3, throwing the same `Error` PHP raises for an undefined static
+		 * method. A stub that always answers is what let the original bug
+		 * through: with it, restoring the unguarded call passes the entire
+		 * suite, and inverting the version branch — which would route 9.9-10.2
+		 * straight into this method — also passes.
+		 *
+		 * @return WC_Shipping_Zone[]
+		 * @throws Error When simulating a WooCommerce that lacks this method.
+		 */
 		public static function get_shipping_zones(): array {
+			if ( null !== self::$simulated_wc_version
+				&& version_compare( self::$simulated_wc_version, '10.3', '<' ) ) {
+				throw new Error(
+					'Call to undefined method WC_Shipping_Zones::get_shipping_zones() — added in WooCommerce 10.3, simulating ' . self::$simulated_wc_version . '.'
+				);
+			}
 			return self::$test_zones;
+		}
+	}
+}
+
+if ( ! class_exists( 'WC_Data_Store' ) ) {
+	/**
+	 * Minimal WC_Data_Store. Only the shipping-zone store is modelled, and
+	 * only its `get_zones()` — a lean `SELECT zone_id, zone_name, zone_order`
+	 * that the plugin uses instead of WC_Shipping_Zones::get_zones(), which
+	 * would hydrate every zone and render admin settings HTML per method on a
+	 * front-end request.
+	 *
+	 * `@since 3.0.0`, so available on every WooCommerce this plugin supports.
+	 */
+	class WC_Data_Store {
+		/** @var string */
+		private string $type;
+
+		public function __construct( string $type = '' ) {
+			$this->type = $type;
+		}
+
+		public static function load( string $type ): self {
+			return new self( $type );
+		}
+
+		/** @return array<int, object> Raw rows, as $wpdb->get_results() returns them. */
+		public function get_zones(): array {
+			if ( null !== WC_Shipping_Zones::$test_zone_rows ) {
+				return WC_Shipping_Zones::$test_zone_rows;
+			}
+			$rows = [];
+			foreach ( array_keys( WC_Shipping_Zones::$test_zones ) as $id ) {
+				$rows[] = (object) [ 'zone_id' => $id, 'zone_name' => 'Zone ' . $id, 'zone_order' => 0 ];
+			}
+			return $rows;
 		}
 	}
 }

@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Fixed
+
+- **Stores on WooCommerce 9.9 to 10.2 could hit a blank page (#638).**
+  - The plugin reads your shipping zones to work out whether you offer free shipping. It used a WooCommerce function that only exists in 10.3 and later, so on older versions the product page and homepage could fail to load rather than simply skipping that detail.
+  - Zones are now read in a way that works on every WooCommerce version the plugin supports, so nothing is lost on an older install — shipping information is published there too, rather than going quietly missing.
+  - `WC tested up to` was also stale at 9.9; development runs against 10.9.
+
 ### Added
 
 - **Your shipping rates are now published for AI assistants and Google (#635).**

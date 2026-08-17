@@ -19,6 +19,15 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		// Reset in tearDown, never inline after the call under test: if
+		// all_zones() throws — which is exactly what a #638-class regression
+		// looks like — an inline reset never runs and the statics contaminate
+		// the rest of the process.
+		\WC_Shipping_Zones::$test_zones           = array();
+		\WC_Shipping_Zones::$test_zone_rows       = null;
+		\WC_Shipping_Zones::$simulated_wc_version               = null;
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = null;
+		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -505,51 +514,145 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'handlingTime', $block );
 	}
 
-	public function test_zones_are_not_read_below_the_required_woocommerce(): void {
+	public function test_legacy_woocommerce_still_reads_zones(): void {
 		// WC_Shipping_Zones::get_shipping_zones() only exists in WooCommerce
 		// 10.3+, while the plugin's floor is 9.9 and `WC requires at least`
-		// does not block activation. Calling it below that fatals inside
-		// wp_head, white-screening the homepage and every product page.
-		$zone   = $this->zone( 0, array(), array( $this->flat_method( '20' ) ) );
-		$policy = new class( array( $zone ) ) extends WC_AI_Storefront_Shipping_Policy {
-			/** @var array */
-			private array $zones;
+		// does not block activation. Rather than degrade below that, the reader
+		// falls back to the data store + get_zone() — so the feature works on
+		// every supported release instead of silently going missing (#638).
+		//
+		// The stub THROWS for get_shipping_zones() at this simulated version,
+		// so this test passing proves the guard actually routed. A stub that
+		// always answers is what let the original bug through.
+		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
 
-			public function __construct( array $zones ) {
-				$this->zones = $zones;
-			}
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
 
-			protected function zones_readable(): bool {
+		$legacy = new class() extends WC_AI_Storefront_Shipping_Policy {
+			protected static function uses_modern_zone_api(): bool {
 				return false;
 			}
-
-			protected function get_shipping_zones(): array {
-				return $this->zones;
-			}
 		};
 
-		$this->assertSame(
-			array(),
-			$policy->build_conditions(),
-			'A rate-bearing zone must still produce nothing below the required version.'
-		);
+		$zones = $legacy::all_zones();
+
+		// The configured zone, hydrated through get_zone(), plus the catch-all
+		// that WooCommerce excludes from every listing API.
+		$this->assertCount( 2, $zones );
+		$this->assertSame( 1, $zones[0]->get_id() );
 	}
 
-	public function test_the_version_seam_accepts_the_minimum_and_rejects_below_it(): void {
-		// Behavioural, so it survives a cosmetic change to how the comparison
-		// is spelled. A source-regex test on the literal fails against a
-		// correct implementation that writes '10.3.0' instead of '10.3'.
-		$probe = new class() extends WC_AI_Storefront_Shipping_Policy {
-			public function readable_at( string $version ): bool {
-				return version_compare( $version, self::ZONES_MIN_WC, '>=' );
+	public function test_taking_the_modern_path_on_legacy_woocommerce_would_fatal(): void {
+		// Pins the CONSEQUENCE, not the mechanism. If the version branch were
+		// inverted, 9.9-10.2 stores would reach get_shipping_zones() and
+		// white-screen — #638 restored verbatim. Without this the inversion is
+		// invisible, because both paths return identical objects under test.
+		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
+
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
+
+		$inverted = new class() extends WC_AI_Storefront_Shipping_Policy {
+			protected static function uses_modern_zone_api(): bool {
+				return true; // Wrong for 10.2 — the inversion under test.
 			}
 		};
 
-		$this->assertTrue( $probe->readable_at( '10.3' ) );
-		$this->assertTrue( $probe->readable_at( '10.3.0' ) );
-		$this->assertTrue( $probe->readable_at( '10.9.1' ) );
-		$this->assertFalse( $probe->readable_at( '10.2.0' ) );
-		$this->assertFalse( $probe->readable_at( '9.9' ) );
+		$this->expectException( \Error::class );
+		$this->expectExceptionMessageMatches( '/get_shipping_zones/' );
+		$inverted::all_zones();
+	}
+
+	public function test_modern_woocommerce_uses_the_object_api(): void {
+		\WC_Shipping_Zones::$simulated_wc_version               = '10.9.1';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.9.1';
+
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 4 );
+		\WC_Shipping_Zones::$test_zones = array( 4 => $zone );
+
+		$zones = WC_AI_Storefront_Shipping_Policy::all_zones();
+
+		$this->assertCount( 2, $zones );
+		$this->assertSame( 4, $zones[0]->get_id() );
+	}
+
+	public function test_a_zone_deleted_mid_request_is_skipped(): void {
+		// Real WooCommerce reads the listing and each zone separately, so an
+		// admin deleting a zone between the two makes get_zone() return false.
+		// The production instanceof narrowing exists for exactly this, and
+		// without a row the stub cannot resolve, nothing exercises it.
+		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
+		\WC_Shipping_Zones::$test_zone_rows       = array(
+			(object) array( 'zone_id' => 1 ),
+			(object) array( 'zone_id' => 99 ), // Listed, but already deleted.
+		);
+
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
+
+		$legacy = new class() extends WC_AI_Storefront_Shipping_Policy {
+			protected static function uses_modern_zone_api(): bool {
+				return false;
+			}
+		};
+
+		$zones = $legacy::all_zones();
+
+		$this->assertCount( 2, $zones, 'The vanished zone is dropped, not returned as false.' );
+		$this->assertContainsOnlyInstancesOf( \WC_Shipping_Zone::class, $zones );
+	}
+
+	public function test_legacy_store_publishes_the_same_conditions_as_modern(): void {
+		// The PR's actual promise: a 9.9 store PUBLISHES shipping conditions.
+		// Nothing else drives build_conditions() down the legacy path, so the
+		// removed version guard could be restored with the suite green.
+		$make_zone = static function () {
+			$method       = new \WC_Shipping_Flat_Rate();
+			$method->cost = '20';
+			$zone         = \Mockery::mock( 'WC_Shipping_Zone' );
+			$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+			$zone->shouldReceive( 'get_zone_locations' )->andReturn(
+				array( (object) array( 'type' => 'country', 'code' => 'US' ) )
+			);
+			$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
+			return $zone;
+		};
+
+		// The fixture helper stubs the WP/WC functions the builder needs; this
+		// test drives the REAL zone reader, so it stubs them directly.
+		\Brain\Monkey\Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		\Brain\Monkey\Functions\when( 'wc_shipping_enabled' )->justReturn( true );
+		\Brain\Monkey\Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
+
+		\WC_Shipping_Zones::$simulated_wc_version               = '10.9.1';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.9.1';
+		\WC_Shipping_Zones::$test_zones           = array( 1 => $make_zone() );
+		$modern = ( new WC_AI_Storefront_Shipping_Policy() )->build_conditions();
+		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
+
+		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
+		\WC_Shipping_Zones::$test_zones           = array( 1 => $make_zone() );
+		$legacy = new class() extends WC_AI_Storefront_Shipping_Policy {
+			protected static function uses_modern_zone_api(): bool {
+				return false;
+			}
+		};
+
+		$this->assertNotEmpty( $modern );
+		$this->assertEquals(
+			$modern,
+			$legacy->build_conditions(),
+			'A 9.9 store must publish what a 10.3 store publishes.'
+		);
 	}
 
 	public function test_shipping_globally_disabled_suppresses_the_block(): void {

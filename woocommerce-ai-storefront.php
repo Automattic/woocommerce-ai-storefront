@@ -12,7 +12,7 @@
  * Tested up to: 6.8
  * Requires Plugins: woocommerce
  * WC requires at least: 9.9
- * WC tested up to: 9.9
+ * WC tested up to: 10.9
  * Requires PHP: 8.1
  * License: GPL-3.0-or-later
  * License URI: https://www.gnu.org/licenses/gpl-3.0.html
