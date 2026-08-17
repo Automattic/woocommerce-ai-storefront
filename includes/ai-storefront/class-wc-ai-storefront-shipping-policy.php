@@ -193,9 +193,14 @@ class WC_AI_Storefront_Shipping_Policy {
 	 * block uses, so the two surfaces can never disagree about how long the
 	 * store takes to dispatch.
 	 *
-	 * `businessDays` and `cutoffTime` are the other two ServicePeriod
-	 * properties. Both are Recommended and WooCommerce stores neither, so
-	 * they stay absent until there is a setting behind them.
+	 * `businessDays` is emitted here from the merchant's selected dispatch
+	 * days (#637), and it is meaningful on its own — "we dispatch Monday to
+	 * Friday" is a complete claim with no duration attached — so the block is
+	 * assembled from parts rather than gated on the min/max pair.
+	 *
+	 * `cutoffTime` remains absent. It qualifies same-day dispatch, and this
+	 * plugin cannot express that: the handling-time sanitizer treats 0 as
+	 * "not set", so a store cannot say it ships the same day.
 	 *
 	 * @param array $settings Plugin settings.
 	 * @return array|null
@@ -205,19 +210,26 @@ class WC_AI_Storefront_Shipping_Policy {
 		$min      = isset( $handling['min'] ) ? (int) $handling['min'] : 0;
 		$max      = isset( $handling['max'] ) ? (int) $handling['max'] : 0;
 
-		if ( $min <= 0 || $max <= 0 || $min > $max ) {
-			return null;
+		$block = array( '@type' => 'ServicePeriod' );
+
+		$days = isset( $handling['business_days'] ) && is_array( $handling['business_days'] )
+			? $handling['business_days']
+			: array();
+		if ( ! empty( $days ) ) {
+			$block['businessDays'] = array_values( $days );
 		}
 
-		return array(
-			'@type'    => 'ServicePeriod',
-			'duration' => array(
+		if ( $min > 0 && $max > 0 && $min <= $max ) {
+			$block['duration'] = array(
 				'@type'    => 'QuantitativeValue',
 				'minValue' => $min,
 				'maxValue' => $max,
 				'unitCode' => 'DAY',
-			),
-		);
+			);
+		}
+
+		// Only '@type' would remain if neither is configured.
+		return count( $block ) < 2 ? null : $block;
 	}
 
 	/**

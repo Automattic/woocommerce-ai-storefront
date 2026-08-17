@@ -655,6 +655,47 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_service_period_carries_business_days(): void {
+		// The surface Google actually reads businessDays on.
+		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
+		$settings = array( 'handling_time' => array( 'min' => 1, 'max' => 2, 'business_days' => array( 'Monday', 'Friday' ) ) );
+
+		$handling = $policy->build( $settings )['handlingTime'];
+
+		$this->assertSame( 'ServicePeriod', $handling['@type'] );
+		$this->assertSame( array( 'Monday', 'Friday' ), $handling['businessDays'] );
+		$this->assertSame( 1, $handling['duration']['minValue'] );
+	}
+
+	public function test_service_period_emits_days_without_a_duration(): void {
+		// "We dispatch Monday to Friday" stands alone; the min/max guard must
+		// not suppress it.
+		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
+		$settings = array( 'handling_time' => array( 'min' => 0, 'max' => 0, 'business_days' => array( 'Monday' ) ) );
+
+		$handling = $policy->build( $settings )['handlingTime'];
+
+		$this->assertSame( array( 'Monday' ), $handling['businessDays'] );
+		$this->assertArrayNotHasKey( 'duration', $handling );
+	}
+
+	public function test_no_handling_data_omits_the_service_period(): void {
+		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
+		$settings = array( 'handling_time' => array( 'min' => 0, 'max' => 0, 'business_days' => array() ) );
+
+		$this->assertArrayNotHasKey( 'handlingTime', $policy->build( $settings ) );
+	}
+
+	public function test_no_days_selected_omits_the_key_but_keeps_the_duration(): void {
+		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
+		$settings = array( 'handling_time' => array( 'min' => 1, 'max' => 2, 'business_days' => array() ) );
+
+		$handling = $policy->build( $settings )['handlingTime'];
+
+		$this->assertArrayNotHasKey( 'businessDays', $handling );
+		$this->assertArrayHasKey( 'duration', $handling );
+	}
+
 	public function test_shipping_globally_disabled_suppresses_the_block(): void {
 		// A merchant who goes digital-only keeps their zones — the onboarding
 		// wizard created them and nothing removes them.
