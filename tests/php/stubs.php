@@ -824,6 +824,9 @@ if ( ! class_exists( 'WC_Shipping_Zone' ) ) {
 		public function __construct( int $id = 0 ) {
 			$this->id = $id;
 		}
+		public function get_id(): int {
+			return $this->id;
+		}
 		public function get_zone_locations(): array {
 			return [];
 		}
@@ -851,12 +854,46 @@ if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 }
 
 if ( ! class_exists( 'WC_Shipping_Method' ) ) {
-	class WC_Shipping_Method {}
+	class WC_Shipping_Method {
+		public string $id = '';
+		/**
+		 * WooCommerce types this as the STRING 'yes'/'no', not a boolean —
+		 * WC_Shipping_Zone assigns `$raw->is_enabled ? 'yes' : 'no'`. Typing
+		 * it bool here would let a test pass against code that mishandles the
+		 * real value.
+		 */
+		public string $enabled = 'yes';
+	}
 }
 
 if ( ! class_exists( 'WC_Shipping_Free_Shipping' ) ) {
 	class WC_Shipping_Free_Shipping extends WC_Shipping_Method {
+		public string $id = 'free_shipping';
 		public string $requires = '';
+		/**
+		 * Order subtotal at or above which shipping becomes free. Empty
+		 * unless `$requires` names a min_amount mode.
+		 */
+		public string $min_amount = '';
+	}
+}
+
+if ( ! class_exists( 'WC_Shipping_Flat_Rate' ) ) {
+	/**
+	 * `$cost` is an EXPRESSION, not a number — WooCommerce evaluates it
+	 * against a real cart, so it may contain `[qty]`, `[cost]` or a
+	 * `[fee percent="…"]` shortcode. Typed as string here for that reason.
+	 */
+	class WC_Shipping_Flat_Rate extends WC_Shipping_Method {
+		public string $id = 'flat_rate';
+		public string $cost = '';
+		/**
+		 * Per-instance settings. Carries `class_cost_<term_id>` and
+		 * `no_class_cost`, which calculate_shipping() ADDS to `$cost`.
+		 *
+		 * @var array<string, string>
+		 */
+		public array $instance_settings = [];
 	}
 }
 

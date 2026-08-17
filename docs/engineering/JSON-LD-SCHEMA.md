@@ -706,6 +706,45 @@ Same `MerchantReturnPolicy` block shape that the per-Offer emission produces, bu
 - **Coexists with per-Offer emission**: today both Org-level and per-Offer emissions ship together. Per-Offer is already override-aware — it emits a `MerchantReturnNotPermitted` block when the product's final-sale flag is set, and otherwise emits the same store-wide policy as Org-level. The redundancy is intentional defensive emission: Schema.org consumers that don't implement the Org-level → Offer-level inheritance correctly still get the right answer on a product page. Skipping the per-Offer block when it duplicates Org-level (sometimes called "phase 2" in earlier discussions) was considered and ruled out — the markup-size win is marginal and the backward-compat risk for non-spec-compliant consumers is real.
 - **Source**: `output_store_jsonld()` for the Org-level call site; `build_return_policy_block()` (now `protected`) for the shared block builder.
 
+### `hasShippingService` (Organization-level)
+
+The store's real shipping zones as Google's `ShippingService` → `ShippingConditions`. Built by `WC_AI_Storefront_Shipping_Policy`.
+
+**Why this lives on the Organization and not the product.** WooCommerce prices shipping by zone *and* order value. Product-level `OfferShippingDetails.shippingRate` is a single `MonetaryAmount`, so on a store offering "free over $20, otherwise $20" no product-level number is true — `0` misleads a $10 basket and `20` misleads a $30 one. `ShippingConditions` carries one band at a time, so both statements can be made honestly. The per-product block is unchanged and still emits `value: 0` in the narrow unconditional-free case.
+
+**Placement.** Google asks for this on "a single page on your site that describes the shipping policy," not on every page. The homepage `OnlineBusiness` block is already emitted exactly once, so it carries this rather than requiring a new page-picker setting.
+
+| Google | WooCommerce source |
+|---|---|
+| `ShippingConditions[]` | zones × enabled methods |
+| `shippingDestination` (`DefinedRegion`) | zone locations; `state` codes (`US:NY`) split into `addressCountry` + `addressRegion` |
+| `orderValue.minValue` / `maxValue` | free-shipping `min_amount`, as a two-band pair |
+| `shippingRate.value` | flat rate `cost`, when it parses as a literal |
+| `shippingRate.orderPercentage` | flat rate `[fee percent="10"]`, as a fraction |
+| `handlingTime` (`ServicePeriod`) | the existing `handling_time` setting |
+
+**The threshold pair.** A zone with free-over-$20 plus a $20 flat rate emits two conditions, not one:
+
+```json
+{ "orderValue": { "minValue": 20 },    "shippingRate": { "value": 0 } }
+{ "orderValue": { "maxValue": 19.99 }, "shippingRate": { "value": 20 } }
+```
+
+The paid band stops one smallest currency unit below the threshold, because Google's ranges are inclusive. The step follows the store's configured decimals via `wc_get_price_decimals()`, so a three-decimal currency yields `19.999` rather than `19.99` — a hardcoded cent would leave a 19.995 order matching neither band.
+
+**What is deliberately not emitted:**
+
+- **Costs that depend on the basket.** `WC_Shipping_Flat_Rate::$cost` is an expression supporting `[qty]`, `[cost]` and `[fee percent=…]`. Only a literal number and a bare percentage can be stated without knowing the cart; everything else drops the condition. A percentage *combined* with other terms (`5 + [fee percent="10"]`) is also dropped — Google can express a flat rate or a percentage, never their sum. Structured data that disagrees with checkout costs more than an absent field.
+- **Dearer methods for the same destination and band.** Google applies the lowest matching rate, so only the cheapest publishable method per zone is emitted.
+- **Non-flat-rate methods.** Local pickup is not shipping; table-rate and live-carrier methods compute against a real address at request time.
+- **A free threshold with no publishable paid rate.** Emitting the free half alone would read as "shipping is always free".
+- **`businessDays` / `cutoffTime`.** Both are Recommended `ServicePeriod` properties and WooCommerce stores neither, so each needs a merchant setting first.
+- **`freeShippingThreshold`.** It exists on schema.org but Google does not document it, so it would be emitted and unread.
+
+**Emitted when** at least one condition is derivable. Otherwise the key is omitted entirely — an empty `shippingConditions` array would be a positive claim that the store ships nowhere.
+
+**`handlingTime` differs by surface, on purpose.** Org-level uses `ServicePeriod` wrapping a `duration`; the product block uses a bare `QuantitativeValue`. Both match Google's own example for the surface they appear on. Do not unify them.
+
 ### Identity field sourcing
 
 All three identity fields are auto-sourced from existing WP/WC data. There are **no plugin-owned settings** for these — the plugin reads what's already configured at the platform level.

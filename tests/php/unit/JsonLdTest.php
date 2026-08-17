@@ -4667,6 +4667,53 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	// ------------------------------------------------------------------
+	// hasShippingService — the store's zones as Google ShippingConditions
+	// (#635)
+	// ------------------------------------------------------------------
+
+	public function test_store_jsonld_emits_has_shipping_service_from_zones(): void {
+		// The wire-in itself. Without this, deleting both lines from
+		// output_store_jsonld() leaves the whole suite green — the shipping
+		// policy is fully unit-tested in isolation and reaches no output.
+		$method       = new \WC_Shipping_Flat_Rate();
+		$method->cost = '20';
+
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn( array( (object) array( 'type' => 'country', 'code' => 'US' ) ) );
+		$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
+
+		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayHasKey( 'hasShippingService', $captured );
+		$this->assertSame( 'ShippingService', $captured['hasShippingService']['@type'] );
+		$this->assertSame(
+			20.0,
+			$captured['hasShippingService']['shippingConditions'][0]['shippingRate']['value']
+		);
+	}
+
+	public function test_store_jsonld_omits_has_shipping_service_when_nothing_is_derivable(): void {
+		// An empty shippingConditions array would assert the store ships
+		// nowhere, so the key must be absent rather than present-and-empty.
+		$method       = new \WC_Shipping_Flat_Rate();
+		$method->cost = '10 * [qty]'; // Cart-dependent, so unpublishable.
+
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn( array( (object) array( 'type' => 'country', 'code' => 'US' ) ) );
+		$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
+
+		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertArrayNotHasKey( 'hasShippingService', $captured );
+	}
+
+	// ------------------------------------------------------------------
 	// knowsAbout — Schema.org Organization "what this org knows about"
 	// pointer, sourced from get_catalog_summary() top category names.
 	// (#334)

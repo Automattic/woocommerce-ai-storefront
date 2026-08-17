@@ -1,5 +1,14 @@
 ## [Unreleased]
 
+### Added
+
+- **Your shipping rates are now published for AI assistants and Google (#635).**
+  - Assistants could previously see where you ship and how fast you pack, but nothing about what delivery costs. A product can only carry one shipping price, so a store offering "free over $20, otherwise $20" had no honest number to publish — and we published none rather than a misleading one.
+  - Your shipping zones now appear on your homepage as a store-level policy, where each destination and order-value band carries its own price. Free-over-a-threshold is published as two bands, so an assistant can tell a shopper both what shipping costs now and what it would cost if they spent a little more.
+  - Rates that depend on the basket are left out rather than guessed. A per-item cost, or a flat fee combined with a percentage, can't be stated without knowing the whole order, and a published price that disagrees with your checkout is worse than no price at all.
+  - Where several methods serve the same destination, the cheapest is published, because that is the one Google shows.
+  - Nothing changes on your product pages, and no new settings were added. This is read entirely from the shipping zones you already have.
+
 ---
 
 ## [0.36.0] – 2026-08-15

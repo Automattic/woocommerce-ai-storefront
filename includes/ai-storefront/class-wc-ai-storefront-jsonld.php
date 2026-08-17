@@ -2794,6 +2794,24 @@ class WC_AI_Storefront_JsonLd {
 		// `get_shipping_zones()` returns WC_Shipping_Zone objects keyed by id.
 		// `get_zones()` returns data arrays (used by the admin UI) and must NOT
 		// be used here — those arrays fail `instanceof WC_Shipping_Zone`.
+		// `WC_Shipping_Zones::get_shipping_zones()` (plural, returning
+		// objects) landed in WooCommerce 10.3.0, while this plugin's floor is
+		// 9.9 — and `WC requires at least` only raises an admin notice, it
+		// does not block activation. Calling it on 9.9-10.2 is a fatal in
+		// wp_head, which white-screens the homepage and every product page.
+		//
+		// The version is checked rather than the method because the test
+		// stubs define `get_shipping_zones()` unconditionally, so both
+		// `method_exists()` and PHPStan resolve it as always present. Naming
+		// the version also states the actual requirement.
+		if ( ! defined( 'WC_VERSION' ) || version_compare( WC_VERSION, '10.3', '<' ) ) {
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'Shipping zones unavailable: WC_Shipping_Zones::get_shipping_zones() requires WooCommerce 10.3+.'
+				);
+			}
+			return array();
+		}
 		$zones   = array_values( WC_Shipping_Zones::get_shipping_zones() );
 		$zones[] = new WC_Shipping_Zone( 0 ); // Rest of World.
 		return $zones;
@@ -3243,6 +3261,16 @@ class WC_AI_Storefront_JsonLd {
 		$org_policy_block = $this->build_return_policy_block( $policy, $store_country, null );
 		if ( null !== $org_policy_block ) {
 			$store_data['hasMerchantReturnPolicy'] = $org_policy_block;
+		}
+
+		// `hasShippingService` — the store's real zones as Google's
+		// ShippingConditions. Null when no rate could be derived honestly
+		// (every method cart-dependent, or no zones at all); the key is then
+		// omitted rather than emitted empty, which would claim the store
+		// ships nowhere. See WC_AI_Storefront_Shipping_Policy.
+		$shipping_service = ( new WC_AI_Storefront_Shipping_Policy() )->build( $settings );
+		if ( null !== $shipping_service ) {
+			$store_data['hasShippingService'] = $shipping_service;
 		}
 
 		// `sameAs` (social profile URLs) — auto-sourced from common
