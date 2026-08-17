@@ -119,6 +119,22 @@ class HandlingTimeTest extends \PHPUnit\Framework\TestCase {
 	// business_days — which weekdays the store dispatches (#637)
 	// ------------------------------------------------------------------
 
+	public function test_days_are_the_schema_org_vocabulary(): void {
+		// Anchors DAYS to the actual schema.org DayOfWeek tokens, spelled out.
+		// Without this, changing 'Thursday' to 'Thurs' in BOTH DAYS and the
+		// JS WEEKDAYS leaves every test green: the cross-check below pins the
+		// two lists to each other, not to the vocabulary. The store would
+		// publish ["Thurs"], which no consumer resolves — the same failure
+		// the never-translate test guards, reached from a different direction.
+		//
+		// Five of the seven were previously unpinned, because
+		// test_all_seven_days_are_kept feeds DAYS to itself.
+		$this->assertSame(
+			array( 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday' ),
+			WC_AI_Storefront_Handling_Time::DAYS
+		);
+	}
+
 	public function test_the_js_weekday_order_matches_the_php_constant(): void {
 		// DAYS and the JS WEEKDAYS are independent literals in two languages
 		// with no shared source. If they drift, a merchant's saved order stops

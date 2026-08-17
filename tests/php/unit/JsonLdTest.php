@@ -4475,6 +4475,24 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'handlingTime', $delivery );
 	}
 
+	public function test_an_invalid_pair_drops_handling_time_but_keeps_days(): void {
+		// The two halves are independent, and this is the combination that
+		// proves it: an unusable min/max must not take a valid businessDays
+		// claim down with it. Unpinned, a future guard returning early on an
+		// invalid pair would silently drop the days.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 5, 'max' => 2, 'business_days' => [ 'Monday' ] ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
+
+		$this->assertSame( [ 'Monday' ], $delivery['businessDays'] );
+		$this->assertArrayNotHasKey( 'handlingTime', $delivery );
+	}
+
 	public function test_neither_handling_nor_days_emits_no_delivery_block(): void {
 		WC_AI_Storefront::$test_settings = [
 			'enabled'       => 'yes',
