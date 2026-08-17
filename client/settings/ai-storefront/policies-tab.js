@@ -114,7 +114,7 @@ const DEFAULT_POLICY = {
 	methods: [],
 };
 
-const DEFAULT_HANDLING_TIME = { min: 0, max: 0 };
+const DEFAULT_HANDLING_TIME = { min: 0, max: 0, business_days: [] };
 
 /**
  * Segmented control for policy mode selection.
@@ -390,15 +390,20 @@ export const applyModeChange = ( policy, newMode ) => {
 };
 
 /**
- * Pure helper: derive the JSON-LD `ShippingDeliveryTime` block
- * from a draft handling-time state. Mirrors the server-side
- * `WC_AI_Storefront_JsonLd::add_handling_time()` emission contract.
+ * Pure helper: derive the JSON-LD `ShippingDeliveryTime` block from a draft
+ * handling-time state, mirroring `WC_AI_Storefront_JsonLd::add_handling_time()`.
  *
- * Returns null when either value is 0 (unconfigured) or min > max (invalid
- * pair) — mirroring the PHP emitter's full guard:
- * `if ( $min <= 0 || $max <= 0 || $min > $max ) return;`.
+ * The two halves are independent, as they are on the server: `handlingTime`
+ * needs a valid min/max pair, `businessDays` needs at least one day, and null
+ * comes back only when neither is configured.
  *
- * @param {Object} handlingTime Draft handling-time state `{ min, max }`.
+ * Deliberately does NOT quote the PHP guard. The previous version of this
+ * comment pasted `if ( $min <= 0 || $max <= 0 || $min > $max ) return;`
+ * verbatim, and that line was deleted server-side while this comment kept
+ * asserting it — a cross-language quote rots the moment the other language
+ * changes, and nothing here can catch it.
+ *
+ * @param {Object} handlingTime Draft state `{ min, max, business_days }`.
  * @return {Object|null} ShippingDeliveryTime block, or null when unconfigured.
  */
 export const deriveDeliveryTimePreview = ( handlingTime ) => {
@@ -1188,7 +1193,7 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 						} }
 					>
 						{ __(
-							'Handling time on its own is ambiguous — "ships in 1 day" on a Friday reads as Saturday dispatch. Ticking your working days removes the guesswork. Leave every day unticked to publish nothing.',
+							'Handling time on its own is ambiguous: "ships in 1 day" on a Friday reads as Saturday dispatch. Ticking your working days removes the guesswork. Leave every day unticked to publish nothing.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
@@ -1314,7 +1319,20 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 				...DEFAULT_HANDLING_TIME,
 				...settings.handling_time,
 			};
-			if ( prev.min === next.min && prev.max === next.max ) {
+			// Compares every field, not just the pair this guard was written
+			// for. SET_SETTINGS replaces the store with the server's response
+			// after each save, so this is where a server-side correction
+			// reaches the draft — the sanitizer drops unknown days, collapses
+			// duplicates and re-orders. Skipping business_days here would
+			// leave the checkboxes showing what the browser sent rather than
+			// what was stored.
+			const sameDays =
+				( prev.business_days || [] ).length ===
+					( next.business_days || [] ).length &&
+				( prev.business_days || [] ).every(
+					( day, i ) => day === ( next.business_days || [] )[ i ]
+				);
+			if ( prev.min === next.min && prev.max === next.max && sameDays ) {
 				return prev;
 			}
 			return next;

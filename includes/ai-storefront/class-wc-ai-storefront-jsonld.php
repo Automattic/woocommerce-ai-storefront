@@ -2799,12 +2799,17 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Enriches an existing shippingDetails block with a handlingTime QuantitativeValue.
+	 * Enriches an existing shippingDetails block with a ShippingDeliveryTime.
 	 *
 	 * Requires that `add_shipping_details()` has already placed
-	 * `offers[0]['shippingDetails']`. If that key is absent (e.g. no
-	 * store country set), this method is a no-op. Emits nothing when
-	 * either min or max is 0 (unconfigured) or when min > max (invalid pair).
+	 * `offers[0]['shippingDetails']`. If that key is absent (e.g. no store
+	 * country set), this method is a no-op.
+	 *
+	 * The block carries two INDEPENDENT statements and emits whichever are
+	 * configured: `handlingTime` (needs min and max > 0, and min <= max) and
+	 * `businessDays` (needs at least one day). Either can appear alone — "we
+	 * dispatch Monday to Friday" is a complete claim with no duration — and
+	 * the block is omitted only when neither is configured.
 	 *
 	 * @param array $markup   Markup array, modified by reference.
 	 * @param array $settings Full plugin settings array.
@@ -2824,21 +2829,16 @@ class WC_AI_Storefront_JsonLd {
 
 		$delivery = array( '@type' => 'ShippingDeliveryTime' );
 
-		$days = isset( $ht['business_days'] ) && is_array( $ht['business_days'] ) ? $ht['business_days'] : array();
+		// Re-sanitized at read time rather than trusted: get_settings() merges
+		// shallowly, so a direct update_option() can seed unvalidated values.
+		$days = WC_AI_Storefront_Handling_Time::business_days( $settings );
 		if ( ! empty( $days ) ) {
-			// Google documents businessDays inside ServicePeriod on the
-			// Organization surface but NOT here — its ShippingDeliveryTime
-			// table lists only handlingTime and transitTime — so it will
-			// ignore this. Emitted anyway, for the reason the field exists:
-			// handlingTime sits beside it and Google DOES read that, and
-			// "dispatched in 1-2 days" cannot become a delivery date without
-			// the working week. A Friday order with one-day handling otherwise
-			// reads as Saturday dispatch.
-			//
-			// Same deliberate divergence as `alt` on products-feed images
-			// (#627): data we hold is not withheld from the more commonly-read
-			// position because one consumer ignores it.
-			$delivery['businessDays'] = array_values( $days );
+			// Google does not document businessDays on ShippingDeliveryTime —
+			// only inside ServicePeriod at Organization level. Emitted here
+			// regardless, because the adjacent handlingTime that Google DOES
+			// read is uninterpretable without the working week. Full argument
+			// in docs/engineering/JSON-LD-SCHEMA.md under this property.
+			$delivery['businessDays'] = $days;
 		}
 
 		if ( $min > 0 && $max > 0 && $min <= $max ) {
@@ -2850,9 +2850,11 @@ class WC_AI_Storefront_JsonLd {
 			);
 		}
 
-		// Only '@type' would remain if neither is configured. A block that
-		// asserts nothing is worse than no block.
-		if ( count( $delivery ) < 2 ) {
+		// A block carrying only '@type' asserts nothing and is worse than no
+		// block. Named rather than counted: a positional `count() < 2` check
+		// silently stops working the day someone adds a third unconditional
+		// key, and no test would fail.
+		if ( ! isset( $delivery['handlingTime'] ) && ! isset( $delivery['businessDays'] ) ) {
 			return;
 		}
 

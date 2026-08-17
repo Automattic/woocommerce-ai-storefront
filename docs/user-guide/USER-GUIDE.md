@@ -637,7 +637,7 @@ AI agents often tell shoppers "Ships in 1–2 business days" when recommending y
 
 Set **Minimum** and **Maximum** business days using the number inputs. This is how long you need to pack and ship an order.
 
-- Leave both at **0** (default) to skip this info.
+- Leave both at **0** (default) to skip the handling-time numbers.
 - If you set max below min, it automatically adjusts to match min.
 
 Below the numbers, tick **the days you dispatch orders**.

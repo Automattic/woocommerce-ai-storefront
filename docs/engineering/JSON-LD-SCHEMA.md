@@ -763,7 +763,9 @@ The paid band stops one smallest currency unit below the threshold, because Goog
 
 **`handlingTime` differs by surface, on purpose.** Org-level uses `ServicePeriod` wrapping a `duration`; the product block uses a bare `QuantitativeValue`. Both match Google's own example for the surface they appear on. Do not unify them.
 
-`businessDays` rides inside that `ServicePeriod` here, which is the one place Google documents it. The same value is also published on each product's `deliveryTime` — see the note there for why we diverge from Google on that surface. `cutoffTime` stays absent: it qualifies same-day dispatch, and `WC_AI_Storefront_Handling_Time` treats `0` as "not set", so a store cannot express same-day dispatch for it to qualify.
+`businessDays` rides inside that `ServicePeriod` here, which is where Google documents it — in both the handling-time and transit-time `ServicePeriod` contexts. The same value is also published on each product's `deliveryTime`; see the note there for why we diverge from Google on that surface.
+
+`cutoffTime` stays absent for the plain reason that no setting stores one. It is worth being precise about why, because the obvious guess is wrong: it is *not* blocked by handling time treating `0` as "not set". Google defines `cutoffTime` as "the time after which orders received on a day are not processed that same day … For orders processed after cutoff time, one day gets added to the delivery time estimate" — a real claim at any handling duration, not only same-day dispatch.
 
 ### Identity field sourcing
 

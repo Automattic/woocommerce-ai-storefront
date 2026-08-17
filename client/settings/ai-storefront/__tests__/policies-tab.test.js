@@ -1,7 +1,7 @@
 /**
  * Tests for `derivePreview()` — the pure helper that mirrors the
  * server-side `WC_AI_Storefront_JsonLd::build_return_policy_block()`
- * so the live-preview pane never drifts from what gets emitted.
+ * so the derived block never drifts from what the server emits (note: no preview pane renders it today).
  *
  * Also locks single-vs-multi method emission (scalar vs. array)
  * since that's the most subtle of the three modes' output shapes.

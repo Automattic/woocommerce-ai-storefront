@@ -119,6 +119,29 @@ class HandlingTimeTest extends \PHPUnit\Framework\TestCase {
 	// business_days — which weekdays the store dispatches (#637)
 	// ------------------------------------------------------------------
 
+	public function test_the_js_weekday_order_matches_the_php_constant(): void {
+		// DAYS and the JS WEEKDAYS are independent literals in two languages
+		// with no shared source. If they drift, a merchant's saved order stops
+		// matching what the server canonicalises, and the settings screen shows
+		// something different from what is published. Nothing else catches it,
+		// so this parses the JS and compares.
+		$js = file_get_contents(
+			dirname( __DIR__, 3 ) . '/client/settings/ai-storefront/policies-tab.js'
+		);
+		$this->assertNotFalse( $js, 'Could not read policies-tab.js.' );
+
+		preg_match( '/export const WEEKDAYS = \[(.*?)\];/s', $js, $block );
+		$this->assertNotEmpty( $block, 'Could not locate the WEEKDAYS constant.' );
+
+		preg_match_all( "/value: '([A-Za-z]+)'/", $block[1], $found );
+
+		$this->assertSame(
+			WC_AI_Storefront_Handling_Time::DAYS,
+			$found[1],
+			'client WEEKDAYS must match WC_AI_Storefront_Handling_Time::DAYS, in the same order.'
+		);
+	}
+
 	public function test_business_days_are_canonical_and_week_ordered(): void {
 		// Emission order must not follow click order, or the same
 		// configuration produces different JSON on different stores and busts
