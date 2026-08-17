@@ -4430,6 +4430,84 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		];
 	}
 
+	public function test_business_days_emit_alongside_handling_time(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 1, 'max' => 2, 'business_days' => [ 'Monday', 'Friday' ] ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
+
+		$this->assertSame( [ 'Monday', 'Friday' ], $delivery['businessDays'] );
+		$this->assertSame( 1, $delivery['handlingTime']['minValue'] );
+	}
+
+	public function test_business_days_emit_without_a_handling_time(): void {
+		// "We dispatch Monday to Friday" is a complete claim on its own, so the
+		// min/max guard must not suppress it.
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 0, 'max' => 0, 'business_days' => [ 'Monday' ] ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
+
+		$this->assertSame( [ 'Monday' ], $delivery['businessDays'] );
+		$this->assertArrayNotHasKey( 'handlingTime', $delivery );
+	}
+
+	public function test_no_days_selected_emits_no_business_days_key(): void {
+		// Empty means unset, never "this store never dispatches".
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 1, 'max' => 2, 'business_days' => [] ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
+
+		$this->assertArrayNotHasKey( 'businessDays', $delivery );
+		$this->assertArrayHasKey( 'handlingTime', $delivery );
+	}
+
+	public function test_neither_handling_nor_days_emits_no_delivery_block(): void {
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 0, 'max' => 0, 'business_days' => [] ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$result = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+
+		$this->assertArrayNotHasKey( 'deliveryTime', $result['offers'][0]['shippingDetails'] );
+	}
+
+	public function test_emitted_day_names_are_never_translated(): void {
+		// The values are schema.org identifiers. If anyone wraps them in __(),
+		// a translated store publishes tokens no consumer resolves — and it
+		// fails silently, which is why this is pinned.
+		Functions\when( '__' )->alias(
+			static function ( $text ) {
+				return 'TRANSLATED-' . $text;
+			}
+		);
+		WC_AI_Storefront::$test_settings = [
+			'enabled'       => 'yes',
+			'handling_time' => [ 'min' => 1, 'max' => 2, 'business_days' => [ 'Monday' ] ],
+		];
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
+
+		$this->assertSame( [ 'Monday' ], $delivery['businessDays'] );
+	}
+
 	public function test_handling_time_emitted_when_both_min_and_max_set(): void {
 		WC_AI_Storefront::$test_settings = [
 			'enabled'       => 'yes',

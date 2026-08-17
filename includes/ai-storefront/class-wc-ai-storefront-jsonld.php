@@ -2822,19 +2822,41 @@ class WC_AI_Storefront_JsonLd {
 		$min = isset( $ht['min'] ) ? (int) $ht['min'] : 0;
 		$max = isset( $ht['max'] ) ? (int) $ht['max'] : 0;
 
-		if ( $min <= 0 || $max <= 0 || $min > $max ) {
-			return;
+		$delivery = array( '@type' => 'ShippingDeliveryTime' );
+
+		$days = isset( $ht['business_days'] ) && is_array( $ht['business_days'] ) ? $ht['business_days'] : array();
+		if ( ! empty( $days ) ) {
+			// Google documents businessDays inside ServicePeriod on the
+			// Organization surface but NOT here — its ShippingDeliveryTime
+			// table lists only handlingTime and transitTime — so it will
+			// ignore this. Emitted anyway, for the reason the field exists:
+			// handlingTime sits beside it and Google DOES read that, and
+			// "dispatched in 1-2 days" cannot become a delivery date without
+			// the working week. A Friday order with one-day handling otherwise
+			// reads as Saturday dispatch.
+			//
+			// Same deliberate divergence as `alt` on products-feed images
+			// (#627): data we hold is not withheld from the more commonly-read
+			// position because one consumer ignores it.
+			$delivery['businessDays'] = array_values( $days );
 		}
 
-		$markup['offers'][0]['shippingDetails']['deliveryTime'] = array(
-			'@type'        => 'ShippingDeliveryTime',
-			'handlingTime' => array(
+		if ( $min > 0 && $max > 0 && $min <= $max ) {
+			$delivery['handlingTime'] = array(
 				'@type'    => 'QuantitativeValue',
 				'minValue' => $min,
 				'maxValue' => $max,
 				'unitCode' => 'DAY',
-			),
-		);
+			);
+		}
+
+		// Only '@type' would remain if neither is configured. A block that
+		// asserts nothing is worse than no block.
+		if ( count( $delivery ) < 2 ) {
+			return;
+		}
+
+		$markup['offers'][0]['shippingDetails']['deliveryTime'] = $delivery;
 	}
 
 	/**
