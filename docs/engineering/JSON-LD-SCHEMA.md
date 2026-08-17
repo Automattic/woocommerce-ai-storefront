@@ -523,14 +523,32 @@ Schema.org `MonetaryAmount` emitted when unconditional free shipping is availabl
 - **Not emitted** when free shipping requires a coupon or minimum spend — those are conditional, not unconditional.
 - **Source**: `add_shipping_details()` → `has_free_shipping_for_country()`. Result is per-request cached keyed by country code.
 
-#### `offers[0].shippingDetails.deliveryTime.handlingTime`
+#### `offers[0].shippingDetails.deliveryTime`
 
-Schema.org `ShippingDeliveryTime` → `QuantitativeValue` emitted when the merchant has configured handling time on the Policies tab.
+A Schema.org `ShippingDeliveryTime` carrying two independent statements about dispatch: how long it takes, and which days it happens on. Either can appear without the other, and the block is omitted entirely when neither is configured.
+
+```json
+"deliveryTime": {
+  "@type": "ShippingDeliveryTime",
+  "businessDays": [ "Monday", "Tuesday", "Wednesday", "Thursday", "Friday" ],
+  "handlingTime": { "@type": "QuantitativeValue", "minValue": 1, "maxValue": 2, "unitCode": "DAY" }
+}
+```
+
+**`handlingTime`**
 
 - **Emitted when** Policies tab → Shipping → Minimum > 0 AND Maximum > 0 AND min ≤ max.
 - **Value**: `{ "@type": "QuantitativeValue", "minValue": <min>, "maxValue": <max>, "unitCode": "DAY" }`.
 - **Guard**: invalid pairs stored in the database (e.g. `{min:5, max:2}`) are silently skipped — the block is omitted rather than emitting broken structured data.
-- **Source**: `add_handling_time()`. Sanitization is enforced by `WC_AI_Storefront_Handling_Time::sanitize()` at save time (0–365 clamp, max raised to min when below).
+
+**`businessDays`** (#637)
+
+- **Emitted when** at least one weekday is ticked in Policies → Shipping. No days ticked means unset, never "this store never dispatches".
+- **Value**: an array of Schema.org `DayOfWeek` tokens in week order, e.g. `[ "Monday", "Friday" ]`. Not an `OpeningHoursSpecification` — that form carries opening and closing times, which is trading hours rather than dispatch days.
+- **Deliberate divergence**: Google does **not** document `businessDays` on `ShippingDeliveryTime`. Its merchant-listing table lists only `handlingTime` and `transitTime`; `businessDays` appears solely inside `ServicePeriod` on the Organization surface. We emit it here anyway, because `handlingTime` sits beside it and Google *does* read that — and "dispatched in 1–2 days" cannot become a delivery date without knowing the working week. A Friday order with one-day handling otherwise reads as Saturday dispatch. Same reasoning as `alt` on products-feed images (#627).
+- **Never translated.** The values are identifiers. `WC_AI_Storefront_Handling_Time::DAYS` holds the canonical tokens and the settings UI keeps its translated labels in a separate field; wrapping the tokens in `__()` would publish `"Lundi"` on a French store, which no consumer resolves and which fails silently.
+
+- **Source**: `add_handling_time()`. Sanitization is enforced by `WC_AI_Storefront_Handling_Time::sanitize()` at save time (0–365 clamp, max raised to min when below; unknown day names dropped, duplicates collapsed, result week-ordered).
 
 #### `offers[0].shippingDetails.weight` / `.depth` / `.width` / `.height`
 
@@ -721,7 +739,7 @@ The store's real shipping zones as Google's `ShippingService` → `ShippingCondi
 | `orderValue.minValue` / `maxValue` | free-shipping `min_amount`, as a two-band pair |
 | `shippingRate.value` | flat rate `cost`, when it parses as a literal |
 | `shippingRate.orderPercentage` | flat rate `[fee percent="10"]`, as a fraction |
-| `handlingTime` (`ServicePeriod`) | the existing `handling_time` setting |
+| `handlingTime` (`ServicePeriod`, carrying `duration` and `businessDays`) | the `handling_time` setting |
 
 **The threshold pair.** A zone with free-over-$20 plus a $20 flat rate emits two conditions, not one:
 
@@ -744,6 +762,8 @@ The paid band stops one smallest currency unit below the threshold, because Goog
 **Emitted when** at least one condition is derivable. Otherwise the key is omitted entirely — an empty `shippingConditions` array would be a positive claim that the store ships nowhere.
 
 **`handlingTime` differs by surface, on purpose.** Org-level uses `ServicePeriod` wrapping a `duration`; the product block uses a bare `QuantitativeValue`. Both match Google's own example for the surface they appear on. Do not unify them.
+
+`businessDays` rides inside that `ServicePeriod` here, which is the one place Google documents it. The same value is also published on each product's `deliveryTime` — see the note there for why we diverge from Google on that surface. `cutoffTime` stays absent: it qualifies same-day dispatch, and `WC_AI_Storefront_Handling_Time` treats `0` as "not set", so a store cannot express same-day dispatch for it to qualify.
 
 ### Identity field sourcing
 

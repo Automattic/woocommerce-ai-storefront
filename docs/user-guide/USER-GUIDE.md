@@ -639,7 +639,14 @@ Set **Minimum** and **Maximum** business days using the number inputs. This is h
 
 - Leave both at **0** (default) to skip this info.
 - If you set max below min, it automatically adjusts to match min.
-- A live preview below shows what AI agents will see.
+
+Below the numbers, tick **the days you dispatch orders**.
+
+This matters more than it looks. On its own, "ships in 1 day" is ambiguous: an order placed on Friday reads as Saturday dispatch to anything working out a delivery date, which is wrong for most shops and wrong in the direction that disappoints a shopper. Ticking your working days removes the guesswork.
+
+- Leave every day unticked to publish nothing. It is not read as "we never dispatch".
+- Ticking all seven is a real answer, for a store that genuinely ships every day.
+- The days you pick are published in both places assistants look: on each product, and once on your store's shipping policy.
 
 > **Note:** Handling time is how long you need to pack and ship. Transit time (carrier and destination) is not included here.
 

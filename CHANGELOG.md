@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Added
+
+- **You can now say which days you dispatch orders (#637).**
+  - Handling time on its own is ambiguous: "ships in 1 day" on a Friday order reads as Saturday dispatch to anything working out a delivery date. Ticking your working days removes the guesswork.
+  - Set it under **Policies → Shipping**. Leaving every day unticked publishes nothing, exactly as before — it is not read as "never dispatches".
+  - Published in both places assistants look: on each product alongside the handling time, and once on your store's shipping policy.
+
 ### Fixed
 
 - **Stores on WooCommerce 9.9 to 10.2 could hit a blank page (#638).**
