@@ -1082,10 +1082,21 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 					} }
 				>
 					{ __(
-						'Set your typical order handling time so AI agents can quote an accurate fulfilment window before checkout.',
+						'Tell AI agents how quickly you ship, so they can quote an accurate delivery window.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
+
+				<h4
+					style={ {
+						margin: `0 0 ${ spacing.s2 }`,
+						fontSize: '13px',
+						fontWeight: 600,
+						color: colors.textPrimary,
+					} }
+				>
+					{ __( 'Handling time', 'woocommerce-ai-storefront' ) }
+				</h4>
 
 				<div
 					style={ {
@@ -1146,17 +1157,21 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 					} }
 				>
 					{ __(
-						'Leave both at 0 to omit handling time from structured data.',
+						'How long you take to pack and ship. Leave both at 0 to publish nothing.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
-				<div style={ { marginTop: spacing.s4 } }>
-					<BaseControl.VisualLabel>
-						{ __(
-							'Days you dispatch orders',
-							'woocommerce-ai-storefront'
-						) }
-					</BaseControl.VisualLabel>
+				<div style={ { marginTop: spacing.s5 } }>
+					<h4
+						style={ {
+							margin: `0 0 ${ spacing.s2 }`,
+							fontSize: '13px',
+							fontWeight: 600,
+							color: colors.textPrimary,
+						} }
+					>
+						{ __( 'Dispatch days', 'woocommerce-ai-storefront' ) }
+					</h4>
 					<div
 						style={ {
 							display: 'flex',
@@ -1193,7 +1208,7 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 						} }
 					>
 						{ __(
-							'Handling time on its own is ambiguous: "ships in 1 day" on a Friday reads as Saturday dispatch. Ticking your working days removes the guesswork. Leave every day unticked to publish nothing.',
+							'The days you pack and ship orders. Leave all unticked to publish nothing.',
 							'woocommerce-ai-storefront'
 						) }
 					</p>
