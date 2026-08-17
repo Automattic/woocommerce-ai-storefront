@@ -189,13 +189,18 @@ class WC_AI_Storefront_Shipping_Policy {
 	/**
 	 * Handling time as a `ServicePeriod`, or null when unconfigured.
 	 *
-	 * Applies the same `min > 0 && max > 0 && min <= max` guard the product
-	 * block uses, so the two surfaces can never disagree about how long the
-	 * store takes to dispatch.
+	 * The `min > 0 && max > 0 && min <= max` guard the product block applies to
+	 * `handlingTime` gates `duration` here, so the two surfaces can never
+	 * disagree about how long the store takes to dispatch. `businessDays` is
+	 * independent of it — "we dispatch Monday to Friday" is a complete claim
+	 * with no duration attached — so the block is assembled from parts and
+	 * emitted when either half is present.
 	 *
-	 * `businessDays` and `cutoffTime` are the other two ServicePeriod
-	 * properties. Both are Recommended and WooCommerce stores neither, so
-	 * they stay absent until there is a setting behind them.
+	 * `cutoffTime` is absent for the plain reason that no setting stores one.
+	 * It is NOT blocked by the 0-means-unset handling time: Google defines it
+	 * as "the time after which orders received on a day are not processed that
+	 * same day … For orders processed after cutoff time, one day gets added to
+	 * the delivery time estimate", which is a real claim at any duration.
 	 *
 	 * @param array $settings Plugin settings.
 	 * @return array|null
@@ -205,19 +210,27 @@ class WC_AI_Storefront_Shipping_Policy {
 		$min      = isset( $handling['min'] ) ? (int) $handling['min'] : 0;
 		$max      = isset( $handling['max'] ) ? (int) $handling['max'] : 0;
 
-		if ( $min <= 0 || $max <= 0 || $min > $max ) {
-			return null;
+		$block = array( '@type' => 'ServicePeriod' );
+
+		// Re-sanitized at read time, same as the product-level block.
+		$days = WC_AI_Storefront_Handling_Time::business_days( $settings );
+		if ( ! empty( $days ) ) {
+			$block['businessDays'] = $days;
 		}
 
-		return array(
-			'@type'    => 'ServicePeriod',
-			'duration' => array(
+		if ( $min > 0 && $max > 0 && $min <= $max ) {
+			$block['duration'] = array(
 				'@type'    => 'QuantitativeValue',
 				'minValue' => $min,
 				'maxValue' => $max,
 				'unitCode' => 'DAY',
-			),
-		);
+			);
+		}
+
+		// Named rather than counted, for the same reason as the product-level
+		// block: a positional check silently stops working when a third
+		// unconditional key appears.
+		return ( ! isset( $block['duration'] ) && ! isset( $block['businessDays'] ) ) ? null : $block;
 	}
 
 	/**

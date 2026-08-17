@@ -1,20 +1,22 @@
 ## [Unreleased]
 
-### Fixed
-
-- **Stores on WooCommerce 9.9 to 10.2 could hit a blank page (#638).**
-  - The plugin reads your shipping zones to work out whether you offer free shipping. It used a WooCommerce function that only exists in 10.3 and later, so on older versions the product page and homepage could fail to load rather than simply skipping that detail.
-  - Zones are now read in a way that works on every WooCommerce version the plugin supports, so nothing is lost on an older install — shipping information is published there too, rather than going quietly missing.
-  - `WC tested up to` was also stale at 9.9; development runs against 10.9.
-
 ### Added
-
+- **You can now say which days you dispatch orders (#637).**
+  - Handling time on its own is ambiguous: "ships in 1 day" on a Friday order reads as Saturday dispatch to anything working out a delivery date. Ticking your working days removes the guesswork.
+  - Set it under **Policies → Shipping**. Leaving every day unticked publishes nothing, exactly as before — it is not read as "never dispatches".
+  - Published in both places assistants look: on each product alongside the handling time, and once on your store's shipping policy.
 - **Your shipping rates are now published for AI assistants and Google (#635).**
   - Assistants could previously see where you ship and how fast you pack, but nothing about what delivery costs. A product can only carry one shipping price, so a store offering "free over $20, otherwise $20" had no honest number to publish — and we published none rather than a misleading one.
   - Your shipping zones now appear on your homepage as a store-level policy, where each destination and order-value band carries its own price. Free-over-a-threshold is published as two bands, so an assistant can tell a shopper both what shipping costs now and what it would cost if they spent a little more.
   - Rates that depend on the basket are left out rather than guessed. A per-item cost, or a flat fee combined with a percentage, can't be stated without knowing the whole order, and a published price that disagrees with your checkout is worse than no price at all.
   - Where several methods serve the same destination, the cheapest is published, because that is the one Google shows.
   - Nothing changes on your product pages, and no new settings were added. This is read entirely from the shipping zones you already have.
+
+### Fixed
+- **Stores on WooCommerce 9.9 to 10.2 could hit a blank page (#638).**
+  - The plugin reads your shipping zones to work out whether you offer free shipping. It used a WooCommerce function that only exists in 10.3 and later, so on older versions the product page and homepage could fail to load rather than simply skipping that detail.
+  - Zones are now read in a way that works on every WooCommerce version the plugin supports, so nothing is lost on an older install — shipping information is published there too, rather than going quietly missing.
+  - `WC tested up to` was also stale at 9.9; development runs against 10.9.
 
 ---
 

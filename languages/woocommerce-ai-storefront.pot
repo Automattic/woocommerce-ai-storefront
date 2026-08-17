@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-17T01:31:16+00:00\n"
+"POT-Creation-Date: 2026-08-17T04:46:13+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -36,30 +36,30 @@ msgid "WooCommerce"
 msgstr ""
 
 #. translators: %s: the unrecognized product_selection_mode enum value
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:666
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:679
 #, php-format
 msgid "Unrecognized product_selection_mode: %s"
 msgstr ""
 
 #. translators: %s: human-readable time difference, e.g. "5 minutes"
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:827
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:840
 #, php-format
 msgid "%s ago"
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1102
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1115
 msgid "Could not load pages."
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1425
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1443
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1469
-#: includes/admin/class-wc-ai-storefront-admin-controller.php:1500
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1438
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1456
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1482
+#: includes/admin/class-wc-ai-storefront-admin-controller.php:1513
 msgid "Could not load crawler stats."
 msgstr ""
 
 #: includes/admin/class-wc-ai-storefront-product-meta-box.php:140
-#: client/settings/ai-storefront/policies-tab.js:712
+#: client/settings/ai-storefront/policies-tab.js:760
 msgid "Final sale"
 msgstr ""
 
@@ -141,7 +141,7 @@ msgstr ""
 msgid "Sign-up fee"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:3180
+#: includes/ai-storefront/class-wc-ai-storefront-jsonld.php:3204
 #: client/settings/ai-storefront/product-selection.js:914
 #: client/settings/ai-storefront/product-selection.js:1128
 msgid "Products"
@@ -744,17 +744,17 @@ msgstr ""
 msgid "Line item could not be processed."
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:566
-#: includes/class-wc-ai-storefront.php:609
+#: includes/class-wc-ai-storefront.php:567
+#: includes/class-wc-ai-storefront.php:610
 msgid "Woo AI Storefront"
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:571
+#: includes/class-wc-ai-storefront.php:572
 #: client/settings/ai-storefront/settings-page.js:449
 msgid "AI Storefront"
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:593
+#: includes/class-wc-ai-storefront.php:594
 msgid "Settings"
 msgstr ""
 
@@ -1128,13 +1128,13 @@ msgid "/ min"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:2799
-#: client/settings/ai-storefront/policies-tab.js:1433
+#: client/settings/ai-storefront/policies-tab.js:1605
 #: client/settings/ai-storefront/product-selection.js:1926
 msgid "Saving…"
 msgstr ""
 
 #: client/settings/ai-storefront/endpoint-info.js:2800
-#: client/settings/ai-storefront/policies-tab.js:1434
+#: client/settings/ai-storefront/policies-tab.js:1606
 #: client/settings/ai-storefront/product-selection.js:1927
 msgid "Save changes"
 msgstr ""
@@ -1231,141 +1231,189 @@ msgstr ""
 msgid "Submit entire catalog now"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:52
-msgid "Free returns"
+#: client/settings/ai-storefront/policies-tab.js:51
+msgid "Monday"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:56
-msgid "Customer pays return fees"
+#: client/settings/ai-storefront/policies-tab.js:52
+msgid "Tuesday"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:55
+msgid "Wednesday"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:57
+msgid "Thursday"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:58
+msgid "Friday"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:59
+msgid "Saturday"
 msgstr ""
 
 #: client/settings/ai-storefront/policies-tab.js:60
+msgid "Sunday"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:77
+msgid "Free returns"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:81
+msgid "Customer pays return fees"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:85
 msgid "Original shipping fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:64
+#: client/settings/ai-storefront/policies-tab.js:89
 msgid "Restocking fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:71
+#: client/settings/ai-storefront/policies-tab.js:96
 msgid "Return by mail"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:75
+#: client/settings/ai-storefront/policies-tab.js:100
 msgid "Return in store"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:79
+#: client/settings/ai-storefront/policies-tab.js:104
 msgid "Return at kiosk"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:418
+#: client/settings/ai-storefront/policies-tab.js:466
 msgid "Decrease"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:465
+#: client/settings/ai-storefront/policies-tab.js:513
 msgid "Increase"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:533
+#: client/settings/ai-storefront/policies-tab.js:581
 msgid "— No policy page selected —"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:572
+#: client/settings/ai-storefront/policies-tab.js:620
 msgid "Return & refund policy"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:584
+#: client/settings/ai-storefront/policies-tab.js:632
 msgid "AI agents read this to decide whether to recommend your products and place buy actions. Without a clear return policy, they typically downgrade or skip your products in favour of competitors who publish one."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:591
+#: client/settings/ai-storefront/policies-tab.js:639
 msgid "How should returns be described?"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:602
+#: client/settings/ai-storefront/policies-tab.js:650
 msgid "Not configured"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:609
+#: client/settings/ai-storefront/policies-tab.js:657
 msgid "Link to a returns page"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:616
+#: client/settings/ai-storefront/policies-tab.js:664
 msgid "Specify the details here"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:627
+#: client/settings/ai-storefront/policies-tab.js:675
 msgid "AI agents may downgrade your products in recommendations, or skip them entirely. Pick a returns mode to publish a policy."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:644
+#: client/settings/ai-storefront/policies-tab.js:692
 msgid "Link AI agents to a full-text returns policy page on your store."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:655
-#: client/settings/ai-storefront/policies-tab.js:667
+#: client/settings/ai-storefront/policies-tab.js:703
+#: client/settings/ai-storefront/policies-tab.js:715
 msgid "Returns policy page"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:691
+#: client/settings/ai-storefront/policies-tab.js:739
 msgid "Return category"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:705
+#: client/settings/ai-storefront/policies-tab.js:753
 msgid "Returns accepted"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:758
+#: client/settings/ai-storefront/policies-tab.js:806
 msgid "Applied as the default for all returns. You can override this per product on the Product edit screen."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:769
-#: client/settings/ai-storefront/policies-tab.js:778
+#: client/settings/ai-storefront/policies-tab.js:817
+#: client/settings/ai-storefront/policies-tab.js:826
 msgid "Return fees"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:801
+#: client/settings/ai-storefront/policies-tab.js:849
 msgid "Return window (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:820
+#: client/settings/ai-storefront/policies-tab.js:868
 msgid "Leave at 0 to publish \"Unspecified\" instead of a finite window."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:874
+#: client/settings/ai-storefront/policies-tab.js:922
 msgid "Return methods"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1003
+#: client/settings/ai-storefront/policies-tab.js:1001
+msgid "AI agents will be told that returns are not accepted. This applies to every product in your store."
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:1006
+msgid "To mark only some products final sale, leave this set to \"Returns accepted\" and use the Final sale checkbox on the individual products instead."
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:1101
 msgid "Shipping"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1012
-msgid "Set your typical order handling time so AI agents can quote an accurate fulfilment window before checkout."
+#: client/settings/ai-storefront/policies-tab.js:1110
+msgid "Tell AI agents how quickly you ship, so they can quote an accurate delivery window."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1036
-msgid "Min handling time (days)"
+#: client/settings/ai-storefront/policies-tab.js:1123
+msgid "Handling time"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1057
-msgid "Max handling time (days)"
+#: client/settings/ai-storefront/policies-tab.js:1144
+msgid "Minimum (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1076
-msgid "Leave both at 0 to omit handling time from structured data."
+#: client/settings/ai-storefront/policies-tab.js:1165
+msgid "Maximum (days)"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1361
+#: client/settings/ai-storefront/policies-tab.js:1184
+msgid "How long you take to pack and ship. Leave both at 0 to publish nothing."
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:1197
+msgid "Dispatch days"
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:1234
+msgid "The days you pack and ship orders. Leave all unticked to publish nothing."
+msgstr ""
+
+#: client/settings/ai-storefront/policies-tab.js:1533
 msgid "Store policies"
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1370
+#: client/settings/ai-storefront/policies-tab.js:1542
 msgid "Policies AI agents can quote to shoppers before checkout."
 msgstr ""
 
-#: client/settings/ai-storefront/policies-tab.js:1379
+#: client/settings/ai-storefront/policies-tab.js:1551
 msgid "Could not load your pages. Page links won't be available."
 msgstr ""
 

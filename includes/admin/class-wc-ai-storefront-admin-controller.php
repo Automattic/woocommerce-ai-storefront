@@ -145,16 +145,29 @@ class WC_AI_Storefront_Admin_Controller {
 								),
 							),
 						),
-						// Handling time: min/max business days. Both 0 = not
-						// configured (emitter skips handlingTime block).
+						// Handling time: min/max business days, plus which
+						// weekdays the store dispatches on. Both numbers 0 and
+						// no days = not configured (emitter skips the block).
 						'handling_time'            => array(
 							'type'       => 'object',
 							'properties' => array(
-								'min' => array(
+								'min'           => array(
 									'type' => 'integer',
 								),
-								'max' => array(
+								'max'           => array(
 									'type' => 'integer',
+								),
+								// Declared so a wrong type is rejected with a
+								// 400 rather than reaching the sanitizer, whose
+								// is_array() guard would turn a bare string
+								// into an empty list — silently wiping the
+								// merchant's saved days instead of refusing the
+								// request.
+								'business_days' => array(
+									'type'  => 'array',
+									'items' => array(
+										'type' => 'string',
+									),
 								),
 							),
 						),

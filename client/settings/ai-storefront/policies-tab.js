@@ -25,6 +25,7 @@ import {
 	Button,
 	Card,
 	CardBody,
+	CheckboxControl,
 	Notice,
 	SelectControl,
 	Spinner,
@@ -34,6 +35,30 @@ import { decodeEntities } from '@wordpress/html-entities';
 import apiFetch from '@wordpress/api-fetch';
 import { colors, radii, shadows, spacing, typography } from './tokens';
 import { TabInputStyles } from './tab-input-styles';
+
+/**
+ * Weekdays a store can dispatch on.
+ *
+ * `value` is a schema.org `DayOfWeek` identifier and is stored and published
+ * verbatim. Only `label` is translated — a French store still publishes
+ * "Monday", because that is the token consumers resolve. Keeping the two in
+ * separate fields is deliberate: a single translated array would silently
+ * publish "Lundi" and stop being understood.
+ *
+ * Week order, so emission is deterministic regardless of click order.
+ */
+export const WEEKDAYS = [
+	{ value: 'Monday', label: __( 'Monday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Tuesday', label: __( 'Tuesday', 'woocommerce-ai-storefront' ) },
+	{
+		value: 'Wednesday',
+		label: __( 'Wednesday', 'woocommerce-ai-storefront' ),
+	},
+	{ value: 'Thursday', label: __( 'Thursday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Friday', label: __( 'Friday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Saturday', label: __( 'Saturday', 'woocommerce-ai-storefront' ) },
+	{ value: 'Sunday', label: __( 'Sunday', 'woocommerce-ai-storefront' ) },
+];
 
 const POLICY_MODES = {
 	UNCONFIGURED: 'unconfigured',
@@ -89,7 +114,7 @@ const DEFAULT_POLICY = {
 	methods: [],
 };
 
-const DEFAULT_HANDLING_TIME = { min: 0, max: 0 };
+const DEFAULT_HANDLING_TIME = { min: 0, max: 0, business_days: [] };
 
 /**
  * Segmented control for policy mode selection.
@@ -365,29 +390,52 @@ export const applyModeChange = ( policy, newMode ) => {
 };
 
 /**
- * Pure helper: derive the JSON-LD `ShippingDeliveryTime.handlingTime` block
- * from a draft handling-time state. Mirrors the server-side
- * `WC_AI_Storefront_JsonLd::add_handling_time()` emission contract.
+ * Pure helper: derive the JSON-LD `ShippingDeliveryTime` block from a draft
+ * handling-time state, mirroring `WC_AI_Storefront_JsonLd::add_handling_time()`.
  *
- * Returns null when either value is 0 (unconfigured) or min > max (invalid
- * pair) — mirroring the PHP emitter's full guard:
- * `if ( $min <= 0 || $max <= 0 || $min > $max ) return;`.
+ * The two halves are independent, as they are on the server: `handlingTime`
+ * needs a valid min/max pair, `businessDays` needs at least one day, and null
+ * comes back only when neither is configured.
  *
- * @param {Object} handlingTime Draft handling-time state `{ min, max }`.
- * @return {Object|null} handlingTime QuantitativeValue block, or null.
+ * Deliberately does NOT quote the PHP guard. The previous version of this
+ * comment pasted `if ( $min <= 0 || $max <= 0 || $min > $max ) return;`
+ * verbatim, and that line was deleted server-side while this comment kept
+ * asserting it — a cross-language quote rots the moment the other language
+ * changes, and nothing here can catch it.
+ *
+ * @param {Object} handlingTime Draft state `{ min, max, business_days }`.
+ * @return {Object|null} ShippingDeliveryTime block, or null when unconfigured.
  */
-export const deriveHandlingTimePreview = ( handlingTime ) => {
+export const deriveDeliveryTimePreview = ( handlingTime ) => {
 	const min = Math.trunc( Number( handlingTime?.min ) ) || 0;
 	const max = Math.trunc( Number( handlingTime?.max ) ) || 0;
-	if ( min <= 0 || max <= 0 || min > max ) {
-		return null;
+	const days = handlingTime?.business_days || [];
+
+	const block = { '@type': 'ShippingDeliveryTime' };
+
+	// Week-ordered, matching WC_AI_Storefront_Handling_Time::DAYS on the
+	// server. Click order must never reach the output.
+	const ordered = WEEKDAYS.map( ( d ) => d.value ).filter( ( d ) =>
+		days.includes( d )
+	);
+	if ( ordered.length > 0 ) {
+		block.businessDays = ordered;
 	}
-	return {
-		'@type': 'QuantitativeValue',
-		minValue: min,
-		maxValue: max,
-		unitCode: 'DAY',
-	};
+
+	if ( min > 0 && max > 0 && min <= max ) {
+		block.handlingTime = {
+			'@type': 'QuantitativeValue',
+			minValue: min,
+			maxValue: max,
+			unitCode: 'DAY',
+		};
+	}
+
+	// Named rather than counted, matching the two PHP emitters. A positional
+	// `Object.keys( block ).length < 2` is correct today but silently stops
+	// working the day someone adds a third unconditional key — the block then
+	// ships asserting nothing, and no test fails.
+	return ! block.handlingTime && ! block.businessDays ? null : block;
 };
 
 /**
@@ -934,10 +982,33 @@ const ReturnRefundPolicySection = ( {
 							) }
 
 							{ /*
-									Final sale reveals no additional fields:
-									the category alone drives the
-									MerchantReturnNotPermitted emission.
+									Final sale reveals no input fields — the
+									category alone drives the emission — but it
+									still needs to say what it does. A branch
+									that renders nothing reads as a broken
+									screen, and this one silently applies to the
+									whole catalogue.
 								*/ }
+							{ policy.category ===
+								CATEGORY_OPTIONS.FINAL_SALE && (
+								<p
+									style={ {
+										margin: `${ spacing.s3 } 0 0`,
+										color: colors.textSecondary,
+										fontSize: '13px',
+									} }
+								>
+									{ __(
+										'AI agents will be told that returns are not accepted. This applies to every product in your store.',
+										'woocommerce-ai-storefront'
+									) }
+									<br />
+									{ __(
+										'To mark only some products final sale, leave this set to "Returns accepted" and use the Final sale checkbox on the individual products instead.',
+										'woocommerce-ai-storefront'
+									) }
+								</p>
+							) }
 						</>
 					) }
 				</div>
@@ -983,6 +1054,33 @@ export const applyHandlingTimeMax = ( current, val ) => {
 	return next;
 };
 
+/**
+ * Toggle one dispatch day, returning a week-ordered list.
+ *
+ * Rebuilt from WEEKDAYS rather than appending, so the stored order never
+ * follows click order — the server sanitizer does the same, and the two must
+ * agree or a save round-trip reorders the JSON for no reason.
+ *
+ * @param {Object}  current Current handling-time state.
+ * @param {string}  day     Canonical day token.
+ * @param {boolean} checked Whether the day is now selected.
+ * @return {Object} Updated handling-time state.
+ */
+export const applyBusinessDay = ( current, day, checked ) => {
+	const selected = new Set( current?.business_days || [] );
+	if ( checked ) {
+		selected.add( day );
+	} else {
+		selected.delete( day );
+	}
+	return {
+		...current,
+		business_days: WEEKDAYS.map( ( d ) => d.value ).filter( ( d ) =>
+			selected.has( d )
+		),
+	};
+};
+
 const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 	const handleMin = ( val ) =>
 		onChange( applyHandlingTimeMin( handlingTime, val ) );
@@ -1010,10 +1108,20 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 					} }
 				>
 					{ __(
-						'Set your typical order handling time so AI agents can quote an accurate fulfilment window before checkout.',
+						'Tell AI agents how quickly you ship, so they can quote an accurate delivery window.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
+
+				<h4
+					style={ {
+						margin: `0 0 ${ spacing.s2 }`,
+						...typography.eyebrowLabel,
+						color: colors.textSecondary,
+					} }
+				>
+					{ __( 'Handling time', 'woocommerce-ai-storefront' ) }
+				</h4>
 
 				<div
 					style={ {
@@ -1034,7 +1142,7 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 							} }
 						>
 							{ __(
-								'Min handling time (days)',
+								'Minimum (days)',
 								'woocommerce-ai-storefront'
 							) }
 						</label>
@@ -1055,7 +1163,7 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 							} }
 						>
 							{ __(
-								'Max handling time (days)',
+								'Maximum (days)',
 								'woocommerce-ai-storefront'
 							) }
 						</label>
@@ -1074,10 +1182,61 @@ const ShippingPoliciesSection = ( { handlingTime, onChange } ) => {
 					} }
 				>
 					{ __(
-						'Leave both at 0 to omit handling time from structured data.',
+						'How long you take to pack and ship. Leave both at 0 to publish nothing.',
 						'woocommerce-ai-storefront'
 					) }
 				</p>
+				<div style={ { marginTop: spacing.s5 } }>
+					<h4
+						style={ {
+							margin: `0 0 ${ spacing.s2 }`,
+							...typography.eyebrowLabel,
+							color: colors.textSecondary,
+						} }
+					>
+						{ __( 'Dispatch days', 'woocommerce-ai-storefront' ) }
+					</h4>
+					<div
+						style={ {
+							display: 'flex',
+							flexWrap: 'wrap',
+							gap: `${ spacing.s2 } ${ spacing.s4 }`,
+							marginTop: spacing.s2,
+						} }
+					>
+						{ WEEKDAYS.map( ( day ) => (
+							<CheckboxControl
+								key={ day.value }
+								__nextHasNoMarginBottom
+								label={ day.label }
+								checked={ (
+									handlingTime?.business_days || []
+								).includes( day.value ) }
+								onChange={ ( checked ) =>
+									onChange(
+										applyBusinessDay(
+											handlingTime,
+											day.value,
+											checked
+										)
+									)
+								}
+							/>
+						) ) }
+					</div>
+					<p
+						style={ {
+							margin: `${ spacing.s2 } 0 0`,
+							fontSize: '12px',
+							color: colors.textMuted,
+						} }
+					>
+						{ __(
+							'The days you pack and ship orders. Leave all unticked to publish nothing.',
+							'woocommerce-ai-storefront'
+						) }
+					</p>
+				</div>
 			</CardBody>
 		</Card>
 	);
@@ -1199,7 +1358,20 @@ const PoliciesTab = ( { settings, onChange, onSave, isSaving, isDirty } ) => {
 				...DEFAULT_HANDLING_TIME,
 				...settings.handling_time,
 			};
-			if ( prev.min === next.min && prev.max === next.max ) {
+			// Compares every field, not just the pair this guard was written
+			// for. SET_SETTINGS replaces the store with the server's response
+			// after each save, so this is where a server-side correction
+			// reaches the draft — the sanitizer drops unknown days, collapses
+			// duplicates and re-orders. Skipping business_days here would
+			// leave the checkboxes showing what the browser sent rather than
+			// what was stored.
+			const sameDays =
+				( prev.business_days || [] ).length ===
+					( next.business_days || [] ).length &&
+				( prev.business_days || [] ).every(
+					( day, i ) => day === ( next.business_days || [] )[ i ]
+				);
+			if ( prev.min === next.min && prev.max === next.max && sameDays ) {
 				return prev;
 			}
 			return next;

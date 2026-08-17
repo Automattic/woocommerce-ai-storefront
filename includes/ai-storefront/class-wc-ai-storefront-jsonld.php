@@ -2799,12 +2799,17 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Enriches an existing shippingDetails block with a handlingTime QuantitativeValue.
+	 * Enriches an existing shippingDetails block with a ShippingDeliveryTime.
 	 *
 	 * Requires that `add_shipping_details()` has already placed
-	 * `offers[0]['shippingDetails']`. If that key is absent (e.g. no
-	 * store country set), this method is a no-op. Emits nothing when
-	 * either min or max is 0 (unconfigured) or when min > max (invalid pair).
+	 * `offers[0]['shippingDetails']`. If that key is absent (e.g. no store
+	 * country set), this method is a no-op.
+	 *
+	 * The block carries two INDEPENDENT statements and emits whichever are
+	 * configured: `handlingTime` (needs min and max > 0, and min <= max) and
+	 * `businessDays` (needs at least one day). Either can appear alone — "we
+	 * dispatch Monday to Friday" is a complete claim with no duration — and
+	 * the block is omitted only when neither is configured.
 	 *
 	 * @param array $markup   Markup array, modified by reference.
 	 * @param array $settings Full plugin settings array.
@@ -2822,19 +2827,38 @@ class WC_AI_Storefront_JsonLd {
 		$min = isset( $ht['min'] ) ? (int) $ht['min'] : 0;
 		$max = isset( $ht['max'] ) ? (int) $ht['max'] : 0;
 
-		if ( $min <= 0 || $max <= 0 || $min > $max ) {
-			return;
+		$delivery = array( '@type' => 'ShippingDeliveryTime' );
+
+		// Re-sanitized at read time rather than trusted: get_settings() merges
+		// shallowly, so a direct update_option() can seed unvalidated values.
+		$days = WC_AI_Storefront_Handling_Time::business_days( $settings );
+		if ( ! empty( $days ) ) {
+			// Google does not document businessDays on ShippingDeliveryTime —
+			// only inside ServicePeriod at Organization level. Emitted here
+			// regardless, because the adjacent handlingTime that Google DOES
+			// read is uninterpretable without the working week. Full argument
+			// in docs/engineering/JSON-LD-SCHEMA.md under this property.
+			$delivery['businessDays'] = $days;
 		}
 
-		$markup['offers'][0]['shippingDetails']['deliveryTime'] = array(
-			'@type'        => 'ShippingDeliveryTime',
-			'handlingTime' => array(
+		if ( $min > 0 && $max > 0 && $min <= $max ) {
+			$delivery['handlingTime'] = array(
 				'@type'    => 'QuantitativeValue',
 				'minValue' => $min,
 				'maxValue' => $max,
 				'unitCode' => 'DAY',
-			),
-		);
+			);
+		}
+
+		// A block carrying only '@type' asserts nothing and is worse than no
+		// block. Named rather than counted: a positional `count() < 2` check
+		// silently stops working the day someone adds a third unconditional
+		// key, and no test would fail.
+		if ( ! isset( $delivery['handlingTime'] ) && ! isset( $delivery['businessDays'] ) ) {
+			return;
+		}
+
+		$markup['offers'][0]['shippingDetails']['deliveryTime'] = $delivery;
 	}
 
 	/**
