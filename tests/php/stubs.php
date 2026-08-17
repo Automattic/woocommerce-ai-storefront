@@ -6,6 +6,22 @@
  * the plugin classes under test. Brain Monkey handles function mocking;
  * these cover classes that Brain Monkey doesn't stub.
  *
+ * WARNING — these stubs describe WooCommerce's API without recording WHEN
+ * each method arrived, so they silently assert that everything here exists on
+ * every supported WooCommerce. `phpstan.neon.dist` lists this file under
+ * `scanFiles`, so static analysis inherits the same assumption and will even
+ * report a legitimate `method_exists()` guard as redundant.
+ *
+ * That combination shipped a fatal: `WC_Shipping_Zones::get_shipping_zones()`
+ * requires WooCommerce 10.3 while the plugin's floor is 9.9, and neither the
+ * suite nor PHPStan could see it (#638).
+ *
+ * When stubbing a WooCommerce method, check the version that introduced it and
+ * note it here. An `@since` scan of WooCommerce source is a useful first pass
+ * but not sufficient — `get_shipping_zones()` itself carries no `@since` tag,
+ * and 29 of 66 stubbed core methods are in the same position. For anything
+ * recent, confirm against `git tag --contains` on the introducing commit.
+ *
  * @package WooCommerce_AI_Storefront
  */
 
@@ -842,11 +858,42 @@ if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 		/** @var array<int, WC_Shipping_Zone> Keyed by zone id. Set in tests to inject zones without a DB. */
 		public static array $test_zones = [];
 
+		/**
+		 * Data arrays keyed by zone id, as the admin UI consumes them.
+		 * `@since 2.6.0` — available on every WooCommerce this plugin
+		 * supports, unlike get_shipping_zones().
+		 *
+		 * @return array<int, array<string, mixed>>
+		 */
 		public static function get_zones(): array {
-			return [];
+			$zones = [];
+			foreach ( self::$test_zones as $id => $zone ) {
+				$zones[ $id ] = [ 'zone_id' => $id ];
+			}
+			return $zones;
 		}
 
-		/** @return WC_Shipping_Zone[] Keyed by zone id — mirrors WooCommerce core. */
+		/**
+		 * `@since 2.6.0`. Returns false for an unknown id, which callers
+		 * must narrow with `instanceof`.
+		 *
+		 * @param int $zone_id Zone ID.
+		 * @return WC_Shipping_Zone|bool
+		 */
+		public static function get_zone( $zone_id ) {
+			return self::$test_zones[ (int) $zone_id ] ?? false;
+		}
+
+		/**
+		 * Zone OBJECTS keyed by zone id.
+		 *
+		 * `@since 10.3.0` — NOT available on the plugin's declared WooCommerce
+		 * floor of 9.9. Production code must gate on WC_VERSION before calling
+		 * it; this stub declares it unconditionally, so neither the suite nor
+		 * PHPStan can catch an unguarded call (#638).
+		 *
+		 * @return WC_Shipping_Zone[]
+		 */
 		public static function get_shipping_zones(): array {
 			return self::$test_zones;
 		}

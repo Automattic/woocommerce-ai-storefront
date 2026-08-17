@@ -505,51 +505,70 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'handlingTime', $block );
 	}
 
-	public function test_zones_are_not_read_below_the_required_woocommerce(): void {
+	public function test_legacy_woocommerce_still_reads_zones(): void {
 		// WC_Shipping_Zones::get_shipping_zones() only exists in WooCommerce
 		// 10.3+, while the plugin's floor is 9.9 and `WC requires at least`
-		// does not block activation. Calling it below that fatals inside
-		// wp_head, white-screening the homepage and every product page.
-		$zone   = $this->zone( 0, array(), array( $this->flat_method( '20' ) ) );
-		$policy = new class( array( $zone ) ) extends WC_AI_Storefront_Shipping_Policy {
-			/** @var array */
-			private array $zones;
+		// does not block activation. Rather than degrade below that, the
+		// reader falls back to get_zones() + get_zone(), both @since 2.6.0 —
+		// so the feature works on every supported release instead of silently
+		// going missing (#638).
+		$method       = new \WC_Shipping_Flat_Rate();
+		$method->cost = '20';
 
-			public function __construct( array $zones ) {
-				$this->zones = $zones;
-			}
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn(
+			array( (object) array( 'type' => 'country', 'code' => 'US' ) )
+		);
+		$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
+		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
 
-			protected function zones_readable(): bool {
-				return false;
-			}
+		$legacy = new class() extends WC_AI_Storefront_Shipping_Policy {
+			public static bool $modern_called = false;
 
-			protected function get_shipping_zones(): array {
-				return $this->zones;
+			protected static function uses_modern_zone_api(): bool {
+				self::$modern_called = true;
+				return false; // Pretend to be WooCommerce 10.2.
 			}
 		};
 
-		$this->assertSame(
-			array(),
-			$policy->build_conditions(),
-			'A rate-bearing zone must still produce nothing below the required version.'
-		);
+		$zones = $legacy::all_zones();
+		\WC_Shipping_Zones::$test_zones = array();
+
+		$this->assertTrue( $legacy::$modern_called, 'The version branch must be consulted.' );
+		// The configured zone, hydrated through get_zone(), plus the catch-all
+		// that WooCommerce excludes from both listing APIs.
+		$this->assertCount( 2, $zones );
+		$this->assertSame( 1, $zones[0]->get_id() );
 	}
 
-	public function test_the_version_seam_accepts_the_minimum_and_rejects_below_it(): void {
-		// Behavioural, so it survives a cosmetic change to how the comparison
-		// is spelled. A source-regex test on the literal fails against a
-		// correct implementation that writes '10.3.0' instead of '10.3'.
-		$probe = new class() extends WC_AI_Storefront_Shipping_Policy {
-			public function readable_at( string $version ): bool {
-				return version_compare( $version, self::ZONES_MIN_WC, '>=' );
-			}
-		};
+	public function test_modern_woocommerce_uses_the_object_api(): void {
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 4 );
+		\WC_Shipping_Zones::$test_zones = array( 4 => $zone );
 
-		$this->assertTrue( $probe->readable_at( '10.3' ) );
-		$this->assertTrue( $probe->readable_at( '10.3.0' ) );
-		$this->assertTrue( $probe->readable_at( '10.9.1' ) );
-		$this->assertFalse( $probe->readable_at( '10.2.0' ) );
-		$this->assertFalse( $probe->readable_at( '9.9' ) );
+		$zones = WC_AI_Storefront_Shipping_Policy::all_zones();
+		\WC_Shipping_Zones::$test_zones = array();
+
+		$this->assertCount( 2, $zones );
+		$this->assertSame( 4, $zones[0]->get_id() );
+	}
+
+	public function test_the_version_boundary_is_ten_three(): void {
+		// Behavioural rather than a source regex, so it survives a cosmetic
+		// change to how the comparison is spelled.
+		foreach ( array( '10.3', '10.3.0', '10.9.1', '11.0' ) as $version ) {
+			$this->assertTrue(
+				version_compare( $version, WC_AI_Storefront_Shipping_Policy::ZONES_MIN_WC, '>=' ),
+				$version
+			);
+		}
+		foreach ( array( '9.9', '10.0.0', '10.2.9' ) as $version ) {
+			$this->assertFalse(
+				version_compare( $version, WC_AI_Storefront_Shipping_Policy::ZONES_MIN_WC, '>=' ),
+				$version
+			);
+		}
 	}
 
 	public function test_shipping_globally_disabled_suppresses_the_block(): void {
