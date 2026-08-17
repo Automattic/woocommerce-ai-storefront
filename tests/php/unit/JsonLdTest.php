@@ -61,6 +61,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Monkey\setUp();
 		$this->post_meta_by_id = [];
 		WC_Shipping_Zones::$test_zones = [];
+		// all_zones() memoizes per request; without this a zone set injected by
+		// one test is served to the next.
+		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
+		WC_Shipping_Zones::$simulated_wc_version               = null;
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = null;
 		$this->jsonld = new WC_AI_Storefront_JsonLd();
 
 		// Default: syndication enabled, no category restriction. Tests
@@ -237,6 +242,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Multi_Currency::reset_cache();
 		WC_AI_Storefront::$test_settings = [];
 		WC_Shipping_Zones::$test_zones   = [];
+		WC_Shipping_Zones::$simulated_wc_version               = null;
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = null;
+		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
 		// Reset the subscription stub's static state unconditionally.
 		// Subscription tests previously did this via per-test
 		// `tearDownSubscriptions()` calls, but those don't fire when an
@@ -3873,6 +3881,36 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		};
 	}
 
+	public function test_get_shipping_zones_works_on_legacy_woocommerce(): void {
+		// The #638 guard at the call site that ORIGINALLY fataled. This
+		// emitter's zone reader feeds the product-level free-shipping check,
+		// and it is where the unguarded WC_Shipping_Zones::get_shipping_zones()
+		// call lived.
+		//
+		// Both knobs are set together so the stub and the production version
+		// seam agree about which WooCommerce this is. The stub then throws for
+		// the 10.3-only method, so reverting this reader to call it directly
+		// fails here rather than in a merchant's wp_head.
+		WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
+
+		$zone = Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 42 );
+		WC_Shipping_Zones::$test_zones = array( 42 => $zone );
+
+		$jsonld = new class extends WC_AI_Storefront_JsonLd {
+			public function call_get_shipping_zones(): array {
+				return $this->get_shipping_zones();
+			}
+		};
+
+		$zones = $jsonld->call_get_shipping_zones();
+
+		// The injected zone, hydrated through the legacy path, plus zone 0.
+		$this->assertCount( 2, $zones );
+		$this->assertContainsOnlyInstancesOf( WC_Shipping_Zone::class, $zones );
+	}
+
 	public function test_get_shipping_zones_returns_zone_objects_not_data_arrays(): void {
 		// Regression guard for the get_zones() vs get_shipping_zones() mix-up.
 		// WC_Shipping_Zones::get_zones() returns data arrays; only
@@ -4692,6 +4730,39 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame(
 			20.0,
 			$captured['hasShippingService']['shippingConditions'][0]['shippingRate']['value']
+		);
+	}
+
+	public function test_store_jsonld_renders_on_legacy_woocommerce(): void {
+		// The #638 regression guard at its ORIGINAL call site. Before this
+		// test, restoring the unguarded WC_Shipping_Zones::get_shipping_zones()
+		// call here left the entire suite green — the very bug the fix exists
+		// for was invisible to CI.
+		//
+		// The stub throws for that method at this simulated version, so any
+		// route into it from the JSON-LD emitter fatals here instead of in a
+		// merchant's wp_head.
+		WC_Shipping_Zones::$simulated_wc_version                    = '10.2.2';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override      = '10.2.2';
+
+		$method       = new \WC_Shipping_Flat_Rate();
+		$method->cost = '20';
+
+		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
+		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn(
+			array( (object) array( 'type' => 'country', 'code' => 'US' ) )
+		);
+		$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
+		WC_Shipping_Zones::$test_zones = array( 1 => $zone );
+
+		$captured = $this->capture_store_jsonld_filter_value();
+
+		$this->assertIsArray( $captured, 'A legacy store must still render its Organization block.' );
+		$this->assertSame(
+			20.0,
+			$captured['hasShippingService']['shippingConditions'][0]['shippingRate']['value'],
+			'And must publish the same shipping conditions a modern store does.'
 		);
 	}
 
