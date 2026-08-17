@@ -22,7 +22,7 @@ class WC_AI_Storefront {
 	 *
 	 * @var array
 	 */
-	public static array $test_settings = [];
+	public static array $test_settings = array();
 
 	/**
 	 * Test-controllable variation → parent map. Mirrors the production
@@ -49,7 +49,7 @@ class WC_AI_Storefront {
 	 *
 	 * @var array<int, int>
 	 */
-	public static array $test_variations = [];
+	public static array $test_variations = array();
 
 	const SETTINGS_OPTION = 'wc_ai_storefront_settings';
 
@@ -107,14 +107,17 @@ class WC_AI_Storefront {
 
 	public static function get_settings(): array {
 		return array_merge(
-			[
+			array(
 				'enabled'                  => 'yes',
 				'product_selection_mode'   => 'all',
-				'selected_categories'      => [],
-				'selected_products'        => [],
+				'selected_categories'      => array(),
+				'selected_products'        => array(),
 				'rate_limit_rpm'           => 25,
-				'return_policy'            => [ 'mode' => 'unconfigured' ],
-				'handling_time'            => [ 'min' => 0, 'max' => 0 ],
+				'return_policy'            => array( 'mode' => 'unconfigured' ),
+				'handling_time'            => array(
+					'min' => 0,
+					'max' => 0,
+				),
 				// Mirror production default. The gate consumer only
 				// reads this with `isset() && 'yes' ===`, so a missing
 				// key behaves identically to `'no'` today — but the
@@ -134,7 +137,7 @@ class WC_AI_Storefront {
 				// Mirror production default. IndexNow is opt-in (default
 				// 'no') gated by syndication. See the stub doc on drift.
 				'indexnow_enabled'         => 'no',
-			],
+			),
 			self::$test_settings
 		);
 	}
@@ -234,7 +237,7 @@ class WC_AI_Storefront {
 			$product_id = $parent_id;
 		}
 
-		if ( in_array( $mode, [ 'categories', 'tags', 'brands' ], true ) ) {
+		if ( in_array( $mode, array( 'categories', 'tags', 'brands' ), true ) ) {
 			$mode = 'by_taxonomy';
 		}
 
@@ -254,9 +257,9 @@ class WC_AI_Storefront {
 		}
 
 		if ( 'by_taxonomy' === $mode ) {
-			$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
-			$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
-			$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
+			$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? array() );
+			$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? array() );
+			$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? array() );
 
 			$brands_supported = taxonomy_exists( 'product_brand' );
 
@@ -280,21 +283,21 @@ class WC_AI_Storefront {
 			// method.
 
 			if ( $has_cats ) {
-				$product_cats = wp_get_post_terms( $product_id, 'product_cat', [ 'fields' => 'ids' ] );
+				$product_cats = wp_get_post_terms( $product_id, 'product_cat', array( 'fields' => 'ids' ) );
 				if ( ! is_wp_error( $product_cats ) && ! empty( array_intersect( $product_cats, $selected_categories ) ) ) {
 					return true;
 				}
 			}
 
 			if ( $has_tags ) {
-				$product_tags = wp_get_post_terms( $product_id, 'product_tag', [ 'fields' => 'ids' ] );
+				$product_tags = wp_get_post_terms( $product_id, 'product_tag', array( 'fields' => 'ids' ) );
 				if ( ! is_wp_error( $product_tags ) && ! empty( array_intersect( $product_tags, $selected_tags ) ) ) {
 					return true;
 				}
 			}
 
 			if ( $has_brands ) {
-				$product_brands = wp_get_post_terms( $product_id, 'product_brand', [ 'fields' => 'ids' ] );
+				$product_brands = wp_get_post_terms( $product_id, 'product_brand', array( 'fields' => 'ids' ) );
 				if ( ! is_wp_error( $product_brands ) && ! empty( array_intersect( $product_brands, $selected_brands ) ) ) {
 					return true;
 				}
@@ -341,15 +344,15 @@ class WC_AI_Storefront {
 
 		// Normalize legacy mode aliases to canonical form at write time.
 		// Mirrors the production normalization in update_settings().
-		$legacy_mode_map = [
+		$legacy_mode_map = array(
 			'categories' => 'by_taxonomy',
 			'tags'       => 'by_taxonomy',
 			'brands'     => 'by_taxonomy',
-		];
+		);
 		$raw_mode        = $merged['product_selection_mode'] ?? 'all';
 		$normalized_mode = isset( $legacy_mode_map[ $raw_mode ] ) ? $legacy_mode_map[ $raw_mode ] : $raw_mode;
 
-		$sanitized_mode = in_array( $normalized_mode, [ 'all', 'by_taxonomy', 'selected' ], true ) ? $normalized_mode : 'all';
+		$sanitized_mode = in_array( $normalized_mode, array( 'all', 'by_taxonomy', 'selected' ), true ) ? $normalized_mode : 'all';
 
 		// Mirror production: strict yes/no enum, anything else falls
 		// back to `'no'`. Documented at
@@ -357,7 +360,7 @@ class WC_AI_Storefront {
 		// Coalesce ONCE into the local — see production for the
 		// explicit-null hole that made the inline shape unsafe.
 		$sanitized_unknown = $merged['allow_unknown_ucp_agents'] ?? 'no';
-		if ( ! in_array( $sanitized_unknown, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $sanitized_unknown, array( 'yes', 'no' ), true ) ) {
 			$sanitized_unknown = 'no';
 		}
 
@@ -365,7 +368,7 @@ class WC_AI_Storefront {
 		// else falls back to `'yes'`. See
 		// `includes/class-wc-ai-storefront.php::update_settings()`.
 		$sanitized_mcp_enabled = $merged['mcp_enabled'] ?? 'yes';
-		if ( ! in_array( $sanitized_mcp_enabled, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $sanitized_mcp_enabled, array( 'yes', 'no' ), true ) ) {
 			$sanitized_mcp_enabled = 'yes';
 		}
 
@@ -373,7 +376,7 @@ class WC_AI_Storefront {
 		// else falls back to `'yes'`. See
 		// `includes/class-wc-ai-storefront.php::update_settings()`.
 		$sanitized_products_json_enabled = $merged['products_json_enabled'] ?? 'yes';
-		if ( ! in_array( $sanitized_products_json_enabled, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $sanitized_products_json_enabled, array( 'yes', 'no' ), true ) ) {
 			$sanitized_products_json_enabled = 'yes';
 		}
 
@@ -381,17 +384,17 @@ class WC_AI_Storefront {
 		// else falls back to `'no'`. See
 		// `includes/class-wc-ai-storefront.php::update_settings()`.
 		$sanitized_indexnow_enabled = $merged['indexnow_enabled'] ?? 'no';
-		if ( ! in_array( $sanitized_indexnow_enabled, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $sanitized_indexnow_enabled, array( 'yes', 'no' ), true ) ) {
 			$sanitized_indexnow_enabled = 'no';
 		}
 
-		$overrides = [
+		$overrides = array(
 			'product_selection_mode'   => $sanitized_mode,
 			'allow_unknown_ucp_agents' => $sanitized_unknown,
 			'mcp_enabled'              => $sanitized_mcp_enabled,
 			'products_json_enabled'    => $sanitized_products_json_enabled,
 			'indexnow_enabled'         => $sanitized_indexnow_enabled,
-		];
+		);
 
 		// If a return_policy was passed in, route it through the
 		// production sanitizer so tests against the REST surface
@@ -420,7 +423,7 @@ class WC_AI_Storefront {
 		// no->'yes' transition logic without calling real WP cron functions; this stub
 		// intentionally avoids them because UpdateSettingsSanitizationTest does not set
 		// up Brain Monkey. The production class is the authoritative implementation.
-		$new_indexnow = self::$test_settings['indexnow_enabled'] ?? 'no';
+		$new_indexnow                    = self::$test_settings['indexnow_enabled'] ?? 'no';
 		self::$_seed_transition_detected = ( 'yes' !== $old_indexnow && 'yes' === $new_indexnow );
 	}
 

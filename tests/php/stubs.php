@@ -151,11 +151,11 @@ if ( ! function_exists( 'wp_strip_all_tags' ) ) {
 
 if ( ! class_exists( 'WP_REST_Request' ) ) {
 	class WP_REST_Request {
-		private array $params = [];
-		private array $headers = [];
-		private string $route = '';
+		private array $params  = array();
+		private array $headers = array();
+		private string $route  = '';
 		private string $method = '';
-		private string $body = '';
+		private string $body   = '';
 
 		/**
 		 * Parsed JSON body. Distinct from form-encoded params so
@@ -218,7 +218,7 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 		}
 
 		public function set_header( string $key, string $value ): void {
-			$normalized = strtolower( str_replace( '-', '_', $key ) );
+			$normalized                   = strtolower( str_replace( '-', '_', $key ) );
 			$this->headers[ $normalized ] = $value;
 		}
 
@@ -265,10 +265,10 @@ if ( ! class_exists( 'WP_REST_Request' ) ) {
 if ( ! class_exists( 'WP_REST_Response' ) ) {
 	class WP_REST_Response {
 		public $data;
-		private array $headers = [];
-		private int $status = 200;
+		private array $headers = array();
+		private int $status    = 200;
 
-		public function __construct( $data = null, int $status = 200, array $headers = [] ) {
+		public function __construct( $data = null, int $status = 200, array $headers = array() ) {
 			$this->data    = $data;
 			$this->status  = $status;
 			$this->headers = $headers;
@@ -319,9 +319,9 @@ if ( ! class_exists( 'WC_Product' ) ) {
 	 * checking only.
 	 */
 	class WC_Product {
-		protected int $id = 1;
-		protected string $type = 'simple';
-		protected string $permalink = 'https://example.com/product/test/';
+		protected int $id              = 1;
+		protected string $type         = 'simple';
+		protected string $permalink    = 'https://example.com/product/test/';
 		protected string $external_url = '';
 
 		public function __construct( int $id = 1, string $type = 'simple' ) {
@@ -494,21 +494,21 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		 * @return int[]
 		 */
 		public function get_category_ids(): array {
-			return [];
+			return array();
 		}
 
 		/**
 		 * @return int[]
 		 */
 		public function get_tag_ids(): array {
-			return [];
+			return array();
 		}
 
 		/**
 		 * @return int[]
 		 */
 		public function get_gallery_image_ids(): array {
-			return [];
+			return array();
 		}
 
 		/**
@@ -521,21 +521,21 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		 * @return int[]
 		 */
 		public function get_children(): array {
-			return [];
+			return array();
 		}
 
 		/**
 		 * @return int[]
 		 */
 		public function get_cross_sell_ids(): array {
-			return [];
+			return array();
 		}
 
 		/**
 		 * @return int[]
 		 */
 		public function get_upsell_ids(): array {
-			return [];
+			return array();
 		}
 
 		// Stock.
@@ -584,14 +584,18 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		 * @return array{length: string, width: string, height: string}
 		 */
 		public function get_dimensions( bool $formatted = false ): array {
-			return [ 'length' => '', 'width' => '', 'height' => '' ];
+			return array(
+				'length' => '',
+				'width'  => '',
+				'height' => '',
+			);
 		}
 
 		/**
 		 * @return array<string, object>
 		 */
 		public function get_attributes(): array {
-			return [];
+			return array();
 		}
 
 		public function get_attribute( string $name ): string {
@@ -626,14 +630,14 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		 * @return array<string, array<int, string>|string>
 		 */
 		public function get_variation_attributes(): array {
-			return [];
+			return array();
 		}
 	}
 }
 
 if ( ! class_exists( 'WC_Order' ) ) {
 	class WC_Order {
-		private array $meta = [];
+		private array $meta = array();
 		private bool $saved = false;
 
 		// Test-controllable properties used by tests that exercise
@@ -641,16 +645,16 @@ if ( ! class_exists( 'WC_Order' ) ) {
 		// `/admin/recent-orders` endpoint contract test). Defaults
 		// chosen so a freshly-constructed WC_Order yields a sensible
 		// row shape without the test having to set each field.
-		private int $id = 1;
-		private string $number = '1';
-		private string $status = 'processing';
-		private string $total = '0.00';
-		private string $currency = 'USD';
-		private string $edit_url = 'https://example.com/wp-admin/admin.php?page=wc-orders&action=edit&id=1';
+		private int $id                          = 1;
+		private string $number                   = '1';
+		private string $status                   = 'processing';
+		private string $total                    = '0.00';
+		private string $currency                 = 'USD';
+		private string $edit_url                 = 'https://example.com/wp-admin/admin.php?page=wc-orders&action=edit&id=1';
 		private ?\WC_DateTime_Stub $date_created = null;
-		private int $customer_id = 0;
-		private string $billing_first_name = '';
-		private string $billing_last_name = '';
+		private int $customer_id                 = 0;
+		private string $billing_first_name       = '';
+		private string $billing_last_name        = '';
 
 		public function get_meta( string $key ) {
 			return $this->meta[ $key ] ?? '';
@@ -757,7 +761,7 @@ if ( ! class_exists( 'WC_Order' ) ) {
 		}
 
 		public function get_items( string $type = 'line_item' ): array {
-			return [];
+			return array();
 		}
 	}
 }
@@ -778,10 +782,10 @@ if ( ! class_exists( 'WP_Query' ) ) {
 	 */
 	class WP_Query {
 		public static int $test_found_posts = 0;
-		public int        $found_posts;
-		public array      $query_vars = [];
+		public int $found_posts;
+		public array $query_vars = array();
 
-		public function __construct( array $args = [] ) {
+		public function __construct( array $args = array() ) {
 			$this->found_posts = self::$test_found_posts;
 			$this->query_vars  = $args;
 		}
@@ -844,11 +848,11 @@ if ( ! class_exists( 'WC_Shipping_Zone' ) ) {
 			return $this->id;
 		}
 		public function get_zone_locations(): array {
-			return [];
+			return array();
 		}
 		/** @return WC_Shipping_Method[] */
 		public function get_shipping_methods( bool $enabled_only = false ): array {
-			return [];
+			return array();
 		}
 	}
 }
@@ -856,7 +860,7 @@ if ( ! class_exists( 'WC_Shipping_Zone' ) ) {
 if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 	class WC_Shipping_Zones {
 		/** @var array<int, WC_Shipping_Zone> Keyed by zone id. Set in tests to inject zones without a DB. */
-		public static array $test_zones = [];
+		public static array $test_zones = array();
 
 		/**
 		 * Which WooCommerce this stub pretends to be, or null for "current".
@@ -889,9 +893,9 @@ if ( ! class_exists( 'WC_Shipping_Zones' ) ) {
 		 * @return array<int, array<string, mixed>>
 		 */
 		public static function get_zones(): array {
-			$zones = [];
+			$zones = array();
 			foreach ( self::$test_zones as $id => $zone ) {
-				$zones[ $id ] = [ 'zone_id' => $id ];
+				$zones[ $id ] = array( 'zone_id' => $id );
 			}
 			return $zones;
 		}
@@ -962,9 +966,13 @@ if ( ! class_exists( 'WC_Data_Store' ) ) {
 			if ( null !== WC_Shipping_Zones::$test_zone_rows ) {
 				return WC_Shipping_Zones::$test_zone_rows;
 			}
-			$rows = [];
+			$rows = array();
 			foreach ( array_keys( WC_Shipping_Zones::$test_zones ) as $id ) {
-				$rows[] = (object) [ 'zone_id' => $id, 'zone_name' => 'Zone ' . $id, 'zone_order' => 0 ];
+				$rows[] = (object) array(
+					'zone_id'    => $id,
+					'zone_name'  => 'Zone ' . $id,
+					'zone_order' => 0,
+				);
 			}
 			return $rows;
 		}
@@ -986,7 +994,7 @@ if ( ! class_exists( 'WC_Shipping_Method' ) ) {
 
 if ( ! class_exists( 'WC_Shipping_Free_Shipping' ) ) {
 	class WC_Shipping_Free_Shipping extends WC_Shipping_Method {
-		public string $id = 'free_shipping';
+		public string $id       = 'free_shipping';
 		public string $requires = '';
 		/**
 		 * Order subtotal at or above which shipping becomes free. Empty
@@ -1003,7 +1011,7 @@ if ( ! class_exists( 'WC_Shipping_Flat_Rate' ) ) {
 	 * `[fee percent="…"]` shortcode. Typed as string here for that reason.
 	 */
 	class WC_Shipping_Flat_Rate extends WC_Shipping_Method {
-		public string $id = 'flat_rate';
+		public string $id   = 'flat_rate';
 		public string $cost = '';
 		/**
 		 * Per-instance settings. Carries `class_cost_<term_id>` and
@@ -1011,7 +1019,7 @@ if ( ! class_exists( 'WC_Shipping_Flat_Rate' ) ) {
 		 *
 		 * @var array<string, string>
 		 */
-		public array $instance_settings = [];
+		public array $instance_settings = array();
 	}
 }
 
@@ -1086,7 +1094,7 @@ if ( ! class_exists( 'WC_Subscriptions_Product' ) ) {
 		// like `$test_data[42] = ['period' => 'month', 'interval' => 1, ...]`
 		// before invoking the JSON-LD emitter. A missing entry means "this
 		// product isn't a subscription" — is_subscription() returns false.
-		public static array $test_data = [];
+		public static array $test_data = array();
 
 		public static function is_subscription( $product ): bool {
 			$id = self::id_of( $product );
@@ -1146,7 +1154,7 @@ if ( ! function_exists( 'wcs_is_subscription' ) ) {
 
 if ( ! class_exists( 'WP_Post' ) ) {
 	class WP_Post {
-		public int    $ID          = 0;
+		public int $ID             = 0;
 		public string $post_title  = '';
 		public string $post_status = 'publish';
 		public string $post_type   = 'product';
@@ -1172,15 +1180,15 @@ if ( ! class_exists( 'WP_Term' ) ) {
 	 * has been frozen in core since WP 4.4, so this is maintenance-free.
 	 */
 	class WP_Term {
-		public int    $term_id          = 0;
-		public string $name             = '';
-		public string $slug             = '';
-		public int    $term_group       = 0;
-		public int    $term_taxonomy_id = 0;
-		public string $taxonomy         = '';
-		public string $description      = '';
-		public int    $parent           = 0;
-		public int    $count            = 0;
-		public string $filter           = 'raw';
+		public int $term_id          = 0;
+		public string $name          = '';
+		public string $slug          = '';
+		public int $term_group       = 0;
+		public int $term_taxonomy_id = 0;
+		public string $taxonomy      = '';
+		public string $description   = '';
+		public int $parent           = 0;
+		public int $count            = 0;
+		public string $filter        = 'raw';
 	}
 }

@@ -28,18 +28,24 @@ class UcpCatalogGetRoutesTestController extends WC_AI_Storefront_UCP_REST_Contro
 
 	public function run_catalog_search( array $params ): array {
 		$this->last_search_params = $params;
-		return [
-			'body'   => [ 'products' => [], 'ucp' => [] ],
+		return array(
+			'body'   => array(
+				'products' => array(),
+				'ucp'      => array(),
+			),
 			'status' => 200,
-		];
+		);
 	}
 
 	public function run_catalog_lookup( array $params ): array {
 		$this->last_lookup_params = $params;
-		return [
-			'body'   => [ 'products' => [], 'ucp' => [] ],
+		return array(
+			'body'   => array(
+				'products' => array(),
+				'ucp'      => array(),
+			),
 			'status' => 200,
-		];
+		);
 	}
 }
 
@@ -55,14 +61,14 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 
 		$this->controller = new UcpCatalogGetRoutesTestController();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		WC_AI_Storefront_Logger::reset_cache();
 		Monkey\tearDown();
 		parent::tearDown();
@@ -78,7 +84,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	 * @param array<string, mixed> $params
 	 * @return WP_REST_Request
 	 */
-	private function make_get_request( array $params = [], array $headers = [] ): WP_REST_Request {
+	private function make_get_request( array $params = array(), array $headers = array() ): WP_REST_Request {
 		$request = Mockery::mock( 'WP_REST_Request' );
 		$request->shouldReceive( 'get_param' )->andReturnUsing(
 			static fn( string $key ) => $params[ $key ] ?? null
@@ -95,24 +101,29 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_get_search_q_maps_to_query_param(): void {
-		$request = $this->make_get_request( [ 'q' => 'hoodie' ] );
+		$request = $this->make_get_request( array( 'q' => 'hoodie' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$this->assertSame( 'hoodie', $this->controller->last_search_params['query'] );
 	}
 
 	public function test_get_search_category_maps_to_filter(): void {
-		$request = $this->make_get_request( [ 'category' => 'tops' ] );
+		$request = $this->make_get_request( array( 'category' => 'tops' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$this->assertSame(
-			[ 'tops' ],
+			array( 'tops' ),
 			$this->controller->last_search_params['filters']['categories']
 		);
 	}
 
 	public function test_get_search_price_range_maps_to_filter(): void {
-		$request = $this->make_get_request( [ 'min_price' => '20', 'max_price' => '60' ] );
+		$request = $this->make_get_request(
+			array(
+				'min_price' => '20',
+				'max_price' => '60',
+			)
+		);
 		$this->controller->handle_catalog_search_get( $request );
 
 		// The handler forwards the raw query-string value unchanged; the
@@ -132,7 +143,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		// filter, diverging from POST which rejects non-integer price input).
 		// The handler must forward the raw value so the shared validator can
 		// reject it exactly as it does on the POST path.
-		$request = $this->make_get_request( [ 'min_price' => 'gibberish' ] );
+		$request = $this->make_get_request( array( 'min_price' => 'gibberish' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$price = $this->controller->last_search_params['filters']['price'];
@@ -144,7 +155,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		// '?min_price=19.99' must not silently truncate to 19. Forwarding the
 		// raw '19.99' lets is_integer_like_non_negative() drop it (UCP amounts
 		// are integer minor units), matching POST.
-		$request = $this->make_get_request( [ 'min_price' => '19.99' ] );
+		$request = $this->make_get_request( array( 'min_price' => '19.99' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$price = $this->controller->last_search_params['filters']['price'];
@@ -152,28 +163,28 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_search_in_stock_true_maps_to_filter(): void {
-		$request = $this->make_get_request( [ 'in_stock' => '1' ] );
+		$request = $this->make_get_request( array( 'in_stock' => '1' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$this->assertTrue( $this->controller->last_search_params['filters']['in_stock'] );
 	}
 
 	public function test_get_search_in_stock_false_maps_to_filter(): void {
-		$request = $this->make_get_request( [ 'in_stock' => '0' ] );
+		$request = $this->make_get_request( array( 'in_stock' => '0' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$this->assertFalse( $this->controller->last_search_params['filters']['in_stock'] );
 	}
 
 	public function test_get_search_in_stock_string_true_maps_to_filter(): void {
-		$request = $this->make_get_request( [ 'in_stock' => 'true' ] );
+		$request = $this->make_get_request( array( 'in_stock' => 'true' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$this->assertTrue( $this->controller->last_search_params['filters']['in_stock'] );
 	}
 
 	public function test_get_search_only_min_price_maps_without_max(): void {
-		$request = $this->make_get_request( [ 'min_price' => '20' ] );
+		$request = $this->make_get_request( array( 'min_price' => '20' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$price = $this->controller->last_search_params['filters']['price'];
@@ -182,18 +193,23 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_search_attribute_bracket_param_maps_to_filters_attributes(): void {
-		$request = $this->make_get_request( [
-			'attribute' => [ 'color' => 'blue', 'size' => 'M' ],
-		] );
+		$request = $this->make_get_request(
+			array(
+				'attribute' => array(
+					'color' => 'blue',
+					'size'  => 'M',
+				),
+			)
+		);
 		$this->controller->handle_catalog_search_get( $request );
 
 		$attrs = $this->controller->last_search_params['filters']['attributes'];
-		$this->assertSame( [ 'blue' ], $attrs['color'] );
-		$this->assertSame( [ 'M' ], $attrs['size'] );
+		$this->assertSame( array( 'blue' ), $attrs['color'] );
+		$this->assertSame( array( 'M' ), $attrs['size'] );
 	}
 
 	public function test_get_search_page_encodes_to_cursor(): void {
-		$request = $this->make_get_request( [ 'page' => '3' ] );
+		$request = $this->make_get_request( array( 'page' => '3' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$pagination = $this->controller->last_search_params['pagination'];
@@ -203,7 +219,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_search_per_page_maps_to_pagination_limit(): void {
-		$request = $this->make_get_request( [ 'per_page' => '20' ] );
+		$request = $this->make_get_request( array( 'per_page' => '20' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		// Raw value forwarded; map_ucp_search_to_store_api() coerces + clamps.
@@ -218,7 +234,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		// value it never sent. Forwarding the raw string routes it to the
 		// validator's "invalid shape" branch, which emits the truthful
 		// "must be a non-negative integer" message.
-		$request = $this->make_get_request( [ 'per_page' => 'gibberish' ] );
+		$request = $this->make_get_request( array( 'per_page' => 'gibberish' ) );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$this->assertSame( 'gibberish', $this->controller->last_search_params['pagination']['limit'] );
@@ -226,7 +242,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_search_no_ucp_agent_header_gives_fallback_agent_data(): void {
-		$request = $this->make_get_request( [] );
+		$request = $this->make_get_request( array() );
 		$this->controller->handle_catalog_search_get( $request );
 
 		$agent = $this->controller->last_search_params['agent_data'];
@@ -237,7 +253,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_search_ucp_agent_header_is_empty_string(): void {
-		$request = $this->make_get_request( [] );
+		$request = $this->make_get_request( array() );
 		$this->controller->handle_catalog_search_get( $request );
 
 		// get_header('ucp-agent') returns null → coerced to ''.
@@ -245,20 +261,20 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_search_no_filters_when_no_params(): void {
-		$request = $this->make_get_request( [] );
+		$request = $this->make_get_request( array() );
 		$this->controller->handle_catalog_search_get( $request );
 
-		$this->assertSame( [], $this->controller->last_search_params['filters'] );
+		$this->assertSame( array(), $this->controller->last_search_params['filters'] );
 	}
 
 	public function test_get_search_returns_503_when_syndication_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		// Use a real controller so the neutral core's syndication gate fires.
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'q' => 'hoodie' ] );
+		$request = $this->make_get_request( array( 'q' => 'hoodie' ) );
 		$result  = $real->handle_catalog_search_get( $request );
 
 		$this->assertSame( 503, $result->get_status() );
@@ -269,10 +285,10 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_get_lookup_by_numeric_id_wraps_as_ucp_id(): void {
-		$request = $this->make_get_request( [ 'id' => '42' ] );
+		$request = $this->make_get_request( array( 'id' => '42' ) );
 		$this->controller->handle_catalog_lookup_get( $request );
 
-		$this->assertSame( [ 'prod_42' ], $this->controller->last_lookup_params['ids'] );
+		$this->assertSame( array( 'prod_42' ), $this->controller->last_lookup_params['ids'] );
 	}
 
 	public function test_get_lookup_by_slug_resolves_via_get_page_by_path(): void {
@@ -280,10 +296,10 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		$post->ID = 99;
 		Functions\when( 'get_page_by_path' )->justReturn( $post );
 
-		$request = $this->make_get_request( [ 'slug' => 'day-hoodie' ] );
+		$request = $this->make_get_request( array( 'slug' => 'day-hoodie' ) );
 		$this->controller->handle_catalog_lookup_get( $request );
 
-		$this->assertSame( [ 'prod_99' ], $this->controller->last_lookup_params['ids'] );
+		$this->assertSame( array( 'prod_99' ), $this->controller->last_lookup_params['ids'] );
 	}
 
 	public function test_get_lookup_unknown_slug_returns_404(): void {
@@ -293,7 +309,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'slug' => 'gibberish-slug-xyz' ] );
+		$request = $this->make_get_request( array( 'slug' => 'gibberish-slug-xyz' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 404, $result->get_status() );
@@ -304,7 +320,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'id' => 'abc' ] );
+		$request = $this->make_get_request( array( 'id' => 'abc' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 400, $result->get_status() );
@@ -315,17 +331,22 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'id' => '0' ] );
+		$request = $this->make_get_request( array( 'id' => '0' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 400, $result->get_status() );
 	}
 
 	public function test_get_lookup_id_takes_precedence_over_slug(): void {
-		$request = $this->make_get_request( [ 'id' => '42', 'slug' => 'some-product' ] );
+		$request = $this->make_get_request(
+			array(
+				'id'   => '42',
+				'slug' => 'some-product',
+			)
+		);
 		$this->controller->handle_catalog_lookup_get( $request );
 
-		$this->assertSame( [ 'prod_42' ], $this->controller->last_lookup_params['ids'] );
+		$this->assertSame( array( 'prod_42' ), $this->controller->last_lookup_params['ids'] );
 	}
 
 	public function test_get_lookup_missing_params_returns_400(): void {
@@ -334,19 +355,19 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [] );
+		$request = $this->make_get_request( array() );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 400, $result->get_status() );
 	}
 
 	public function test_get_lookup_returns_503_when_syndication_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'id' => '42' ] );
+		$request = $this->make_get_request( array( 'id' => '42' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 503, $result->get_status() );
@@ -358,12 +379,12 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		// its own validation first, so '?id=gibberish' on a disabled store
 		// leaked a 400 INVALID_INPUT instead of the 503 the POST route and the
 		// neutral core return.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'id' => 'gibberish' ] );
+		$request = $this->make_get_request( array( 'id' => 'gibberish' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 503, $result->get_status() );
@@ -371,12 +392,12 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_get_lookup_paused_store_returns_503_even_with_missing_params(): void {
 		// Same parity: neither ?id nor ?slug on a paused store → 503, not 400.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [] );
+		$request = $this->make_get_request( array() );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 503, $result->get_status() );
@@ -385,7 +406,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	public function test_get_lookup_paused_store_does_not_query_slug(): void {
 		// The disabled gate must short-circuit BEFORE get_page_by_path() runs —
 		// a paused store should not execute a DB lookup for an agent's slug.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
@@ -398,7 +419,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'slug' => 'day-hoodie' ] );
+		$request = $this->make_get_request( array( 'slug' => 'day-hoodie' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 
 		$this->assertSame( 503, $result->get_status() );
@@ -410,39 +431,45 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_get_lookup_ids_passes_split_array_to_core(): void {
-		$request = $this->make_get_request( [ 'ids' => 'prod_22,var_4079,prod_99' ] );
+		$request = $this->make_get_request( array( 'ids' => 'prod_22,var_4079,prod_99' ) );
 		$this->controller->handle_catalog_lookup_get( $request );
 		$this->assertSame(
-			[ 'prod_22', 'var_4079', 'prod_99' ],
+			array( 'prod_22', 'var_4079', 'prod_99' ),
 			$this->controller->last_lookup_params['ids']
 		);
 	}
 
 	public function test_get_lookup_ids_trims_and_drops_empty_tokens(): void {
-		$request = $this->make_get_request( [ 'ids' => ' prod_1 ,, prod_2 ,' ] );
+		$request = $this->make_get_request( array( 'ids' => ' prod_1 ,, prod_2 ,' ) );
 		$this->controller->handle_catalog_lookup_get( $request );
 		$this->assertSame(
-			[ 'prod_1', 'prod_2' ],
+			array( 'prod_1', 'prod_2' ),
 			$this->controller->last_lookup_params['ids']
 		);
 	}
 
 	public function test_get_lookup_ids_takes_precedence_over_id_and_slug(): void {
-		$request = $this->make_get_request( [ 'ids' => 'prod_5', 'id' => '9', 'slug' => 'whatever' ] );
+		$request = $this->make_get_request(
+			array(
+				'ids'  => 'prod_5',
+				'id'   => '9',
+				'slug' => 'whatever',
+			)
+		);
 		$this->controller->handle_catalog_lookup_get( $request );
-		$this->assertSame( [ 'prod_5' ], $this->controller->last_lookup_params['ids'] );
+		$this->assertSame( array( 'prod_5' ), $this->controller->last_lookup_params['ids'] );
 	}
 
 	public function test_get_lookup_empty_ids_returns_400(): void {
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'ids' => ',,' ] );
+		$request = $this->make_get_request( array( 'ids' => ',,' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 		$this->assertSame( 400, $result->get_status() );
 	}
 
 	public function test_get_lookup_ids_array_input_returns_400(): void {
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'ids' => [ 'prod_1', 'prod_2' ] ] );
+		$request = $this->make_get_request( array( 'ids' => array( 'prod_1', 'prod_2' ) ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 		$this->assertSame( 400, $result->get_status() );
 		$this->assertSame( 'invalid_input', $result->get_data()['messages'][0]['code'] );
@@ -450,7 +477,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_get_lookup_empty_string_ids_returns_400(): void {
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
-		$request = $this->make_get_request( [ 'ids' => '' ] );
+		$request = $this->make_get_request( array( 'ids' => '' ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 		$this->assertSame( 400, $result->get_status() );
 	}
@@ -458,7 +485,7 @@ class UcpCatalogGetRoutesTest extends \PHPUnit\Framework\TestCase {
 	public function test_get_lookup_ids_over_cap_returns_request_too_large(): void {
 		$real    = new WC_AI_Storefront_UCP_REST_Controller();
 		$ids     = implode( ',', array_map( static fn( int $i ) => 'prod_' . $i, range( 1, 101 ) ) );
-		$request = $this->make_get_request( [ 'ids' => $ids ] );
+		$request = $this->make_get_request( array( 'ids' => $ids ) );
 		$result  = $real->handle_catalog_lookup_get( $request );
 		$this->assertSame( 400, $result->get_status() );
 		$this->assertSame( 'request_too_large', $result->get_data()['messages'][0]['code'] );

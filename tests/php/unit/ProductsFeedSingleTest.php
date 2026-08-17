@@ -44,13 +44,13 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post' )->justReturn( null );
 		$this->feed = new WC_AI_Storefront_Products_Feed();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
-		$_GET = [];
+		$_GET = array();
 		Functions\when( 'wp_unslash' )->returnArg();
 		Functions\when( 'wp_json_encode' )->alias(
 			static fn( $data, $options = 0, $depth = 512 ) => json_encode( $data, $options, $depth )
@@ -59,8 +59,8 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
-		$_GET = [];
+		WC_AI_Storefront::$test_settings = array();
+		$_GET                            = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -86,10 +86,13 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_single_product_rewrite_rule_registered(): void {
-		$rules = [];
+		$rules = array();
 		Functions\when( 'add_rewrite_rule' )->alias(
 			static function ( $regex, $query, $after ) use ( &$rules ) {
-				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+				$rules[ $regex ] = array(
+					'query' => $query,
+					'after' => $after,
+				);
 			}
 		);
 
@@ -106,7 +109,7 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_single_product_query_var_registered(): void {
-		$vars = $this->feed->add_query_vars( [] );
+		$vars = $this->feed->add_query_vars( array() );
 		$this->assertContains( WC_AI_Storefront_Products_Feed::QUERY_VAR_PRODUCT, $vars );
 		// Additive: the bulk var is still registered.
 		$this->assertContains( WC_AI_Storefront_Products_Feed::QUERY_VAR, $vars );
@@ -261,10 +264,13 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		// the FIRST product for EVERY handle. Assert the resolver is called
 		// with the exact handle + 'product' post type. (Also asserts we do NOT
 		// fall back to wc_get_products with a slug filter.)
-		$captured = [];
+		$captured = array();
 		Functions\when( 'get_page_by_path' )->alias(
 			static function ( $path, $output, $post_type ) use ( &$captured ) {
-				$captured = [ 'path' => $path, 'post_type' => $post_type ];
+				$captured = array(
+					'path'      => $path,
+					'post_type' => $post_type,
+				);
 				return false; // resolution miss — we only assert the call shape here.
 			}
 		);
@@ -305,7 +311,7 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		// LEAK GUARD: get_page_by_path does NOT filter catalog visibility, so a
 		// published product that is Hidden or Search-only must 404 via the
 		// explicit get_catalog_visibility() check — never leak its body.
-		foreach ( [ 'hidden', 'search' ] as $vis ) {
+		foreach ( array( 'hidden', 'search' ) as $vis ) {
 			$product = $this->simple_product( 9, 'stealth', $vis );
 			Functions\when( 'get_page_by_path' )->justReturn( $this->wp_post( 9 ) );
 			Functions\when( 'wc_get_product' )->justReturn( $product );
@@ -324,12 +330,12 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->simple_product( 7, 'secret' );
 		Functions\when( 'get_page_by_path' )->justReturn( $this->wp_post( 7 ) );
 		Functions\when( 'wc_get_product' )->justReturn( $product );
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 999 ], // 7 not selected.
-		];
+			'selected_products'      => array( 999 ), // 7 not selected.
+		);
 
 		$this->assertNull( $this->invoke_private( 'build_single_product_json', 'secret' ) );
 	}
@@ -371,10 +377,10 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Product ' . $id );
 		$p->shouldReceive( 'get_slug' )->andReturn( $handle );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
 		$p->shouldReceive( 'get_sku' )->andReturn( '' );
 		$p->shouldReceive( 'get_price' )->andReturn( '10' );
@@ -384,7 +390,7 @@ class ProductsFeedSingleTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
 		$p->shouldReceive( 'needs_shipping' )->andReturn( true );
 
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'wp_get_attachment_image_url' )->justReturn( false );

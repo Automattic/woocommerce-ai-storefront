@@ -54,13 +54,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int,array<string,string>>
 	 */
-	private array $post_meta_by_id = [];
+	private array $post_meta_by_id = array();
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		$this->post_meta_by_id = [];
-		WC_Shipping_Zones::$test_zones = [];
+		$this->post_meta_by_id         = array();
+		WC_Shipping_Zones::$test_zones = array();
 		// all_zones() memoizes per request; without this a zone set injected by
 		// one test is served to the next.
 		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
@@ -70,10 +70,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		// Default: syndication enabled, no category restriction. Tests
 		// that exercise the disabled path or product-exclusion override.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		// `add_query_arg()` mock mirroring WP's actual behavior. Two
 		// places this differs from PHP's native `http_build_query`:
@@ -94,7 +94,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				$fragment = '';
 				if ( str_contains( $url, '#' ) ) {
 					[ $url, $fragment ] = explode( '#', $url, 2 );
-					$fragment = '#' . $fragment;
+					$fragment           = '#' . $fragment;
 				}
 				$pairs = array();
 				foreach ( $args as $k => $v ) {
@@ -119,9 +119,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . $path
 		);
-		Functions\when( 'wc_get_product_cat_ids' )->justReturn( [] );
+		Functions\when( 'wc_get_product_cat_ids' )->justReturn( array() );
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => 'US', 'state' => 'CA' ]
+			array(
+				'country' => 'US',
+				'state'   => 'CA',
+			)
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		// `do_shortcode()` is called when formatting a variation's OWN
@@ -240,8 +243,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	protected function tearDown(): void {
 		WC_AI_Storefront_Multi_Currency::reset_cache();
-		WC_AI_Storefront::$test_settings = [];
-		WC_Shipping_Zones::$test_zones   = [];
+		WC_AI_Storefront::$test_settings                       = array();
+		WC_Shipping_Zones::$test_zones                         = array();
 		WC_Shipping_Zones::$simulated_wc_version               = null;
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = null;
 		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
@@ -252,7 +255,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// PHPUnit's `tearDown()` runs after every test (pass or fail),
 		// so this is the correct cleanup site.
 		if ( class_exists( 'WC_Subscriptions_Product', false ) ) {
-			WC_Subscriptions_Product::$test_data = [];
+			WC_Subscriptions_Product::$test_data = array();
 		}
 		Monkey\tearDown();
 		parent::tearDown();
@@ -263,7 +266,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * with no stock tracking, no weight, no dimensions, no attributes —
 	 * each test layers on what it needs via `shouldReceive()`.
 	 */
-	private function make_product( array $overrides = [] ): Mockery\MockInterface {
+	private function make_product( array $overrides = array() ): Mockery\MockInterface {
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $overrides['id'] ?? 42 );
 		$product->shouldReceive( 'get_name' )
@@ -292,21 +295,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'has_dimensions' )
 			->andReturn( $overrides['has_dimensions'] ?? false );
 		$product->shouldReceive( 'get_dimensions' )
-			->andReturn( $overrides['dimensions'] ?? [] );
+			->andReturn( $overrides['dimensions'] ?? array() );
 		$product->shouldReceive( 'get_attributes' )
-			->andReturn( $overrides['attributes'] ?? [] );
+			->andReturn( $overrides['attributes'] ?? array() );
 		$product->shouldReceive( 'get_variation_attributes' )
-			->andReturn( $overrides['variation_attributes'] ?? [] );
+			->andReturn( $overrides['variation_attributes'] ?? array() );
 		$product->shouldReceive( 'get_image_id' )
 			->andReturn( $overrides['image_id'] ?? 0 );
 		$product->shouldReceive( 'get_children' )
-			->andReturn( $overrides['children'] ?? [] );
+			->andReturn( $overrides['children'] ?? array() );
 		$product->shouldReceive( 'get_sku' )
 			->andReturn( $overrides['sku'] ?? '' );
 		$product->shouldReceive( 'get_cross_sell_ids' )
-			->andReturn( $overrides['cross_sell_ids'] ?? [] );
+			->andReturn( $overrides['cross_sell_ids'] ?? array() );
 		$product->shouldReceive( 'get_upsell_ids' )
-			->andReturn( $overrides['upsell_ids'] ?? [] );
+			->andReturn( $overrides['upsell_ids'] ?? array() );
 		// Default to purchasable so existing tests don't need to set
 		// it; the unpurchasable-guard tests (#373) override this to
 		// `false` to exercise the gate.
@@ -351,27 +354,27 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_enhancement_is_bypassed_when_syndication_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [ '@type' => 'Product' ], $product );
+		$result  = $this->jsonld->enhance_product_data( array( '@type' => 'Product' ), $product );
 
 		// The input markup should pass through untouched — no BuyAction
 		// injected, no new keys added.
-		$this->assertEquals( [ '@type' => 'Product' ], $result );
+		$this->assertEquals( array( '@type' => 'Product' ), $result );
 	}
 
 	public function test_enhancement_is_bypassed_when_product_not_syndicated(): void {
 		// Force the static stub's `is_product_syndicated` to return false
 		// by setting a restrictive selection mode.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 999 ], // not our product id 42
-		];
+			'selected_products'      => array( 999 ), // not our product id 42
+		);
 
-		$product = $this->make_product( [ 'id' => 42 ] );
-		$result  = $this->jsonld->enhance_product_data( [ '@type' => 'Product' ], $product );
+		$product = $this->make_product( array( 'id' => 42 ) );
+		$result  = $this->jsonld->enhance_product_data( array( '@type' => 'Product' ), $product );
 
 		// Product id 42 isn't in the allow-list -> no enhancement.
 		$this->assertArrayNotHasKey( 'potentialAction', $result );
@@ -383,7 +386,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_adds_buyaction_with_attribution_placeholders(): void {
 		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$result  = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayHasKey( 'potentialAction', $result );
 		$this->assertEquals( 'BuyAction', $result['potentialAction']['@type'] );
@@ -420,9 +423,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// on the product page). A custom permalink shouldn't appear in
 		// the output.
 		$product = $this->make_product(
-			[ 'permalink' => 'https://example.com/product/widget/#tab-description' ]
+			array( 'permalink' => 'https://example.com/product/widget/#tab-description' )
 		);
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$result  = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 
@@ -434,7 +437,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_buyaction_declares_web_platforms(): void {
 		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$result  = $this->jsonld->enhance_product_data( array(), $product );
 
 		$platforms = $result['potentialAction']['target']['actionPlatform'];
 		$this->assertContains( 'https://schema.org/DesktopWebPlatform', $platforms );
@@ -451,7 +454,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// destination.
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
 		$product = $this->make_product();
 
@@ -467,7 +475,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_offer_checkout_page_url_template_uses_shareable_checkout_format(): void {
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
 		$product = $this->make_product();
 
@@ -490,7 +503,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// bundle, and grouped products individually.
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
 		$product = $this->make_product();
 
@@ -523,7 +541,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_buyaction_url_contains_no_html_entities(): void {
 		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$result  = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringNotContainsString( '&amp;', $url );
@@ -532,7 +550,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_offer_checkout_page_url_template_contains_no_html_entities(): void {
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data( $markup, $product );
@@ -542,11 +565,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_buyaction_url_contains_no_html_entities_for_bundle(): void {
-		$product = $this->make_product( [
-			'type'      => 'bundle',
-			'permalink' => 'https://example.com/product/starter-kit/',
-		] );
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$product = $this->make_product(
+			array(
+				'type'      => 'bundle',
+				'permalink' => 'https://example.com/product/starter-kit/',
+			)
+		);
+		$result  = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringNotContainsString( '&amp;', $url );
@@ -555,11 +580,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_buyaction_url_contains_no_html_entities_for_grouped(): void {
-		$product = $this->make_product( [
-			'type'      => 'grouped',
-			'permalink' => 'https://example.com/product/dinner-set/',
-		] );
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$product = $this->make_product(
+			array(
+				'type'      => 'grouped',
+				'permalink' => 'https://example.com/product/dinner-set/',
+			)
+		);
+		$result  = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringNotContainsString( '&amp;', $url );
@@ -570,12 +597,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_offer_checkout_page_url_template_contains_no_html_entities_for_bundle(): void {
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
-		$product = $this->make_product( [
-			'type'      => 'bundle',
-			'permalink' => 'https://example.com/product/starter-kit/',
-		] );
+		$product = $this->make_product(
+			array(
+				'type'      => 'bundle',
+				'permalink' => 'https://example.com/product/starter-kit/',
+			)
+		);
 		$result  = $this->jsonld->enhance_product_data( $markup, $product );
 
 		$url = $result['offers'][0]['checkoutPageURLTemplate'];
@@ -587,12 +621,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_offer_checkout_page_url_template_contains_no_html_entities_for_grouped(): void {
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
-		$product = $this->make_product( [
-			'type'      => 'grouped',
-			'permalink' => 'https://example.com/product/dinner-set/',
-		] );
+		$product = $this->make_product(
+			array(
+				'type'      => 'grouped',
+				'permalink' => 'https://example.com/product/dinner-set/',
+			)
+		);
 		$result  = $this->jsonld->enhance_product_data( $markup, $product );
 
 		$url = $result['offers'][0]['checkoutPageURLTemplate'];
@@ -618,13 +659,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// the Store API, which is the wrong cost profile for static JSON-LD.
 
 	public function test_buyaction_url_uses_permalink_for_bundle_product(): void {
-		$product = $this->make_product( [
-			'id'        => 99,
-			'type'      => 'bundle',
-			'permalink' => 'https://example.com/product/starter-kit/',
-		] );
+		$product = $this->make_product(
+			array(
+				'id'        => 99,
+				'type'      => 'bundle',
+				'permalink' => 'https://example.com/product/starter-kit/',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		// Permalink, not Shareable Checkout — the legacy `/checkout-link/`
@@ -642,13 +685,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_buyaction_url_uses_permalink_for_grouped_product(): void {
-		$product = $this->make_product( [
-			'id'        => 88,
-			'type'      => 'grouped',
-			'permalink' => 'https://example.com/product/dinner-set/',
-		] );
+		$product = $this->make_product(
+			array(
+				'id'        => 88,
+				'type'      => 'grouped',
+				'permalink' => 'https://example.com/product/dinner-set/',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		// Grouped parent has no SKU — `?products=GROUPED_ID:1` would try
@@ -664,13 +709,20 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_offer_checkout_page_url_template_uses_permalink_for_bundle(): void {
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
-		$product = $this->make_product( [
-			'id'        => 99,
-			'type'      => 'bundle',
-			'permalink' => 'https://example.com/product/starter-kit/',
-		] );
+		$product = $this->make_product(
+			array(
+				'id'        => 99,
+				'type'      => 'bundle',
+				'permalink' => 'https://example.com/product/starter-kit/',
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -695,13 +747,20 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// this signal silently.
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
-		$product = $this->make_product( [
-			'id'        => 88,
-			'type'      => 'grouped',
-			'permalink' => 'https://example.com/product/dinner-set/',
-		] );
+		$product = $this->make_product(
+			array(
+				'id'        => 88,
+				'type'      => 'grouped',
+				'permalink' => 'https://example.com/product/dinner-set/',
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -720,13 +779,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// (uncommon for products but possible with custom rewrites or
 		// language plugins). `add_query_arg()` should append with `&`
 		// and preserve the existing parameter, not overwrite it.
-		$product = $this->make_product( [
-			'id'        => 99,
-			'type'      => 'bundle',
-			'permalink' => 'https://example.com/product/starter-kit/?lang=en',
-		] );
+		$product = $this->make_product(
+			array(
+				'id'        => 99,
+				'type'      => 'bundle',
+				'permalink' => 'https://example.com/product/starter-kit/?lang=en',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringContainsString( 'lang=en', $url );
@@ -740,9 +801,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Regression guard: the bundle/grouped branch must NOT swallow
 		// the simple-product path that ships the deterministic
 		// `?products=ID:1` form.
-		$product = $this->make_product( [ 'id' => 42, 'type' => 'simple' ] );
+		$product = $this->make_product(
+			array(
+				'id'   => 42,
+				'type' => 'simple',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
@@ -754,9 +820,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// entry — variations themselves are covered by the per-variant
 		// tests further down. Variable parents land on the same
 		// Shareable Checkout shape with the parent ID.
-		$product = $this->make_product( [ 'id' => 100, 'type' => 'variable' ] );
+		$product = $this->make_product(
+			array(
+				'id'   => 100,
+				'type' => 'variable',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$url = $result['potentialAction']['target']['urlTemplate'];
 		$this->assertStringStartsWith( 'https://example.com/checkout-link/', $url );
@@ -778,12 +849,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_detect_varies_by_returns_schema_urls_for_mapped_attributes(): void {
-		$product = $this->make_product( [
-			'variation_attributes' => array(
-				'pa_color' => array( 'navy', 'white', 'gray' ),
-				'pa_size'  => array( 'l', 'm', 's', 'xl' ),
-			),
-		] );
+		$product = $this->make_product(
+			array(
+				'variation_attributes' => array(
+					'pa_color' => array( 'navy', 'white', 'gray' ),
+					'pa_size'  => array( 'l', 'm', 's', 'xl' ),
+				),
+			)
+		);
 
 		$result = $this->invoke_detect_varies_by( $product );
 
@@ -795,12 +868,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_detect_varies_by_excludes_uniform_axes(): void {
 		// pa_color has only one distinct value ("navy") — all variations
 		// are navy, only sizes differ. Color shouldn't appear in variesBy.
-		$product = $this->make_product( [
-			'variation_attributes' => array(
-				'pa_color' => array( 'navy' ),
-				'pa_size'  => array( 'l', 'm', 's' ),
-			),
-		] );
+		$product = $this->make_product(
+			array(
+				'variation_attributes' => array(
+					'pa_color' => array( 'navy' ),
+					'pa_size'  => array( 'l', 'm', 's' ),
+				),
+			)
+		);
 
 		$result = $this->invoke_detect_varies_by( $product );
 
@@ -819,12 +894,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_detect_varies_by_returns_empty_for_variable_with_no_varying_axes(): void {
 		// Edge case: variable product where every axis has at most one
 		// value (Product 16 misconfigured-variable territory).
-		$product = $this->make_product( [
-			'variation_attributes' => array(
-				'pa_color' => array( '' ),
-				'pa_size'  => array( '' ),
-			),
-		] );
+		$product = $this->make_product(
+			array(
+				'variation_attributes' => array(
+					'pa_color' => array( '' ),
+					'pa_size'  => array( '' ),
+				),
+			)
+		);
 
 		$result = $this->invoke_detect_varies_by( $product );
 
@@ -838,11 +915,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_attribute_label' )->alias(
 			static fn( $slug ) => ucfirst( str_replace( 'pa_', '', $slug ) )
 		);
-		$product = $this->make_product( [
-			'variation_attributes' => array(
-				'pa_style' => array( 'casual', 'formal', 'sport' ),
-			),
-		] );
+		$product = $this->make_product(
+			array(
+				'variation_attributes' => array(
+					'pa_style' => array( 'casual', 'formal', 'sport' ),
+				),
+			)
+		);
 
 		$result = $this->invoke_detect_varies_by( $product );
 
@@ -866,10 +945,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->post_meta_by_id[201]['attribute_pa_gender'] = 'male';
 		$this->post_meta_by_id[202]['attribute_pa_gender'] = 'female';
 
-		$product = $this->make_product( [
-			'children'             => [ 201, 202 ],
-			'variation_attributes' => array(),  // parent flag unset
-		] );
+		$product = $this->make_product(
+			array(
+				'children'             => array( 201, 202 ),
+				'variation_attributes' => array(),  // parent flag unset
+			)
+		);
 
 		$result = $this->invoke_detect_varies_by( $product );
 
@@ -882,10 +963,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->post_meta_by_id[203]['attribute_pa_gender'] = 'unisex';
 		$this->post_meta_by_id[204]['attribute_pa_gender'] = 'unisex';
 
-		$product = $this->make_product( [
-			'children'             => [ 203, 204 ],
-			'variation_attributes' => array(),
-		] );
+		$product = $this->make_product(
+			array(
+				'children'             => array( 203, 204 ),
+				'variation_attributes' => array(),
+			)
+		);
 
 		$result = $this->invoke_detect_varies_by( $product );
 
@@ -902,10 +985,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->post_meta_by_id[301]['attribute_age-group'] = 'kids';
 		$this->post_meta_by_id[302]['attribute_age-group'] = 'adult';
 
-		$product = $this->make_product( [
-			'children'             => [ 301, 302 ],
-			'variation_attributes' => array(),
-		] );
+		$product = $this->make_product(
+			array(
+				'children'             => array( 301, 302 ),
+				'variation_attributes' => array(),
+			)
+		);
 
 		$result = $this->invoke_detect_varies_by( $product );
 
@@ -924,7 +1009,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * `['attribute_pa_color' => 'white']` (different from the parent's
 	 * version which returns the SET of values across all variations).
 	 */
-	private function make_variation( array $overrides = [] ): Mockery\MockInterface {
+	private function make_variation( array $overrides = array() ): Mockery\MockInterface {
 		// Default to `type === 'variation'` for fidelity with WC core.
 		// Without this, `is_type('variation')` on the mock returns false
 		// (it falls through to `make_product`'s default of `'simple'`),
@@ -959,7 +1044,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// table so existing test fixtures keep working without each test
 		// having to know about the indirection.
 		$variation_id = (int) ( $overrides['id'] ?? 42 );
-		foreach ( ( $overrides['variation_attributes'] ?? [] ) as $key => $value ) {
+		foreach ( ( $overrides['variation_attributes'] ?? array() ) as $key => $value ) {
 			$meta_key = str_starts_with( (string) $key, 'attribute_' )
 				? (string) $key
 				: 'attribute_' . (string) $key;
@@ -977,7 +1062,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$this->jsonld,
 			$variation,
 			$parent,
-			[ 'enabled' => 'yes', 'return_policy' => [ 'mode' => 'unconfigured' ] ],
+			array(
+				'enabled'       => 'yes',
+				'return_policy' => array( 'mode' => 'unconfigured' ),
+			),
 			'US'
 		);
 	}
@@ -1006,8 +1094,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_variant_entry_has_product_type_and_sku(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-white-l' ] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'tee-white-l',
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1030,12 +1123,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// tests below for the misconfigured-variation case (#341).
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [
-			'id'        => 101,
-			'name'      => 'Hoodie - Blue, Logo: Yes',
-			'permalink' => 'https://example.com/product/hoodie/?attribute_pa_color=blue&attribute_logo=Yes',
-		] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation(
+			array(
+				'id'        => 101,
+				'name'      => 'Hoodie - Blue, Logo: Yes',
+				'permalink' => 'https://example.com/product/hoodie/?attribute_pa_color=blue&attribute_logo=Yes',
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1067,21 +1162,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent_url = 'https://example.com/product/hoodie/';
-		$parent     = $this->make_product( [
-			'id'        => 100,
-			'permalink' => $parent_url,
-		] );
+		$parent     = $this->make_product(
+			array(
+				'id'        => 100,
+				'permalink' => $parent_url,
+			)
+		);
 		// Variation's permalink matches the parent's — simulating
 		// WC's fall-through behavior on a misconfigured variable
 		// product. Postmeta carries the variation's color value via
 		// the `variation_attributes` test override (which routes
 		// through `make_variation()` to seed the same postmeta
 		// `read_variation_core_attributes()` reads).
-		$variation = $this->make_variation( [
-			'id'                   => 101,
-			'permalink'            => $parent_url,
-			'variation_attributes' => array( 'pa_color' => 'red' ),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'id'                   => 101,
+				'permalink'            => $parent_url,
+				'variation_attributes' => array( 'pa_color' => 'red' ),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1103,15 +1202,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent_url = 'https://example.com/product/hoodie/';
-		$parent     = $this->make_product( [
-			'id'        => 100,
-			'permalink' => $parent_url,
-		] );
-		$variation  = $this->make_variation( [
-			'id'                   => 101,
-			'permalink'            => $parent_url,
-			'variation_attributes' => array( 'pa_color' => 'blue', 'pa_size' => 'L' ),
-		] );
+		$parent     = $this->make_product(
+			array(
+				'id'        => 100,
+				'permalink' => $parent_url,
+			)
+		);
+		$variation  = $this->make_variation(
+			array(
+				'id'                   => 101,
+				'permalink'            => $parent_url,
+				'variation_attributes' => array(
+					'pa_color' => 'blue',
+					'pa_size'  => 'L',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1136,16 +1242,20 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent_url = 'https://example.com/product/hoodie/';
-		$parent     = $this->make_product( [
-			'id'        => 100,
-			'permalink' => $parent_url,
-		] );
-		$variation = $this->make_variation( [
-			'id'                   => 101,
-			'permalink'            => $parent_url,
-			// Only unmapped attribute — `logo` is not in CORE_ATTRIBUTE_MAP.
-			'variation_attributes' => array( 'logo' => 'Yes' ),
-		] );
+		$parent     = $this->make_product(
+			array(
+				'id'        => 100,
+				'permalink' => $parent_url,
+			)
+		);
+		$variation  = $this->make_variation(
+			array(
+				'id'                   => 101,
+				'permalink'            => $parent_url,
+				// Only unmapped attribute — `logo` is not in CORE_ATTRIBUTE_MAP.
+				'variation_attributes' => array( 'logo' => 'Yes' ),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1160,8 +1270,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_variant_entry_falls_back_to_id_when_no_sku(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [ 'id' => 101, 'sku' => '' ] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => '',
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1172,9 +1287,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		// Free-text attribute (no `pa_` prefix): value used directly.
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array( 'attribute_color' => 'White' ),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array( 'attribute_color' => 'White' ),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1195,12 +1312,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// postmeta value, same as the assertions below expect.
 		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array(
-				'pa_gender'    => 'male',
-				'pa_age_group' => 'kids',
-			),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array(
+					'pa_gender'    => 'male',
+					'pa_age_group' => 'kids',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1215,12 +1334,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array(
-				'pa_gender' => 'female',
-				'gender'    => 'unisex',
-			),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array(
+					'pa_gender' => 'female',
+					'gender'    => 'unisex',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1242,16 +1363,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array(
-				'pa_gender' => 'female',
-				// Explicit "Any Age group" — the key IS present, just empty.
-				'age_group' => '',
-				// A DIFFERENT, colliding attribute's value sitting at the
-				// hyphenated form. Must never leak into `age_group`'s slot.
-				'age-group' => 'kids',
-			),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array(
+					'pa_gender' => 'female',
+					// Explicit "Any Age group" — the key IS present, just empty.
+					'age_group' => '',
+					// A DIFFERENT, colliding attribute's value sitting at the
+					// hyphenated form. Must never leak into `age_group`'s slot.
+					'age-group' => 'kids',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1271,12 +1394,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array(
-				'pa_age_group' => 'Grown-up',
-				'age_group'    => 'adult',
-			),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array(
+					'pa_age_group' => 'Grown-up',
+					'age_group'    => 'adult',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1293,12 +1418,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array(
-				'pa_age_group' => 'kids',
-				'age_group'    => 'adult',
-			),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array(
+					'pa_age_group' => 'kids',
+					'age_group'    => 'adult',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1316,12 +1443,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array(
-				'pa_gender' => 'Womens',
-				'gender'    => 'male',
-			),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array(
+					'pa_gender' => 'Womens',
+					'gender'    => 'male',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1357,9 +1486,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array( 'pa_gender' => 'mens' ),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array( 'pa_gender' => 'mens' ),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1386,9 +1517,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// value ('White') passes through unchanged.
 		Functions\when( 'get_term_by' )->justReturn( false );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'variation_attributes' => array( 'pa_color' => 'White' ),
-		] );
+		$variation = $this->make_variation(
+			array(
+				'variation_attributes' => array( 'pa_color' => 'White' ),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1414,12 +1547,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// multi-word bare-attribute case.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			// make_variation()'s helper prefixes with 'attribute_' but
-			// does not otherwise touch the key — 'age-group' here mirrors
-			// exactly what sanitize_title( 'Age group' ) produces.
-			'variation_attributes' => array( 'age-group' => 'kids' ),
-		] );
+		$variation = $this->make_variation(
+			array(
+				// make_variation()'s helper prefixes with 'attribute_' but
+				// does not otherwise touch the key — 'age-group' here mirrors
+				// exactly what sanitize_title( 'Age group' ) produces.
+				'variation_attributes' => array( 'age-group' => 'kids' ),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1430,10 +1565,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'price'    => '20.00',
-			'in_stock' => true,
-		] );
+		$variation = $this->make_variation(
+			array(
+				'price'    => '20.00',
+				'in_stock' => true,
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1447,7 +1584,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [ 'in_stock' => false ] );
+		$variation = $this->make_variation( array( 'in_stock' => false ) );
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1464,10 +1601,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'in_stock'     => true,
-			'stock_status' => 'onbackorder',
-		] );
+		$variation = $this->make_variation(
+			array(
+				'in_stock'     => true,
+				'stock_status' => 'onbackorder',
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1486,12 +1625,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'in_stock'       => true,
-			'stock_status'   => 'onbackorder',
-			'managing_stock' => true,
-			'stock_quantity' => -4,
-		] );
+		$variation = $this->make_variation(
+			array(
+				'in_stock'       => true,
+				'stock_status'   => 'onbackorder',
+				'managing_stock' => true,
+				'stock_quantity' => -4,
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1515,10 +1656,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$parent    = $this->make_product();
-		$variation = $this->make_variation( [
-			'in_stock'     => false,
-			'stock_status' => 'onbackorder',
-		] );
+		$variation = $this->make_variation(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'onbackorder',
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1531,8 +1674,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_variant_entry_buy_action_uses_variation_id_not_parent(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [ 'id' => 999 ] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation( array( 'id' => 999 ) );
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1546,8 +1689,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_variant_entry_offer_carries_checkout_page_url_template_with_variation_id(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [ 'id' => 999 ] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation( array( 'id' => 999 ) );
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1572,8 +1715,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// is attached.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [ 'id' => 999, 'is_purchasable' => false ] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation(
+			array(
+				'id'             => 999,
+				'is_purchasable' => false,
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1597,12 +1745,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// ... because the product is out of stock."
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [
-			'id'           => 999,
-			'in_stock'     => false,
-			'stock_status' => 'outofstock',
-		] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation(
+			array(
+				'id'           => 999,
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1628,14 +1778,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// themselves as orderable via `BackOrder`.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent    = $this->make_product( [ 'id' => 100 ] );
-		$variation = $this->make_variation( [
-			'id'             => 999,
-			'in_stock'       => true,
-			'stock_status'   => 'onbackorder',
-			'managing_stock' => true,
-			'stock_quantity' => -4,
-		] );
+		$parent    = $this->make_product( array( 'id' => 100 ) );
+		$variation = $this->make_variation(
+			array(
+				'id'             => 999,
+				'in_stock'       => true,
+				'stock_status'   => 'onbackorder',
+				'managing_stock' => true,
+				'stock_quantity' => -4,
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -1650,16 +1802,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_enhance_product_omits_buy_action_when_out_of_stock(): void {
 		// #606, parent/simple path — same gap as the variant path at the
 		// other call site.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$product = $this->make_product( [
-			'in_stock'     => false,
-			'stock_status' => 'outofstock',
-		] );
+		$product = $this->make_product(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer', 'price' => '10' ] ] ],
+			array(
+				'offers' => array(
+					array(
+						'@type' => 'Offer',
+						'price' => '10',
+					),
+				),
+			),
 			$product
 		);
 
@@ -1669,16 +1830,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_enhance_product_keeps_buy_action_when_backordered(): void {
 		// Parent-path counterpart to the variant backorder guard above.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$product = $this->make_product( [
-			'in_stock'     => true,
-			'stock_status' => 'onbackorder',
-		] );
+		$product = $this->make_product(
+			array(
+				'in_stock'     => true,
+				'stock_status' => 'onbackorder',
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer', 'price' => '10' ] ] ],
+			array(
+				'offers' => array(
+					array(
+						'@type' => 'Offer',
+						'price' => '10',
+					),
+				),
+			),
 			$product
 		);
 
@@ -1692,21 +1862,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Variable parents that convert to ProductGroup later have their
 		// own per-variant gating; this covers the simple-product path
 		// and the variable-parent-that-doesn't-convert edge case.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$product = $this->make_product( [ 'is_purchasable' => false ] );
-		$markup  = [
+		$product = $this->make_product( array( 'is_purchasable' => false ) );
+		$markup  = array(
 			'@type'  => 'Product',
 			'name'   => 'Broken Product',
-			'offers' => [
-				[
+			'offers' => array(
+				array(
 					'@type'         => 'Offer',
 					'price'         => '0',
 					'priceCurrency' => 'USD',
-				],
-			],
-		];
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -1740,22 +1910,34 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_variable_product_emits_as_product_group(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$variation = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-w' ] );
-		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'tee-w',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
 
-		$parent = $this->make_product( [
-			'id'       => 100,
-			'sku'      => 'tee-parent',
-			'children' => [ 101 ],
-			'variation_attributes' => array(
-				'pa_color' => array( 'navy', 'white' ),
-			),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'tee-parent',
+				'children'             => array( 101 ),
+				'variation_attributes' => array(
+					'pa_color' => array( 'navy', 'white' ),
+				),
+			)
+		);
 
 		$markup = array(
 			'@type'  => 'Product',
 			'name'   => 'V-Neck T-Shirt',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $parent );
@@ -1767,19 +1949,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_product_group_variesBy_lists_actually_varying_axes_only(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$variation = $this->make_variation( [ 'id' => 101 ] );
-		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+		$variation = $this->make_variation( array( 'id' => 101 ) );
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
 
-		$parent = $this->make_product( [
-			'id'       => 100,
-			'children' => [ 101 ],
-			'variation_attributes' => array(
-				'pa_color' => array( 'navy' ),  // uniform — should NOT appear
-				'pa_size'  => array( 'l', 'm', 's' ),
-			),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array( 101 ),
+				'variation_attributes' => array(
+					'pa_color' => array( 'navy' ),  // uniform — should NOT appear
+					'pa_size'  => array( 'l', 'm', 's' ),
+				),
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $parent );
+		$result = $this->jsonld->enhance_product_data( array(), $parent );
 
 		$this->assertSame(
 			array( 'https://schema.org/size' ),
@@ -1790,18 +1974,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_product_group_drops_parent_offers_and_potential_action(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$variation = $this->make_variation( [ 'id' => 101 ] );
-		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+		$variation = $this->make_variation( array( 'id' => 101 ) );
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
 
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'children'             => [ 101 ],
-			'variation_attributes' => array( 'pa_color' => array( 'navy', 'red' ) ),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array( 101 ),
+				'variation_attributes' => array( 'pa_color' => array( 'navy', 'red' ) ),
+			)
+		);
 
 		$markup = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '20.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20.00',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $parent );
@@ -1813,18 +2004,41 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_product_group_emits_one_has_variant_entry_per_child(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$v1 = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-w' ] );
-		$v2 = $this->make_variation( [ 'id' => 102, 'sku' => 'tee-n' ] );
-		$v3 = $this->make_variation( [ 'id' => 103, 'sku' => 'tee-g' ] );
-		$this->setup_wc_get_product_for_variations( [ 101 => $v1, 102 => $v2, 103 => $v3 ] );
+		$v1 = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'tee-w',
+			)
+		);
+		$v2 = $this->make_variation(
+			array(
+				'id'  => 102,
+				'sku' => 'tee-n',
+			)
+		);
+		$v3 = $this->make_variation(
+			array(
+				'id'  => 103,
+				'sku' => 'tee-g',
+			)
+		);
+		$this->setup_wc_get_product_for_variations(
+			array(
+				101 => $v1,
+				102 => $v2,
+				103 => $v3,
+			)
+		);
 
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'children'             => [ 101, 102, 103 ],
-			'variation_attributes' => array( 'pa_color' => array( 'white', 'navy', 'green' ) ),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array( 101, 102, 103 ),
+				'variation_attributes' => array( 'pa_color' => array( 'white', 'navy', 'green' ) ),
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $parent );
+		$result = $this->jsonld->enhance_product_data( array(), $parent );
 
 		$this->assertCount( 3, $result['hasVariant'] );
 		$skus = array_column( $result['hasVariant'], 'sku' );
@@ -1837,13 +2051,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// where variations were deleted.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'children'             => [],
-			'variation_attributes' => array( 'pa_color' => array( 'navy' ) ),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array(),
+				'variation_attributes' => array( 'pa_color' => array( 'navy' ) ),
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [ '@type' => 'Product' ], $parent );
+		$result = $this->jsonld->enhance_product_data( array( '@type' => 'Product' ), $parent );
 
 		$this->assertSame( 'Product', $result['@type'] );
 		$this->assertArrayNotHasKey( 'hasVariant', $result );
@@ -1862,22 +2078,48 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// per-variant typed `color` values.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$v1 = $this->make_variation( [ 'id' => 101, 'sku' => 'h-r', 'variation_attributes' => [ 'pa_color' => 'red' ] ] );
-		$v2 = $this->make_variation( [ 'id' => 102, 'sku' => 'h-g', 'variation_attributes' => [ 'pa_color' => 'green' ] ] );
-		$v3 = $this->make_variation( [ 'id' => 103, 'sku' => 'h-b', 'variation_attributes' => [ 'pa_color' => 'blue' ] ] );
-		$this->setup_wc_get_product_for_variations( [ 101 => $v1, 102 => $v2, 103 => $v3 ] );
+		$v1 = $this->make_variation(
+			array(
+				'id'                   => 101,
+				'sku'                  => 'h-r',
+				'variation_attributes' => array( 'pa_color' => 'red' ),
+			)
+		);
+		$v2 = $this->make_variation(
+			array(
+				'id'                   => 102,
+				'sku'                  => 'h-g',
+				'variation_attributes' => array( 'pa_color' => 'green' ),
+			)
+		);
+		$v3 = $this->make_variation(
+			array(
+				'id'                   => 103,
+				'sku'                  => 'h-b',
+				'variation_attributes' => array( 'pa_color' => 'blue' ),
+			)
+		);
+		$this->setup_wc_get_product_for_variations(
+			array(
+				101 => $v1,
+				102 => $v2,
+				103 => $v3,
+			)
+		);
 
 		// Parent: variable, has children, but `get_variation_attributes()`
 		// returns empty (parent flag missing on `pa_color`).
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'children'             => [ 101, 102, 103 ],
-			'variation_attributes' => array(),  // parent flag unset
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array( 101, 102, 103 ),
+				'variation_attributes' => array(),  // parent flag unset
+			)
+		);
 
 		Functions\when( 'get_term_by' )->justReturn( false );  // free-text fallback for term-name lookup
 
-		$result = $this->jsonld->enhance_product_data( [], $parent );
+		$result = $this->jsonld->enhance_product_data( array(), $parent );
 
 		$this->assertSame( 'ProductGroup', $result['@type'] );
 		$this->assertSame( array( 'https://schema.org/color' ), $result['variesBy'] );
@@ -1896,16 +2138,26 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// `potentialAction`, no `hasVariant`, no `productGroupID`.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$v1 = $this->make_variation( [ 'id' => 101, 'variation_attributes' => [] ] );
-		$this->setup_wc_get_product_for_variations( [ 101 => $v1 ] );
+		$v1 = $this->make_variation(
+			array(
+				'id'                   => 101,
+				'variation_attributes' => array(),
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $v1 ) );
 
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'children'             => [ 101 ],
-			'variation_attributes' => array(),  // no varying axes
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array( 101 ),
+				'variation_attributes' => array(),  // no varying axes
+			)
+		);
 
-		$markup = array( '@type' => 'Product', 'offers' => array( array( '@type' => 'Offer' ) ) );
+		$markup = array(
+			'@type'  => 'Product',
+			'offers' => array( array( '@type' => 'Offer' ) ),
+		);
 		$result = $this->jsonld->enhance_product_data( $markup, $parent );
 
 		$this->assertSame( 'Product', $result['@type'] );
@@ -1933,15 +2185,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// — simulating the corrupted-data case.
 		Functions\when( 'wc_get_product' )->justReturn( false );
 
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'children'             => [ 901, 902, 903 ],
-			'variation_attributes' => array( 'pa_color' => array( 'red', 'blue' ) ),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array( 901, 902, 903 ),
+				'variation_attributes' => array( 'pa_color' => array( 'red', 'blue' ) ),
+			)
+		);
 
 		$markup = array(
 			'@type'           => 'Product',
-			'offers'          => array( array( '@type' => 'Offer', 'price' => '20' ) ),
+			'offers'          => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '20',
+				),
+			),
 			'potentialAction' => array( '@type' => 'BuyAction' ),
 		);
 		$result = $this->jsonld->enhance_product_data( $markup, $parent );
@@ -1962,9 +2221,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// conversion. The capability gate is method_exists.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$product = $this->make_product( [ 'id' => 50 ] );
+		$product = $this->make_product( array( 'id' => 50 ) );
 
-		$markup = array( '@type' => 'Product', 'name' => 'Sunglasses' );
+		$markup = array(
+			'@type' => 'Product',
+			'name'  => 'Sunglasses',
+		);
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
 		$this->assertSame( 'Product', $result['@type'] );
@@ -1996,16 +2258,24 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$variation = $this->make_variation(
-			array_merge( [ 'id' => 101, 'sku' => 'tee-w' ], $variation_overrides )
+			array_merge(
+				array(
+					'id'  => 101,
+					'sku' => 'tee-w',
+				),
+				$variation_overrides
+			)
 		);
-		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
 
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'sku'                  => 'tee-parent',
-			'children'             => [ 101 ],
-			'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'tee-parent',
+				'children'             => array( 101 ),
+				'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
+			)
+		);
 
 		// The parent markup mirrors WooCommerce core's full base shape:
 		// description, brand, category, and an offer carrying
@@ -2016,13 +2286,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				'@type'       => 'Product',
 				'name'        => 'V-Neck T-Shirt',
 				'description' => 'Parent description from WooCommerce core.',
-				'brand'       => array( '@type' => 'Brand', 'name' => 'Acme' ),
+				'brand'       => array(
+					'@type' => 'Brand',
+					'name'  => 'Acme',
+				),
 				'category'    => 'Tops',
 				'offers'      => array(
 					array(
 						'@type'           => 'Offer',
 						'price'           => '20.00',
-						'seller'          => array( '@type' => 'Organization', 'name' => 'Acme Store' ),
+						'seller'          => array(
+							'@type' => 'Organization',
+							'name'  => 'Acme Store',
+						),
 						'priceValidUntil' => '2027-01-01',
 					),
 				),
@@ -2059,7 +2335,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// surrounding whitespace + HTML to prove the formatting runs.
 		$result  = $this->enhance_variable_with_parent_markup(
 			array(),
-			array( 'description' => "  <strong>White</strong> tee, slim fit.  " )
+			array( 'description' => '  <strong>White</strong> tee, slim fit.  ' )
 		);
 		$variant = $result['hasVariant'][0];
 
@@ -2071,7 +2347,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$variant = $result['hasVariant'][0];
 
 		$this->assertSame(
-			array( '@type' => 'Brand', 'name' => 'Acme' ),
+			array(
+				'@type' => 'Brand',
+				'name'  => 'Acme',
+			),
 			$variant['brand']
 		);
 		$this->assertSame( 'Tops', $variant['category'] );
@@ -2094,7 +2373,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$variant = $result['hasVariant'][0];
 
 		$this->assertSame(
-			array( '@type' => 'PeopleAudience', 'suggestedGender' => 'unisex' ),
+			array(
+				'@type'           => 'PeopleAudience',
+				'suggestedGender' => 'unisex',
+			),
 			$variant['audience']
 		);
 	}
@@ -2166,7 +2448,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$offer  = $result['hasVariant'][0]['offers'][0];
 
 		$this->assertSame(
-			array( '@type' => 'Organization', 'name' => 'Acme Store' ),
+			array(
+				'@type' => 'Organization',
+				'name'  => 'Acme Store',
+			),
 			$offer['seller']
 		);
 		$this->assertSame( '2027-01-01', $offer['priceValidUntil'] );
@@ -2191,17 +2476,24 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// the parent never had.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$variation = $this->make_variation( [ 'id' => 101, 'sku' => 'tee-w' ] );
-		$this->setup_wc_get_product_for_variations( [ 101 => $variation ] );
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'tee-w',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
 
-		$parent = $this->make_product( [
-			'id'                   => 100,
-			'children'             => [ 101 ],
-			'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
-		] );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'children'             => array( 101 ),
+				'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
+			)
+		);
 
 		// Bare-minimum input markup — none of the inheritable base fields.
-		$result  = $this->jsonld->enhance_product_data( [], $parent );
+		$result  = $this->jsonld->enhance_product_data( array(), $parent );
 		$variant = $result['hasVariant'][0];
 
 		$this->assertArrayNotHasKey( 'description', $variant );
@@ -2259,19 +2551,24 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// for every guarded field, plus a `$parent_markup` carrying
 		// DIFFERENT values, and assert none of the parent's values bleed
 		// over the variant's own.
-		$variation = $this->make_variation( [
-			'id'              => 101,
-			'description'     => 'VARIATION OWN DESC',
-			// Even with an own sale-end, the offer already has a
-			// priceValidUntil sentinel, so the guard must skip derivation.
-			'date_on_sale_to' => null,
-		] );
+		$variation = $this->make_variation(
+			array(
+				'id'              => 101,
+				'description'     => 'VARIATION OWN DESC',
+				// Even with an own sale-end, the offer already has a
+				// priceValidUntil sentinel, so the guard must skip derivation.
+				'date_on_sale_to' => null,
+			)
+		);
 
 		$entry = array(
 			'@type'       => 'Product',
 			'url'         => 'https://example.com/variant/sentinel/',
 			'description' => 'VARIANT SENTINEL DESC',
-			'brand'       => array( '@type' => 'Brand', 'name' => 'VariantBrand' ),
+			'brand'       => array(
+				'@type' => 'Brand',
+				'name'  => 'VariantBrand',
+			),
 			'category'    => 'VariantCategory',
 			// Both sub-properties already resolved on the variant's own —
 			// the per-field audience merge must not touch either one.
@@ -2287,7 +2584,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'offers'      => array(
 				array(
 					'@type'           => 'Offer',
-					'seller'          => array( '@type' => 'Organization', 'name' => 'VariantSeller' ),
+					'seller'          => array(
+						'@type' => 'Organization',
+						'name'  => 'VariantSeller',
+					),
 					'priceValidUntil' => '2025-05-05',
 					'url'             => 'https://example.com/offer/sentinel/',
 				),
@@ -2297,7 +2597,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$parent_markup = array(
 			'@type'       => 'ProductGroup',
 			'description' => 'PARENT DESC SHOULD NOT WIN',
-			'brand'       => array( '@type' => 'Brand', 'name' => 'ParentBrand' ),
+			'brand'       => array(
+				'@type' => 'Brand',
+				'name'  => 'ParentBrand',
+			),
 			'category'    => 'ParentCategory',
 			'audience'    => array(
 				'@type'           => 'PeopleAudience',
@@ -2311,7 +2614,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'offers'      => array(
 				array(
 					'@type'           => 'Offer',
-					'seller'          => array( '@type' => 'Organization', 'name' => 'ParentSeller' ),
+					'seller'          => array(
+						'@type' => 'Organization',
+						'name'  => 'ParentSeller',
+					),
 					'priceValidUntil' => '2099-09-09',
 				),
 			),
@@ -2321,7 +2627,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		// Every variant-set field is untouched; no parent value copied over.
 		$this->assertSame( 'VARIANT SENTINEL DESC', $entry['description'] );
-		$this->assertSame( array( '@type' => 'Brand', 'name' => 'VariantBrand' ), $entry['brand'] );
+		$this->assertSame(
+			array(
+				'@type' => 'Brand',
+				'name'  => 'VariantBrand',
+			),
+			$entry['brand']
+		);
 		$this->assertSame( 'VariantCategory', $entry['category'] );
 		$this->assertSame(
 			array(
@@ -2336,7 +2648,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$entry['audience']
 		);
 		$this->assertSame(
-			array( '@type' => 'Organization', 'name' => 'VariantSeller' ),
+			array(
+				'@type' => 'Organization',
+				'name'  => 'VariantSeller',
+			),
 			$entry['offers'][0]['seller']
 		);
 		$this->assertSame( '2025-05-05', $entry['offers'][0]['priceValidUntil'] );
@@ -2373,7 +2688,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_no_cross_sells_emits_no_is_related_to(): void {
 		$product = $this->make_product();
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'isRelatedTo', $result );
 	}
@@ -2381,7 +2696,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_no_upsells_emits_no_is_similar_to(): void {
 		$product = $this->make_product();
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'isSimilarTo', $result );
 	}
@@ -2390,7 +2705,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Schema.org isRelatedTo = "loosely related"; WC cross-sells =
 		// cart-page complementary purchases. Each entry is `@id`-only
 		// so AI agents dereference to the linked product's own block.
-		$product = $this->make_product( [ 'cross_sell_ids' => array( 201, 202 ) ] );
+		$product = $this->make_product( array( 'cross_sell_ids' => array( 201, 202 ) ) );
 
 		$t201 = $this->make_related_target( 201, 'https://example.com/product/coat/' );
 		$t202 = $this->make_related_target( 202, 'https://example.com/product/scarf/' );
@@ -2398,7 +2713,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			static fn( $id ) => 201 === (int) $id ? $t201 : ( 202 === (int) $id ? $t202 : false )
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame(
 			array(
@@ -2412,7 +2727,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_upsells_emit_is_similar_to_with_at_id_shape(): void {
 		// Schema.org isSimilarTo = "functionally similar"; WC upsells =
 		// premium / alternate version of the same item.
-		$product = $this->make_product( [ 'upsell_ids' => array( 301, 302 ) ] );
+		$product = $this->make_product( array( 'upsell_ids' => array( 301, 302 ) ) );
 
 		$t301 = $this->make_related_target( 301, 'https://example.com/product/sweater-premium/' );
 		$t302 = $this->make_related_target( 302, 'https://example.com/product/sweater-deluxe/' );
@@ -2420,7 +2735,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			static fn( $id ) => 301 === (int) $id ? $t301 : ( 302 === (int) $id ? $t302 : false )
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame(
 			array(
@@ -2442,7 +2757,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'product_selection_mode' => 'selected',
 			'selected_products'      => array( 42, 401 ),  // parent (42) + visible cross-sell (401)
 		);
-		$product = $this->make_product( [ 'cross_sell_ids' => array( 401, 402 ) ] );
+		$product                         = $this->make_product( array( 'cross_sell_ids' => array( 401, 402 ) ) );
 
 		$t_visible = $this->make_related_target( 401, 'https://example.com/product/visible/' );
 		$t_hidden  = $this->make_related_target( 402, 'https://example.com/product/hidden/' );
@@ -2450,7 +2765,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			static fn( $id ) => 401 === (int) $id ? $t_visible : ( 402 === (int) $id ? $t_hidden : false )
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame(
 			array( array( '@id' => 'https://example.com/product/visible/' ) ),
@@ -2464,7 +2779,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'product_selection_mode' => 'selected',
 			'selected_products'      => array( 42, 501 ),  // parent (42) + visible upsell (501)
 		);
-		$product = $this->make_product( [ 'upsell_ids' => array( 501, 502 ) ] );
+		$product                         = $this->make_product( array( 'upsell_ids' => array( 501, 502 ) ) );
 
 		$t_visible = $this->make_related_target( 501, 'https://example.com/product/v/' );
 		$t_hidden  = $this->make_related_target( 502, 'https://example.com/product/h/' );
@@ -2472,7 +2787,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			static fn( $id ) => 501 === (int) $id ? $t_visible : ( 502 === (int) $id ? $t_hidden : false )
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame(
 			array( array( '@id' => 'https://example.com/product/v/' ) ),
@@ -2485,14 +2800,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// WC doesn't auto-prune stale cross-sell IDs when the
 		// referenced product is deleted, so this case is common on
 		// older stores.
-		$product = $this->make_product( [ 'cross_sell_ids' => array( 601, 9999 ) ] );
+		$product = $this->make_product( array( 'cross_sell_ids' => array( 601, 9999 ) ) );
 
 		$alive = $this->make_related_target( 601, 'https://example.com/product/alive/' );
 		Functions\when( 'wc_get_product' )->alias(
 			static fn( $id ) => 601 === (int) $id ? $alive : false
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame(
 			array( array( '@id' => 'https://example.com/product/alive/' ) ),
@@ -2504,7 +2819,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// If WC core or another plugin's filter already set
 		// isRelatedTo at higher priority, defer — same pattern as the
 		// typed-property emission for color/size/material/pattern.
-		$product = $this->make_product( [ 'cross_sell_ids' => array( 701 ) ] );
+		$product = $this->make_product( array( 'cross_sell_ids' => array( 701 ) ) );
 
 		$markup = array(
 			'isRelatedTo' => array( array( '@id' => 'https://upstream.example.com/p/' ) ),
@@ -2525,7 +2840,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// would silently overwrite a caller's "no, really, emit
 		// nothing" intent with our cross-sell list. Pin the behavior
 		// so a future "fix" doesn't quietly flip it.
-		$product = $this->make_product( [ 'cross_sell_ids' => array( 901, 902 ) ] );
+		$product = $this->make_product( array( 'cross_sell_ids' => array( 901, 902 ) ) );
 
 		$t901 = $this->make_related_target( 901, 'https://example.com/product/p901/' );
 		$t902 = $this->make_related_target( 902, 'https://example.com/product/p902/' );
@@ -2544,7 +2859,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// properties go through identical isset() checks; pin the
 		// upsell side too so a future refactor that special-cases one
 		// branch but not the other can't silently regress.
-		$product = $this->make_product( [ 'upsell_ids' => array( 911, 912 ) ] );
+		$product = $this->make_product( array( 'upsell_ids' => array( 911, 912 ) ) );
 
 		$t911 = $this->make_related_target( 911, 'https://example.com/product/p911/' );
 		$t912 = $this->make_related_target( 912, 'https://example.com/product/p912/' );
@@ -2559,7 +2874,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_existing_is_similar_to_is_not_overwritten(): void {
-		$product = $this->make_product( [ 'upsell_ids' => array( 801 ) ] );
+		$product = $this->make_product( array( 'upsell_ids' => array( 801 ) ) );
 
 		$markup = array(
 			'isSimilarTo' => array( array( '@id' => 'https://upstream.example.com/p/' ) ),
@@ -2580,11 +2895,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// distinct products beyond. Pin: pass `[201, 201, 202, 202]`,
 		// expect two distinct refs (in first-seen order) and a single
 		// `wc_get_product()` resolution per ID.
-		$product = $this->make_product( [ 'cross_sell_ids' => array( 201, 201, 202, 202 ) ] );
+		$product = $this->make_product( array( 'cross_sell_ids' => array( 201, 201, 202, 202 ) ) );
 
-		$resolve_count = array( 201 => 0, 202 => 0 );
-		$t201 = $this->make_related_target( 201, 'https://example.com/product/p201/' );
-		$t202 = $this->make_related_target( 202, 'https://example.com/product/p202/' );
+		$resolve_count = array(
+			201 => 0,
+			202 => 0,
+		);
+		$t201          = $this->make_related_target( 201, 'https://example.com/product/p201/' );
+		$t202          = $this->make_related_target( 202, 'https://example.com/product/p202/' );
 		Functions\when( 'wc_get_product' )->alias(
 			static function ( $id ) use ( $t201, $t202, &$resolve_count ) {
 				$id = (int) $id;
@@ -2595,7 +2913,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame(
 			array(
@@ -2618,10 +2936,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// cache priming, no `wc_get_product()` calls. Pin this with a
 		// `wc_get_product()` alias that fails the test if it's
 		// called, since the absence of the call is the whole point.
-		$product = $this->make_product( [
-			'cross_sell_ids' => array( 1101 ),
-			'upsell_ids'     => array( 1102 ),
-		] );
+		$product = $this->make_product(
+			array(
+				'cross_sell_ids' => array( 1101 ),
+				'upsell_ids'     => array( 1102 ),
+			)
+		);
 
 		Functions\when( 'wc_get_product' )->alias(
 			function ( $id ) {
@@ -2650,8 +2970,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Hard cap of 10 entries per property prevents markup blowout
 		// on stores with very large cross-sell lists. Pass 12 IDs;
 		// expect 10 in the output.
-		$ids = range( 1001, 1012 );
-		$product = $this->make_product( [ 'cross_sell_ids' => $ids ] );
+		$ids     = range( 1001, 1012 );
+		$product = $this->make_product( array( 'cross_sell_ids' => $ids ) );
 
 		$targets = array();
 		foreach ( $ids as $id ) {
@@ -2664,7 +2984,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			static fn( $id ) => $targets[ (int) $id ] ?? false
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertCount( 10, $result['isRelatedTo'] );
 		// First 10 in input order.
@@ -2689,7 +3009,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_allow_product_group_type_appends_productgroup_on_single_product(): void {
 		Functions\when( 'is_product' )->justReturn( true );
 
-		$result = $this->jsonld->allow_product_group_type( [ 'product', 'breadcrumblist' ] );
+		$result = $this->jsonld->allow_product_group_type( array( 'product', 'breadcrumblist' ) );
 
 		$this->assertContains( 'productgroup', $result );
 		// Existing types must survive untouched — we only append.
@@ -2704,7 +3024,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// future feature ever caches structured data globally.
 		Functions\when( 'is_product' )->justReturn( false );
 
-		$result = $this->jsonld->allow_product_group_type( [ 'product', 'breadcrumblist' ] );
+		$result = $this->jsonld->allow_product_group_type( array( 'product', 'breadcrumblist' ) );
 
 		$this->assertNotContains( 'productgroup', $result );
 	}
@@ -2717,7 +3037,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// break on them.
 		Functions\when( 'is_product' )->justReturn( true );
 
-		$result = $this->jsonld->allow_product_group_type( [ 'product', 'productgroup', 'breadcrumblist' ] );
+		$result = $this->jsonld->allow_product_group_type( array( 'product', 'productgroup', 'breadcrumblist' ) );
 
 		$this->assertSame( 1, count( array_keys( $result, 'productgroup', true ) ) );
 		$this->assertContains( 'product', $result );
@@ -2730,7 +3050,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// on a non-existent Offer.
 		$product = $this->make_product();
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'offers', $result );
 	}
@@ -2765,7 +3085,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'get_bloginfo' )->returnArg();
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'get_terms' )->justReturn( array() );
 		// `is_wp_error` is defined globally by Brain Monkey's WP
 		// preset before Patchwork can redefine it, so we don't stub
 		// it here — `get_terms()` returns `[]` (a plain array, not a
@@ -2853,11 +3173,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		// Add a taxonomy with the same payload — covers the Editor-role
 		// `manage_categories` reach as well.
-		$category       = new stdClass();
-		$category->name = '</script><script>document.cookie</script>';
-		$category->slug = 'malicious-category';
+		$category        = new stdClass();
+		$category->name  = '</script><script>document.cookie</script>';
+		$category->slug  = 'malicious-category';
 		$category->count = 1;
-		Functions\when( 'get_terms' )->justReturn( [ $category ] );
+		Functions\when( 'get_terms' )->justReturn( array( $category ) );
 		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/category/malicious-category/' );
 		// Real `wp_json_encode` stand-in via PHP's encoder so we
 		// exercise the actual flag handling rather than the
@@ -2930,7 +3250,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// would slip past `preg_match`'s result-shape check entirely.
 		// `preg_match_all` with PREG_SET_ORDER groups each match's
 		// captures together so we can assert exactly one block.
-		$matches = [];
+		$matches = array();
 		preg_match_all(
 			'/<script type="application\/ld\+json">(.*?)<\/script>/s',
 			$output,
@@ -2971,21 +3291,23 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// string key on the outer `offers` list (would mix list +
 		// assoc shapes — PHP serializes that as a JSON object, not
 		// an Offer array).
-		$product = $this->make_product( [
-			'managing_stock' => true,
-			'stock_quantity' => 17,
-		] );
+		$product = $this->make_product(
+			array(
+				'managing_stock' => true,
+				'stock_quantity' => 17,
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
 		$this->assertEquals(
-			[
+			array(
 				'@type' => 'QuantitativeValue',
 				'value' => 17,
-			],
+			),
 			$result['offers'][0]['inventoryLevel']
 		);
 		// Regression guard: `inventoryLevel` must never be a string
@@ -2999,13 +3321,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// An oversold product under allow-backorders carries a negative
 		// `stock_quantity`. See `add_inventory_level()` for why that is
 		// clamped rather than published as-is.
-		$product = $this->make_product( [
-			'managing_stock' => true,
-			'stock_quantity' => -4,
-		] );
+		$product = $this->make_product(
+			array(
+				'managing_stock' => true,
+				'stock_quantity' => -4,
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3020,13 +3344,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// truthy `$stock_qty` would silently drop zero levels, and no
 		// other test catches that (the null-quantity test still passes
 		// under it). `max( 0, 0 )` itself cannot slip.
-		$product = $this->make_product( [
-			'managing_stock' => true,
-			'stock_quantity' => 0,
-		] );
+		$product = $this->make_product(
+			array(
+				'managing_stock' => true,
+				'stock_quantity' => 0,
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3042,13 +3368,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// the guard to `is_array($markup['offers'])` could
 		// accidentally re-introduce the original assoc-key write
 		// against this shape.
-		$product = $this->make_product( [
-			'managing_stock' => true,
-			'stock_quantity' => 17,
-		] );
+		$product = $this->make_product(
+			array(
+				'managing_stock' => true,
+				'stock_quantity' => 17,
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ '@type' => 'Offer' ] ],
+			array( 'offers' => array( '@type' => 'Offer' ) ),
 			$product
 		);
 
@@ -3060,10 +3388,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_inventory_level_omitted_when_stock_is_not_tracked(): void {
-		$product = $this->make_product( [ 'managing_stock' => false ] );
+		$product = $this->make_product( array( 'managing_stock' => false ) );
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3075,13 +3403,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Edge case: managing_stock returns true but quantity is null
 		// (e.g. during a transient stock-sync race). The generator must
 		// not emit a QuantitativeValue with `value: null`.
-		$product = $this->make_product( [
-			'managing_stock' => true,
-			'stock_quantity' => null,
-		] );
+		$product = $this->make_product(
+			array(
+				'managing_stock' => true,
+				'stock_quantity' => null,
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3096,14 +3426,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// The `isset($markup['offers'][0])` guard mirrors the same
 		// defense used by the priceCurrency / hasMerchantReturnPolicy
 		// emissions.
-		$product = $this->make_product( [
-			'managing_stock' => true,
-			'stock_quantity' => 17,
-		] );
+		$product = $this->make_product(
+			array(
+				'managing_stock' => true,
+				'stock_quantity' => 17,
+			)
+		);
 
 		$result = $this->jsonld->enhance_product_data(
 			// No 'offers' key at all.
-			[ '@type' => 'Product' ],
+			array( '@type' => 'Product' ),
 			$product
 		);
 
@@ -3122,12 +3454,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				'woocommerce_weight_unit' === $key ? 'kg' : $default
 		);
 
-		$product = $this->make_product( [
-			'has_weight' => true,
-			'weight'     => '1.5',
-		] );
+		$product = $this->make_product(
+			array(
+				'has_weight' => true,
+				'weight'     => '1.5',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertEquals( '1.5', $result['weight']['value'] );
 		$this->assertEquals( 'KGM', $result['weight']['unitCode'] );
@@ -3139,12 +3473,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				'woocommerce_weight_unit' === $key ? 'lbs' : $default
 		);
 
-		$product = $this->make_product( [
-			'has_weight' => true,
-			'weight'     => '3',
-		] );
+		$product = $this->make_product(
+			array(
+				'has_weight' => true,
+				'weight'     => '3',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertEquals( 'LBR', $result['weight']['unitCode'] );
 	}
@@ -3158,12 +3494,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				'woocommerce_weight_unit' === $key ? 'stones' : $default
 		);
 
-		$product = $this->make_product( [
-			'has_weight' => true,
-			'weight'     => '1',
-		] );
+		$product = $this->make_product(
+			array(
+				'has_weight' => true,
+				'weight'     => '1',
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertEquals( 'KGM', $result['weight']['unitCode'] );
 	}
@@ -3174,12 +3512,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				'woocommerce_dimension_unit' === $key ? 'cm' : $default
 		);
 
-		$product = $this->make_product( [
-			'has_dimensions' => true,
-			'dimensions'     => [ 'length' => '10', 'width' => '20', 'height' => '30' ],
-		] );
+		$product = $this->make_product(
+			array(
+				'has_dimensions' => true,
+				'dimensions'     => array(
+					'length' => '10',
+					'width'  => '20',
+					'height' => '30',
+				),
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertEquals( '10', $result['depth']['value'] );
 		$this->assertEquals( '20', $result['width']['value'] );
@@ -3205,16 +3549,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$product = $this->make_product( [
-			'has_weight'     => true,
-			'weight'         => '.5',
-			'has_dimensions' => true,
-			'dimensions'     => [ 'length' => '10', 'width' => '20', 'height' => '30' ],
-		] );
+		$product = $this->make_product(
+			array(
+				'has_weight'     => true,
+				'weight'         => '.5',
+				'has_dimensions' => true,
+				'dimensions'     => array(
+					'length' => '10',
+					'width'  => '20',
+					'height' => '30',
+				),
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
-		foreach ( [ 'weight', 'depth', 'width', 'height' ] as $key ) {
+		foreach ( array( 'weight', 'depth', 'width', 'height' ) as $key ) {
 			$this->assertIsFloat(
 				$result[ $key ]['value'],
 				"{$key}.value must be a float, not a string."
@@ -3243,12 +3593,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$origin->shouldReceive( 'get_visible' )->andReturn( true );
 		$origin->shouldReceive( 'get_name' )->andReturn( 'pa_origin' );
 
-		$product = $this->make_product( [
-			'attributes' => [
-				'pa_style'  => $style,
-				'pa_origin' => $origin,
-			],
-		] );
+		$product = $this->make_product(
+			array(
+				'attributes' => array(
+					'pa_style'  => $style,
+					'pa_origin' => $origin,
+				),
+			)
+		);
 		$product->shouldReceive( 'get_attribute' )
 			->with( 'pa_style' )->andReturn( 'Casual' );
 		$product->shouldReceive( 'get_attribute' )
@@ -3258,7 +3610,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			static fn( $slug ) => ucfirst( str_replace( 'pa_', '', $slug ) )
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertCount( 2, $result['additionalProperty'] );
 		// Search by name so the test isn't sensitive to emit order.
@@ -3277,11 +3629,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// get_name is never called on invisible attributes; Mockery
 		// would allow extra calls, but the branch should short-circuit.
 
-		$product = $this->make_product( [
-			'attributes' => [ 'internal_code' => $internal ],
-		] );
+		$product = $this->make_product(
+			array(
+				'attributes' => array( 'internal_code' => $internal ),
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
@@ -3291,14 +3645,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$empty->shouldReceive( 'get_visible' )->andReturn( true );
 		$empty->shouldReceive( 'get_name' )->andReturn( 'pa_style' );
 
-		$product = $this->make_product( [
-			'attributes' => [ 'pa_style' => $empty ],
-		] );
+		$product = $this->make_product(
+			array(
+				'attributes' => array( 'pa_style' => $empty ),
+			)
+		);
 		$product->shouldReceive( 'get_attribute' )
 			->with( 'pa_style' )->andReturn( '' );
 		Functions\when( 'wc_attribute_label' )->justReturn( 'Style' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		// Empty values add no information and would render as blank
 		// PropertyValues; they're filtered out.
@@ -3314,14 +3670,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$attribute->shouldReceive( 'get_visible' )->andReturn( true );
 		$attribute->shouldReceive( 'get_name' )->andReturn( 'pa_style' );
 
-		$product = $this->make_product( [
-			'attributes' => [ 'pa_style' => $attribute ],
-		] );
+		$product = $this->make_product(
+			array(
+				'attributes' => array( 'pa_style' => $attribute ),
+			)
+		);
 		$product->shouldReceive( 'get_attribute' )
 			->with( 'pa_style' )->andReturn( '   ' );
 		Functions\when( 'wc_attribute_label' )->justReturn( 'Style' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
@@ -3339,15 +3697,17 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 *                                  e.g. `'variation_attributes'` to mark
 	 *                                  the slug as variation-defining.
 	 */
-	private function make_product_with_attr( string $slug, string $value, array $product_overrides = [] ): Mockery\MockInterface {
+	private function make_product_with_attr( string $slug, string $value, array $product_overrides = array() ): Mockery\MockInterface {
 		$attribute = Mockery::mock();
 		$attribute->shouldReceive( 'get_visible' )->andReturn( true );
 		$attribute->shouldReceive( 'get_name' )->andReturn( $slug );
 
-		$product = $this->make_product( array_merge(
-			[ 'attributes' => [ $slug => $attribute ] ],
-			$product_overrides
-		) );
+		$product = $this->make_product(
+			array_merge(
+				array( 'attributes' => array( $slug => $attribute ) ),
+				$product_overrides
+			)
+		);
 		$product->shouldReceive( 'get_attribute' )
 			->with( $slug )->andReturn( $value );
 		Functions\when( 'wc_attribute_label' )->justReturn(
@@ -3359,7 +3719,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_pa_color_emits_as_typed_color_property(): void {
 		$product = $this->make_product_with_attr( 'pa_color', 'Black' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame( 'Black', $result['color'] );
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
@@ -3368,7 +3728,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_pa_size_emits_as_typed_size_property(): void {
 		$product = $this->make_product_with_attr( 'pa_size', 'L' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame( 'L', $result['size'] );
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
@@ -3377,7 +3737,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_pa_material_emits_as_typed_material_property(): void {
 		$product = $this->make_product_with_attr( 'pa_material', 'Cotton' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame( 'Cotton', $result['material'] );
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
@@ -3386,7 +3746,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_pa_pattern_emits_as_typed_pattern_property(): void {
 		$product = $this->make_product_with_attr( 'pa_pattern', 'Striped' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame( 'Striped', $result['pattern'] );
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
@@ -3398,7 +3758,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// but custom merchant taxonomies do appear in both spellings.
 		$product = $this->make_product_with_attr( 'pa_colour', 'Navy' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame( 'Navy', $result['color'] );
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
@@ -3409,7 +3769,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// in `get_name()` (e.g. "Color"). Slug lookup is case-insensitive.
 		$product = $this->make_product_with_attr( 'Color', 'Red' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame( 'Red', $result['color'] );
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
@@ -3422,7 +3782,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// back to additionalProperty.
 		$product = $this->make_product_with_attr( 'pa_color', 'Black, Navy' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'color', $result );
 		$this->assertCount( 1, $result['additionalProperty'] );
@@ -3434,7 +3794,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// multi-value detection.
 		$product = $this->make_product_with_attr( 'Color', 'Black | Tan' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'color', $result );
 		$this->assertCount( 1, $result['additionalProperty'] );
@@ -3450,12 +3810,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->make_product_with_attr(
 			'pa_color',
 			'Navy, White, Gray',
-			[
-				'variation_attributes' => [ 'pa_color' => [ 'navy', 'white', 'gray' ] ],
-			]
+			array(
+				'variation_attributes' => array( 'pa_color' => array( 'navy', 'white', 'gray' ) ),
+			)
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'color', $result );
 	}
@@ -3468,12 +3828,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->make_product_with_attr(
 			'pa_color',
 			'Navy, White, Gray',
-			[
-				'variation_attributes' => [ 'pa_color' => [ 'navy', 'white', 'gray' ] ],
-			]
+			array(
+				'variation_attributes' => array( 'pa_color' => array( 'navy', 'white', 'gray' ) ),
+			)
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'additionalProperty', $result );
 	}
@@ -3488,7 +3848,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		//      reaches agents either way.
 		$product = $this->make_product_with_attr( 'pa_color', 'Black' );
 
-		$result = $this->jsonld->enhance_product_data( [ 'color' => 'PreSet' ], $product );
+		$result = $this->jsonld->enhance_product_data( array( 'color' => 'PreSet' ), $product );
 
 		$this->assertSame( 'PreSet', $result['color'] );
 		$this->assertCount( 1, $result['additionalProperty'] );
@@ -3501,7 +3861,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// the merchant — single OR multi-value, emit as-is.
 		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'style', $result );  // not a typed Schema.org property
 		$this->assertCount( 1, $result['additionalProperty'] );
@@ -3522,7 +3882,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				'value' => 'Preserved',
 			),
 		);
-		$result = $this->jsonld->enhance_product_data(
+		$result       = $this->jsonld->enhance_product_data(
 			array( 'additionalProperty' => $pre_existing ),
 			$product
 		);
@@ -3543,10 +3903,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->make_product_with_attr( 'pa_style', 'Casual' );
 
 		$pre_existing_filtered = array(
-			1 => array( '@type' => 'PropertyValue', 'name' => 'A', 'value' => 'a' ),
-			3 => array( '@type' => 'PropertyValue', 'name' => 'B', 'value' => 'b' ),
+			1 => array(
+				'@type' => 'PropertyValue',
+				'name'  => 'A',
+				'value' => 'a',
+			),
+			3 => array(
+				'@type' => 'PropertyValue',
+				'name'  => 'B',
+				'value' => 'b',
+			),
 		);
-		$result = $this->jsonld->enhance_product_data(
+		$result                = $this->jsonld->enhance_product_data(
 			array( 'additionalProperty' => $pre_existing_filtered ),
 			$product
 		);
@@ -3570,7 +3938,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'name'  => 'Upstream',
 			'value' => 'Preserved',
 		);
-		$result = $this->jsonld->enhance_product_data(
+		$result              = $this->jsonld->enhance_product_data(
 			array( 'additionalProperty' => $pre_existing_single ),
 			$product
 		);
@@ -3585,11 +3953,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$attribute = Mockery::mock();
 		$attribute->shouldReceive( 'get_visible' )->andReturn( false );
 
-		$product = $this->make_product( [
-			'attributes' => [ 'pa_color' => $attribute ],
-		] );
+		$product = $this->make_product(
+			array(
+				'attributes' => array( 'pa_color' => $attribute ),
+			)
+		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'color', $result );
 	}
@@ -3599,7 +3969,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// shouldn't emit `color: "   "`.
 		$product = $this->make_product_with_attr( 'pa_color', '   ' );
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertArrayNotHasKey( 'color', $result );
 	}
@@ -3610,12 +3980,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_shipping_details_include_store_country(): void {
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => 'GB' ]
+			array( 'country' => 'GB' )
 		);
 
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3631,20 +4001,20 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// hasMerchantReturnPolicy emission is settings-driven and lives at
 		// the Offer level. Default mode `unconfigured` emits no block;
 		// switch to `details`/`returns_accepted` to assert presence.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			],
-		];
+			),
+		);
 
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3659,12 +4029,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Fresh WC installs before the store wizard is run can return
 		// an empty country. Don't emit broken shippingDetails.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3677,11 +4047,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// advertise shippingDetails (or the nested handlingTime) even though
 		// the store country IS set. Mirrors the products feed's
 		// `requires_shipping => needs_shipping()` gate (#504).
-		Functions\when( 'wc_get_base_location' )->justReturn( [ 'country' => 'GB' ] );
+		Functions\when( 'wc_get_base_location' )->justReturn( array( 'country' => 'GB' ) );
 
-		$product = $this->make_product( [ 'needs_shipping' => false ] );
+		$product = $this->make_product( array( 'needs_shipping' => false ) );
 		$result  = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3691,11 +4061,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_shipping_details_present_for_physical_product(): void {
 		// Counterpart guard: a physical product (needs_shipping() === true,
 		// the make_product default) keeps its shippingDetails.
-		Functions\when( 'wc_get_base_location' )->justReturn( [ 'country' => 'GB' ] );
+		Functions\when( 'wc_get_base_location' )->justReturn( array( 'country' => 'GB' ) );
 
-		$product = $this->make_product( [ 'needs_shipping' => true ] );
+		$product = $this->make_product( array( 'needs_shipping' => true ) );
 		$result  = $this->jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$product
 		);
 
@@ -3707,7 +4077,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// virtual variation gets no shippingDetails on its entry, even though
 		// invoke_build_variant_entry() passes a non-empty country ('US').
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		$variation = $this->make_variation( [ 'id' => 101, 'needs_shipping' => false ] );
+		$variation = $this->make_variation(
+			array(
+				'id'             => 101,
+				'needs_shipping' => false,
+			)
+		);
 		$parent    = $this->make_product();
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
@@ -3729,14 +4104,20 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_variant_entry_carries_its_own_dimensions(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$variation = $this->make_variation( [
-			'id'             => 101,
-			'has_weight'     => true,
-			'weight'         => '0.8',
-			'has_dimensions' => true,
-			'dimensions'     => [ 'length' => '6', 'width' => '4', 'height' => '2' ],
-		] );
-		$parent = $this->make_product();
+		$variation = $this->make_variation(
+			array(
+				'id'             => 101,
+				'has_weight'     => true,
+				'weight'         => '0.8',
+				'has_dimensions' => true,
+				'dimensions'     => array(
+					'length' => '6',
+					'width'  => '4',
+					'height' => '2',
+				),
+			)
+		);
+		$parent    = $this->make_product();
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -3754,19 +4135,31 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// exactly what its parent carries below (1.5 / 10 / 8 / 3).
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent = $this->make_product( [
-			'has_weight'     => true,
-			'weight'         => '1.5',
-			'has_dimensions' => true,
-			'dimensions'     => [ 'length' => '10', 'width' => '8', 'height' => '3' ],
-		] );
-		$variation = $this->make_variation( [
-			'id'             => 101,
-			'has_weight'     => true,
-			'weight'         => '1.5',
-			'has_dimensions' => true,
-			'dimensions'     => [ 'length' => '10', 'width' => '8', 'height' => '3' ],
-		] );
+		$parent    = $this->make_product(
+			array(
+				'has_weight'     => true,
+				'weight'         => '1.5',
+				'has_dimensions' => true,
+				'dimensions'     => array(
+					'length' => '10',
+					'width'  => '8',
+					'height' => '3',
+				),
+			)
+		);
+		$variation = $this->make_variation(
+			array(
+				'id'             => 101,
+				'has_weight'     => true,
+				'weight'         => '1.5',
+				'has_dimensions' => true,
+				'dimensions'     => array(
+					'length' => '10',
+					'width'  => '8',
+					'height' => '3',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
@@ -3783,22 +4176,30 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// weight/dimensions the variation or its parent otherwise carry.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$variation = $this->make_variation( [
-			'id'             => 101,
-			'needs_shipping' => false,
-			'has_weight'     => false,
-			'has_dimensions' => false,
-		] );
-		$parent = $this->make_product( [
-			'has_weight'     => true,
-			'weight'         => '1.5',
-			'has_dimensions' => true,
-			'dimensions'     => [ 'length' => '10', 'width' => '8', 'height' => '3' ],
-		] );
+		$variation = $this->make_variation(
+			array(
+				'id'             => 101,
+				'needs_shipping' => false,
+				'has_weight'     => false,
+				'has_dimensions' => false,
+			)
+		);
+		$parent    = $this->make_product(
+			array(
+				'has_weight'     => true,
+				'weight'         => '1.5',
+				'has_dimensions' => true,
+				'dimensions'     => array(
+					'length' => '10',
+					'width'  => '8',
+					'height' => '3',
+				),
+			)
+		);
 
 		$entry = $this->invoke_build_variant_entry( $variation, $parent );
 
-		foreach ( [ 'weight', 'depth', 'width', 'height' ] as $key ) {
+		foreach ( array( 'weight', 'depth', 'width', 'height' ) as $key ) {
 			$this->assertArrayNotHasKey( $key, $entry, "{$key} must be absent for a virtual variation" );
 		}
 	}
@@ -3812,19 +4213,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// them.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$variation = $this->make_variation( [
-			'id'             => 101,
-			'has_weight'     => true,
-			'weight'         => '0.8',
-			'has_dimensions' => true,
-			'dimensions'     => [ 'length' => '6', 'width' => '4', 'height' => '2' ],
-		] );
-		$parent = $this->make_product();
+		$variation = $this->make_variation(
+			array(
+				'id'             => 101,
+				'has_weight'     => true,
+				'weight'         => '0.8',
+				'has_dimensions' => true,
+				'dimensions'     => array(
+					'length' => '6',
+					'width'  => '4',
+					'height' => '2',
+				),
+			)
+		);
+		$parent    = $this->make_product();
 
 		$entry            = $this->invoke_build_variant_entry( $variation, $parent );
 		$shipping_details = $entry['offers'][0]['shippingDetails'];
 
-		foreach ( [ 'weight', 'depth', 'width', 'height' ] as $key ) {
+		foreach ( array( 'weight', 'depth', 'width', 'height' ) as $key ) {
 			$this->assertSame(
 				$entry[ $key ],
 				$shipping_details[ $key ],
@@ -3898,7 +4305,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$zone->shouldReceive( 'get_id' )->andReturn( 42 );
 		WC_Shipping_Zones::$test_zones = array( 42 => $zone );
 
-		$jsonld = new class extends WC_AI_Storefront_JsonLd {
+		$jsonld = new class() extends WC_AI_Storefront_JsonLd {
 			public function call_get_shipping_zones(): array {
 				return $this->get_shipping_zones();
 			}
@@ -3927,10 +4334,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$zone_42 = Mockery::mock( 'WC_Shipping_Zone' );
 		$zone_99 = Mockery::mock( 'WC_Shipping_Zone' );
 
-		WC_Shipping_Zones::$test_zones = array( 42 => $zone_42, 99 => $zone_99 );
+		WC_Shipping_Zones::$test_zones = array(
+			42 => $zone_42,
+			99 => $zone_99,
+		);
 
 		// Expose the protected method for direct assertion without overriding it.
-		$jsonld = new class extends WC_AI_Storefront_JsonLd {
+		$jsonld = new class() extends WC_AI_Storefront_JsonLd {
 			public function call_get_shipping_zones(): array {
 				return $this->get_shipping_zones();
 			}
@@ -3951,11 +4361,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_shipping_rate_zero_emitted_when_unconditional_free_shipping_exists(): void {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$zone   = $this->make_zone( [ 'US' ], [ $this->make_free_method( '' ) ] );
-		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+		$zone   = $this->make_zone( array( 'US' ), array( $this->make_free_method( '' ) ) );
+		$jsonld = $this->make_jsonld_with_zones( array( $zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -3967,11 +4377,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_shipping_rate_omitted_when_only_threshold_free_shipping_exists(): void {
 		// requires: 'min_amount' = free above a spend threshold, not unconditionally free.
-		$zone   = $this->make_zone( [ 'US' ], [ $this->make_free_method( 'min_amount' ) ] );
-		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+		$zone   = $this->make_zone( array( 'US' ), array( $this->make_free_method( 'min_amount' ) ) );
+		$jsonld = $this->make_jsonld_with_zones( array( $zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -3981,10 +4391,10 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_shipping_rate_omitted_when_no_shipping_zones(): void {
-		$jsonld = $this->make_jsonld_with_zones( [] );
+		$jsonld = $this->make_jsonld_with_zones( array() );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -3994,11 +4404,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_shipping_rate_omitted_when_no_zone_covers_store_country(): void {
 		// Zone covers CA only; store is US.
-		$zone   = $this->make_zone( [ 'CA' ], [ $this->make_free_method( '' ) ] );
-		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+		$zone   = $this->make_zone( array( 'CA' ), array( $this->make_free_method( '' ) ) );
+		$jsonld = $this->make_jsonld_with_zones( array( $zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -4010,13 +4420,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
 
 		$zone = Mockery::mock( 'WC_Shipping_Zone' );
-		$zone->shouldReceive( 'get_zone_locations' )->andReturn( [] );
-		$zone->shouldReceive( 'get_shipping_methods' )->with( true )->andReturn( [ $this->make_free_method( '' ) ] );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn( array() );
+		$zone->shouldReceive( 'get_shipping_methods' )->with( true )->andReturn( array( $this->make_free_method( '' ) ) );
 
-		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+		$jsonld = $this->make_jsonld_with_zones( array( $zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -4030,11 +4440,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// rate — only WC_Shipping_Free_Shipping instances qualify.
 		$flat_rate           = Mockery::mock( 'WC_Shipping_Flat_Rate' );
 		$flat_rate->requires = '';
-		$zone                = $this->make_zone( [ 'US' ], [ $flat_rate ] );
-		$jsonld              = $this->make_jsonld_with_zones( [ $zone ] );
+		$zone                = $this->make_zone( array( 'US' ), array( $flat_rate ) );
+		$jsonld              = $this->make_jsonld_with_zones( array( $zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -4045,11 +4455,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * @dataProvider requires_values_that_prevent_free_rate
 	 */
 	public function test_shipping_rate_omitted_when_requires_is_not_empty( string $requires ): void {
-		$zone   = $this->make_zone( [ 'US' ], [ $this->make_free_method( $requires ) ] );
-		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+		$zone   = $this->make_zone( array( 'US' ), array( $this->make_free_method( $requires ) ) );
+		$jsonld = $this->make_jsonld_with_zones( array( $zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -4077,15 +4487,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				$loc       = new stdClass();
 				$loc->type = 'country';
 				$loc->code = 'US';
-				return [ $loc ];
+				return array( $loc );
 			}
 		);
 		$zone->shouldReceive( 'get_shipping_methods' )->with( true )
-			->andReturn( [ $this->make_free_method( 'min_amount' ) ] );
+			->andReturn( array( $this->make_free_method( 'min_amount' ) ) );
 
-		$jsonld  = $this->make_jsonld_with_zones( [ $zone ] );
+		$jsonld  = $this->make_jsonld_with_zones( array( $zone ) );
 		$product = $this->make_product();
-		$input   = [ 'offers' => [ [ '@type' => 'Offer' ] ] ];
+		$input   = array( 'offers' => array( array( '@type' => 'Offer' ) ) );
 
 		$jsonld->enhance_product_data( $input, $product );
 		$jsonld->enhance_product_data( $input, $product );
@@ -4097,11 +4507,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// get_shipping_zones() could return non-WC_Shipping_Zone values
 		// (e.g. raw associative arrays from WC_Shipping_Zones::get_zones()).
 		// The implementation guards with instanceof — verify no crash and no rate.
-		$not_a_zone = [ 'id' => 1, 'zone_name' => 'Test' ];
-		$jsonld     = $this->make_jsonld_with_zones( [ $not_a_zone ] );
+		$not_a_zone = array(
+			'id'        => 1,
+			'zone_name' => 'Test',
+		);
+		$jsonld     = $this->make_jsonld_with_zones( array( $not_a_zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -4118,14 +4531,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$loc->code = 'US:NY';
 
 		$zone = Mockery::mock( 'WC_Shipping_Zone' );
-		$zone->shouldReceive( 'get_zone_locations' )->andReturn( [ $loc ] );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn( array( $loc ) );
 		$zone->shouldReceive( 'get_shipping_methods' )->with( true )
-			->andReturn( [ $this->make_free_method( '' ) ] );
+			->andReturn( array( $this->make_free_method( '' ) ) );
 
-		$jsonld = $this->make_jsonld_with_zones( [ $zone ] );
+		$jsonld = $this->make_jsonld_with_zones( array( $zone ) );
 
 		$result = $jsonld->enhance_product_data(
-			[ 'offers' => [ [ '@type' => 'Offer' ] ] ],
+			array( 'offers' => array( array( '@type' => 'Offer' ) ) ),
 			$this->make_product()
 		);
 
@@ -4143,14 +4556,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				$loc       = new stdClass();
 				$loc->type = 'country';
 				$loc->code = 'US';
-				return [ $loc ];
+				return array( $loc );
 			}
 		);
-		$zone->shouldReceive( 'get_shipping_methods' )->with( true )->andReturn( [ $this->make_free_method( '' ) ] );
+		$zone->shouldReceive( 'get_shipping_methods' )->with( true )->andReturn( array( $this->make_free_method( '' ) ) );
 
-		$jsonld  = $this->make_jsonld_with_zones( [ $zone ] );
+		$jsonld  = $this->make_jsonld_with_zones( array( $zone ) );
 		$product = $this->make_product();
-		$input   = [ 'offers' => [ [ '@type' => 'Offer' ] ] ];
+		$input   = array( 'offers' => array( array( '@type' => 'Offer' ) ) );
 
 		$jsonld->enhance_product_data( $input, $product );
 		$jsonld->enhance_product_data( $input, $product );
@@ -4174,7 +4587,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$product = $this->make_product();
-		$result  = $this->jsonld->enhance_product_data( [], $product );
+		$result  = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertEquals( 'extension_value', $result['custom_field'] );
 	}
@@ -4186,14 +4599,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// like rate_limit_rpm, allowed_crawlers, or allow_unknown_ucp_agents.
 		// Pin the exact key set so a regression that passes the full
 		// array is caught immediately.
-		WC_AI_Storefront::$test_settings = [
-			'enabled'                => 'yes',
-			'product_selection_mode' => 'all',
-			'return_policy'          => [ 'mode' => 'unconfigured' ],
-			'rate_limit_rpm'         => 99,          // Must NOT reach the filter.
-			'allowed_crawlers'       => [ 'ChatGPT-User' ],  // Must NOT reach the filter.
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                  => 'yes',
+			'product_selection_mode'   => 'all',
+			'return_policy'            => array( 'mode' => 'unconfigured' ),
+			'rate_limit_rpm'           => 99,          // Must NOT reach the filter.
+			'allowed_crawlers'         => array( 'ChatGPT-User' ),  // Must NOT reach the filter.
 			'allow_unknown_ucp_agents' => 'yes',     // Must NOT reach the filter.
-		];
+		);
 
 		$captured_subset = null;
 		Functions\when( 'apply_filters' )->alias(
@@ -4205,7 +4618,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$this->jsonld->enhance_product_data( [], $this->make_product() );
+		$this->jsonld->enhance_product_data( array(), $this->make_product() );
 
 		$this->assertIsArray( $captured_subset, 'Filter must fire and pass a settings subset.' );
 
@@ -4223,14 +4636,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_jsonld_store_filter_receives_safe_settings_subset(): void {
 		// Mirror of the above for the wc_ai_storefront_jsonld_store filter.
-		WC_AI_Storefront::$test_settings = [
-			'enabled'                => 'yes',
-			'product_selection_mode' => 'all',
-			'return_policy'          => [ 'mode' => 'unconfigured' ],
-			'rate_limit_rpm'         => 99,
-			'allowed_crawlers'       => [ 'ChatGPT-User' ],
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                  => 'yes',
+			'product_selection_mode'   => 'all',
+			'return_policy'            => array( 'mode' => 'unconfigured' ),
+			'rate_limit_rpm'           => 99,
+			'allowed_crawlers'         => array( 'ChatGPT-User' ),
 			'allow_unknown_ucp_agents' => 'yes',
-		];
+		);
 
 		$captured_subset = null;
 		Functions\when( 'is_front_page' )->justReturn( true );
@@ -4238,7 +4651,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'home_url' )->alias( static fn( $p = '' ) => 'https://example.com' . $p );
 		Functions\when( 'get_bloginfo' )->returnArg();
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'get_terms' )->justReturn( array() );
 		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
 		Functions\when( '__' )->returnArg( 1 );
 		Functions\when( 'apply_filters' )->alias(
@@ -4287,7 +4700,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$product = $this->make_product( [ 'has_weight' => true, 'weight' => '1' ] );
+		$product = $this->make_product(
+			array(
+				'has_weight' => true,
+				'weight'     => '1',
+			)
+		);
 
 		// Call enhance_product_data three times on the same instance
 		// — as would happen on a shop archive page with multiple products.
@@ -4321,7 +4739,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->make_product(
 			array(
 				'has_dimensions' => true,
-				'dimensions'     => array( 'length' => '10', 'width' => '5', 'height' => '3' ),
+				'dimensions'     => array(
+					'length' => '10',
+					'width'  => '5',
+					'height' => '3',
+				),
 			)
 		);
 
@@ -4415,57 +4837,69 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	private function make_product_with_shipping(): Mockery\MockInterface {
-		return $this->make_product( [ 'id' => 42 ] );
+		return $this->make_product( array( 'id' => 42 ) );
 	}
 
 	private function base_markup(): array {
-		return [
+		return array(
 			'@type'  => 'Product',
-			'offers' => [
-				[
+			'offers' => array(
+				array(
 					'@type' => 'Offer',
 					'price' => '9.99',
-				],
-			],
-		];
+				),
+			),
+		);
 	}
 
 	public function test_business_days_emit_alongside_handling_time(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 1, 'max' => 2, 'business_days' => [ 'Monday', 'Friday' ] ],
-		];
+			'handling_time' => array(
+				'min'           => 1,
+				'max'           => 2,
+				'business_days' => array( 'Monday', 'Friday' ),
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
 		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
 
-		$this->assertSame( [ 'Monday', 'Friday' ], $delivery['businessDays'] );
+		$this->assertSame( array( 'Monday', 'Friday' ), $delivery['businessDays'] );
 		$this->assertSame( 1, $delivery['handlingTime']['minValue'] );
 	}
 
 	public function test_business_days_emit_without_a_handling_time(): void {
 		// "We dispatch Monday to Friday" is a complete claim on its own, so the
 		// min/max guard must not suppress it.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 0, 'max' => 0, 'business_days' => [ 'Monday' ] ],
-		];
+			'handling_time' => array(
+				'min'           => 0,
+				'max'           => 0,
+				'business_days' => array( 'Monday' ),
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
 		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
 
-		$this->assertSame( [ 'Monday' ], $delivery['businessDays'] );
+		$this->assertSame( array( 'Monday' ), $delivery['businessDays'] );
 		$this->assertArrayNotHasKey( 'handlingTime', $delivery );
 	}
 
 	public function test_no_days_selected_emits_no_business_days_key(): void {
 		// Empty means unset, never "this store never dispatches".
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 1, 'max' => 2, 'business_days' => [] ],
-		];
+			'handling_time' => array(
+				'min'           => 1,
+				'max'           => 2,
+				'business_days' => array(),
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
@@ -4480,24 +4914,32 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// proves it: an unusable min/max must not take a valid businessDays
 		// claim down with it. Unpinned, a future guard returning early on an
 		// invalid pair would silently drop the days.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 5, 'max' => 2, 'business_days' => [ 'Monday' ] ],
-		];
+			'handling_time' => array(
+				'min'           => 5,
+				'max'           => 2,
+				'business_days' => array( 'Monday' ),
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
 		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
 
-		$this->assertSame( [ 'Monday' ], $delivery['businessDays'] );
+		$this->assertSame( array( 'Monday' ), $delivery['businessDays'] );
 		$this->assertArrayNotHasKey( 'handlingTime', $delivery );
 	}
 
 	public function test_neither_handling_nor_days_emits_no_delivery_block(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 0, 'max' => 0, 'business_days' => [] ],
-		];
+			'handling_time' => array(
+				'min'           => 0,
+				'max'           => 0,
+				'business_days' => array(),
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$result = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
@@ -4514,23 +4956,30 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 				return 'TRANSLATED-' . $text;
 			}
 		);
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 1, 'max' => 2, 'business_days' => [ 'Monday' ] ],
-		];
+			'handling_time' => array(
+				'min'           => 1,
+				'max'           => 2,
+				'business_days' => array( 'Monday' ),
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$result   = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
 		$delivery = $result['offers'][0]['shippingDetails']['deliveryTime'];
 
-		$this->assertSame( [ 'Monday' ], $delivery['businessDays'] );
+		$this->assertSame( array( 'Monday' ), $delivery['businessDays'] );
 	}
 
 	public function test_handling_time_emitted_when_both_min_and_max_set(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 1, 'max' => 3 ],
-		];
+			'handling_time' => array(
+				'min' => 1,
+				'max' => 3,
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$product = $this->make_product_with_shipping();
@@ -4548,10 +4997,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_handling_time_omitted_when_min_is_zero(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 0, 'max' => 3 ],
-		];
+			'handling_time' => array(
+				'min' => 0,
+				'max' => 3,
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$product = $this->make_product_with_shipping();
@@ -4559,15 +5011,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey(
 			'deliveryTime',
-			$result['offers'][0]['shippingDetails'] ?? []
+			$result['offers'][0]['shippingDetails'] ?? array()
 		);
 	}
 
 	public function test_handling_time_omitted_when_max_is_zero(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 2, 'max' => 0 ],
-		];
+			'handling_time' => array(
+				'min' => 2,
+				'max' => 0,
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$product = $this->make_product_with_shipping();
@@ -4575,15 +5030,15 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey(
 			'deliveryTime',
-			$result['offers'][0]['shippingDetails'] ?? []
+			$result['offers'][0]['shippingDetails'] ?? array()
 		);
 	}
 
 	public function test_handling_time_omitted_when_setting_absent(): void {
 		// handling_time key entirely absent from settings.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled' => 'yes',
-		];
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$product = $this->make_product_with_shipping();
@@ -4591,26 +5046,34 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey(
 			'deliveryTime',
-			$result['offers'][0]['shippingDetails'] ?? []
+			$result['offers'][0]['shippingDetails'] ?? array()
 		);
 	}
 
 	public function test_handling_time_omitted_when_no_shipping_details_block(): void {
 		// No offers[0] in markup — shippingDetails is never added, so
 		// handling time has nowhere to attach.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 1, 'max' => 2 ],
-		];
+			'handling_time' => array(
+				'min' => 1,
+				'max' => 2,
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		// Suppress base-location return so no shippingDetails block is placed.
-		Functions\when( 'wc_get_base_location' )->justReturn( [ 'country' => '', 'state' => '' ] );
+		Functions\when( 'wc_get_base_location' )->justReturn(
+			array(
+				'country' => '',
+				'state'   => '',
+			)
+		);
 
 		$product = $this->make_product_with_shipping();
-		$result  = $this->jsonld->enhance_product_data( [ '@type' => 'Product' ], $product );
+		$result  = $this->jsonld->enhance_product_data( array( '@type' => 'Product' ), $product );
 
-		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] ?? [] );
+		$this->assertArrayNotHasKey( 'shippingDetails', $result['offers'][0] ?? array() );
 	}
 
 	public function test_handling_time_omitted_when_stored_pair_is_invalid(): void {
@@ -4618,10 +5081,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// that bypassed WC_AI_Storefront_Handling_Time::sanitize(), leaving
 		// min > max in storage. The emitter must not publish a structurally
 		// invalid Schema.org QuantitativeValue block.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'handling_time' => [ 'min' => 5, 'max' => 2 ],
-		];
+			'handling_time' => array(
+				'min' => 5,
+				'max' => 2,
+			),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
 		$product = $this->make_product_with_shipping();
@@ -4629,7 +5095,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey(
 			'handlingTime',
-			$result['offers'][0]['shippingDetails']['deliveryTime'] ?? [],
+			$result['offers'][0]['shippingDetails']['deliveryTime'] ?? array(),
 			'Emitter must skip handlingTime block when stored min > max.'
 		);
 	}
@@ -4681,7 +5147,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function capture_store_jsonld_filter_value( ?WC_AI_Storefront_JsonLd $emitter = null ): ?array {
 		$this->stub_store_jsonld_environment();
-		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'get_terms' )->justReturn( array() );
 		return $this->run_store_jsonld_capture( $emitter );
 	}
 
@@ -4814,7 +5280,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
 		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
-		$zone->shouldReceive( 'get_zone_locations' )->andReturn( array( (object) array( 'type' => 'country', 'code' => 'US' ) ) );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn(
+			array(
+				(object) array(
+					'type' => 'country',
+					'code' => 'US',
+				),
+			)
+		);
 		$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
 
 		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
@@ -4838,8 +5311,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// The stub throws for that method at this simulated version, so any
 		// route into it from the JSON-LD emitter fatals here instead of in a
 		// merchant's wp_head.
-		WC_Shipping_Zones::$simulated_wc_version                    = '10.2.2';
-		WC_AI_Storefront_Shipping_Policy::$wc_version_override      = '10.2.2';
+		WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
 
 		$method       = new \WC_Shipping_Flat_Rate();
 		$method->cost = '20';
@@ -4847,7 +5320,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
 		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
 		$zone->shouldReceive( 'get_zone_locations' )->andReturn(
-			array( (object) array( 'type' => 'country', 'code' => 'US' ) )
+			array(
+				(object) array(
+					'type' => 'country',
+					'code' => 'US',
+				),
+			)
 		);
 		$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
 		WC_Shipping_Zones::$test_zones = array( 1 => $zone );
@@ -4870,7 +5348,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
 		$zone->shouldReceive( 'get_id' )->andReturn( 1 );
-		$zone->shouldReceive( 'get_zone_locations' )->andReturn( array( (object) array( 'type' => 'country', 'code' => 'US' ) ) );
+		$zone->shouldReceive( 'get_zone_locations' )->andReturn(
+			array(
+				(object) array(
+					'type' => 'country',
+					'code' => 'US',
+				),
+			)
+		);
 		$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
 
 		\WC_Shipping_Zones::$test_zones = array( 1 => $zone );
@@ -4898,8 +5383,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_store_jsonld_environment();
 		Functions\when( 'get_terms' )->justReturn(
 			array(
-				(object) array( 'term_id' => 11, 'name' => 'Clothing', 'count' => 10 ),
-				(object) array( 'term_id' => 12, 'name' => 'Hoodies',  'count' => 4 ),
+				(object) array(
+					'term_id' => 11,
+					'name'    => 'Clothing',
+					'count'   => 10,
+				),
+				(object) array(
+					'term_id' => 12,
+					'name'    => 'Hoodies',
+					'count'   => 4,
+				),
 			)
 		);
 		Functions\when( 'get_term_link' )->alias(
@@ -4971,7 +5464,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'set_transient' )->justReturn( true );
 		Functions\when( 'get_terms' )->justReturn(
-			array( (object) array( 'term_id' => 1, 'name' => 'X', 'count' => 1 ) )
+			array(
+				(object) array(
+					'term_id' => 1,
+					'name'    => 'X',
+					'count'   => 1,
+				),
+			)
 		);
 		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/x/' );
 
@@ -5074,7 +5573,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// emission conditional on the per-product final-sale
 		// override — will rely on this contract holding for
 		// non-final-sale products.
-		$policy = array(
+		$policy                          = array(
 			'mode'     => 'details',
 			'category' => 'returns_accepted',
 			'days'     => 14,
@@ -5100,9 +5599,9 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// that the Org-level call site invokes with `null` for
 		// `$product_id` — both produce a `returns_accepted` block
 		// with the same days/fees.
-		$product = $this->make_product( [ 'id' => 42 ] );
-		$markup  = array( 'offers' => array( array( '@type' => 'Offer' ) ) );
-		$result  = $this->jsonld->enhance_product_data( $markup, $product );
+		$product         = $this->make_product( array( 'id' => 42 ) );
+		$markup          = array( 'offers' => array( array( '@type' => 'Offer' ) ) );
+		$result          = $this->jsonld->enhance_product_data( $markup, $product );
 		$per_offer_block = $result['offers'][0]['hasMerchantReturnPolicy'] ?? null;
 
 		$this->assertNotNull( $org_block, 'Org-level emission must produce a block.' );
@@ -5122,7 +5621,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			static fn( $name ) => 'custom_logo' === $name ? $logo_id : null
 		);
 		Functions\when( 'wp_get_attachment_image_src' )->alias(
-			static fn( $id ) => $id === $logo_id ? [ 'https://example.com/wp-content/uploads/brand.png', 800, 200, false ] : false
+			static fn( $id ) => $id === $logo_id ? array( 'https://example.com/wp-content/uploads/brand.png', 800, 200, false ) : false
 		);
 		Functions\when( 'get_site_icon_url' )->justReturn( 'https://example.com/site-icon.png' );
 
@@ -5146,7 +5645,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// (setUp's defaults already simulate "no logo configured".)
 		$captured = $this->capture_store_jsonld_filter_value();
 
-		$this->assertArrayNotHasKey( 'logo', $captured ?? [] );
+		$this->assertArrayNotHasKey( 'logo', $captured ?? array() );
 	}
 
 	public function test_store_jsonld_emits_postal_address_from_wc_base_settings(): void {
@@ -5158,13 +5657,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// into the JSON-LD; coverage of the suppression itself lives
 		// in `test_store_jsonld_omits_streetaddress_*`.
 		$emitter = $this->jsonld_with_address(
-			[
+			array(
 				'@type'           => 'PostalAddress',
 				'addressCountry'  => 'US',
 				'addressLocality' => 'Springfield',
 				'addressRegion'   => 'IL',
 				'postalCode'      => '62701',
-			]
+			)
 		);
 
 		$captured = $this->capture_store_jsonld_filter_value( $emitter );
@@ -5191,16 +5690,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// The stub returns a populated street address; the emitter
 		// must drop it. A regression that re-adds the streetAddress
 		// emit (intentional or accidental) would fail this test.
-		$countries = new class {
-			public function get_base_country() { return 'US'; }
-			public function get_base_address() { return '123 Main St'; }
-			public function get_base_address_2() { return 'Suite 4B'; }
-			public function get_base_city() { return 'Springfield'; }
-			public function get_base_state() { return 'IL'; }
-			public function get_base_postcode() { return '62701'; }
+		$countries = new class() {
+			public function get_base_country() {
+				return 'US'; }
+			public function get_base_address() {
+				return '123 Main St'; }
+			public function get_base_address_2() {
+				return 'Suite 4B'; }
+			public function get_base_city() {
+				return 'Springfield'; }
+			public function get_base_state() {
+				return 'IL'; }
+			public function get_base_postcode() {
+				return '62701'; }
 		};
 
-		$emitter = $this->jsonld_with_wc_countries( $countries );
+		$emitter  = $this->jsonld_with_wc_countries( $countries );
 		$captured = $this->capture_store_jsonld_filter_value( $emitter );
 		$address  = $captured['address'] ?? null;
 
@@ -5226,19 +5731,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// the emitter side of this; this test pins the behavior of
 		// `build_postal_address()` itself when the live WC source is
 		// unconfigured.)
-		$countries = new class {
-			public function get_base_country() { return ''; }
-			public function get_base_address() { return ''; }
-			public function get_base_address_2() { return ''; }
-			public function get_base_city() { return ''; }
-			public function get_base_state() { return ''; }
-			public function get_base_postcode() { return ''; }
+		$countries = new class() {
+			public function get_base_country() {
+				return ''; }
+			public function get_base_address() {
+				return ''; }
+			public function get_base_address_2() {
+				return ''; }
+			public function get_base_city() {
+				return ''; }
+			public function get_base_state() {
+				return ''; }
+			public function get_base_postcode() {
+				return ''; }
 		};
 
-		$emitter = $this->jsonld_with_wc_countries( $countries );
+		$emitter  = $this->jsonld_with_wc_countries( $countries );
 		$captured = $this->capture_store_jsonld_filter_value( $emitter );
 
-		$this->assertArrayNotHasKey( 'address', $captured ?? [] );
+		$this->assertArrayNotHasKey( 'address', $captured ?? array() );
 	}
 
 	public function test_store_jsonld_omits_address_when_postal_address_is_empty(): void {
@@ -5246,11 +5757,11 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// country (its omit-when-empty signal). The emitter must skip
 		// the `address` key entirely rather than emitting an empty
 		// stub.
-		$emitter = $this->jsonld_with_address( [] );
+		$emitter = $this->jsonld_with_address( array() );
 
 		$captured = $this->capture_store_jsonld_filter_value( $emitter );
 
-		$this->assertArrayNotHasKey( 'address', $captured ?? [] );
+		$this->assertArrayNotHasKey( 'address', $captured ?? array() );
 	}
 
 	/**
@@ -5272,10 +5783,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// only signal. Validated, not noreply-shaped → published as
 		// the public contact email. setUp's `is_email` alias handles
 		// validation; no per-test override needed.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'no',
-			'woocommerce_email_from_address'     => 'support@example.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'no',
+				'woocommerce_email_from_address'     => 'support@example.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 		$cp       = $captured['contactPoint'] ?? null;
@@ -5299,11 +5812,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// A test that used `noreply@` for From could pass even with
 		// such a regression because the noreply guard would still
 		// produce omit, masking the precedence bug.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'yes',
-			'woocommerce_email_reply_to_address' => 'help@example.com',
-			'woocommerce_email_from_address'     => 'support@example.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'yes',
+				'woocommerce_email_reply_to_address' => 'help@example.com',
+				'woocommerce_email_from_address'     => 'support@example.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -5315,11 +5830,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// filled in. The merchant intended a public contact channel
 		// (they enabled reply-to), so we shouldn't omit — fall
 		// through to From if it's a usable address.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'yes',
-			'woocommerce_email_reply_to_address' => '',
-			'woocommerce_email_from_address'     => 'support@example.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'yes',
+				'woocommerce_email_reply_to_address' => '',
+				'woocommerce_email_from_address'     => 'support@example.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -5331,16 +5848,18 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Publishing it as a customer-facing contact would route real
 		// questions into a black hole. With reply-to disabled and the
 		// only From candidate being noreply-shaped, we omit.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'no',
-			'woocommerce_email_from_address'     => 'noreply@example.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'no',
+				'woocommerce_email_from_address'     => 'noreply@example.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
 		$this->assertArrayNotHasKey(
 			'contactPoint',
-			$captured ?? [],
+			$captured ?? array(),
 			'noreply-shaped From must not be published as a public contact.'
 		);
 	}
@@ -5353,46 +5872,50 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// hyphenated and unhyphenated). Lock the heuristic — a future
 		// refactor that narrows the pattern would silently start
 		// publishing one of these as a public contact.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'no',
-			'woocommerce_email_from_address'     => $local_part . '@example.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'no',
+				'woocommerce_email_from_address'     => $local_part . '@example.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
-		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? [] );
+		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? array() );
 	}
 
 	public static function noreply_local_parts_provider(): array {
-		return [
-			'noreply'                       => [ 'noreply' ],
-			'NoReply mixed case'            => [ 'NoReply' ],
-			'NOREPLY upper case'            => [ 'NOREPLY' ],
-			'no-reply hyphenated'           => [ 'no-reply' ],
-			'No-Reply mixed case'           => [ 'No-Reply' ],
-			'donotreply'                    => [ 'donotreply' ],
-			'do-not-reply'                  => [ 'do-not-reply' ],
-			'Do-Not-Reply'                  => [ 'Do-Not-Reply' ],
+		return array(
+			'noreply'                       => array( 'noreply' ),
+			'NoReply mixed case'            => array( 'NoReply' ),
+			'NOREPLY upper case'            => array( 'NOREPLY' ),
+			'no-reply hyphenated'           => array( 'no-reply' ),
+			'No-Reply mixed case'           => array( 'No-Reply' ),
+			'donotreply'                    => array( 'donotreply' ),
+			'do-not-reply'                  => array( 'do-not-reply' ),
+			'Do-Not-Reply'                  => array( 'Do-Not-Reply' ),
 			// RFC 5233 plus-addressing variants — these route to the
 			// same underlying mailbox as the bare prefix at most
 			// providers (Gmail, Outlook, Postfix, etc.), so they're
 			// noreply addresses for publishing purposes.
-			'noreply+orders'                => [ 'noreply+orders' ],
-			'no-reply+customer-service'     => [ 'no-reply+customer-service' ],
-			'donotreply+tag'                => [ 'donotreply+tag' ],
-			'do-not-reply+billing'          => [ 'do-not-reply+billing' ],
-			'NoReply+Mixed plus-addressing' => [ 'NoReply+Mixed' ],
-		];
+			'noreply+orders'                => array( 'noreply+orders' ),
+			'no-reply+customer-service'     => array( 'no-reply+customer-service' ),
+			'donotreply+tag'                => array( 'donotreply+tag' ),
+			'do-not-reply+billing'          => array( 'do-not-reply+billing' ),
+			'NoReply+Mixed plus-addressing' => array( 'NoReply+Mixed' ),
+		);
 	}
 
 	public function test_store_jsonld_does_not_match_noreply_in_domain_part(): void {
 		// `support@noreply.example.com` is a legitimate customer-service
 		// mailbox that happens to be hosted on a `noreply.*` subdomain.
 		// Local-part-only matching means we don't false-positive on it.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'no',
-			'woocommerce_email_from_address'     => 'support@noreply.example.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'no',
+				'woocommerce_email_from_address'     => 'support@noreply.example.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -5406,10 +5929,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// `+tag`), not substrings, so this should be publishable.
 		// Regression guard against an over-eager refactor that switches
 		// the prefix check to a `str_starts_with` substring match.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'no',
-			'woocommerce_email_from_address'     => 'noreplies@store.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'no',
+				'woocommerce_email_from_address'     => 'noreplies@store.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
@@ -5428,21 +5953,23 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Whole block is omitted (no admin_email fallback).
 		$captured = $this->capture_store_jsonld_filter_value();
 
-		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? [] );
+		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? array() );
 	}
 
 	public function test_store_jsonld_omits_contactpoint_when_from_address_is_invalid(): void {
 		// is_email rejects structurally broken values. Sentinel:
 		// `gibberish` (no @, no TLD) — setUp's structural is_email
 		// alias rejects this naturally because it lacks an `@`.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'no',
-			'woocommerce_email_from_address'     => 'gibberish',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'no',
+				'woocommerce_email_from_address'     => 'gibberish',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
-		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? [] );
+		$this->assertArrayNotHasKey( 'contactPoint', $captured ?? array() );
 	}
 
 	public function test_store_jsonld_does_not_fall_back_to_admin_email(): void {
@@ -5456,17 +5983,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// valid address. The resolver must never even read
 		// admin_email — the structural is_email alias would accept
 		// `private-admin@example.com` if the resolver ever tried it.
-		$this->stub_options( [
-			'woocommerce_email_reply_to_enabled' => 'no',
-			'woocommerce_email_from_address'     => '',
-			'admin_email'                        => 'private-admin@example.com',
-		] );
+		$this->stub_options(
+			array(
+				'woocommerce_email_reply_to_enabled' => 'no',
+				'woocommerce_email_from_address'     => '',
+				'admin_email'                        => 'private-admin@example.com',
+			)
+		);
 
 		$captured = $this->capture_store_jsonld_filter_value();
 
 		$this->assertArrayNotHasKey(
 			'contactPoint',
-			$captured ?? [],
+			$captured ?? array(),
 			'admin_email must NEVER be a public-facing contact fallback.'
 		);
 	}
@@ -5675,7 +6204,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_options(
 			array(
 				'rank-math-options-titles' => array(
-					'social_url_facebook' => 'https://facebook.com/rankmathshop',
+					'social_url_facebook'  => 'https://facebook.com/rankmathshop',
 					'twitter_author_names' => '@rankmathshop',
 				),
 			)
@@ -5841,8 +6370,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 					// Confirm the plugin auto-sourced a value before the
 					// filter ran (the override is meaningful only if there
 					// was something to override).
-					$captured              = $value;
-					$value['sameAs']       = array( 'https://merchant.example/override' );
+					$captured        = $value;
+					$value['sameAs'] = array( 'https://merchant.example/override' );
 				}
 				return $value;
 			}
@@ -5887,14 +6416,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_period_to_iso8601_duration_maps_each_wc_period(): void {
-		$this->assertSame( 'P1D',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'day', 1 ) );
+		$this->assertSame( 'P1D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'day', 1 ) );
 		$this->assertSame( 'P14D', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'day', 14 ) );
-		$this->assertSame( 'P1W',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 1 ) );
-		$this->assertSame( 'P2W',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 2 ) );
-		$this->assertSame( 'P1M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 1 ) );
-		$this->assertSame( 'P3M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 3 ) );
-		$this->assertSame( 'P6M',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 6 ) );
-		$this->assertSame( 'P1Y',  $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'year', 1 ) );
+		$this->assertSame( 'P1W', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 1 ) );
+		$this->assertSame( 'P2W', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'week', 2 ) );
+		$this->assertSame( 'P1M', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 1 ) );
+		$this->assertSame( 'P3M', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 3 ) );
+		$this->assertSame( 'P6M', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'month', 6 ) );
+		$this->assertSame( 'P1Y', $this->invoke_jsonld_static( 'period_to_iso8601_duration', 'year', 1 ) );
 	}
 
 	public function test_period_to_iso8601_duration_falls_back_to_month_for_unknown_period(): void {
@@ -5944,16 +6473,16 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	 * `enhance_product_data` against a make_product mock whose
 	 * `get_id()` returns the same key.
 	 */
-	private function seed_subscription( int $product_id, array $overrides = [] ): void {
+	private function seed_subscription( int $product_id, array $overrides = array() ): void {
 		WC_Subscriptions_Product::$test_data[ $product_id ] = array_merge(
-			[
+			array(
 				'period'       => 'month',
 				'interval'     => 1,
 				'length'       => 0,
 				'sign_up_fee'  => '0',
 				'trial_length' => 0,
 				'trial_period' => 'month',
-			],
+			),
 			$overrides
 		);
 	}
@@ -5962,12 +6491,24 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// Annual subscription at $100/year, no trial, no sign-up fee,
 		// indefinite. Should emit a single UnitPriceSpecification
 		// entry with priceComponentType=Subscription and billingDuration=P1Y.
-		$this->seed_subscription( 42, [ 'period' => 'year', 'interval' => 1 ] );
+		$this->seed_subscription(
+			42,
+			array(
+				'period'   => 'year',
+				'interval' => 1,
+			)
+		);
 		$product = $this->make_product();
-		$markup  = [
+		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => [ [ '@type' => 'Offer', 'price' => '100.00', 'priceCurrency' => 'USD' ] ],
-		];
+			'offers' => array(
+				array(
+					'@type'         => 'Offer',
+					'price'         => '100.00',
+					'priceCurrency' => 'USD',
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -5983,7 +6524,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// No fee → no addOn, no ActivationFee entry, no eligibleDuration.
 		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
-
 	}
 
 	public function test_subscription_with_trial_emits_two_element_price_specification(): void {
@@ -5997,17 +6537,26 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// `billingStart` is typed `Number` (not Duration / ISO 8601 string),
 		// so emitting `P14D` there would violate the spec's type contract.
 		// Array semantics + price-discrimination convey the same intent.
-		$this->seed_subscription( 42, [
-			'period'       => 'month',
-			'interval'     => 1,
-			'trial_length' => 14,
-			'trial_period' => 'day',
-		] );
+		$this->seed_subscription(
+			42,
+			array(
+				'period'       => 'month',
+				'interval'     => 1,
+				'trial_length' => 14,
+				'trial_period' => 'day',
+			)
+		);
 		$product = $this->make_product();
-		$markup  = [
+		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
-		];
+			'offers' => array(
+				array(
+					'@type'         => 'Offer',
+					'price'         => '10.00',
+					'priceCurrency' => 'USD',
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -6028,7 +6577,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$specs[1],
 			'billingStart is Number-typed per Schema.org — must not be emitted as an ISO 8601 string.'
 		);
-
 	}
 
 	public function test_subscription_with_signup_fee_emits_both_addOn_and_inline_activation_fee(): void {
@@ -6038,16 +6586,25 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// (still-experimental enumeration, semantically richer).
 		// Spec-legal duplication.
 		Functions\when( '__' )->returnArg();
-		$this->seed_subscription( 42, [
-			'period'       => 'month',
-			'interval'     => 1,
-			'sign_up_fee'  => '5.00',
-		] );
+		$this->seed_subscription(
+			42,
+			array(
+				'period'      => 'month',
+				'interval'    => 1,
+				'sign_up_fee' => '5.00',
+			)
+		);
 		$product = $this->make_product();
-		$markup  = [
+		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
-		];
+			'offers' => array(
+				array(
+					'@type'         => 'Offer',
+					'price'         => '10.00',
+					'priceCurrency' => 'USD',
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -6065,22 +6622,30 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Offer', $result['offers'][0]['addOn']['@type'] );
 		$this->assertSame( '5.00', $result['offers'][0]['addOn']['price'] );
 		$this->assertSame( 'Sign-up fee', $result['offers'][0]['addOn']['name'] );
-
 	}
 
 	public function test_subscription_with_finite_length_emits_eligible_duration(): void {
 		// 12-month finite-length subscription. Should emit
 		// eligibleDuration as a QuantitativeValue with unitCode=MON.
-		$this->seed_subscription( 42, [
-			'period'   => 'month',
-			'interval' => 1,
-			'length'   => 12,
-		] );
+		$this->seed_subscription(
+			42,
+			array(
+				'period'   => 'month',
+				'interval' => 1,
+				'length'   => 12,
+			)
+		);
 		$product = $this->make_product();
-		$markup  = [
+		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
-		];
+			'offers' => array(
+				array(
+					'@type'         => 'Offer',
+					'price'         => '10.00',
+					'priceCurrency' => 'USD',
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -6089,7 +6654,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'QuantitativeValue', $dur['@type'] );
 		$this->assertSame( 12, $dur['value'] );
 		$this->assertSame( 'MON', $dur['unitCode'] );
-
 	}
 
 	public function test_subscription_signals_skipped_for_non_subscription_product(): void {
@@ -6105,13 +6669,19 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// because the stubs are unconditionally loaded by
 		// `tests/php/stubs.php` — that gate is covered structurally
 		// by the gates' own existence, not by a test.
-		WC_Subscriptions_Product::$test_data = []; // Explicit reset.
+		WC_Subscriptions_Product::$test_data = array(); // Explicit reset.
 
 		$product = $this->make_product();
-		$markup  = [
+		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => [ [ '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ] ],
-		];
+			'offers' => array(
+				array(
+					'@type'         => 'Offer',
+					'price'         => '10.00',
+					'priceCurrency' => 'USD',
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
@@ -6126,13 +6696,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// strip the offer array). The enricher should no-op silently.
 		$this->seed_subscription( 42 );
 		$product = $this->make_product();
-		$markup  = [ '@type' => 'Product' ];
+		$markup  = array( '@type' => 'Product' );
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
 
 		// We don't care what offers[0] contains; just that no fatal occurs.
 		$this->assertIsArray( $result );
-
 	}
 
 	public function test_variable_subscription_emits_per_variant_price_specification(): void {
@@ -6144,24 +6713,40 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// per variation.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent = $this->make_product( [ 'id' => 100 ] );
+		$parent = $this->make_product( array( 'id' => 100 ) );
 
 		// Two variations: 1-month at $10 and 1-year at $75.
-		$monthly = $this->make_variation( [
-			'id'    => 101,
-			'sku'   => 'sub-monthly',
-			'price' => '10.00',
-		] );
-		$yearly = $this->make_variation( [
-			'id'    => 102,
-			'sku'   => 'sub-yearly',
-			'price' => '75.00',
-		] );
-		$this->seed_subscription( 101, [ 'period' => 'month', 'interval' => 1 ] );
-		$this->seed_subscription( 102, [ 'period' => 'year',  'interval' => 1 ] );
+		$monthly = $this->make_variation(
+			array(
+				'id'    => 101,
+				'sku'   => 'sub-monthly',
+				'price' => '10.00',
+			)
+		);
+		$yearly  = $this->make_variation(
+			array(
+				'id'    => 102,
+				'sku'   => 'sub-yearly',
+				'price' => '75.00',
+			)
+		);
+		$this->seed_subscription(
+			101,
+			array(
+				'period'   => 'month',
+				'interval' => 1,
+			)
+		);
+		$this->seed_subscription(
+			102,
+			array(
+				'period'   => 'year',
+				'interval' => 1,
+			)
+		);
 
 		$monthly_entry = $this->invoke_build_variant_entry( $monthly, $parent );
-		$yearly_entry  = $this->invoke_build_variant_entry( $yearly,  $parent );
+		$yearly_entry  = $this->invoke_build_variant_entry( $yearly, $parent );
 
 		// Each variant has its own priceSpecification with its own
 		// billingDuration — proves the per-variant subscription
@@ -6186,7 +6771,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			'75.00',
 			$yearly_entry['offers'][0]['priceSpecification'][0]['price']
 		);
-
 	}
 
 	public function test_variable_subscription_does_not_leak_signals_into_non_subscription_variation(): void {
@@ -6197,14 +6781,30 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// leak into a non-subscription variation's Offer.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$parent = $this->make_product( [ 'id' => 100 ] );
+		$parent = $this->make_product( array( 'id' => 100 ) );
 
 		// One subscription variation, one plain variation. Only the
 		// subscription gets seeded in $test_data — the plain one
 		// returns false from is_subscription().
-		$subscription_variation = $this->make_variation( [ 'id' => 201, 'price' => '10.00' ] );
-		$plain_variation        = $this->make_variation( [ 'id' => 202, 'price' => '25.00' ] );
-		$this->seed_subscription( 201, [ 'period' => 'month', 'interval' => 1 ] );
+		$subscription_variation = $this->make_variation(
+			array(
+				'id'    => 201,
+				'price' => '10.00',
+			)
+		);
+		$plain_variation        = $this->make_variation(
+			array(
+				'id'    => 202,
+				'price' => '25.00',
+			)
+		);
+		$this->seed_subscription(
+			201,
+			array(
+				'period'   => 'month',
+				'interval' => 1,
+			)
+		);
 
 		$sub_entry   = $this->invoke_build_variant_entry( $subscription_variation, $parent );
 		$plain_entry = $this->invoke_build_variant_entry( $plain_variation, $parent );
@@ -6221,7 +6821,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertArrayNotHasKey( 'addOn', $plain_entry['offers'][0] );
 		$this->assertArrayNotHasKey( 'eligibleDuration', $plain_entry['offers'][0] );
-
 	}
 
 	public function test_subscription_signals_skipped_when_interval_is_zero_or_negative(): void {
@@ -6231,11 +6830,23 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// `$trial_length > 0` gate. Asymmetric defensiveness between
 		// recurring and trial paths was the silent-failure-hunter
 		// finding on PR #371's first review pass.
-		$this->seed_subscription( 42, [ 'period' => 'month', 'interval' => 0 ] );
+		$this->seed_subscription(
+			42,
+			array(
+				'period'   => 'month',
+				'interval' => 0,
+			)
+		);
 		$product = $this->make_product();
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ) ),
+			'offers' => array(
+				array(
+					'@type'         => 'Offer',
+					'price'         => '10.00',
+					'priceCurrency' => 'USD',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6245,7 +6856,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'priceSpecification', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'addOn', $result['offers'][0] );
 		$this->assertArrayNotHasKey( 'eligibleDuration', $result['offers'][0] );
-
 	}
 
 	public function test_subscription_signals_use_get_woocommerce_currency_when_offer_currency_missing(): void {
@@ -6256,12 +6866,23 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// emit an empty-string priceCurrency on the priceSpecification.
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'EUR' );
 
-		$this->seed_subscription( 42, [ 'period' => 'month', 'interval' => 1 ] );
+		$this->seed_subscription(
+			42,
+			array(
+				'period'   => 'month',
+				'interval' => 1,
+			)
+		);
 		$product = $this->make_product();
 		// `offers[0]` deliberately lacks `priceCurrency`.
 		$markup = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '10.00',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6271,7 +6892,6 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$result['offers'][0]['priceSpecification'][0]['priceCurrency'],
 			'priceSpecification must fall back to get_woocommerce_currency() when the Offer has no priceCurrency.'
 		);
-
 	}
 
 	// ------------------------------------------------------------------
@@ -6389,14 +7009,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// `format('c')` (ISO 8601 WITH offset), not a UTC/date-only coercion.
 		$from    = new \DateTimeImmutable( '2026-07-01T00:00:00+01:00' );
 		$through = new \DateTimeImmutable( '2026-07-31T23:59:59+01:00' );
-		$product = $this->make_product( array(
-			'is_on_sale'         => true,
-			'date_on_sale_from'  => $from,
-			'date_on_sale_to'    => $through,
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => $from,
+				'date_on_sale_to'   => $through,
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6408,14 +7035,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_sale_window_emits_only_valid_from_when_no_end_date(): void {
 		// WooCommerce allows an open-ended sale (start only). Each field is
 		// emitted independently; validThrough must be absent.
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
-			'date_on_sale_to'   => null,
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+				'date_on_sale_to'   => null,
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6426,14 +7060,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_sale_window_emits_only_valid_through_when_no_start_date(): void {
 		// Open-ended sale (end only) — the mirror of the previous case.
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => null,
-			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T23:59:59+00:00' ),
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => null,
+				'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T23:59:59+00:00' ),
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6445,14 +7086,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_sale_window_omitted_when_not_on_sale(): void {
 		// Dates may be SET but the schedule expired / not started → is_on_sale()
 		// is false and neither field may be emitted.
-		$product = $this->make_product( array(
-			'is_on_sale'        => false,
-			'date_on_sale_from' => new \DateTimeImmutable( '2020-01-01T00:00:00+00:00' ),
-			'date_on_sale_to'   => new \DateTimeImmutable( '2020-01-31T00:00:00+00:00' ),
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => false,
+				'date_on_sale_from' => new \DateTimeImmutable( '2020-01-01T00:00:00+00:00' ),
+				'date_on_sale_to'   => new \DateTimeImmutable( '2020-01-31T00:00:00+00:00' ),
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6465,11 +7113,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// A variable parent's price-range offer is an AggregateOffer; a single
 		// window on it would be ambiguous. Per-variant windows are handled in
 		// the ProductGroup path instead.
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
-			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T00:00:00+00:00' ),
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+				'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T00:00:00+00:00' ),
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
 			'offers' => array(
@@ -6490,11 +7140,13 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	public function test_sale_window_does_not_overwrite_existing_offer_values(): void {
 		// No-clobber: when an upstream filter already set validFrom/validThrough,
 		// the helper must leave both untouched.
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
-			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T00:00:00+00:00' ),
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+				'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T00:00:00+00:00' ),
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
 			'offers' => array(
@@ -6561,7 +7213,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			),
 			array( 'is_on_sale' => false )
 		);
-		$offer = $result['hasVariant'][0]['offers'][0];
+		$offer  = $result['hasVariant'][0]['offers'][0];
 
 		$this->assertArrayNotHasKey( 'validFrom', $offer );
 		$this->assertArrayNotHasKey( 'validThrough', $offer );
@@ -6585,14 +7237,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// `2026-07-15T09:30:00+01:00`, never `2026-07-15T08:30:00+00:00`.
 		$from = new \WC_DateTime( '2026-07-15T08:30:00', new \DateTimeZone( 'UTC' ) );
 		$from->set_utc_offset( 3600 );
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => $from,
-			'date_on_sale_to'   => null,
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => $from,
+				'date_on_sale_to'   => null,
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6607,14 +7266,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// correct emission `2026-07-15T09:30:00-05:00`.
 		$to = new \WC_DateTime( '2026-07-15T14:30:00', new \DateTimeZone( 'UTC' ) );
 		$to->set_utc_offset( -18000 );
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => null,
-			'date_on_sale_to'   => $to,
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => null,
+				'date_on_sale_to'   => $to,
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6628,15 +7294,22 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// zone's live offset (DST-aware), so the emitted string carries e.g.
 		// +02:00 for CEST. Uses a real WC_DateTime (not DateTimeImmutable) so
 		// the assertion exercises the actual production object type.
-		$from = new \WC_DateTime( '2026-07-15T09:30:00', new \DateTimeZone( 'Europe/Berlin' ) );
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => $from,
-			'date_on_sale_to'   => null,
-		) );
+		$from    = new \WC_DateTime( '2026-07-15T09:30:00', new \DateTimeZone( 'Europe/Berlin' ) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => $from,
+				'date_on_sale_to'   => null,
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6649,14 +7322,21 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// all (both date getters null). is_on_sale() is true, but there is no
 		// window to emit — neither field may appear. Closes the last cell of
 		// the on-sale/date truth table.
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => null,
-			'date_on_sale_to'   => null,
-		) );
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => null,
+				'date_on_sale_to'   => null,
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '9.99' ) ),
+			'offers' => array(
+				array(
+					'@type' => 'Offer',
+					'price' => '9.99',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6673,15 +7353,29 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// BOTH the recurring priceSpecification AND the sale window. A future
 		// refactor of add_subscription_signals() that rebuilt offers[0] from
 		// scratch would silently drop the window — this test would catch it.
-		$this->seed_subscription( 42, array( 'period' => 'month', 'interval' => 1 ) );
-		$product = $this->make_product( array(
-			'is_on_sale'        => true,
-			'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
-			'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T23:59:59+00:00' ),
-		) );
+		$this->seed_subscription(
+			42,
+			array(
+				'period'   => 'month',
+				'interval' => 1,
+			)
+		);
+		$product = $this->make_product(
+			array(
+				'is_on_sale'        => true,
+				'date_on_sale_from' => new \DateTimeImmutable( '2026-07-01T00:00:00+00:00' ),
+				'date_on_sale_to'   => new \DateTimeImmutable( '2026-07-31T23:59:59+00:00' ),
+			)
+		);
 		$markup  = array(
 			'@type'  => 'Product',
-			'offers' => array( array( '@type' => 'Offer', 'price' => '10.00', 'priceCurrency' => 'USD' ) ),
+			'offers' => array(
+				array(
+					'@type'         => 'Offer',
+					'price'         => '10.00',
+					'priceCurrency' => 'USD',
+				),
+			),
 		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $product );
@@ -6769,7 +7463,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_front_page' )->justReturn( true );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'get_bloginfo' )->returnArg();
-		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'get_terms' )->justReturn( array() );
 		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
 		Functions\when( '__' )->returnArg( 1 );
 
@@ -6786,7 +7480,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_front_page' )->justReturn( true );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'get_bloginfo' )->returnArg();
-		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'get_terms' )->justReturn( array() );
 		Functions\when( 'wp_json_encode' )->alias( 'json_encode' );
 		Functions\when( '__' )->returnArg( 1 );
 		// Variadic capture: `output_store_jsonld()` also fires the

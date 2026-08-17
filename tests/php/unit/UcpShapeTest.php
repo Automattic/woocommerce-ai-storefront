@@ -74,7 +74,7 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 		$validator = self::get_validator();
 		// Helper::toJSON converts assoc arrays to objects so the
 		// validator distinguishes properties from arrays correctly.
-		$result    = $validator->validate( Helper::toJSON( $payload ), $schema_uri );
+		$result = $validator->validate( Helper::toJSON( $payload ), $schema_uri );
 
 		if ( $result->isValid() ) {
 			$this->assertTrue( true );
@@ -104,29 +104,32 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 		// Realistic Store API variation shape: empty `attributes[]`
 		// plus a populated `variation` string (the WC 9.x default for
 		// every variable-product variation).
-		$wc_variation = [
+		$wc_variation = array(
 			'id'                => 456,
 			'name'              => 'Leather Shoes',
 			'sku'               => 'SHOE-TAN-9',
 			'is_in_stock'       => true,
-			'prices'            => [
+			'prices'            => array(
 				'price'         => '15000',
 				'regular_price' => '20000',
 				'currency_code' => 'USD',
-			],
+			),
 			'on_sale'           => true,
-			'attributes'        => [],
+			'attributes'        => array(),
 			'variation'         => 'Color: Tan, Size: 9',
 			'short_description' => '<p>Tan leather shoe, size 9.</p>',
-			'images'            => [
-				[ 'src' => 'https://example.com/shoe.jpg', 'alt' => 'Tan shoe' ],
-			],
-		];
+			'images'            => array(
+				array(
+					'src' => 'https://example.com/shoe.jpg',
+					'alt' => 'Tan shoe',
+				),
+			),
+		);
 
 		$variant = WC_AI_Storefront_UCP_Variant_Translator::translate(
 			$wc_variation,
-			[ 'Color', 'Size' ],
-			[ 'name' => 'Example Store' ]
+			array( 'Color', 'Size' ),
+			array( 'name' => 'Example Store' )
 		);
 
 		$this->assertMatchesUcpSchema(
@@ -137,21 +140,21 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_variant_synthesize_default_output_validates(): void {
-		$wc_product = [
+		$wc_product = array(
 			'id'                => 22,
 			'name'              => 'Sunglasses',
 			'sku'               => 'SUN-001',
 			'is_in_stock'       => true,
-			'prices'            => [
+			'prices'            => array(
 				'price'         => '9000',
 				'currency_code' => 'USD',
-			],
+			),
 			'short_description' => 'Stylish sunglasses.',
-		];
+		);
 
 		$variant = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
 			$wc_product,
-			[ 'name' => 'Example Store' ]
+			array( 'name' => 'Example Store' )
 		);
 
 		$this->assertMatchesUcpSchema(
@@ -166,30 +169,38 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_product_translate_simple_validates(): void {
-		$wc_product = [
+		$wc_product = array(
 			'id'                => 22,
 			'name'              => 'Sunglasses',
 			'slug'              => 'sunglasses',
 			'permalink'         => 'https://example.com/product/sunglasses/',
 			'short_description' => '<p>Stylish.</p>',
 			'is_in_stock'       => true,
-			'prices'            => [
+			'prices'            => array(
 				'price'               => '9000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-			'categories'        => [
-				[ 'id' => 19, 'name' => 'Accessories', 'slug' => 'accessories', 'taxonomy' => 'merchant' ],
-			],
-			'images'            => [
-				[ 'src' => 'https://example.com/sun.jpg', 'alt' => 'Sun' ],
-			],
-		];
+			),
+			'categories'        => array(
+				array(
+					'id'       => 19,
+					'name'     => 'Accessories',
+					'slug'     => 'accessories',
+					'taxonomy' => 'merchant',
+				),
+			),
+			'images'            => array(
+				array(
+					'src' => 'https://example.com/sun.jpg',
+					'alt' => 'Sun',
+				),
+			),
+		);
 
 		$product = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$wc_product,
-			[],
-			[ 'name' => 'Example Store' ]
+			array(),
+			array( 'name' => 'Example Store' )
 		);
 
 		$this->assertMatchesUcpSchema(
@@ -200,69 +211,75 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_product_translate_variable_validates(): void {
-		$wc_product = [
+		$wc_product = array(
 			'id'         => 35,
 			'name'       => 'T-Shirt with Logo',
 			'type'       => 'variable',
-			'prices'     => [
+			'prices'     => array(
 				'price'               => '1500',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-				'price_range'         => [
+				'price_range'         => array(
 					'min_amount' => '1500',
 					'max_amount' => '2500',
-				],
-			],
-			'attributes' => [
-				[
+				),
+			),
+			'attributes' => array(
+				array(
 					'name'           => 'Color',
 					'taxonomy'       => 'pa_color',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'name' => 'Black', 'slug' => 'black' ],
-						[ 'name' => 'Green', 'slug' => 'green' ],
-					],
-				],
-			],
-			'variations' => [
-				[ 'id' => 105 ],
-				[ 'id' => 106 ],
-			],
-		];
+					'terms'          => array(
+						array(
+							'name' => 'Black',
+							'slug' => 'black',
+						),
+						array(
+							'name' => 'Green',
+							'slug' => 'green',
+						),
+					),
+				),
+			),
+			'variations' => array(
+				array( 'id' => 105 ),
+				array( 'id' => 106 ),
+			),
+		);
 
-		$wc_variations = [
-			[
+		$wc_variations = array(
+			array(
 				'id'                => 105,
 				'name'              => 'T-Shirt with Logo',
 				'sku'               => 'TEE-BLACK',
 				'is_in_stock'       => true,
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'         => '1500',
 					'currency_code' => 'USD',
-				],
-				'attributes'        => [],
+				),
+				'attributes'        => array(),
 				'variation'         => 'Color: Black',
-			],
-			[
+			),
+			array(
 				'id'                => 106,
 				'name'              => 'T-Shirt with Logo',
 				'sku'               => 'TEE-GREEN',
 				'is_in_stock'       => true,
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'         => '2500',
 					'currency_code' => 'USD',
-				],
-				'attributes'        => [],
+				),
+				'attributes'        => array(),
 				'variation'         => 'Color: Green',
-			],
-		];
+			),
+		);
 
 		$product = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$wc_product,
 			$wc_variations,
-			[ 'name' => 'Example Store' ]
+			array( 'name' => 'Example Store' )
 		);
 
 		$this->assertMatchesUcpSchema(
@@ -278,7 +295,7 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_option_value_shape_validates(): void {
 		$this->assertMatchesUcpSchema(
-			[ 'label' => 'Black' ],
+			array( 'label' => 'Black' ),
 			'https://ucp.dev/schemas/shopping/types/option_value.json',
 			'bare option_value'
 		);
@@ -286,7 +303,10 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_selected_option_shape_validates(): void {
 		$this->assertMatchesUcpSchema(
-			[ 'name' => 'Color', 'label' => 'Black' ],
+			array(
+				'name'  => 'Color',
+				'label' => 'Black',
+			),
 			'https://ucp.dev/schemas/shopping/types/selected_option.json',
 			'bare selected_option'
 		);
@@ -294,12 +314,12 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_rating_shape_validates(): void {
 		$this->assertMatchesUcpSchema(
-			[
+			array(
 				'value'     => 4.67,
 				'scale_min' => 1,
 				'scale_max' => 5,
 				'count'     => 42,
-			],
+			),
 			'https://ucp.dev/schemas/shopping/types/rating.json',
 			'bare rating'
 		);
@@ -320,13 +340,13 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 		// real emission shape so the compliance gate doesn't drift
 		// back to the deprecated form.
 		$this->assertMatchesUcpSchema(
-			[
+			array(
 				'type'     => 'error',
 				'code'     => 'not_found',
 				'content'  => 'Input did not resolve.',
 				'severity' => 'unrecoverable',
 				'path'     => '$.ids[0]',
-			],
+			),
 			'https://ucp.dev/schemas/shopping/types/message_error.json',
 			'error message'
 		);
@@ -334,11 +354,11 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_warning_message_shape_validates(): void {
 		$this->assertMatchesUcpSchema(
-			[
+			array(
 				'type'    => 'warning',
 				'code'    => 'partial_variants',
 				'content' => 'Variants list is incomplete.',
-			],
+			),
 			'https://ucp.dev/schemas/shopping/types/message_warning.json',
 			'warning message'
 		);
@@ -346,11 +366,11 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_info_message_shape_validates(): void {
 		$this->assertMatchesUcpSchema(
-			[
+			array(
 				'type'    => 'info',
 				'code'    => 'total_is_provisional',
 				'content' => 'Total may change at checkout.',
-			],
+			),
 			'https://ucp.dev/schemas/shopping/types/message_info.json',
 			'info message'
 		);
@@ -363,20 +383,26 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 	public function test_lookup_variant_with_inputs_validates(): void {
 		// Build a minimal variant via translate() then attach inputs[]
 		// the same way the lookup handler does (post-translation).
-		$variant = WC_AI_Storefront_UCP_Variant_Translator::translate(
-			[
+		$variant           = WC_AI_Storefront_UCP_Variant_Translator::translate(
+			array(
 				'id'                => 456,
 				'name'              => 'Sunglasses',
 				'is_in_stock'       => true,
-				'prices'            => [ 'price' => '9000', 'currency_code' => 'USD' ],
+				'prices'            => array(
+					'price'         => '9000',
+					'currency_code' => 'USD',
+				),
 				'short_description' => '',
-			],
+			),
 			null,
-			[ 'name' => 'Example Store' ]
+			array( 'name' => 'Example Store' )
 		);
-		$variant['inputs'] = [
-			[ 'id' => 'prod_22', 'match' => 'featured' ],
-		];
+		$variant['inputs'] = array(
+			array(
+				'id'    => 'prod_22',
+				'match' => 'featured',
+			),
+		);
 
 		$this->assertMatchesUcpSchema(
 			$variant,
@@ -389,13 +415,16 @@ class UcpShapeTest extends \PHPUnit\Framework\TestCase {
 		// Sanity check the validator actually rejects: a variant without
 		// inputs[] on the lookup_variant ref must fail (pre-0.12.0 shape).
 		$variant = WC_AI_Storefront_UCP_Variant_Translator::translate(
-			[
+			array(
 				'id'                => 456,
 				'name'              => 'Sunglasses',
 				'is_in_stock'       => true,
-				'prices'            => [ 'price' => '9000', 'currency_code' => 'USD' ],
+				'prices'            => array(
+					'price'         => '9000',
+					'currency_code' => 'USD',
+				),
 				'short_description' => '',
-			]
+			)
 		);
 
 		$validator = self::get_validator();

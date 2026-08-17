@@ -26,7 +26,7 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		$this->main_file = file_get_contents(
+		$this->main_file         = file_get_contents(
 			dirname( __DIR__, 3 ) . '/woocommerce-ai-storefront.php'
 		);
 		$this->orchestrator_file = file_get_contents(
@@ -197,11 +197,11 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 		while ( $pos < $len && $depth > 0 ) {
 			$ch = $source[ $pos ];
 			if ( '{' === $ch ) {
-				$depth++;
+				++$depth;
 			} elseif ( '}' === $ch ) {
-				$depth--;
+				--$depth;
 			}
-			$pos++;
+			++$pos;
 		}
 
 		return substr( $source, $start, $pos - $start - 1 );
@@ -239,11 +239,11 @@ class ActivationTest extends \PHPUnit\Framework\TestCase {
 		while ( $pos < $len && $depth > 0 ) {
 			$ch = $this->orchestrator_file[ $pos ];
 			if ( '{' === $ch ) {
-				$depth++;
+				++$depth;
 			} elseif ( '}' === $ch ) {
-				$depth--;
+				--$depth;
 			}
-			$pos++;
+			++$pos;
 		}
 
 		return substr( $this->orchestrator_file, $start, $pos - $start - 1 );

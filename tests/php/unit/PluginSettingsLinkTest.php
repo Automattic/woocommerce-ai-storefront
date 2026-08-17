@@ -33,7 +33,7 @@ class PluginSettingsLinkTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'esc_url' )->returnArg();
 		Functions\when( 'esc_html__' )->returnArg();
 
-		$existing = [ 'deactivate' => '<a href="#deactivate">Deactivate</a>' ];
+		$existing = array( 'deactivate' => '<a href="#deactivate">Deactivate</a>' );
 		$result   = WC_AI_Storefront::add_settings_action_link( $existing );
 
 		// The Settings link is prepended (first element) and points at the

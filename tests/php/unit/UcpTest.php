@@ -77,7 +77,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	public function test_manifest_has_required_top_level_ucp_key(): void {
 		// The UCP business_profile schema requires `ucp` at the top
 		// level. Everything else nests inside it.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayHasKey( 'ucp', $manifest );
 	}
@@ -86,7 +86,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// business_schema requires version, services, and
 		// payment_handlers. `capabilities` is optional but we always
 		// emit it as an empty object to be explicit.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayHasKey( 'version', $manifest['ucp'] );
 		$this->assertArrayHasKey( 'services', $manifest['ucp'] );
@@ -97,7 +97,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	public function test_version_is_yyyy_mm_dd_format(): void {
 		// UCP schema pattern: ^\d{4}-\d{2}-\d{2}$ — semver like "1.0"
 		// would be rejected by strict consumers.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertMatchesRegularExpression(
 			'/^\d{4}-\d{2}-\d{2}$/',
@@ -109,7 +109,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Consistency check: the constant is what the serving code
 		// uses elsewhere (cache key versioning, etc.), so it must match
 		// what ends up in the manifest.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertEquals(
 			WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
@@ -125,7 +125,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// UCP's propertyNames schema requires reverse-domain form for
 		// both service and capability keys. The constant has to match
 		// this pattern; verify at the manifest level too.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$keys = array_keys( (array) $manifest['ucp']['services'] );
 		$this->assertCount( 1, $keys );
@@ -140,7 +140,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// shopping service identifier — rather than the pre-1.3.0
 		// `com.woocommerce.store_api`. Agents use this key to discover
 		// our UCP endpoint base URL.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayHasKey(
 			'dev.ucp.shopping',
@@ -154,7 +154,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// `dev.ucp.shopping` would be misleading — the WC Store API
 		// remains accessible at its standard path without needing
 		// manifest advertisement.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayNotHasKey(
 			'com.woocommerce.store_api',
@@ -169,7 +169,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// transport work (0.18.0) we advertise TWO: `rest` + `mcp` — but
 		// only when `mcp_enabled` is on (the manifest now fails closed),
 		// so explicitly enable it to exercise the two-binding shape.
-		$manifest = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
+		$manifest = $this->ucp->generate_manifest( array( 'mcp_enabled' => 'yes' ) );
 		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
 
 		$this->assertIsArray( $bindings );
@@ -181,7 +181,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// `version` and `transport` are required on all entities;
 		// `spec` is required at platform level and good practice at
 		// business level (lets agents find human docs).
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertArrayHasKey( 'version', $binding );
@@ -193,7 +193,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	public function test_transport_enum_is_rest(): void {
 		// UCP transport enum: rest | mcp | a2a | embedded.
 		// Our UCP endpoint is REST-transported.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertEquals( 'rest', $binding['transport'] );
@@ -204,7 +204,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// /catalog/search, /catalog/lookup, /checkout-sessions. If
 		// this URL drifts from the registered REST routes, agents
 		// following the manifest hit 404s.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertEquals(
@@ -220,7 +220,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// directory listing — not a "specification document" per
 		// the entity schema's intent. See 1.6.4 changelog for the
 		// migration rationale.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertStringStartsWith(
@@ -237,7 +237,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// this URL; the OpenAPI doc's `{endpoint}` server variable
 		// is a placeholder they substitute with the merchant's
 		// actual endpoint (our service binding's `endpoint` field).
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 
 		$this->assertArrayHasKey( 'schema', $binding );
@@ -261,7 +261,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	public function test_service_advertises_both_rest_and_mcp_transports(): void {
 		// Manifest fails closed on `mcp_enabled`, so enable it explicitly to
 		// exercise the both-transports path.
-		$manifest   = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
+		$manifest   = $this->ucp->generate_manifest( array( 'mcp_enabled' => 'yes' ) );
 		$bindings   = $manifest['ucp']['services']['dev.ucp.shopping'];
 		$transports = array_column( $bindings, 'transport' );
 
@@ -273,7 +273,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	public function test_mcp_binding_has_required_fields_and_endpoint(): void {
 		// Manifest fails closed on `mcp_enabled`, so enable it explicitly to
 		// produce the MCP binding under test.
-		$manifest = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'yes' ] );
+		$manifest = $this->ucp->generate_manifest( array( 'mcp_enabled' => 'yes' ) );
 		$bindings = $manifest['ucp']['services']['dev.ucp.shopping'];
 
 		$mcp_binding = null;
@@ -304,7 +304,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// When mcp_enabled is off we must NOT advertise the /mcp endpoint —
 		// the server's handle() would 404 it, so advertising it would mislead
 		// agents into a dead call. REST stays.
-		$manifest   = $this->ucp->generate_manifest( [ 'mcp_enabled' => 'no' ] );
+		$manifest   = $this->ucp->generate_manifest( array( 'mcp_enabled' => 'no' ) );
 		$bindings   = $manifest['ucp']['services']['dev.ucp.shopping'];
 		$transports = array_column( $bindings, 'transport' );
 
@@ -326,7 +326,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// lets agents discover precisely which operations are
 		// available. Both sub-capabilities resolve to the same
 		// REST endpoint (`/wp-json/wc/ucp/v1/catalog/*`).
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayHasKey(
 			'dev.ucp.shopping.catalog.search',
@@ -356,7 +356,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// via a `mode` field (see next test); the actual
 		// redirect-only behavior is also communicated via
 		// `status: requires_escalation` in response bodies.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayHasKey(
 			'dev.ucp.shopping.checkout',
@@ -383,7 +383,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// too (the server-side `continue_url` injects UTM values
 		// from the UCP-Agent header, making a machine-readable
 		// attribution block redundant with the live contract).
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
 
 		$this->assertArrayNotHasKey( 'mode', $binding, 'mode was removed in 1.6.5 — non-canonical hint replaced by runtime status signal' );
@@ -396,9 +396,9 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// flag needed. Mode hints belong only on capabilities with
 		// more than one operational posture (currently just checkout
 		// with its handoff/non-handoff split).
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
-		foreach ( [ 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup' ] as $cap ) {
+		foreach ( array( 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup' ) as $cap ) {
 			$binding = $manifest['ucp']['capabilities'][ $cap ][0];
 			$this->assertArrayNotHasKey( 'mode', $binding, "$cap should have no mode hint" );
 		}
@@ -411,18 +411,18 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// array wrapper leaves room to advertise multiple versions
 		// concurrently; a bare object (single binding without the array)
 		// would fail strict schema validation.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		// Includes the 1.6.5 extension capability
 		// (com.woocommerce.ai_storefront) — extensions follow the
 		// same [{binding}] shape as canonical capabilities per the
 		// UCP capability schema.
-		$capabilities = [
+		$capabilities = array(
 			'dev.ucp.shopping.catalog.search',
 			'dev.ucp.shopping.catalog.lookup',
 			'dev.ucp.shopping.checkout',
 			'com.woocommerce.ai_storefront',
-		];
+		);
 
 		foreach ( $capabilities as $cap ) {
 			$bindings = $manifest['ucp']['capabilities'][ $cap ];
@@ -447,21 +447,21 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Extensions use the `extends` field to link back to the
 		// parent capability/service; canonical capabilities have
 		// no `extends`. That's the structural invariant below.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertEqualsCanonicalizing(
-			[
+			array(
 				'dev.ucp.shopping.catalog.search',
 				'dev.ucp.shopping.catalog.lookup',
 				'dev.ucp.shopping.checkout',
 				'com.woocommerce.ai_storefront',
-			],
+			),
 			array_keys( $manifest['ucp']['capabilities'] )
 		);
 
 		// Canonical capabilities MUST NOT have `extends` (they ARE
 		// the base capabilities other things extend).
-		foreach ( [ 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup', 'dev.ucp.shopping.checkout' ] as $canonical ) {
+		foreach ( array( 'dev.ucp.shopping.catalog.search', 'dev.ucp.shopping.catalog.lookup', 'dev.ucp.shopping.checkout' ) as $canonical ) {
 			$this->assertArrayNotHasKey(
 				'extends',
 				$manifest['ucp']['capabilities'][ $canonical ][0],
@@ -481,11 +481,11 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// AND checkout (not to "the service" abstractly).
 		$ext = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
 		$this->assertSame(
-			[
+			array(
 				'dev.ucp.shopping.catalog.search',
 				'dev.ucp.shopping.catalog.lookup',
 				'dev.ucp.shopping.checkout',
-			],
+			),
 			$ext['extends']
 		);
 	}
@@ -505,7 +505,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// constant + canonical-capability declarations drifting apart:
 		// if a future PR renames a capability suffix in only one place,
 		// this test fires.
-		$manifest    = $this->ucp->generate_manifest( [] );
+		$manifest    = $this->ucp->generate_manifest( array() );
 		$declared    = array_keys( $manifest['ucp']['capabilities'] );
 		$ext         = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
 		$extends_ids = (array) $ext['extends'];
@@ -525,7 +525,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Required top-level key per business_schema. Empty object
 		// declares "zero handlers" — valid for merchants who don't
 		// mediate payments through UCP.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertEquals(
 			'{}',
@@ -538,10 +538,10 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// `capability` businesses implement or don't. Our previous
 		// manifest had a top-level `checkout` block declaring
 		// "web_redirect only"; that's now implicit (zero capabilities).
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayNotHasKey( 'checkout', $manifest );
-		$this->assertArrayNotHasKey( 'checkout', $manifest['ucp'] ?? [] );
+		$this->assertArrayNotHasKey( 'checkout', $manifest['ucp'] ?? array() );
 	}
 
 	public function test_no_stale_pre_ucp_top_level_fields(): void {
@@ -552,7 +552,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// Note: `store_context` IS a top-level field (added in 1.4.5) —
 		// intentionally a sibling to `ucp`, not a stale leftover. Tests
 		// for that live in the store_context section below.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayNotHasKey( 'protocol_version', $manifest );
 		$this->assertArrayNotHasKey( 'store', $manifest );
@@ -587,7 +587,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 	 * `$manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config']['store_context']`.
 	 */
 	private function get_store_context(): array {
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		return $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config']['store_context'];
 	}
 
@@ -597,7 +597,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// capability in 1.6.5. A future refactor that re-emits it at
 		// root (e.g. for perceived convenience) would collide with
 		// this assertion and force a conscious re-decision.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayNotHasKey( 'store_context', $manifest );
 	}
@@ -717,7 +717,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// than the base currency is accepted) so it's not in the base
 		// shape — see test_store_context_fields_include_accepted_currencies_on_multi_currency_store.
 		$this->assertSame(
-			[ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ],
+			array( 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled' ),
 			array_keys( $this->get_store_context() )
 		);
 	}
@@ -738,7 +738,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame(
-			[ 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled', 'accepted_currencies' ],
+			array( 'currency', 'locale', 'country', 'prices_include_tax', 'shipping_enabled', 'accepted_currencies' ),
 			array_keys( $this->get_store_context() )
 		);
 	}
@@ -759,7 +759,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// the manifest into an LLM context (e.g. UCPPlayground) read
 		// from this field; structural drift would silently break that
 		// contract.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
 
 		$this->assertArrayHasKey( 'agent_guide', $config );
@@ -770,7 +770,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// string would inject blank context into the LLM and waste
 		// the integration. Contract is "string with operational
 		// guidance"; emptiness is a regression.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
 
 		$this->assertIsString( $config['agent_guide'] );
@@ -791,7 +791,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		//    the agent should POST to.
 		// 4. `UCP-Agent` — self-identification mechanism that drives
 		//    attribution canonicalization.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$guide    = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config']['agent_guide'];
 
 		$this->assertStringContainsString( 'requires_escalation', $guide );
@@ -818,7 +818,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// `dev.ucp.*` URLs use `ucp.dev/{PROTOCOL_VERSION}/`. Extension
 		// capabilities (anything not under `dev.ucp.*`) are exempted
 		// below and validated by a separate test.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$service  = $manifest['ucp']['services']['dev.ucp.shopping'][0];
 		$version  = WC_AI_Storefront_Ucp::PROTOCOL_VERSION;
 
@@ -860,7 +860,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// `spec` points at the llms.txt anchor; `schema` points at the
 		// dedicated JSON Schema REST route. Both are on the merchant
 		// host, never `ucp.dev` or `github.com`.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$ext      = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0];
 
 		$this->assertArrayHasKey( 'spec', $ext );
@@ -884,12 +884,12 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// contract from the `extends` relationship back to the
 		// parent. Only the canonical capabilities are required to
 		// carry both URLs.
-		$manifest       = $this->ucp->generate_manifest( [] );
-		$canonical_caps = [
+		$manifest       = $this->ucp->generate_manifest( array() );
+		$canonical_caps = array(
 			'dev.ucp.shopping.catalog.search',
 			'dev.ucp.shopping.catalog.lookup',
 			'dev.ucp.shopping.checkout',
-		];
+		);
 
 		foreach ( $canonical_caps as $name ) {
 			foreach ( $manifest['ucp']['capabilities'][ $name ] as $binding ) {
@@ -933,7 +933,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		// this test fires — forcing a conscious re-decision vs the
 		// spec's SHOULD directive preferring business-provided
 		// continue_url over platform-constructed templates.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
 
 		$this->assertArrayNotHasKey( 'config', $binding );
@@ -956,10 +956,10 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 		//     describing checkout posture and self-identification.
 		// `attribution` was deliberately removed in 1.6.5 — the
 		// continue_url contract is server-side only.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
 
-		$this->assertSame( [ 'store_context', 'agent_guide' ], array_keys( $config ) );
+		$this->assertSame( array( 'store_context', 'agent_guide' ), array_keys( $config ) );
 		$this->assertArrayNotHasKey( 'attribution', $config );
 	}
 
@@ -982,7 +982,7 @@ class UcpTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertEquals( 'extended', $manifest['ucp']['custom_key'] );
 	}

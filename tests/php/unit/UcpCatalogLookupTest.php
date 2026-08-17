@@ -35,7 +35,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array<string, mixed>|null>
 	 */
-	private array $fake_store_api = [];
+	private array $fake_store_api = array();
 
 	/**
 	 * Per-product-id count of rest_do_request dispatches. Lets
@@ -44,7 +44,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, int>
 	 */
-	private array $store_api_dispatch_counts = [];
+	private array $store_api_dispatch_counts = array();
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -52,10 +52,10 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		// Reset settings between tests so disabled-state tests don't
 		// leak. Stub defaults to `enabled => yes`.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 
-		$this->fake_store_api            = [];
-		$this->store_api_dispatch_counts = [];
+		$this->fake_store_api            = array();
+		$this->store_api_dispatch_counts = array();
 
 		Functions\when( '__' )->returnArg();
 		Functions\when( '_n' )->alias(
@@ -99,7 +99,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 					$url  = (string) $arg3;
 				}
 				$parts    = wp_parse_url( $url );
-				$existing = [];
+				$existing = array();
 				if ( isset( $parts['query'] ) ) {
 					parse_str( $parts['query'], $existing );
 				}
@@ -147,7 +147,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 					if ( ! array_key_exists( $id, $api ) || null === $api[ $id ] ) {
 						return new WP_REST_Response(
-							[ 'code' => 'woocommerce_rest_product_invalid_id' ],
+							array( 'code' => 'woocommerce_rest_product_invalid_id' ),
 							404
 						);
 					}
@@ -186,7 +186,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	 * Seed a simple product fixture at the given WC ID.
 	 */
 	private function seed_simple_product( int $id, string $name = 'Widget' ): void {
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'                => $id,
 			'name'              => $name,
 			'slug'              => strtolower( str_replace( ' ', '-', $name ) ),
@@ -194,12 +194,12 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			'type'              => 'simple',
 			'short_description' => '',
 			'is_in_stock'       => true,
-			'prices'            => [
+			'prices'            => array(
 				'price'               => '2500',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -213,41 +213,54 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		array $variation_specs,
 		string $type = 'variable'
 	): void {
-		$variation_refs = [];
+		$variation_refs = array();
 		foreach ( $variation_specs as $spec ) {
-			$variation_refs[] = [
+			$variation_refs[] = array(
 				'id'         => $spec['id'],
-				'attributes' => [ [ 'name' => 'Size', 'value' => $spec['size'] ] ],
-			];
+				'attributes' => array(
+					array(
+						'name'  => 'Size',
+						'value' => $spec['size'],
+					),
+				),
+			);
 
-			$this->fake_store_api[ $spec['id'] ] = [
+			$this->fake_store_api[ $spec['id'] ] = array(
 				'id'                => $spec['id'],
 				'name'              => $name,
 				'short_description' => '',
 				'is_in_stock'       => true,
 				'is_purchasable'    => $spec['is_purchasable'] ?? true,
-				'prices'            => [
+				'prices'            => array(
 					'price'               => $spec['price'],
 					'currency_code'       => 'USD',
 					'currency_minor_unit' => 2,
-				],
-				'attributes'        => [ [ 'name' => 'Size', 'value' => $spec['size'] ] ],
-			];
+				),
+				'attributes'        => array(
+					array(
+						'name'  => 'Size',
+						'value' => $spec['size'],
+					),
+				),
+			);
 		}
 
-		$this->fake_store_api[ $parent_id ] = [
+		$this->fake_store_api[ $parent_id ] = array(
 			'id'                => $parent_id,
 			'name'              => $name,
 			'type'              => $type,
 			'short_description' => '',
-			'prices'            => [
+			'prices'            => array(
 				'price'               => '1000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-				'price_range'         => [ 'min_amount' => '1000', 'max_amount' => '2000' ],
-			],
+				'price_range'         => array(
+					'min_amount' => '1000',
+					'max_amount' => '2000',
+				),
+			),
 			'variations'        => $variation_refs,
-		];
+		);
 	}
 
 	/**
@@ -297,7 +310,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 		$data = $response->get_data();
 		$this->assertArrayHasKey( 'ucp', $data, 'Error response must carry UCP envelope' );
-		$this->assertSame( [], $data['products'], 'Error response products array is empty' );
+		$this->assertSame( array(), $data['products'], 'Error response products array is empty' );
 		$this->assertArrayHasKey( 'messages', $data );
 
 		$codes = array_column( $data['messages'], 'code' );
@@ -315,24 +328,24 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_missing_ids_returns_400(): void {
-		$this->error_lookup( [], 400, 'invalid_input' );
+		$this->error_lookup( array(), 400, 'invalid_input' );
 	}
 
 	public function test_non_array_ids_returns_400(): void {
-		$this->error_lookup( [ 'ids' => 'prod_123' ], 400, 'invalid_input' );
+		$this->error_lookup( array( 'ids' => 'prod_123' ), 400, 'invalid_input' );
 	}
 
 	public function test_empty_ids_array_returns_400(): void {
 		// Distinct from "missing ids" — the client sent the key but
 		// with no IDs. Still malformed; 400 with UCP envelope.
-		$this->error_lookup( [ 'ids' => [] ], 400, 'invalid_input' );
+		$this->error_lookup( array( 'ids' => array() ), 400, 'invalid_input' );
 	}
 
 	public function test_null_ids_returns_400(): void {
 		// `{"ids": null}` is a common JSON-deserializer quirk —
 		// explicit null vs. missing key. Some clients emit this when
 		// they had no IDs to send. Handler must reject both.
-		$this->error_lookup( [ 'ids' => null ], 400, 'invalid_input' );
+		$this->error_lookup( array( 'ids' => null ), 400, 'invalid_input' );
 	}
 
 	public function test_object_ids_returns_400(): void {
@@ -345,7 +358,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// (associative = true) would actually turn `{}` into `[]`,
 		// but clients using different decoders or non-JSON content
 		// types could still deliver stdClass here.
-		$this->error_lookup( [ 'ids' => new stdClass() ], 400, 'invalid_input' );
+		$this->error_lookup( array( 'ids' => new stdClass() ), 400, 'invalid_input' );
 
 		// Nested-dict: `{"ids": {"first": "prod_1"}}` — agent treating
 		// `ids` as a map instead of an array. Array keys are strings,
@@ -361,7 +374,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// that the dict-keyed case doesn't crash.
 		$this->seed_simple_product( 1, 100 );
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'first' => 'prod_1' ] ]
+			array( 'ids' => array( 'first' => 'prod_1' ) )
 		);
 		// The one valid ID still resolved.
 		$this->assertCount( 1, $body['products'] );
@@ -374,7 +387,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	 */
 	public function test_post_lookup_over_cap_returns_request_too_large(): void {
 		$ids = array_map( static fn( int $i ) => 'prod_' . $i, range( 1, 101 ) );
-		$this->error_lookup( [ 'ids' => $ids ], 400, 'request_too_large' );
+		$this->error_lookup( array( 'ids' => $ids ), 400, 'request_too_large' );
 	}
 
 	// ------------------------------------------------------------------
@@ -384,7 +397,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	public function test_single_simple_product_translates_and_returns(): void {
 		$this->seed_simple_product( 123, 'Widget' );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_123' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_123' ) ) );
 
 		$this->assertCount( 1, $body['products'] );
 		$this->assertEquals( 'prod_123', $body['products'][0]['id'] );
@@ -399,7 +412,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 300, 'Gamma' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_200', 'prod_100', 'prod_300' ] ]
+			array( 'ids' => array( 'prod_200', 'prod_100', 'prod_300' ) )
 		);
 
 		$this->assertEquals( 'Alpha', $body['products'][0]['title'] );
@@ -410,7 +423,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	public function test_response_wraps_products_in_catalog_envelope(): void {
 		$this->seed_simple_product( 123 );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_123' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_123' ) ) );
 
 		$this->assertArrayHasKey( 'ucp', $body );
 		$this->assertArrayHasKey( 'capabilities', $body['ucp'] );
@@ -438,18 +451,28 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 200, 'Beta' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_100', 'prod_200' ] ]
+			array( 'ids' => array( 'prod_100', 'prod_200' ) )
 		);
 
 		$this->assertArrayNotHasKey( 'inputs', $body );
 
 		$this->assertCount( 2, $body['products'] );
 		$this->assertSame(
-			[ [ 'id' => 'prod_100', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_100',
+					'match' => 'featured',
+				),
+			),
 			$body['products'][0]['variants'][0]['inputs']
 		);
 		$this->assertSame(
-			[ [ 'id' => 'prod_200', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_200',
+					'match' => 'featured',
+				),
+			),
 			$body['products'][1]['variants'][0]['inputs']
 		);
 	}
@@ -465,13 +488,18 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 'Widget' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_123', 'prod_123', 'prod_123' ] ]
+			array( 'ids' => array( 'prod_123', 'prod_123', 'prod_123' ) )
 		);
 
 		$this->assertCount( 1, $body['products'] );
 		$this->assertEquals( 'prod_123', $body['products'][0]['id'] );
 		$this->assertSame(
-			[ [ 'id' => 'prod_123', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_123',
+					'match' => 'featured',
+				),
+			),
 			$body['products'][0]['variants'][0]['inputs']
 		);
 		$this->assertSame(
@@ -490,12 +518,17 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 'Widget' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_123', '123', 'var_123_default' ] ]
+			array( 'ids' => array( 'prod_123', '123', 'var_123_default' ) )
 		);
 
 		$this->assertCount( 1, $body['products'] );
 		$this->assertSame(
-			[ [ 'id' => 'prod_123', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_123',
+					'match' => 'featured',
+				),
+			),
 			$body['products'][0]['variants'][0]['inputs']
 		);
 	}
@@ -513,13 +546,18 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 456, 'Widget' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'var_456' ] ]
+			array( 'ids' => array( 'var_456' ) )
 		);
 
 		$this->assertCount( 1, $body['products'] );
 		$this->assertSame( 'var_456_default', $body['products'][0]['variants'][0]['id'] );
 		$this->assertSame(
-			[ [ 'id' => 'var_456', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'var_456',
+					'match' => 'featured',
+				),
+			),
 			$body['products'][0]['variants'][0]['inputs']
 		);
 	}
@@ -534,13 +572,18 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 456, 'Widget' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'var_456_default' ] ]
+			array( 'ids' => array( 'var_456_default' ) )
 		);
 
 		$this->assertCount( 1, $body['products'] );
 		$this->assertSame( 'var_456_default', $body['products'][0]['variants'][0]['id'] );
 		$this->assertSame(
-			[ [ 'id' => 'var_456_default', 'match' => 'exact' ] ],
+			array(
+				array(
+					'id'    => 'var_456_default',
+					'match' => 'exact',
+				),
+			),
 			$body['products'][0]['variants'][0]['inputs']
 		);
 	}
@@ -564,14 +607,22 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			456,
 			'Long Sleeve Tee',
-			[
-				[ 'id' => 100, 'price' => '2500', 'size' => 'S' ],
-				[ 'id' => 200, 'price' => '2500', 'size' => 'M' ],
-			]
+			array(
+				array(
+					'id'    => 100,
+					'price' => '2500',
+					'size'  => 'S',
+				),
+				array(
+					'id'    => 200,
+					'price' => '2500',
+					'size'  => 'M',
+				),
+			)
 		);
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_456' ] ]
+			array( 'ids' => array( 'prod_456' ) )
 		);
 
 		$this->assertCount( 1, $body['products'] );
@@ -580,13 +631,18 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// variants[0] is the featured one — match: featured plus
 		// position 0 (the two signals must agree).
 		$this->assertSame(
-			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_456',
+					'match' => 'featured',
+				),
+			),
 			$body['products'][0]['variants'][0]['inputs'],
 			'variants[0] must carry the featured marker.'
 		);
 		// Sibling: id correlation present, no `match` field.
 		$this->assertSame(
-			[ [ 'id' => 'prod_456' ] ],
+			array( array( 'id' => 'prod_456' ) ),
 			$body['products'][0]['variants'][1]['inputs'],
 			'Sibling variants must emit inputs[] with just `id`, no `match`.'
 		);
@@ -619,7 +675,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Should not fatal. Without the guard, `$variant['id']` on
 		// the string entry would throw "Cannot access offset" in PHP 8+.
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_456' ] ]
+			array( 'ids' => array( 'prod_456' ) )
 		);
 
 		$this->assertCount( 1, $body['products'] );
@@ -630,8 +686,8 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// be reordered because its id can't be read, so position layout
 		// depends on whether the legit variant happened to be featured.
 		// Locate the legitimate variant rather than depending on order.
-		$variants = $body['products'][0]['variants'];
-		$legit_variant = null;
+		$variants          = $body['products'][0]['variants'];
+		$legit_variant     = null;
 		$malformed_present = false;
 		foreach ( $variants as $v ) {
 			if ( is_array( $v ) ) {
@@ -645,7 +701,12 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// The legit variant is the only purchasable entry — so it's
 		// the featured one (sole variant feature path).
 		$this->assertSame(
-			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_456',
+					'match' => 'featured',
+				),
+			),
 			$legit_variant['inputs']
 		);
 	}
@@ -667,7 +728,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 300, 'Gamma' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_100', 'prod_100', 'prod_missing', 'prod_300' ] ]
+			array( 'ids' => array( 'prod_100', 'prod_100', 'prod_missing', 'prod_300' ) )
 		);
 
 		$this->assertCount( 2, $body['products'] );
@@ -687,7 +748,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 200, 'Bravo' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_100', 'prod_missing', 'prod_200', 'prod_missing' ] ]
+			array( 'ids' => array( 'prod_100', 'prod_missing', 'prod_200', 'prod_missing' ) )
 		);
 
 		$this->assertCount( 2, $body['products'] );
@@ -705,7 +766,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Paths point at the FIRST raw occurrence of each deduped
 		// entry (raw 0 for `bogus`, raw 2 for `other_bogus`).
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'bogus', 'bogus', 'other_bogus' ] ]
+			array( 'ids' => array( 'bogus', 'bogus', 'other_bogus' ) )
 		);
 
 		$this->assertEmpty( $body['products'] );
@@ -722,7 +783,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// uniquely addressable for dedup. No products resolve from
 		// booleans, so the assertion is on `messages` count.
 		$body = $this->successful_lookup(
-			[ 'ids' => [ false, true, false ] ]
+			array( 'ids' => array( false, true, false ) )
 		);
 
 		$this->assertEmpty( $body['products'] );
@@ -745,7 +806,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ null, [], null, [ 'nested' => 'obj' ] ] ]
+			array( 'ids' => array( null, array(), null, array( 'nested' => 'obj' ) ) )
 		);
 
 		$this->assertEmpty( $body['products'] );
@@ -761,9 +822,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_missing_product_emits_not_found_message(): void {
 		// No seeded product — store API returns 404.
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_999' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_999' ) ) );
 
-		$this->assertEquals( [], $body['products'] );
+		$this->assertEquals( array(), $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
 		$this->assertEquals( 'not_found', $body['messages'][0]['code'] );
 		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
@@ -778,7 +839,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 300, 'Gamma' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_100', 'prod_200', 'prod_300' ] ]
+			array( 'ids' => array( 'prod_100', 'prod_200', 'prod_300' ) )
 		);
 
 		$this->assertCount( 2, $body['products'] );
@@ -796,7 +857,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// when there are no messages to report.
 		$this->seed_simple_product( 123 );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_123' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_123' ) ) );
 
 		$this->assertArrayNotHasKey( 'messages', $body );
 	}
@@ -808,16 +869,16 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	public function test_non_string_id_treated_as_not_found(): void {
 		// If an agent sends a number instead of a string, don't
 		// crash — just report it as not-found at the right path.
-		$body = $this->successful_lookup( [ 'ids' => [ 123 ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 123 ) ) );
 
-		$this->assertEquals( [], $body['products'] );
+		$this->assertEquals( array(), $body['products'] );
 		$this->assertCount( 1, $body['messages'] );
 		$this->assertEquals( '$.ids[0]', $body['messages'][0]['path'] );
 	}
 
 	public function test_id_string_with_no_numeric_portion_is_not_found(): void {
 		// "prod_abc" → stripped to "abc" → (int) → 0 → treated as miss.
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_abc' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_abc' ) ) );
 
 		$this->assertCount( 1, $body['messages'] );
 		$this->assertEquals( 'not_found', $body['messages'][0]['code'] );
@@ -830,7 +891,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// "123_default" → 123.
 		$this->seed_simple_product( 123, 'Widget' );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'var_123_default' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'var_123_default' ) ) );
 
 		$this->assertCount( 1, $body['products'] );
 		$this->assertEquals( 'prod_123', $body['products'][0]['id'] );
@@ -842,7 +903,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// This matches the plan's "lenient" v1 posture.
 		$this->seed_simple_product( 123, 'Widget' );
 
-		$body = $this->successful_lookup( [ 'ids' => [ '123' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( '123' ) ) );
 
 		$this->assertCount( 1, $body['products'] );
 		$this->assertEquals( 'prod_123', $body['products'][0]['id'] );
@@ -862,14 +923,26 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			789,
 			'T-Shirt',
-			[
-				[ 'id' => 101, 'price' => '1000', 'size' => 'Small' ],
-				[ 'id' => 102, 'price' => '1500', 'size' => 'Medium' ],
-				[ 'id' => 103, 'price' => '2000', 'size' => 'Large' ],
-			]
+			array(
+				array(
+					'id'    => 101,
+					'price' => '1000',
+					'size'  => 'Small',
+				),
+				array(
+					'id'    => 102,
+					'price' => '1500',
+					'size'  => 'Medium',
+				),
+				array(
+					'id'    => 103,
+					'price' => '2000',
+					'size'  => 'Large',
+				),
+			)
 		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_789' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_789' ) ) );
 
 		$this->assertCount( 1, $body['products'] );
 		$variants = $body['products'][0]['variants'];
@@ -890,28 +963,52 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			456,
 			'Long Sleeve Tee',
-			[
-				[ 'id' => 100, 'price' => '2500', 'size' => 'S' ],
-				[ 'id' => 200, 'price' => '3000', 'size' => 'M' ],
-				[ 'id' => 300, 'price' => '3500', 'size' => 'L' ],
-			]
+			array(
+				array(
+					'id'    => 100,
+					'price' => '2500',
+					'size'  => 'S',
+				),
+				array(
+					'id'    => 200,
+					'price' => '3000',
+					'size'  => 'M',
+				),
+				array(
+					'id'    => 300,
+					'price' => '3500',
+					'size'  => 'L',
+				),
+			)
 		);
 		// Mark "M" as the merchant default in the parent's attributes
 		// (mirrors Store API's `default: true` on the term).
-		$this->fake_store_api[456]['attributes'] = [
-			[
+		$this->fake_store_api[456]['attributes'] = array(
+			array(
 				'name'           => 'Size',
 				'taxonomy'       => 'pa_size',
 				'has_variations' => true,
-				'terms'          => [
-					[ 'name' => 'S', 'slug' => 'S', 'default' => false ],
-					[ 'name' => 'M', 'slug' => 'M', 'default' => true  ],
-					[ 'name' => 'L', 'slug' => 'L', 'default' => false ],
-				],
-			],
-		];
+				'terms'          => array(
+					array(
+						'name'    => 'S',
+						'slug'    => 'S',
+						'default' => false,
+					),
+					array(
+						'name'    => 'M',
+						'slug'    => 'M',
+						'default' => true,
+					),
+					array(
+						'name'    => 'L',
+						'slug'    => 'L',
+						'default' => false,
+					),
+				),
+			),
+		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_456' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_456' ) ) );
 
 		$variants = $body['products'][0]['variants'];
 		$this->assertCount( 3, $variants );
@@ -920,16 +1017,21 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// menu_order fallback.
 		$this->assertSame( 'var_200', $variants[0]['id'] );
 		$this->assertSame(
-			[ [ 'id' => 'prod_456', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_456',
+					'match' => 'featured',
+				),
+			),
 			$variants[0]['inputs']
 		);
 		// Siblings (S and L) emit with just `id` — no match field.
 		$this->assertSame(
-			[ [ 'id' => 'prod_456' ] ],
+			array( array( 'id' => 'prod_456' ) ),
 			$variants[1]['inputs']
 		);
 		$this->assertSame(
-			[ [ 'id' => 'prod_456' ] ],
+			array( array( 'id' => 'prod_456' ) ),
 			$variants[2]['inputs']
 		);
 	}
@@ -941,13 +1043,18 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// featured` via the sole-variant fall-through path.
 		$this->seed_simple_product( 600, 'Coffee Beans' );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_600' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_600' ) ) );
 
 		$variants = $body['products'][0]['variants'];
 		$this->assertCount( 1, $variants );
 		$this->assertSame( 'var_600_default', $variants[0]['id'] );
 		$this->assertSame(
-			[ [ 'id' => 'prod_600', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'prod_600',
+					'match' => 'featured',
+				),
+			),
 			$variants[0]['inputs']
 		);
 	}
@@ -973,21 +1080,38 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			500,
 			'Long Sleeve Tee',
-			[
-				[ 'id' => 510, 'price' => '2500', 'size' => 'S' ],
-				[ 'id' => 520, 'price' => '3000', 'size' => 'M' ],
-				[ 'id' => 530, 'price' => '3500', 'size' => 'L' ],
-			]
+			array(
+				array(
+					'id'    => 510,
+					'price' => '2500',
+					'size'  => 'S',
+				),
+				array(
+					'id'    => 520,
+					'price' => '3000',
+					'size'  => 'M',
+				),
+				array(
+					'id'    => 530,
+					'price' => '3500',
+					'size'  => 'L',
+				),
+			)
 		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'var_520' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'var_520' ) ) );
 
 		$variants = $body['products'][0]['variants'];
 		$this->assertCount( 1, $variants );
 		$this->assertSame( 'var_520_default', $variants[0]['id'] );
 		// Featured (not exact) — input and emitted ID differ textually.
 		$this->assertSame(
-			[ [ 'id' => 'var_520', 'match' => 'featured' ] ],
+			array(
+				array(
+					'id'    => 'var_520',
+					'match' => 'featured',
+				),
+			),
 			$variants[0]['inputs']
 		);
 	}
@@ -1005,16 +1129,32 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			890,
 			'Subscription Plan',
-			[
-				[ 'id' => 201, 'price' => '1000', 'size' => '1 month' ],
-				[ 'id' => 202, 'price' => '2500', 'size' => '3 months' ],
-				[ 'id' => 203, 'price' => '5000', 'size' => '6 months' ],
-				[ 'id' => 204, 'price' => '7500', 'size' => '1 year' ],
-			],
+			array(
+				array(
+					'id'    => 201,
+					'price' => '1000',
+					'size'  => '1 month',
+				),
+				array(
+					'id'    => 202,
+					'price' => '2500',
+					'size'  => '3 months',
+				),
+				array(
+					'id'    => 203,
+					'price' => '5000',
+					'size'  => '6 months',
+				),
+				array(
+					'id'    => 204,
+					'price' => '7500',
+					'size'  => '1 year',
+				),
+			),
 			'variable-subscription'
 		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_890' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_890' ) ) );
 
 		$this->assertCount( 1, $body['products'] );
 		$variants = $body['products'][0]['variants'];
@@ -1036,15 +1176,27 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			789,
 			'T-Shirt',
-			[
-				[ 'id' => 101, 'price' => '1000', 'size' => 'Small' ],
-				[ 'id' => 102, 'price' => '1500', 'size' => 'Medium' ],
-				[ 'id' => 103, 'price' => '2000', 'size' => 'Large' ],
-			]
+			array(
+				array(
+					'id'    => 101,
+					'price' => '1000',
+					'size'  => 'Small',
+				),
+				array(
+					'id'    => 102,
+					'price' => '1500',
+					'size'  => 'Medium',
+				),
+				array(
+					'id'    => 103,
+					'price' => '2000',
+					'size'  => 'Large',
+				),
+			)
 		);
-		$this->fake_store_api[ 102 ] = null;  // simulate 404 for this variation
+		$this->fake_store_api[102] = null;  // simulate 404 for this variation
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_789' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_789' ) ) );
 
 		$variants = $body['products'][0]['variants'];
 		$this->assertCount( 2, $variants );
@@ -1083,14 +1235,27 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			789,
 			'T-Shirt',
-			[
-				[ 'id' => 101, 'price' => '1000', 'size' => 'Small' ],
-				[ 'id' => 102, 'price' => '0', 'size' => 'Medium', 'is_purchasable' => false ],
-				[ 'id' => 103, 'price' => '2000', 'size' => 'Large' ],
-			]
+			array(
+				array(
+					'id'    => 101,
+					'price' => '1000',
+					'size'  => 'Small',
+				),
+				array(
+					'id'             => 102,
+					'price'          => '0',
+					'size'           => 'Medium',
+					'is_purchasable' => false,
+				),
+				array(
+					'id'    => 103,
+					'price' => '2000',
+					'size'  => 'Large',
+				),
+			)
 		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_789' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_789' ) ) );
 
 		$variants = $body['products'][0]['variants'];
 		$this->assertCount( 2, $variants, 'Unpurchasable variant 102 should be dropped.' );
@@ -1106,7 +1271,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// unpurchasable variation is an intentional exclusion and the
 		// emitted variants[] set is the complete-and-correct
 		// purchasable set. (#373 review)
-		$messages = $body['messages'] ?? [];
+		$messages = $body['messages'] ?? array();
 		$partial  = array_filter(
 			$messages,
 			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
@@ -1125,13 +1290,23 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			791,
 			'Broken Tee',
-			[
-				[ 'id' => 201, 'price' => '0', 'size' => 'Small',  'is_purchasable' => false ],
-				[ 'id' => 202, 'price' => '0', 'size' => 'Medium', 'is_purchasable' => false ],
-			]
+			array(
+				array(
+					'id'             => 201,
+					'price'          => '0',
+					'size'           => 'Small',
+					'is_purchasable' => false,
+				),
+				array(
+					'id'             => 202,
+					'price'          => '0',
+					'size'           => 'Medium',
+					'is_purchasable' => false,
+				),
+			)
 		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_791' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_791' ) ) );
 
 		$variants = $body['products'][0]['variants'];
 		$this->assertCount( 1, $variants, 'Synthesized default emitted as the sole variant.' );
@@ -1144,7 +1319,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// fallback fires WITHOUT triggering `partial_variants` — the
 		// degraded shape is itself the signal, and a warning would be
 		// redundant noise. (#373 review)
-		$messages = $body['messages'] ?? [];
+		$messages = $body['messages'] ?? array();
 		$partial  = array_filter(
 			$messages,
 			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
@@ -1157,39 +1332,52 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	 * Used by the cap tests to pack parent products with known counts.
 	 */
 	private function seed_variable_with_n_variations( int $parent_id, int $count ): void {
-		$variation_refs = [];
+		$variation_refs = array();
 		for ( $i = 0; $i < $count; $i++ ) {
-			$vid              = $parent_id * 10 + $i;  // stable per-parent offset
-			$variation_refs[] = [
+			$vid                          = $parent_id * 10 + $i;  // stable per-parent offset
+			$variation_refs[]             = array(
 				'id'         => $vid,
-				'attributes' => [ [ 'name' => 'N', 'value' => (string) $i ] ],
-			];
-			$this->fake_store_api[ $vid ] = [
+				'attributes' => array(
+					array(
+						'name'  => 'N',
+						'value' => (string) $i,
+					),
+				),
+			);
+			$this->fake_store_api[ $vid ] = array(
 				'id'                => $vid,
 				'name'              => 'Base',
 				'short_description' => '',
 				'is_in_stock'       => true,
-				'prices'            => [
+				'prices'            => array(
 					'price'               => '100',
 					'currency_code'       => 'USD',
 					'currency_minor_unit' => 2,
-				],
-				'attributes'        => [ [ 'name' => 'N', 'value' => (string) $i ] ],
-			];
+				),
+				'attributes'        => array(
+					array(
+						'name'  => 'N',
+						'value' => (string) $i,
+					),
+				),
+			);
 		}
 
-		$this->fake_store_api[ $parent_id ] = [
+		$this->fake_store_api[ $parent_id ] = array(
 			'id'                => $parent_id,
 			'name'              => 'Base',
 			'type'              => 'variable',
 			'short_description' => '',
-			'prices'            => [
+			'prices'            => array(
 				'price'         => '100',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '100', 'max_amount' => '100' ],
-			],
+				'price_range'   => array(
+					'min_amount' => '100',
+					'max_amount' => '100',
+				),
+			),
 			'variations'        => $variation_refs,
-		];
+		);
 	}
 
 	public function test_variations_capped_at_max_per_product(): void {
@@ -1202,7 +1390,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
 		$this->seed_variable_with_n_variations( 900, $cap + 10 );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_900' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_900' ) ) );
 
 		// Handler emits the first N variations in the order the parent
 		// product listed them — not all cap+10.
@@ -1229,13 +1417,13 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
 		$this->seed_variable_with_n_variations( 901, $cap );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_901' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_901' ) ) );
 
 		$this->assertCount( $cap, $body['products'][0]['variants'] );
 
 		// No messages at all — response is "clean" at the boundary.
 		$partial = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => 'partial_variants' === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 0, $partial );
@@ -1251,24 +1439,24 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// the lookup array drives a GET /wc/store/v1/products/{id}
 		// dispatch — cap it at MAX_IDS_PER_LOOKUP.
 		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
-		$ids = [];
+		$ids = array();
 		for ( $i = 0; $i < $cap + 1; $i++ ) {
 			$ids[] = 'prod_' . ( 1000 + $i );
 		}
 
 		// UCP REST conformance: over-cap is request_too_large, not invalid_input.
-		$this->error_lookup( [ 'ids' => $ids ], 400, 'request_too_large' );
+		$this->error_lookup( array( 'ids' => $ids ), 400, 'request_too_large' );
 	}
 
 	public function test_accepts_ids_array_at_exactly_the_limit(): void {
 		// Off-by-one check: exactly MAX_IDS_PER_LOOKUP should succeed.
 		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_IDS_PER_LOOKUP;
-		$ids = [];
+		$ids = array();
 		for ( $i = 0; $i < $cap; $i++ ) {
 			$ids[] = 'prod_' . ( 5000 + $i );
 		}
 
-		$body = $this->successful_lookup( [ 'ids' => $ids ] );
+		$body = $this->successful_lookup( array( 'ids' => $ids ) );
 
 		// None of the IDs are seeded, so all return not_found — but the
 		// handler didn't reject the input shape, which is the assertion.
@@ -1279,9 +1467,9 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Pausing syndication must cut off UCP catalog access. Routes
 		// stay registered (rewrite-flush discipline); the handler
 		// gates access here and returns a UCP-envelope error response.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
-		$this->error_lookup( [ 'ids' => [ 'prod_123' ] ], 503, 'ucp_disabled' );
+		$this->error_lookup( array( 'ids' => array( 'prod_123' ) ), 503, 'ucp_disabled' );
 	}
 
 	// ------------------------------------------------------------------
@@ -1304,14 +1492,14 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Root bug was observed on pierorocca.com with 1.3.0 — every
 		// real-product lookup 500'd until the normalize step was added
 		// in 1.3.1.
-		$prices = new stdClass();
+		$prices                      = new stdClass();
 		$prices->price               = '42400';
 		$prices->regular_price       = '42400';
 		$prices->currency_code       = 'EUR';
 		$prices->currency_minor_unit = 2;
 		$prices->price_range         = null;
 
-		$this->fake_store_api[ 2963 ] = [
+		$this->fake_store_api[2963] = array(
 			'id'                => 2963,
 			'name'              => 'Deposit',
 			'slug'              => 'deposit',
@@ -1319,11 +1507,11 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			'short_description' => '<p>A product that requires an up front deposit</p>',
 			'is_in_stock'       => true,
 			'prices'            => $prices,  // stdClass, not array — this is what triggers the bug
-			'categories'        => [],
-			'images'            => [],
-		];
+			'categories'        => array(),
+			'images'            => array(),
+		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_2963' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_2963' ) ) );
 
 		// Handler didn't fatal AND the price fields came through.
 		$this->assertCount( 1, $body['products'] );
@@ -1358,11 +1546,11 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// is not in `selected_products`, so the gate must reject it
 		// at `fetch_store_api_product` BEFORE rest_do_request is
 		// ever invoked for it.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 1 ],
-		];
+			'selected_products'      => array( 1 ),
+		);
 
 		// Seed both products in the fake Store API. If the gate
 		// were missing, both would resolve to product fixtures.
@@ -1370,7 +1558,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 99, 'Out-of-scope Widget' );
 
 		$body = $this->successful_lookup(
-			[ 'ids' => [ 'prod_1', 'prod_99' ] ]
+			array( 'ids' => array( 'prod_1', 'prod_99' ) )
 		);
 
 		// In-scope product resolves.
@@ -1419,14 +1607,26 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			100,
 			'Shirt',
-			[
-				[ 'id' => 101, 'price' => '1000', 'size' => 'S' ],
-				[ 'id' => 102, 'price' => '1500', 'size' => 'M' ],
-				[ 'id' => 103, 'price' => '2000', 'size' => 'L' ],
-			]
+			array(
+				array(
+					'id'    => 101,
+					'price' => '1000',
+					'size'  => 'S',
+				),
+				array(
+					'id'    => 102,
+					'price' => '1500',
+					'size'  => 'M',
+				),
+				array(
+					'id'    => 103,
+					'price' => '2000',
+					'size'  => 'L',
+				),
+			)
 		);
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_100' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_100' ) ) );
 
 		$this->assertCount( 3, $body['products'][0]['variants'] );
 
@@ -1447,14 +1647,26 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			200,
 			'Shoes',
-			[
-				[ 'id' => 201, 'price' => '5000', 'size' => 'S' ],
-				[ 'id' => 202, 'price' => '5500', 'size' => 'M' ],
-				[ 'id' => 203, 'price' => '6000', 'size' => 'L' ],
-			]
+			array(
+				array(
+					'id'    => 201,
+					'price' => '5000',
+					'size'  => 'S',
+				),
+				array(
+					'id'    => 202,
+					'price' => '5500',
+					'size'  => 'M',
+				),
+				array(
+					'id'    => 203,
+					'price' => '6000',
+					'size'  => 'L',
+				),
+			)
 		);
 
-		$body     = $this->successful_lookup( [ 'ids' => [ 'prod_200' ] ] );
+		$body     = $this->successful_lookup( array( 'ids' => array( 'prod_200' ) ) );
 		$variants = $body['products'][0]['variants'];
 
 		$this->assertCount( 3, $variants );
@@ -1469,7 +1681,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$cap = WC_AI_Storefront_UCP_REST_Controller::MAX_VARIATIONS_PER_PRODUCT;
 		$this->seed_variable_with_n_variations( 300, $cap );
 
-		$body = $this->successful_lookup( [ 'ids' => [ 'prod_300' ] ] );
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_300' ) ) );
 
 		$this->assertCount( $cap, $body['products'][0]['variants'] );
 
@@ -1490,14 +1702,22 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_product(
 			400,
 			'Hat',
-			[
-				[ 'id' => 401, 'price' => '800', 'size' => 'S' ],
-				[ 'id' => 402, 'price' => '900', 'size' => 'M' ],
-			]
+			array(
+				array(
+					'id'    => 401,
+					'price' => '800',
+					'size'  => 'S',
+				),
+				array(
+					'id'    => 402,
+					'price' => '900',
+					'size'  => 'M',
+				),
+			)
 		);
 
 		// First lookup.
-		$body1 = $this->successful_lookup( [ 'ids' => [ 'prod_400' ] ] );
+		$body1 = $this->successful_lookup( array( 'ids' => array( 'prod_400' ) ) );
 		$this->assertCount( 2, $body1['products'][0]['variants'] );
 		$this->assertSame( 1, $this->store_api_dispatch_counts[401] ?? 0 );
 		$this->assertSame( 1, $this->store_api_dispatch_counts[402] ?? 0 );
@@ -1505,7 +1725,7 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		// Second lookup — reset_request_cache() runs at the top of
 		// handle_catalog_lookup(), so variations are re-fetched.
 		// Each variation must be dispatched once more (total = 2), not N*2.
-		$body2 = $this->successful_lookup( [ 'ids' => [ 'prod_400' ] ] );
+		$body2 = $this->successful_lookup( array( 'ids' => array( 'prod_400' ) ) );
 		$this->assertCount( 2, $body2['products'][0]['variants'] );
 		$this->assertSame( 2, $this->store_api_dispatch_counts[401] ?? 0 );
 		$this->assertSame( 2, $this->store_api_dispatch_counts[402] ?? 0 );
@@ -1529,7 +1749,10 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 'Widget' );
 
 		$body = $this->successful_lookup(
-			array( 'ids' => array( 'prod_123' ), 'context' => array( 'currency' => 'EUR' ) )
+			array(
+				'ids'     => array( 'prod_123' ),
+				'context' => array( 'currency' => 'EUR' ),
+			)
 		);
 
 		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
@@ -1569,7 +1792,10 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 'Widget' );
 
 		$body = $this->successful_lookup(
-			array( 'ids' => array( 'prod_123' ), 'context' => array( 'currency' => 'JPY' ) )
+			array(
+				'ids'     => array( 'prod_123' ),
+				'context' => array( 'currency' => 'JPY' ),
+			)
 		);
 
 		$this->assertNotEmpty( $body['products'][0]['url'] ?? '' );
@@ -1602,23 +1828,31 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 			static function ( WP_REST_Request $req ) use ( &$selected_during_dispatch, &$captured_params ) {
 				$selected_during_dispatch[] = $GLOBALS['_mc_selected_currency'] ?? null;
 				$captured_params[]          = $req->get_param( 'currency' );
-				$response                   = new \WP_REST_Response( array(
-					'id'     => 1,
-					'name'   => 'Widget',
-					'slug'   => 'widget',
-					'type'   => 'simple',
-					'prices' => array( 'price' => '1999', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
-				) );
+				$response                   = new \WP_REST_Response(
+					array(
+						'id'     => 1,
+						'name'   => 'Widget',
+						'slug'   => 'widget',
+						'type'   => 'simple',
+						'prices' => array(
+							'price'               => '1999',
+							'currency_code'       => 'EUR',
+							'currency_minor_unit' => 2,
+						),
+					)
+				);
 				$response->set_status( 200 );
 				return $response;
 			}
 		);
 
 		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/lookup' );
-		$request->set_body_params( array(
-			'context' => array( 'currency' => 'EUR' ),
-			'ids'     => array( 'prod_1', 'prod_2', 'prod_3' ),
-		) );
+		$request->set_body_params(
+			array(
+				'context' => array( 'currency' => 'EUR' ),
+				'ids'     => array( 'prod_1', 'prod_2', 'prod_3' ),
+			)
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_lookup( $request );
@@ -1661,7 +1895,10 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 'Widget' );
 
 		$body = $this->successful_lookup(
-			array( 'ids' => array( 'prod_123' ), 'context' => array( 'currency' => 'XYZ' ) )
+			array(
+				'ids'     => array( 'prod_123' ),
+				'context' => array( 'currency' => 'XYZ' ),
+			)
 		);
 
 		$found = false;
@@ -1672,5 +1909,4 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		}
 		$this->assertTrue( $found, 'unaccepted currency must emit currency_conversion_unsupported on lookup' );
 	}
-
 }

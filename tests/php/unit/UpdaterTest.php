@@ -141,8 +141,8 @@ class UpdaterTest extends \PHPUnit\Framework\TestCase {
 		$api = new class() {
 			const RELEASE_FILTER_ALL = 3;
 
-			public $enable_release_assets_calls       = array();
-			public $set_release_version_filter_calls  = array();
+			public $enable_release_assets_calls      = array();
+			public $set_release_version_filter_calls = array();
 
 			// phpcs:ignore WordPress.NamingConventions.ValidFunctionName
 			public function enableReleaseAssets( $pattern ) {

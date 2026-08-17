@@ -29,10 +29,10 @@ class JsonLdWebsiteTest extends \PHPUnit\Framework\TestCase {
 
 		$this->jsonld = new WC_AI_Storefront_JsonLd();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		// No cached data by default; caching is a no-op.
 		Functions\when( 'get_transient' )->justReturn( false );
@@ -45,7 +45,7 @@ class JsonLdWebsiteTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -74,7 +74,7 @@ class JsonLdWebsiteTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_skips_when_plugin_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		$this->assertSame( '', $this->capture() );
 	}
 
@@ -113,12 +113,12 @@ class JsonLdWebsiteTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_served_from_transient_cache(): void {
-		$cached = [
-			'@context' => 'https://schema.org',
-			'@type'    => 'WebSite',
-			'url'      => 'https://cached.example.com/',
-			'potentialAction' => [],
-		];
+		$cached = array(
+			'@context'        => 'https://schema.org',
+			'@type'           => 'WebSite',
+			'url'             => 'https://cached.example.com/',
+			'potentialAction' => array(),
+		);
 		Functions\when( 'get_transient' )->justReturn( $cached );
 
 		$data = $this->decode_output();

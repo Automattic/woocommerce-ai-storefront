@@ -77,8 +77,8 @@ class UpdateSettingsStaticCacheHarness {
 		if ( null !== self::$settings_cache ) {
 			return self::$settings_cache;
 		}
-		$settings             = get_option( self::SETTINGS_OPTION, [] );
-		self::$settings_cache = is_array( $settings ) ? $settings : [];
+		$settings             = get_option( self::SETTINGS_OPTION, array() );
+		self::$settings_cache = is_array( $settings ) ? $settings : array();
 		return self::$settings_cache;
 	}
 }
@@ -90,17 +90,17 @@ class UpdateSettingsStaticCacheTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array{0: string, 1: string}>
 	 */
-	public static array $cache_delete_calls = [];
+	public static array $cache_delete_calls = array();
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		self::$cache_delete_calls                         = [];
+		self::$cache_delete_calls                         = array();
 		UpdateSettingsStaticCacheHarness::$settings_cache = null;
 
 		Functions\when( 'wp_cache_delete' )->alias(
 			static function ( $key, $group = '' ) {
-				UpdateSettingsStaticCacheTest::$cache_delete_calls[] = [ $key, $group ];
+				UpdateSettingsStaticCacheTest::$cache_delete_calls[] = array( $key, $group );
 				return true;
 			}
 		);
@@ -121,18 +121,18 @@ class UpdateSettingsStaticCacheTest extends \PHPUnit\Framework\TestCase {
 		// Pre-populate the static cache with a stale value. Pre-fix,
 		// update_settings() would return this stale cached value from
 		// get_settings() instead of the fresh DB value.
-		UpdateSettingsStaticCacheHarness::$settings_cache = [
+		UpdateSettingsStaticCacheHarness::$settings_cache = array(
 			'product_selection_mode' => 'all',
 			'enabled'                => 'yes',
-		];
+		);
 
 		// The DB has a different (newer) value — simulates a concurrent
 		// write or a value saved before the cache was primed.
 		Functions\when( 'get_option' )->justReturn(
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
 				'enabled'                => 'no',
-			]
+			)
 		);
 
 		$result = UpdateSettingsStaticCacheHarness::run_cache_reset_and_read();
@@ -146,12 +146,12 @@ class UpdateSettingsStaticCacheTest extends \PHPUnit\Framework\TestCase {
 	public function test_update_settings_static_cache_is_null_before_get_settings_is_called(): void {
 		// Verify that the cache-reset step actually nulls the cache so
 		// a subsequent get_settings() cannot take the early-return path.
-		UpdateSettingsStaticCacheHarness::$settings_cache = [
+		UpdateSettingsStaticCacheHarness::$settings_cache = array(
 			'product_selection_mode' => 'selected',
-		];
+		);
 
 		Functions\when( 'get_option' )->justReturn(
-			[ 'product_selection_mode' => 'all' ]
+			array( 'product_selection_mode' => 'all' )
 		);
 
 		// After run_cache_reset_and_read() the cache is repopulated with
@@ -163,7 +163,7 @@ class UpdateSettingsStaticCacheTest extends \PHPUnit\Framework\TestCase {
 	public function test_update_settings_calls_wp_cache_delete_before_reading(): void {
 		// wp_cache_delete must be called so a persistent object cache
 		// (Redis / Memcached) deployment doesn't serve a stale value.
-		Functions\when( 'get_option' )->justReturn( [] );
+		Functions\when( 'get_option' )->justReturn( array() );
 
 		UpdateSettingsStaticCacheHarness::run_cache_reset_and_read();
 
@@ -175,11 +175,11 @@ class UpdateSettingsStaticCacheTest extends \PHPUnit\Framework\TestCase {
 	public function test_update_settings_handles_empty_db_option(): void {
 		// When the DB has no stored option (fresh install), get_settings()
 		// must return an empty array after the cache is cleared.
-		UpdateSettingsStaticCacheHarness::$settings_cache = [
+		UpdateSettingsStaticCacheHarness::$settings_cache = array(
 			'product_selection_mode' => 'by_taxonomy',
-		];
+		);
 
-		Functions\when( 'get_option' )->justReturn( [] );
+		Functions\when( 'get_option' )->justReturn( array() );
 
 		$result = UpdateSettingsStaticCacheHarness::run_cache_reset_and_read();
 		$this->assertIsArray( $result );

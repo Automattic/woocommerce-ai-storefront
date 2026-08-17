@@ -19,7 +19,7 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		// into other tests that assume syndication is enabled. Mirrors the
 		// reset discipline in UcpCatalogSearchTest. Also clear the Logger's
 		// cached is_enabled() so its apply_filters() stub doesn't bleed.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		WC_AI_Storefront_Logger::reset_cache();
 		Monkey\tearDown();
 		parent::tearDown();
@@ -28,13 +28,13 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 	public function test_get_currency_from_context_extracts_valid_iso4217(): void {
 		$this->assertSame(
 			'EUR',
-			WC_AI_Storefront_UCP_REST_Controller::get_currency_from_context( [ 'currency' => 'eur' ] )
+			WC_AI_Storefront_UCP_REST_Controller::get_currency_from_context( array( 'currency' => 'eur' ) )
 		);
 	}
 
 	public function test_get_currency_from_context_returns_null_for_gibberish(): void {
 		$this->assertNull(
-			WC_AI_Storefront_UCP_REST_Controller::get_currency_from_context( [ 'currency' => 'gibberish' ] )
+			WC_AI_Storefront_UCP_REST_Controller::get_currency_from_context( array( 'currency' => 'gibberish' ) )
 		);
 		$this->assertNull( WC_AI_Storefront_UCP_REST_Controller::get_currency_from_context( null ) );
 	}
@@ -47,16 +47,20 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		// is stubbed to return its 2nd arg so WC_AI_Storefront_Logger's
 		// is_enabled() resolves to false and debug() short-circuits without
 		// touching WordPress.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$result     = $controller->run_catalog_search(
-			[
-				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+			array(
+				'agent_data'       => array(
+					'name'        => 'gibberish',
+					'raw_host'    => '',
+					'source_host' => '',
+				),
 				'ucp_agent_header' => '',
-			]
+			)
 		);
 
 		$this->assertSame( 503, $result['status'] );
@@ -67,17 +71,21 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		// Parity with the search 503 test: the disabled-syndication gate
 		// short-circuits before any ids validation or Store API fetch. Same
 		// $test_settings + apply_filters stubbing rationale as above.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$result     = $controller->run_catalog_lookup(
-			[
-				'ids'              => [ 'prod_1' ],
-				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+			array(
+				'ids'              => array( 'prod_1' ),
+				'agent_data'       => array(
+					'name'        => 'gibberish',
+					'raw_host'    => '',
+					'source_host' => '',
+				),
 				'ucp_agent_header' => '',
-			]
+			)
 		);
 
 		$this->assertSame( 503, $result['status'] );
@@ -91,17 +99,21 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		// that helper response's exact status (the ucp_catalog_error_response
 		// default, 400) — not the 200 success path. apply_filters is stubbed
 		// so the Logger debug() calls on this path short-circuit.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$result     = $controller->run_catalog_lookup(
-			[
+			array(
 				'ids'              => 'gibberish',
-				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'agent_data'       => array(
+					'name'        => 'gibberish',
+					'raw_host'    => '',
+					'source_host' => '',
+				),
 				'ucp_agent_header' => '',
-			]
+			)
 		);
 
 		$this->assertSame( 400, $result['status'] );
@@ -115,7 +127,7 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		// envelope + (function_exists-guarded) get_woocommerce_currency
 		// fallback, so no WC stubbing is needed beyond apply_filters (which
 		// keeps WC_AI_Storefront_Logger::debug() off the WordPress path).
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		// ucp_checkout_error_response calls get_woocommerce_currency under a
 		// function_exists guard. In the full suite another test mocks that
@@ -126,12 +138,21 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$result     = $controller->run_checkout_create(
-			[
-				'line_items'       => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+			array(
+				'line_items'       => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
 				'context'          => null,
-				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'agent_data'       => array(
+					'name'        => 'gibberish',
+					'raw_host'    => '',
+					'source_host' => '',
+				),
 				'ucp_agent_header' => '',
-			]
+			)
 		);
 
 		$this->assertSame( 503, $result['status'] );
@@ -146,7 +167,7 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		// default, 400) — not the 200/201 success path. This validation runs
 		// before resolve_agent_host / process_line_item, so no WC stubbing is
 		// needed beyond apply_filters (Logger short-circuit).
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		// See the 503 test: stub get_woocommerce_currency so the error
 		// helper's function_exists-guarded call resolves under the full suite.
@@ -155,12 +176,16 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$result     = $controller->run_checkout_create(
-			[
-				'line_items'       => [],
+			array(
+				'line_items'       => array(),
 				'context'          => null,
-				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'agent_data'       => array(
+					'name'        => 'gibberish',
+					'raw_host'    => '',
+					'source_host' => '',
+				),
 				'ucp_agent_header' => '',
-			]
+			)
 		);
 
 		$this->assertSame( 400, $result['status'] );
@@ -171,17 +196,21 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 		// The over-limit check (>100 ids) is a neutral-core guard that runs
 		// before any Store API dispatch. Pinned here so a refactor that moves
 		// it into the REST-only handler would be caught immediately.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$result     = $controller->run_catalog_lookup(
-			[
+			array(
 				'ids'              => array_fill( 0, 101, 'prod_gibberish' ),
-				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'agent_data'       => array(
+					'name'        => 'gibberish',
+					'raw_host'    => '',
+					'source_host' => '',
+				),
 				'ucp_agent_header' => '',
-			]
+			)
 		);
 
 		$this->assertSame( 400, $result['status'] );
@@ -191,19 +220,30 @@ class UcpNeutralCoresTest extends \PHPUnit\Framework\TestCase {
 	public function test_run_checkout_create_returns_400_for_over_limit_line_items(): void {
 		// Parity with the lookup over-limit test: the >100 line_items check is
 		// also a neutral-core guard. Pinned here so it stays in both transports.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		WC_AI_Storefront_Logger::reset_cache();
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$result     = $controller->run_checkout_create(
-			[
-				'line_items'       => array_fill( 0, 101, [ 'item' => [ 'id' => 'prod_gibberish' ], 'quantity' => 1 ] ),
+			array(
+				'line_items'       => array_fill(
+					0,
+					101,
+					array(
+						'item'     => array( 'id' => 'prod_gibberish' ),
+						'quantity' => 1,
+					)
+				),
 				'context'          => null,
-				'agent_data'       => [ 'name' => 'gibberish', 'raw_host' => '', 'source_host' => '' ],
+				'agent_data'       => array(
+					'name'        => 'gibberish',
+					'raw_host'    => '',
+					'source_host' => '',
+				),
 				'ucp_agent_header' => '',
-			]
+			)
 		);
 
 		$this->assertSame( 400, $result['status'] );

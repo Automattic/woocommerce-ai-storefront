@@ -18,11 +18,11 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		parent::tearDown();
 	}
 
@@ -31,17 +31,17 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_by_taxonomy_mode_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'by_taxonomy' ] );
+		WC_AI_Storefront::update_settings( array( 'product_selection_mode' => 'by_taxonomy' ) );
 		$this->assertSame( 'by_taxonomy', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
 	public function test_all_mode_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'all' ] );
+		WC_AI_Storefront::update_settings( array( 'product_selection_mode' => 'all' ) );
 		$this->assertSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
 	public function test_selected_mode_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'selected' ] );
+		WC_AI_Storefront::update_settings( array( 'product_selection_mode' => 'selected' ) );
 		$this->assertSame( 'selected', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
@@ -53,17 +53,17 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_legacy_categories_mode_is_normalized_to_by_taxonomy_on_write(): void {
-		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'categories' ] );
+		WC_AI_Storefront::update_settings( array( 'product_selection_mode' => 'categories' ) );
 		$this->assertSame( 'by_taxonomy', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
 	public function test_legacy_tags_mode_is_normalized_to_by_taxonomy_on_write(): void {
-		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'tags' ] );
+		WC_AI_Storefront::update_settings( array( 'product_selection_mode' => 'tags' ) );
 		$this->assertSame( 'by_taxonomy', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
 	public function test_legacy_brands_mode_is_normalized_to_by_taxonomy_on_write(): void {
-		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'brands' ] );
+		WC_AI_Storefront::update_settings( array( 'product_selection_mode' => 'brands' ) );
 		$this->assertSame( 'by_taxonomy', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
@@ -75,14 +75,14 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_legacy_mode_normalization_preserves_selected_categories(): void {
 		WC_AI_Storefront::update_settings(
-			[
+			array(
 				'product_selection_mode' => 'categories',
-				'selected_categories'    => [ 3, 7 ],
-			]
+				'selected_categories'    => array( 3, 7 ),
+			)
 		);
 		$result = WC_AI_Storefront::get_settings();
 		$this->assertSame( 'by_taxonomy', $result['product_selection_mode'] );
-		$this->assertSame( [ 3, 7 ], $result['selected_categories'] );
+		$this->assertSame( array( 3, 7 ), $result['selected_categories'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -90,7 +90,7 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_unknown_mode_falls_back_to_all(): void {
-		WC_AI_Storefront::update_settings( [ 'product_selection_mode' => 'invalid_mode' ] );
+		WC_AI_Storefront::update_settings( array( 'product_selection_mode' => 'invalid_mode' ) );
 		$this->assertSame( 'all', WC_AI_Storefront::get_settings()['product_selection_mode'] );
 	}
 
@@ -99,17 +99,17 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_update_merges_with_existing_settings(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 3, 7 ],
-		];
+			'selected_categories'    => array( 3, 7 ),
+		);
 
-		WC_AI_Storefront::update_settings( [ 'selected_tags' => [ 5 ] ] );
+		WC_AI_Storefront::update_settings( array( 'selected_tags' => array( 5 ) ) );
 
 		$result = WC_AI_Storefront::get_settings();
 		$this->assertSame( 'by_taxonomy', $result['product_selection_mode'] );
-		$this->assertSame( [ 3, 7 ], $result['selected_categories'] );
-		$this->assertSame( [ 5 ], $result['selected_tags'] );
+		$this->assertSame( array( 3, 7 ), $result['selected_categories'] );
+		$this->assertSame( array( 5 ), $result['selected_tags'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -125,12 +125,12 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	// safety-net contract.
 
 	public function test_allow_unknown_ucp_agents_yes_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'allow_unknown_ucp_agents' => 'yes' ] );
+		WC_AI_Storefront::update_settings( array( 'allow_unknown_ucp_agents' => 'yes' ) );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['allow_unknown_ucp_agents'] );
 	}
 
 	public function test_allow_unknown_ucp_agents_no_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'allow_unknown_ucp_agents' => 'no' ] );
+		WC_AI_Storefront::update_settings( array( 'allow_unknown_ucp_agents' => 'no' ) );
 		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['allow_unknown_ucp_agents'] );
 	}
 
@@ -145,18 +145,18 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	 * @dataProvider allow_unknown_ucp_agents_invalid_value_provider
 	 */
 	public function test_allow_unknown_ucp_agents_invalid_value_falls_back_to_no( $value ): void {
-		WC_AI_Storefront::update_settings( [ 'allow_unknown_ucp_agents' => $value ] );
+		WC_AI_Storefront::update_settings( array( 'allow_unknown_ucp_agents' => $value ) );
 		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['allow_unknown_ucp_agents'] );
 	}
 
 	public static function allow_unknown_ucp_agents_invalid_value_provider(): array {
-		return [
-			'arbitrary string' => [ 'maybe' ],
-			'boolean true'     => [ true ],
-			'integer 1'        => [ 1 ],
-			'string 1'         => [ '1' ],
-			'uppercase YES'    => [ 'YES' ],
-			'truthy text'      => [ 'true' ],
+		return array(
+			'arbitrary string' => array( 'maybe' ),
+			'boolean true'     => array( true ),
+			'integer 1'        => array( 1 ),
+			'string 1'         => array( '1' ),
+			'uppercase YES'    => array( 'YES' ),
+			'truthy text'      => array( 'true' ),
 			// Regression test for the bug Copilot caught in PR #100
 			// review: when the key is explicit `null`, the earlier
 			// inline `??` + ternary shape had a hole — the in_array
@@ -164,8 +164,8 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 			// the true-branch returned the raw `null`. The current
 			// shape (assign-coalesce-then-validate) closes the hole.
 			// Pin it.
-			'explicit null'    => [ null ],
-		];
+			'explicit null'    => array( null ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -183,18 +183,18 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 		// With no overrides, get_settings() must surface the key — a
 		// missing key would make the MCP gate read it as falsy and
 		// silently disable the transport on fresh installs.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		$this->assertArrayHasKey( 'mcp_enabled', WC_AI_Storefront::get_settings() );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['mcp_enabled'] );
 	}
 
 	public function test_mcp_enabled_yes_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'mcp_enabled' => 'yes' ] );
+		WC_AI_Storefront::update_settings( array( 'mcp_enabled' => 'yes' ) );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['mcp_enabled'] );
 	}
 
 	public function test_mcp_enabled_no_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'mcp_enabled' => 'no' ] );
+		WC_AI_Storefront::update_settings( array( 'mcp_enabled' => 'no' ) );
 		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['mcp_enabled'] );
 	}
 
@@ -207,20 +207,20 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	 * @dataProvider mcp_enabled_invalid_value_provider
 	 */
 	public function test_mcp_enabled_invalid_value_falls_back_to_yes( $value ): void {
-		WC_AI_Storefront::update_settings( [ 'mcp_enabled' => $value ] );
+		WC_AI_Storefront::update_settings( array( 'mcp_enabled' => $value ) );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['mcp_enabled'] );
 	}
 
 	public static function mcp_enabled_invalid_value_provider(): array {
-		return [
-			'arbitrary string' => [ 'maybe' ],
-			'boolean true'     => [ true ],
-			'integer 1'        => [ 1 ],
-			'string 1'         => [ '1' ],
-			'uppercase YES'    => [ 'YES' ],
-			'truthy text'      => [ 'true' ],
-			'explicit null'    => [ null ],
-		];
+		return array(
+			'arbitrary string' => array( 'maybe' ),
+			'boolean true'     => array( true ),
+			'integer 1'        => array( 1 ),
+			'string 1'         => array( '1' ),
+			'uppercase YES'    => array( 'YES' ),
+			'truthy text'      => array( 'true' ),
+			'explicit null'    => array( null ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -239,19 +239,19 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 		// With no overrides, get_settings() must surface the key — a
 		// missing key would make the feed gate read it as falsy and
 		// silently 404 the endpoint on fresh installs.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		$this->assertArrayHasKey( 'products_json_enabled', WC_AI_Storefront::get_settings() );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
 	}
 
 	public function test_products_json_enabled_defaults_to_yes_and_validates(): void {
-		WC_AI_Storefront::update_settings( [ 'enabled' => 'yes' ] );
+		WC_AI_Storefront::update_settings( array( 'enabled' => 'yes' ) );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
 
-		WC_AI_Storefront::update_settings( [ 'products_json_enabled' => 'no' ] );
+		WC_AI_Storefront::update_settings( array( 'products_json_enabled' => 'no' ) );
 		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['products_json_enabled'] );
 
-		WC_AI_Storefront::update_settings( [ 'products_json_enabled' => 'gibberish' ] );
+		WC_AI_Storefront::update_settings( array( 'products_json_enabled' => 'gibberish' ) );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
 	}
 
@@ -262,20 +262,20 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	 * @dataProvider products_json_enabled_invalid_value_provider
 	 */
 	public function test_products_json_enabled_invalid_value_falls_back_to_yes( $value ): void {
-		WC_AI_Storefront::update_settings( [ 'products_json_enabled' => $value ] );
+		WC_AI_Storefront::update_settings( array( 'products_json_enabled' => $value ) );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['products_json_enabled'] );
 	}
 
 	public static function products_json_enabled_invalid_value_provider(): array {
-		return [
-			'arbitrary string' => [ 'maybe' ],
-			'boolean true'     => [ true ],
-			'integer 1'        => [ 1 ],
-			'string 1'         => [ '1' ],
-			'uppercase YES'    => [ 'YES' ],
-			'truthy text'      => [ 'true' ],
-			'explicit null'    => [ null ],
-		];
+		return array(
+			'arbitrary string' => array( 'maybe' ),
+			'boolean true'     => array( true ),
+			'integer 1'        => array( 1 ),
+			'string 1'         => array( '1' ),
+			'uppercase YES'    => array( 'YES' ),
+			'truthy text'      => array( 'true' ),
+			'explicit null'    => array( null ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -291,7 +291,7 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	// from the persisted $clean array.
 
 	public function test_indexnow_enabled_present_in_defaults(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		$this->assertArrayHasKey( 'indexnow_enabled', WC_AI_Storefront::get_settings() );
 		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
 	}
@@ -301,12 +301,12 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 		// survive the production settings-update path unchanged. Prior to
 		// adding indexnow_enabled to the $clean array in update_settings(), a
 		// save would silently revert it to the get_settings() default 'yes'.
-		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => 'no' ] );
+		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'no' ) );
 		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
 	}
 
 	public function test_indexnow_enabled_yes_is_preserved(): void {
-		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => 'yes' ] );
+		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'yes' ) );
 		$this->assertSame( 'yes', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
 	}
 
@@ -317,20 +317,20 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	 * @dataProvider indexnow_enabled_invalid_value_provider
 	 */
 	public function test_indexnow_enabled_invalid_value_falls_back_to_no( $value ): void {
-		WC_AI_Storefront::update_settings( [ 'indexnow_enabled' => $value ] );
+		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => $value ) );
 		$this->assertSame( 'no', WC_AI_Storefront::get_settings()['indexnow_enabled'] );
 	}
 
 	public static function indexnow_enabled_invalid_value_provider(): array {
-		return [
-			'arbitrary string' => [ 'gibberish' ],
-			'boolean true'     => [ true ],
-			'integer 1'        => [ 1 ],
-			'string 1'         => [ '1' ],
-			'uppercase YES'    => [ 'YES' ],
-			'truthy text'      => [ 'true' ],
-			'explicit null'    => [ null ],
-		];
+		return array(
+			'arbitrary string' => array( 'gibberish' ),
+			'boolean true'     => array( true ),
+			'integer 1'        => array( 1 ),
+			'string 1'         => array( '1' ),
+			'uppercase YES'    => array( 'YES' ),
+			'truthy text'      => array( 'true' ),
+			'explicit null'    => array( null ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -344,8 +344,8 @@ class UpdateSettingsSanitizationTest extends \PHPUnit\Framework\TestCase {
 	// untouched (the stub's $test_settings never gains an indexnow_key key).
 
 	public function test_update_settings_does_not_write_indexnow_key(): void {
-		WC_AI_Storefront::$test_settings = [];
-		WC_AI_Storefront::update_settings( [] );
+		WC_AI_Storefront::$test_settings = array();
+		WC_AI_Storefront::update_settings( array() );
 		$result = WC_AI_Storefront::get_settings();
 		$this->assertArrayNotHasKey( 'indexnow_key', $result );
 	}

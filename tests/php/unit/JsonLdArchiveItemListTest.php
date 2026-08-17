@@ -30,17 +30,17 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 
 		// Plugin enabled by default; tests that exercise the disabled path
 		// override WC_AI_Storefront::$test_settings directly.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		// Stub common WP/WC functions required by the method under test.
 		Functions\when( 'get_transient' )->justReturn( false );
 		Functions\when( 'set_transient' )->justReturn( true );
 		Functions\when( 'get_query_var' )->justReturn( 0 ); // page 1
 		Functions\when( 'get_option' )->justReturn( 12 ); // posts_per_page
-		Functions\when( 'wc_get_products' )->justReturn( [] );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Test Store' );
 		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
 		Functions\when( 'home_url' )->alias( static fn( $path = '' ) => 'https://example.com' . $path );
@@ -98,10 +98,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 
 	private function enable_shop_page(): void {
 		Functions\when( 'is_shop' )->justReturn( true );
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 	}
 
 	// -------------------------------------------------------------------------
@@ -109,7 +109,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	// -------------------------------------------------------------------------
 
 	public function test_skips_when_plugin_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		$this->assertSame( '', $this->capture() );
 	}
 
@@ -128,7 +128,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_front_page' )->justReturn( true );
 
 		$product = $this->make_product( 1, 'Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$this->assertStringContainsString( '"@type":"ItemList"', $this->capture() );
 	}
@@ -146,7 +146,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// All archive predicates remain false (setUp default).
 
 		$product = $this->make_product( 1, 'Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$this->assertSame( '', $this->capture() );
 	}
@@ -165,14 +165,14 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_shop' )->justReturn( true );
 
 		$product = $this->make_product( 99, 'Widget' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		// 'selected' mode with no selected_products → every product is out-of-scope.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [],
-		];
+			'selected_products'      => array(),
+		);
 
 		$this->assertSame( '', $this->capture() );
 	}
@@ -185,7 +185,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->enable_shop_page();
 
 		$product = $this->make_product( 80, 'Bad Encoding Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 		Functions\when( 'wp_json_encode' )->justReturn( false );
 
 		$this->assertSame( '', $this->capture() );
@@ -202,14 +202,14 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 
 		$kept    = $this->make_product( 50, 'Kept Hoodie' );
 		$dropped = $this->make_product( 99, 'Dropped Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $kept, $dropped ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $kept, $dropped ) );
 
 		// 'selected' mode: only product 50 is in scope; 99 is filtered out.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 50 ],
-		];
+			'selected_products'      => array( 50 ),
+		);
 
 		$output = $this->capture();
 		$data   = $this->decode_output( $output );
@@ -228,7 +228,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->enable_shop_page();
 
 		$product = $this->make_product( 60, 'All-Mode Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$output = $this->capture();
 		$data   = $this->decode_output( $output );
@@ -245,7 +245,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_shop' )->justReturn( true );
 		Functions\when( 'is_front_page' )->justReturn( true );
 		Functions\when( 'get_permalink' )->alias( static fn( $id ) => "https://example.com/product/{$id}/" );
-		Functions\when( 'wc_get_products' )->justReturn( [ $this->make_product( 101, 'Field Boot' ) ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->make_product( 101, 'Field Boot' ) ) );
 
 		$output = $this->capture();
 		$data   = $this->decode_output( $output );
@@ -265,7 +265,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	public function test_product_without_permalink_is_skipped(): void {
 		Functions\when( 'is_shop' )->justReturn( true );
 		Functions\when( 'get_permalink' )->justReturn( '' ); // unresolvable
-		Functions\when( 'wc_get_products' )->justReturn( [ $this->make_product( 102, 'No Link' ) ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->make_product( 102, 'No Link' ) ) );
 		$this->assertSame( '', $this->capture() ); // empty $items → no ItemList
 	}
 
@@ -273,7 +273,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->enable_shop_page();
 
 		$product = $this->make_product( 1, 'Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$output = $this->capture();
 		$this->assertStringContainsString( '<script type="application/ld+json">', $output );
@@ -299,22 +299,22 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_itemlist_emitted_on_category_page(): void {
-		$term           = new stdClass();
-		$term->term_id  = 7;
-		$term->slug     = 'hoodies';
-		$term->name     = 'Hoodies';
-		$term->count    = 42; // total products in category (stored in term row).
+		$term          = new stdClass();
+		$term->term_id = 7;
+		$term->slug    = 'hoodies';
+		$term->name    = 'Hoodies';
+		$term->count   = 42; // total products in category (stored in term row).
 
 		Functions\when( 'is_product_category' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn( $term );
 		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/product-category/hoodies/' );
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		$product = $this->make_product( 2, 'Zip Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$output = $this->capture();
 		$this->assertStringContainsString( 'ItemList', $output );
@@ -343,13 +343,13 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 			static fn( $key, $default = '' ) => 'post_type' === $key ? 'product' : 0
 		);
 		Functions\when( 'get_search_query' )->justReturn( 'hoodie' );
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		$product = $this->make_product( 3, 'Classic Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$output = $this->capture();
 		$data   = $this->decode_output( $output );
@@ -376,8 +376,8 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// assert the search branch touches neither. (A bare ->never() does not
 		// reliably override the setUp() when()-stub in Brain\Monkey, so capture
 		// the calls explicitly.)
-		$read_keys    = [];
-		$written_keys = [];
+		$read_keys    = array();
+		$written_keys = array();
 		Functions\when( 'get_transient' )->alias(
 			static function ( $key ) use ( &$read_keys ) {
 				$read_keys[] = $key;
@@ -392,12 +392,12 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$product = $this->make_product( 7, 'Search Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		// Still emits the block — it's just computed fresh every time.
 		$this->assertStringContainsString( 'ItemList', $this->capture() );
-		$this->assertSame( [], $written_keys, 'search page must not write a transient' );
-		$this->assertSame( [], $read_keys, 'search page must not read a transient' );
+		$this->assertSame( array(), $written_keys, 'search page must not write a transient' );
+		$this->assertSame( array(), $read_keys, 'search page must not read a transient' );
 	}
 
 	public function test_itemlist_skipped_on_non_product_search_page(): void {
@@ -410,7 +410,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_search_query' )->justReturn( 'hoodie' );
 
 		$product = $this->make_product( 4, 'Should Not Appear' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$this->assertSame( '', $this->capture() );
 	}
@@ -420,19 +420,19 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	// -------------------------------------------------------------------------
 
 	public function test_cache_hit_returns_stored_data(): void {
-		$cached = [
+		$cached = array(
 			'@context'        => 'https://schema.org',
 			'@type'           => 'ItemList',
 			'numberOfItems'   => 1,
-			'itemListElement' => [
-				[
+			'itemListElement' => array(
+				array(
 					'@type'    => 'ListItem',
 					'position' => 1,
 					'name'     => 'Cached Hoodie',
 					'url'      => 'https://example.com/?p=5',
-				],
-			],
-		];
+				),
+			),
+		);
 
 		Functions\when( 'is_shop' )->justReturn( true );
 		// Override setUp()'s get_transient stub: return cached data.
@@ -454,7 +454,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 
 		$p1 = $this->make_product( 10, 'Alpha' );
 		$p2 = $this->make_product( 11, 'Beta' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $p1, $p2 ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $p1, $p2 ) );
 
 		$output = $this->capture();
 		$data   = $this->decode_output( $output );
@@ -469,13 +469,13 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// not from a redundant full-ID count query. This branch had no coverage.
 		$this->enable_shop_page();
 
-		$prev_query                     = $GLOBALS['wp_query'] ?? null;
-		$GLOBALS['wp_query']            = new \stdClass();
+		$prev_query                       = $GLOBALS['wp_query'] ?? null;
+		$GLOBALS['wp_query']              = new \stdClass();
 		$GLOBALS['wp_query']->found_posts = 137;
 
 		try {
 			$product = $this->make_product( 30, 'Found Hoodie' );
-			Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+			Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 			$output = $this->capture();
 			$data   = $this->decode_output( $output );
@@ -549,10 +549,10 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_query_var' )->alias(
 			static fn( $key, $default = '' ) => 'paged' === $key ? 2 : 0
 		);
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		// Capture the page passed to wc_get_products and the cache key written.
 		$query_page  = null;
@@ -562,7 +562,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 				if ( isset( $args['page'] ) ) {
 					$query_page = $args['page'];
 				}
-				return [ $this->make_product( 40, 'Page2 Hoodie' ) ];
+				return array( $this->make_product( 40, 'Page2 Hoodie' ) );
 			}
 		);
 		Functions\when( 'set_transient' )->alias(
@@ -594,13 +594,13 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product_tag' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn( $term );
 		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/product-tag/sale/' );
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		$product = $this->make_product( 5, 'Sale Hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 
 		$output = $this->capture();
 		$this->assertStringContainsString( 'ItemList', $output );
@@ -627,19 +627,19 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// subsequently returns false (e.g. the cached data contains malformed
 		// UTF-8), the cache-hit path must suppress the block entirely rather than
 		// emit an empty, invalid <script type="application/ld+json"></script> tag.
-		$cached = [
+		$cached = array(
 			'@context'        => 'https://schema.org',
 			'@type'           => 'ItemList',
 			'numberOfItems'   => 1,
-			'itemListElement' => [
-				[
+			'itemListElement' => array(
+				array(
 					'@type'    => 'ListItem',
 					'position' => 1,
 					'name'     => 'Cached Hoodie',
 					'url'      => 'https://example.com/?p=5',
-				],
-			],
-		];
+				),
+			),
+		);
 
 		Functions\when( 'is_shop' )->justReturn( true );
 		Functions\when( 'get_transient' )->justReturn( $cached );
@@ -655,7 +655,7 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 	public function test_product_without_name_is_skipped(): void {
 		Functions\when( 'is_shop' )->justReturn( true );
 		Functions\when( 'get_permalink' )->justReturn( 'https://example.com/product/nameless/' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $this->make_product( 103, '' ) ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->make_product( 103, '' ) ) );
 		$this->assertSame( '', $this->capture() ); // empty $items → no ItemList
 	}
 
@@ -664,16 +664,16 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		// The two survivors must get contiguous positions 1 and 2 (not 1 and 3) —
 		// i.e. position advances per RENDERED item, not per queried product.
 		Functions\when( 'is_shop' )->justReturn( true );
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 1, 3 ], // product 2 is filtered out.
-		];
+			'selected_products'      => array( 1, 3 ), // product 2 is filtered out.
+		);
 
 		$p1 = $this->make_product( 1, 'First' );
 		$p2 = $this->make_product( 2, 'Filtered Out' );
 		$p3 = $this->make_product( 3, 'Third' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $p1, $p2, $p3 ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $p1, $p2, $p3 ) );
 
 		$output = $this->capture();
 		$data   = $this->decode_output( $output );

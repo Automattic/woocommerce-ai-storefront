@@ -40,9 +40,12 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_enables_rate_limiting_when_syndication_active(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 50 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 50,
+		);
 
-		$result = $this->limiter->configure_rate_limits( [ 'enabled' => false ] );
+		$result = $this->limiter->configure_rate_limits( array( 'enabled' => false ) );
 
 		$this->assertTrue( $result['enabled'] );
 		$this->assertTrue( $result['proxy_support'] );
@@ -51,18 +54,21 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_returns_default_options_when_syndication_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
-		$defaults = [ 'enabled' => false, 'limit' => 25 ];
+		$defaults = array(
+			'enabled' => false,
+			'limit'   => 25,
+		);
 		$result   = $this->limiter->configure_rate_limits( $defaults );
 
 		$this->assertEquals( $defaults, $result );
 	}
 
 	public function test_uses_default_rpm_when_not_configured(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 
-		$result = $this->limiter->configure_rate_limits( [] );
+		$result = $this->limiter->configure_rate_limits( array() );
 
 		$this->assertEquals( 25, $result['limit'] );
 	}
@@ -104,10 +110,10 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_different_bots_get_different_fingerprints(): void {
 		$_SERVER['HTTP_USER_AGENT'] = 'GPTBot/1.0';
-		$gpt_result = $this->limiter->fingerprint_ai_bots( 'x' );
+		$gpt_result                 = $this->limiter->fingerprint_ai_bots( 'x' );
 
 		$_SERVER['HTTP_USER_AGENT'] = 'ClaudeBot/1.0';
-		$claude_result = $this->limiter->fingerprint_ai_bots( 'x' );
+		$claude_result              = $this->limiter->fingerprint_ai_bots( 'x' );
 
 		$this->assertNotEquals( $gpt_result, $claude_result );
 
@@ -120,10 +126,10 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		// IP, not the raw UA string) so version rotation cannot bypass the
 		// rate-limit window.
 		$_SERVER['HTTP_USER_AGENT'] = 'GPTBot/1.0';
-		$v1 = $this->limiter->fingerprint_ai_bots( 'x' );
+		$v1                         = $this->limiter->fingerprint_ai_bots( 'x' );
 
 		$_SERVER['HTTP_USER_AGENT'] = 'GPTBot/2.0';
-		$v2 = $this->limiter->fingerprint_ai_bots( 'x' );
+		$v2                         = $this->limiter->fingerprint_ai_bots( 'x' );
 
 		$this->assertSame( $v1, $v2, 'UA version rotation must not create a new rate-limit bucket' );
 
@@ -140,11 +146,14 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		// The outer request already consumed one slot via
 		// check_outer_rate_limit(); counting inner calls as well would
 		// drain 50 slots for a single /catalog/lookup with 50 IDs.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 
 		WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$result = $this->limiter->configure_rate_limits( [] );
+			$result = $this->limiter->configure_rate_limits( array() );
 		} finally {
 			WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
@@ -158,12 +167,15 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	public function test_configure_rate_limits_enables_outside_ucp_dispatch(): void {
 		// Outside a UCP dispatch (depth = 0), direct Store API requests
 		// from AI bots are rate-limited as usual.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 
 		// Confirm depth is 0 (default state).
 		$this->assertFalse( WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() );
 
-		$result = $this->limiter->configure_rate_limits( [] );
+		$result = $this->limiter->configure_rate_limits( array() );
 
 		$this->assertTrue( $result['enabled'] );
 	}
@@ -173,7 +185,7 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_outer_rate_limit_returns_true_when_plugin_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$result = WC_AI_Storefront_Store_Api_Rate_Limiter::check_outer_rate_limit();
 
@@ -185,7 +197,10 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		// rate-limit check. After the FIND-S01 fix, unknown UAs reaching
 		// check_outer_rate_limit() (e.g. allow_unknown_ucp_agents=yes) are
 		// also counted against the per-IP budget.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 5 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 5,
+		);
 		$_SERVER['HTTP_USER_AGENT']      = 'Mozilla/5.0 Chrome/120.0.0.0';
 
 		// First request in the window — transient not yet set.
@@ -205,7 +220,10 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	public function test_outer_rate_limit_blocks_unknown_ua_when_limit_reached(): void {
 		// Unknown-UA requests (allow_unknown_ucp_agents=yes path) must be
 		// blocked once the per-IP budget is exhausted, just like known bots.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 5 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 5,
+		);
 		$_SERVER['HTTP_USER_AGENT']      = 'SomeUnknownAgent/1.0';
 
 		Functions\expect( 'get_transient' )->once()->andReturn( '5' );
@@ -219,7 +237,10 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_outer_rate_limit_allows_first_request_under_limit(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 		$_SERVER['HTTP_USER_AGENT']      = 'GPTBot/1.0';
 
 		// No existing transient (first request in window).
@@ -237,7 +258,10 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_outer_rate_limit_increments_counter_on_subsequent_requests(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 		$_SERVER['HTTP_USER_AGENT']      = 'GPTBot/1.0';
 
 		// Existing count of 10 — well under the limit of 25.
@@ -255,7 +279,10 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_outer_rate_limit_blocks_when_limit_reached(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 		$_SERVER['HTTP_USER_AGENT']      = 'GPTBot/1.0';
 
 		// Count is already at the limit — next request should be blocked.
@@ -275,9 +302,12 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		// Two different AI bots from the same IP must get different transient
 		// keys so their budgets are tracked independently.
 		// Key format: OUTER_TRANSIENT_PREFIX + 'ai_bot_' + md5(bot_name + '_' + ip).
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 
-		$recorded_keys = [];
+		$recorded_keys = array();
 
 		Functions\expect( 'get_transient' )->andReturn( false );
 		Functions\expect( 'set_transient' )->andReturnUsing(
@@ -306,9 +336,12 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		// Two IPs claiming to be the same bot must get separate rate-limit
 		// windows. If keys were based on UA alone, IP-A could exhaust IP-B's
 		// budget by spoofing the same user-agent.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 
-		$recorded_keys = [];
+		$recorded_keys = array();
 
 		Functions\expect( 'get_transient' )->andReturn( false );
 		Functions\expect( 'set_transient' )->andReturnUsing(
@@ -339,9 +372,12 @@ class StoreApiRateLimiterTest extends \PHPUnit\Framework\TestCase {
 		// A single IP sending requests with minor UA variants of the same
 		// bot (e.g. GPTBot/1.0 vs GPTBot/2.0) must share one bucket.
 		// If they didn't, UA rotation would bypass the sliding window.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes', 'rate_limit_rpm' => 25 ];
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'        => 'yes',
+			'rate_limit_rpm' => 25,
+		);
 
-		$recorded_keys = [];
+		$recorded_keys = array();
 
 		Functions\expect( 'get_transient' )->andReturn( false );
 		Functions\expect( 'set_transient' )->andReturnUsing(

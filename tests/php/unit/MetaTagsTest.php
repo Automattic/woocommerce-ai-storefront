@@ -112,13 +112,23 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_description_prefers_short_description(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
-		$p = $this->make_product( array( 'short' => 'A tight short blurb.', 'long' => 'Long body.' ) );
+		$p = $this->make_product(
+			array(
+				'short' => 'A tight short blurb.',
+				'long'  => 'Long body.',
+			)
+		);
 		$this->assertSame( 'A tight short blurb.', $this->meta->build_description( $p ) );
 	}
 
 	public function test_description_falls_back_to_long_when_short_blank(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
-		$p = $this->make_product( array( 'short' => '   ', 'long' => 'The long description.' ) );
+		$p = $this->make_product(
+			array(
+				'short' => '   ',
+				'long'  => 'The long description.',
+			)
+		);
 		$this->assertSame( 'The long description.', $this->meta->build_description( $p ) );
 	}
 
@@ -145,7 +155,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'is_product_category' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
-			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'All our leather belts.' )
+			(object) array(
+				'term_id'     => 9,
+				'name'        => 'Belts',
+				'description' => 'All our leather belts.',
+			)
 		);
 		$this->assertSame( 'All our leather belts.', $this->meta->build_archive_description() );
 	}
@@ -179,7 +193,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_the_terms' )->justReturn(
 			array( (object) array( 'name' => 'Thornwick' ) )
 		);
-		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$parts = $this->meta->filter_title_parts(
+			array(
+				'title' => 'Old',
+				'site'  => 'Saltwarp',
+			)
+		);
 		$this->assertSame( 'Field Boot | Thornwick', $parts['title'] );
 		$this->assertSame( 'Saltwarp', $parts['site'] );
 	}
@@ -194,7 +213,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_the_terms' )->justReturn(
 			array( (object) array( 'name' => 'Saltwarp' ) )
 		);
-		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$parts = $this->meta->filter_title_parts(
+			array(
+				'title' => 'Old',
+				'site'  => 'Saltwarp',
+			)
+		);
 		$this->assertSame( 'Camp Shirt', $parts['title'] );
 	}
 
@@ -208,7 +232,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_the_terms' )->justReturn(
 			array( (object) array( 'name' => 'Thornwick' ) )
 		);
-		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$parts = $this->meta->filter_title_parts(
+			array(
+				'title' => 'Old',
+				'site'  => 'Saltwarp',
+			)
+		);
 		$this->assertSame( 'Saltwarp x Thornwick Tote', $parts['title'] );
 	}
 
@@ -222,7 +251,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_the_terms' )->justReturn(
 			array( (object) array( 'name' => 'saltwarp' ) ) // lower-case brand
 		);
-		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Saltwarp' ) );
+		$parts = $this->meta->filter_title_parts(
+			array(
+				'title' => 'Old',
+				'site'  => 'Saltwarp',
+			)
+		);
 		$this->assertSame( 'Camp Shirt', $parts['title'] );
 	}
 
@@ -254,7 +288,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			array( (object) array( 'name' => 'Saltwarp' ) )
 		);
 		// Distinct site so this exercises the substring path, not the brand==site path.
-		$parts = $this->meta->filter_title_parts( array( 'title' => 'Old', 'site' => 'Different Store' ) );
+		$parts = $this->meta->filter_title_parts(
+			array(
+				'title' => 'Old',
+				'site'  => 'Different Store',
+			)
+		);
 		$this->assertSame( 'Saltwarp Tote', $parts['title'] );
 		$this->assertStringNotContainsString( '| Saltwarp', $parts['title'] );
 	}
@@ -330,7 +369,10 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_twitter_tags_omit_image_when_og_image_absent(): void {
 		$tw = $this->meta->build_twitter_tags(
-			array( 'og:title' => 'X', 'og:description' => 'Y' )
+			array(
+				'og:title'       => 'X',
+				'og:description' => 'Y',
+			)
 		);
 		$this->assertArrayNotHasKey( 'twitter:image', $tw );
 	}
@@ -339,7 +381,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'is_product_category' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
-			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'Leather belts.' )
+			(object) array(
+				'term_id'     => 9,
+				'name'        => 'Belts',
+				'description' => 'Leather belts.',
+			)
 		);
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
@@ -359,7 +405,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// wp_strip_all_tags is a real stub (identity for plain text); see stub_escapers().
 		Functions\when( 'is_product_category' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
-			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'Leather belts.' )
+			(object) array(
+				'term_id'     => 9,
+				'name'        => 'Belts',
+				'description' => 'Leather belts.',
+			)
 		);
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
@@ -477,7 +527,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_escapers();
 		Functions\when( 'is_product_category' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
-			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => 'Leather belts.' )
+			(object) array(
+				'term_id'     => 9,
+				'name'        => 'Belts',
+				'description' => 'Leather belts.',
+			)
 		);
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
@@ -504,7 +558,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		$product = $this->og_product( array( 'short' => '', 'long' => '' ) );
+		$product = $this->og_product(
+			array(
+				'short' => '',
+				'long'  => '',
+			)
+		);
 		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
 		Functions\when( 'wc_get_product' )->justReturn( $product );
 		ob_start();
@@ -642,7 +701,10 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// `robots` is the real co-key Jetpack puts in this map (noindex posts);
 		// it must survive while only `description` is dropped.
 		$out = $this->meta->suppress_jetpack_description(
-			array( 'description' => 'dup', 'robots' => 'noindex' )
+			array(
+				'description' => 'dup',
+				'robots'      => 'noindex',
+			)
 		);
 		$this->assertArrayNotHasKey( 'description', $out );
 		$this->assertSame( 'noindex', $out['robots'] );
@@ -739,7 +801,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'is_product_category' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
-			(object) array( 'term_id' => 9, 'name' => 'Belts', 'description' => '' )
+			(object) array(
+				'term_id'     => 9,
+				'name'        => 'Belts',
+				'description' => '',
+			)
 		);
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		$desc = $this->meta->build_archive_description();

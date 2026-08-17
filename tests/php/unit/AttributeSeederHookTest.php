@@ -178,7 +178,7 @@ class AttributeSeederHookTest extends \PHPUnit\Framework\TestCase {
 		// WC_AI_Storefront_Attribute_Seeder::seed() a few lines later in the
 		// same file — a whole-file substring search could not tell the two
 		// call sites apart.
-		$method_start = strpos( $source, 'public static function schedule_attribute_seeding(): void {' );
+		$method_start      = strpos( $source, 'public static function schedule_attribute_seeding(): void {' );
 		$next_method_start = strpos( $source, 'public static function run_attribute_seeding(): void {' );
 		$this->assertNotFalse( $method_start, 'schedule_attribute_seeding() not found.' );
 		$this->assertNotFalse( $next_method_start, 'run_attribute_seeding() not found.' );

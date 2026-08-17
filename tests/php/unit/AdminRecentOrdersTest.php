@@ -46,7 +46,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		Functions\when( 'wc_get_order_statuses' )->justReturn(
-			[
+			array(
 				'wc-pending'    => 'Pending payment',
 				'wc-processing' => 'Processing',
 				'wc-on-hold'    => 'On hold',
@@ -54,7 +54,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 				'wc-cancelled'  => 'Cancelled',
 				'wc-refunded'   => 'Refunded',
 				'wc-failed'     => 'Failed',
-			]
+			)
 		);
 
 		Functions\when( 'wc_format_datetime' )->alias(
@@ -98,10 +98,10 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function make_wpdb_mock( ?string $get_var_return = '0' ): void {
 		global $wpdb;
-		$wpdb           = \Mockery::mock( 'wpdb' );
-		$wpdb->prefix   = 'wp_';
-		$wpdb->posts    = 'wp_posts';
-		$wpdb->postmeta = 'wp_postmeta';
+		$wpdb             = \Mockery::mock( 'wpdb' );
+		$wpdb->prefix     = 'wp_';
+		$wpdb->posts      = 'wp_posts';
+		$wpdb->postmeta   = 'wp_postmeta';
 		$wpdb->last_error = '';
 		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
 		$wpdb->shouldReceive( 'esc_like' )->andReturn( '' );
@@ -134,7 +134,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// renames here, the corresponding cell blanks silently —
 		// no exception, no test failure elsewhere. This assertion
 		// locks the contract.
-		Functions\when( 'wc_get_orders' )->justReturn( [ $this->make_order() ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $this->make_order() ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$data     = $response->get_data();
@@ -143,8 +143,8 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayHasKey( 'total', $data );
 		$this->assertArrayHasKey( 'currency', $data );
 
-		$row = $data['orders'][0];
-		$expected_keys = [
+		$row           = $data['orders'][0];
+		$expected_keys = array(
 			'id',
 			'number',
 			'customer',
@@ -157,7 +157,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 			'total',
 			'currency',
 			'edit_url',
-		];
+		);
 		foreach ( $expected_keys as $key ) {
 			$this->assertArrayHasKey(
 				$key,
@@ -180,7 +180,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$order->set_test_customer_id( 5 );
 		$order->set_test_billing_first_name( 'Jane' );
 		$order->set_test_billing_last_name( 'Doe' );
-		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $order ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -200,7 +200,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// customer_id stays 0 (stub default — no registered account).
 		$order->set_test_billing_first_name( 'John' );
 		$order->set_test_billing_last_name( 'Guest' );
-		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $order ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -214,7 +214,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// WC itself uses on the native Orders list. Reading from
 		// `wc_get_order_statuses()` keeps the labels consistent
 		// across our table and WC's native screens.
-		Functions\when( 'wc_get_orders' )->justReturn( [ $this->make_order() ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $this->make_order() ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -229,7 +229,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// numeric total so the client controls presentation. A
 		// change to pre-format on the server would break locale
 		// fidelity for merchants on non-en-US stores.
-		Functions\when( 'wc_get_orders' )->justReturn( [ $this->make_order() ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $this->make_order() ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -250,7 +250,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// `get_recent_orders` must map it to `Gemini` so legacy
 		// data looks consistent with new data in the AI Orders table.
 		$order = $this->make_order( 42, 'gemini.google.com' );
-		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $order ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -278,7 +278,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// Bucketing into "Other AI" is the documented contract; this
 		// test is the regression guard.
 		$order = $this->make_order( 100, 'novel-agent.example.com' );
-		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $order ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -311,7 +311,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// This data-provider locks in the regression guard for the
 		// full canonical roster.
 		$order = $this->make_order( 7, $brand_name );
-		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $order ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -320,20 +320,20 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public static function canonical_brand_names_provider(): array {
-		return [
-			'OpenAI ChatGPT'    => [ 'ChatGPT' ],
-			'Anthropic Claude'  => [ 'Claude' ],
-			'Google Gemini'     => [ 'Gemini' ],
-			'Microsoft Copilot' => [ 'Copilot' ],
-			'Perplexity'        => [ 'Perplexity' ],
-			'Apple Siri'        => [ 'Siri' ],
-			'Amazon Rufus'      => [ 'Rufus' ],
-			'Klarna'            => [ 'Klarna' ],
-			'You.com'           => [ 'You' ],
-			'Kagi'              => [ 'Kagi' ],
-			'UCPPlayground'     => [ 'UCPPlayground' ],
-			'Other AI bucket'   => [ 'Other AI' ],
-		];
+		return array(
+			'OpenAI ChatGPT'    => array( 'ChatGPT' ),
+			'Anthropic Claude'  => array( 'Claude' ),
+			'Google Gemini'     => array( 'Gemini' ),
+			'Microsoft Copilot' => array( 'Copilot' ),
+			'Perplexity'        => array( 'Perplexity' ),
+			'Apple Siri'        => array( 'Siri' ),
+			'Amazon Rufus'      => array( 'Rufus' ),
+			'Klarna'            => array( 'Klarna' ),
+			'You.com'           => array( 'You' ),
+			'Kagi'              => array( 'Kagi' ),
+			'UCPPlayground'     => array( 'UCPPlayground' ),
+			'Other AI bucket'   => array( 'Other AI' ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -356,7 +356,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		$order->set_test_date_created( new WC_DateTime_Stub() );
 		// No meta set — get_meta returns empty string.
 
-		Functions\when( 'wc_get_orders' )->justReturn( [ $order ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $order ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$row      = $response->get_data()['orders'][0];
@@ -368,7 +368,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// The DataViews table distinguishes "not fetched yet" (null)
 		// from "fetched, zero results" (empty array + total 0). The
 		// server must never return null for `orders`.
-		Functions\when( 'wc_get_orders' )->justReturn( [] );
+		Functions\when( 'wc_get_orders' )->justReturn( array() );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$data     = $response->get_data();
@@ -415,7 +415,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// the two values are independent.
 		$this->make_wpdb_mock( '42' );
 
-		Functions\when( 'wc_get_orders' )->justReturn( [ $this->make_order() ] );
+		Functions\when( 'wc_get_orders' )->justReturn( array( $this->make_order() ) );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$data     = $response->get_data();
@@ -431,7 +431,7 @@ class AdminRecentOrdersTest extends \PHPUnit\Framework\TestCase {
 		// so the JSON response has a valid integer in the `total` field.
 		$this->make_wpdb_mock( null );
 
-		Functions\when( 'wc_get_orders' )->justReturn( [] );
+		Functions\when( 'wc_get_orders' )->justReturn( array() );
 
 		$response = $this->controller->get_recent_orders( $this->request() );
 		$data     = $response->get_data();

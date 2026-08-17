@@ -40,7 +40,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// redefined via Brain Monkey — attempting `Functions\when()` on it
 		// throws Patchwork's DefinedTooEarly. The stub is WP-faithful, so
 		// `decode()` already behaves correctly without stubbing it here.
-		Functions\when( 'get_ancestors' )->justReturn( [] );
+		Functions\when( 'get_ancestors' )->justReturn( array() );
 	}
 
 	protected function tearDown(): void {
@@ -61,26 +61,30 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_product_type_prefers_yoast_primary_category(): void {
-		Functions\when( 'get_post_meta' )->alias( function ( $id, $key ) {
-			return '_yoast_wpseo_primary_product_cat' === $key ? 55 : '';
-		} );
-		Functions\when( 'get_term' )->alias( function ( $id ) {
-			$t          = \Mockery::mock( 'WP_Term' );
-			$t->name    = 55 === $id ? 'Hoodies' : 'Other';
-			$t->term_id = $id;
-			return $t;
-		} );
+		Functions\when( 'get_post_meta' )->alias(
+			function ( $id, $key ) {
+				return '_yoast_wpseo_primary_product_cat' === $key ? 55 : '';
+			}
+		);
+		Functions\when( 'get_term' )->alias(
+			function ( $id ) {
+				$t          = \Mockery::mock( 'WP_Term' );
+				$t->name    = 55 === $id ? 'Hoodies' : 'Other';
+				$t->term_id = $id;
+				return $t;
+			}
+		);
 		// NOTE: `html_entity_decode` is a native PHP function — left
 		// unstubbed (the codebase convention; Patchwork can't redefine
 		// internals without a patchwork.json allow-list anyway).
 
-		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 10, 55 ] ) );
+		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, array( 10, 55 ) ) );
 		$this->assertSame( 'Hoodies', $type );
 	}
 
 	public function test_product_type_empty_string_when_uncategorized(): void {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
-		$this->assertSame( '', WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [] ) ) );
+		$this->assertSame( '', WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, array() ) ) );
 	}
 
 	public function test_map_simple_product_emits_single_default_variant(): void {
@@ -92,7 +96,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// `wp_get_post_terms` as a mockable function once ANY test in the
 		// suite expects it, and then demands an expectation here too (it
 		// returns null only when no test has touched it — i.e. in isolation).
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 
 		$p = \Mockery::mock( 'WC_Product' );
 		// Shopify variant scalars (#627); defaults unless a test overrides.
@@ -104,10 +108,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Day Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'day-hoodie' );
 		$p->shouldReceive( 'get_description' )->andReturn( 'Heavyweight French terry.' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
 		$p->shouldReceive( 'get_sku' )->andReturn( 'DH' );
 		$p->shouldReceive( 'get_price' )->andReturn( '48' );
@@ -133,13 +137,13 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// ABSENT, which is the defect #627 fixes — see
 		// test_simple_product_emits_the_default_title_options_placeholder.
 		$this->assertSame(
-			[
-				[
+			array(
+				array(
 					'name'     => 'Title',
 					'position' => 1,
-					'values'   => [ 'Default Title' ],
-				],
-			],
+					'values'   => array( 'Default Title' ),
+				),
+			),
 			$out['options']
 		);
 	}
@@ -150,7 +154,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		// See the simple-product test: stub the brand lookup so the suite-wide
 		// Brain Monkey registration of wp_get_post_terms is satisfied here.
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'sanitize_title' )->alias(
 			function ( $t ) {
 				return strtolower( str_replace( ' ', '-', (string) $t ) );
@@ -176,10 +180,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 101 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
-			[
+			array(
 				'attribute_pa_size'  => 'm',
 				'attribute_pa_color' => 'red',
-			]
+			)
 		);
 		$variation->shouldReceive( 'get_sku' )->andReturn( 'HD-M-RED' );
 		$variation->shouldReceive( 'get_price' )->andReturn( '52' );
@@ -201,19 +205,19 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Range Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'range-hoodie' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
 		// Order here defines option1/option2 positions: size first, color second.
 		$p->shouldReceive( 'get_variation_attributes' )->andReturn(
-			[
-				'pa_size'  => [ 's', 'm' ],
-				'pa_color' => [ 'red', 'blue' ],
-			]
+			array(
+				'pa_size'  => array( 's', 'm' ),
+				'pa_color' => array( 'red', 'blue' ),
+			)
 		);
-		$p->shouldReceive( 'get_children' )->andReturn( [ 101 ] );
+		$p->shouldReceive( 'get_children' )->andReturn( array( 101 ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
 
@@ -222,7 +226,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 2, $out['options'] );
 		$this->assertSame( 'Size', $out['options'][0]['name'] );
 		$this->assertSame( 1, $out['options'][0]['position'] );
-		$this->assertSame( [ 's', 'm' ], $out['options'][0]['values'] );
+		$this->assertSame( array( 's', 'm' ), $out['options'][0]['values'] );
 		$this->assertSame( 'Color', $out['options'][1]['name'] );
 		$this->assertSame( 2, $out['options'][1]['position'] );
 
@@ -255,14 +259,14 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 
 		$p = $this->mappable_simple_product(
-			[
+			array(
 				'price'         => '40',
 				'regular_price' => '60',
 				'on_sale'       => true,
-			]
+			)
 		);
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
@@ -277,9 +281,9 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 
-		$p = $this->mappable_simple_product( [ 'in_stock' => false ] );
+		$p = $this->mappable_simple_product( array( 'in_stock' => false ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
 
@@ -291,7 +295,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [ 'Gizmonic' ] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array( 'Gizmonic' ) );
 
 		$p = $this->mappable_simple_product();
 
@@ -304,7 +308,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 
 		$p = \Mockery::mock( 'WC_Product' );
 		// Shopify variant scalars (#627); defaults unless a test overrides.
@@ -316,10 +320,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
 		$p->shouldReceive( 'get_sku' )->andReturn( 'BELT' );
 		// Multi-currency presentment: 'view' (default) returns the converted
@@ -342,7 +346,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'sanitize_title' )->alias(
 			function ( $t ) {
 				return strtolower( str_replace( ' ', '-', (string) $t ) );
@@ -365,7 +369,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 0 );
 		$variation->shouldReceive( 'get_id' )->andReturn( 3890 );
 		$variation->shouldReceive( 'get_variation_attributes' )->andReturn(
-			[ 'attribute_pa_size' => 'sm' ]
+			array( 'attribute_pa_size' => 'sm' )
 		);
 		$variation->shouldReceive( 'get_sku' )->andReturn( 'BELT-SM' );
 		// Multi-currency presentment vs stored base, same shape as the simple test.
@@ -390,15 +394,15 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
 		$p->shouldReceive( 'get_variation_attributes' )->andReturn(
-			[ 'pa_size' => [ 'sm', 'lxl' ] ]
+			array( 'pa_size' => array( 'sm', 'lxl' ) )
 		);
-		$p->shouldReceive( 'get_children' )->andReturn( [ 3890 ] );
+		$p->shouldReceive( 'get_children' )->andReturn( array( 3890 ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p );
 
@@ -409,7 +413,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 
 		$p = \Mockery::mock( 'WC_Product' );
 		// Shopify variant scalars (#627); defaults unless a test overrides.
@@ -421,10 +425,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'canvas-belt' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
 		$p->shouldReceive( 'get_sku' )->andReturn( 'BELT' );
 		$p->shouldReceive( 'get_price' )->with( 'edit' )->andReturn( '34.99' ); // base sale
@@ -451,10 +455,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
 
-		$p = $this->mappable_product_with_images( 11, [ 12, 13 ] );
+		$p = $this->mappable_product_with_images( 11, array( 12, 13 ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
 
@@ -466,10 +470,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
 
-		$p = $this->mappable_product_with_images( 0, [ 12, 13 ] );
+		$p = $this->mappable_product_with_images( 0, array( 12, 13 ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
 
@@ -481,10 +485,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
 
-		$p = $this->mappable_product_with_images( 11, [ 12, 13 ] );
+		$p = $this->mappable_product_with_images( 11, array( 12, 13 ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p ); // default false
 
@@ -495,10 +499,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'wp_get_attachment_image_url' )->alias( fn( $id ) => "https://x/$id.jpg" );
 
-		$p = $this->mappable_product_with_images( 0, [] ); // no featured, no gallery
+		$p = $this->mappable_product_with_images( 0, array() ); // no featured, no gallery
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
 
@@ -509,7 +513,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		// Featured (11) is unresolvable (''); the first gallery id (12) resolves.
 		// Locks the "first VALID image only" contract — the break sits INSIDE the
 		// non-empty-src guard, so a broken featured image is skipped, not counted.
@@ -517,7 +521,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 			fn( $id ) => 11 === $id ? '' : "https://x/$id.jpg"
 		);
 
-		$p = $this->mappable_product_with_images( 11, [ 12, 13 ] );
+		$p = $this->mappable_product_with_images( 11, array( 12, 13 ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
 
@@ -545,8 +549,8 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( $featured_id );
 		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( $gallery_ids );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
@@ -572,11 +576,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->alias(
 			static function ( $id ) {
-				$names      = [
+				$names      = array(
 					10 => 'Apparel',     // Shallow (no ancestors).
 					20 => 'Pullovers',   // Deepest (two ancestors).
 					30 => 'Tops',        // Mid (one ancestor).
-				];
+				);
 				$t          = \Mockery::mock( 'WP_Term' );
 				$t->name    = $names[ $id ] ?? 'Unknown';
 				$t->term_id = $id;
@@ -585,16 +589,16 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'get_ancestors' )->alias(
 			static function ( $term_id ) {
-				$depth = [
-					10 => [],            // 0 ancestors.
-					20 => [ 30, 10 ],    // 2 ancestors -> deepest.
-					30 => [ 10 ],        // 1 ancestor.
-				];
-				return $depth[ $term_id ] ?? [];
+				$depth = array(
+					10 => array(),            // 0 ancestors.
+					20 => array( 30, 10 ),    // 2 ancestors -> deepest.
+					30 => array( 10 ),        // 1 ancestor.
+				);
+				return $depth[ $term_id ] ?? array();
 			}
 		);
 
-		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 10, 20, 30 ] ) );
+		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, array( 10, 20, 30 ) ) );
 		$this->assertSame( 'Pullovers', $type );
 	}
 
@@ -615,7 +619,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 12, 77 ] ) );
+		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, array( 12, 77 ) ) );
 		$this->assertSame( 'Outerwear', $type );
 	}
 
@@ -631,10 +635,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'get_term' )->alias(
 			static function ( $id ) {
-				$names      = [
+				$names      = array(
 					42 => 'Accessories', // The one the product IS assigned to.
 					99 => 'Footwear',    // Stale primary — product no longer in it.
-				];
+				);
 				$t          = \Mockery::mock( 'WP_Term' );
 				$t->name    = $names[ $id ] ?? 'Unknown';
 				$t->term_id = $id;
@@ -642,7 +646,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, [ 42 ] ) );
+		$type = WC_AI_Storefront_Products_Feed::resolve_product_type( $this->product( 1, array( 42 ) ) );
 		$this->assertSame( 'Accessories', $type );
 		$this->assertNotSame( 'Footwear', $type );
 	}
@@ -655,17 +659,29 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// mixed two numbering schemes — menu_order 0 became 1 via the fallback
 		// and menu_order 1 stayed 1. The loop index alone is correct.
 		$out = $this->map_variable_product_with_variations(
-			[
-				[ 'id' => 501, 'edit_image' => 0, 'menu_order' => 0 ],
-				[ 'id' => 502, 'edit_image' => 0, 'menu_order' => 1 ],
-				[ 'id' => 503, 'edit_image' => 0, 'menu_order' => 2 ],
-			],
+			array(
+				array(
+					'id'         => 501,
+					'edit_image' => 0,
+					'menu_order' => 0,
+				),
+				array(
+					'id'         => 502,
+					'edit_image' => 0,
+					'menu_order' => 1,
+				),
+				array(
+					'id'         => 503,
+					'edit_image' => 0,
+					'menu_order' => 2,
+				),
+			),
 			11,
-			[]
+			array()
 		);
 
 		$positions = array_column( $out['variants'], 'position' );
-		$this->assertSame( [ 1, 2, 3 ], $positions );
+		$this->assertSame( array( 1, 2, 3 ), $positions );
 		$this->assertSame(
 			$positions,
 			array_values( array_unique( $positions ) ),
@@ -688,13 +704,13 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayHasKey( 'options', $out );
 		$this->assertSame(
-			[
-				[
+			array(
+				array(
 					'name'     => 'Title',
 					'position' => 1,
-					'values'   => [ 'Default Title' ],
-				],
-			],
+					'values'   => array( 'Default Title' ),
+				),
+			),
 			$out['options']
 		);
 		// The placeholder must agree with the variant already synthesized on
@@ -705,11 +721,14 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_variable_product_options_are_not_replaced_by_the_placeholder(): void {
 		$out = $this->map_variable_product_with_variations(
-			[
-				[ 'id' => 501, 'edit_image' => 0 ],
-			],
+			array(
+				array(
+					'id'         => 501,
+					'edit_image' => 0,
+				),
+			),
 			11,
-			[]
+			array()
 		);
 
 		$this->assertSame( 'Size', $out['options'][0]['name'] );
@@ -728,11 +747,11 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// differ from. Its photos are already in images[].
 		$this->stub_empty_taxonomy_lookups();
 		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
-		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( array() );
 		Functions\when( 'get_post' )->justReturn( null );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 
-		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12 ] ) );
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, array( 12 ) ) );
 
 		$this->assertNotEmpty( $out['images'], 'The product still publishes its photos.' );
 		$this->assertArrayHasKey( 'featured_image', $out['variants'][0] );
@@ -744,29 +763,39 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// position is the image's rank in the product gallery and its
 		// variant_ids list every sibling sharing the photo.
 		$out = $this->map_variable_product_with_variations(
-			[
-				[ 'id' => 501, 'edit_image' => 77 ],
-				[ 'id' => 502, 'edit_image' => 77 ],
-			],
+			array(
+				array(
+					'id'         => 501,
+					'edit_image' => 77,
+				),
+				array(
+					'id'         => 502,
+					'edit_image' => 77,
+				),
+			),
 			11,
-			[]
+			array()
 		);
 
 		$featured = $out['variants'][0]['featured_image'];
 		$this->assertSame( 77, $featured['id'] );
 		$this->assertSame( 2, $featured['position'], 'Rank in the product gallery, not per variant.' );
-		$this->assertSame( [ 501, 502 ], $featured['variant_ids'] );
+		$this->assertSame( array( 501, 502 ), $featured['variant_ids'] );
 		// Same struct in both positions — identical to the images[] entry.
 		$this->assertSame( $out['images'][1], $featured );
 	}
 
 	public function test_variant_featured_image_is_null_without_an_own_photo(): void {
 		$out = $this->map_variable_product_with_variations(
-			[
-				[ 'id' => 501, 'edit_image' => 0, 'view_image' => 11 ],
-			],
+			array(
+				array(
+					'id'         => 501,
+					'edit_image' => 0,
+					'view_image' => 11,
+				),
+			),
 			11,
-			[]
+			array()
 		);
 
 		$this->assertNull(
@@ -791,16 +820,20 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// 'edit' (the raw prop), exactly as WooCommerce does. A test whose
 		// double ignored the context argument would pass against the bug.
 		$out = $this->map_variable_product_with_variations(
-			[
-				[ 'id' => 501, 'edit_image' => 0, 'view_image' => 99 ],
-			],
+			array(
+				array(
+					'id'         => 501,
+					'edit_image' => 0,
+					'view_image' => 99,
+				),
+			),
 			99,
-			[]
+			array()
 		);
 
-		$this->assertSame( [ 99 ], array_column( $out['images'], 'id' ) );
+		$this->assertSame( array( 99 ), array_column( $out['images'], 'id' ) );
 		$this->assertSame(
-			[],
+			array(),
 			$out['images'][0]['variant_ids'],
 			'A parent-fallback image must never be reported as variation-owned.'
 		);
@@ -811,18 +844,27 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// index is how an agent picks the right photo for a chosen colour;
 		// WooCommerce only models the forward direction.
 		$out = $this->map_variable_product_with_variations(
-			[
-				[ 'id' => 501, 'edit_image' => 77 ],
-				[ 'id' => 502, 'edit_image' => 77 ],
-				[ 'id' => 503, 'edit_image' => 88 ],
-			],
+			array(
+				array(
+					'id'         => 501,
+					'edit_image' => 77,
+				),
+				array(
+					'id'         => 502,
+					'edit_image' => 77,
+				),
+				array(
+					'id'         => 503,
+					'edit_image' => 88,
+				),
+			),
 			0,
-			[]
+			array()
 		);
 
 		$by_id = array_column( $out['images'], 'variant_ids', 'id' );
-		$this->assertSame( [ 501, 502 ], $by_id[77] );
-		$this->assertSame( [ 503 ], $by_id[88] );
+		$this->assertSame( array( 501, 502 ), $by_id[77] );
+		$this->assertSame( array( 503 ), $by_id[88] );
 	}
 
 	public function test_variation_owned_images_join_the_product_gallery(): void {
@@ -832,20 +874,23 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// would be empty on every image for a typical store, so the field
 		// would do nothing at all.
 		$out = $this->map_variable_product_with_variations(
-			[
-				[ 'id' => 501, 'edit_image' => 77 ],
-			],
+			array(
+				array(
+					'id'         => 501,
+					'edit_image' => 77,
+				),
+			),
 			11,
-			[ 12 ]
+			array( 12 )
 		);
 
 		$this->assertSame(
-			[ 11, 12, 77 ],
+			array( 11, 12, 77 ),
 			array_column( $out['images'], 'id' ),
 			'Featured, then gallery, then variation-owned.'
 		);
-		$this->assertSame( [ 1, 2, 3 ], array_column( $out['images'], 'position' ) );
-		$this->assertSame( [ 501 ], $out['images'][2]['variant_ids'] );
+		$this->assertSame( array( 1, 2, 3 ), array_column( $out['images'], 'position' ) );
+		$this->assertSame( array( 501 ), $out['images'][2]['variant_ids'] );
 	}
 
 	/**
@@ -869,7 +914,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return "https://ex.test/{$id}.jpg";
 			}
 		);
-		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( array() );
 		Functions\when( 'get_post' )->justReturn( null );
 		Functions\when( 'sanitize_title' )->alias(
 			static function ( $t ) {
@@ -878,13 +923,13 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wc_attribute_label' )->justReturn( 'Size' );
 
-		$doubles = [];
+		$doubles = array();
 		foreach ( $variations as $spec ) {
 			$v = \Mockery::mock( 'WC_Product' );
 			$v->shouldReceive( 'get_id' )->andReturn( $spec['id'] );
 			$v->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( $spec['edit_image'] );
 			$v->shouldReceive( 'get_image_id' )->withNoArgs()->andReturn( $spec['view_image'] ?? $spec['edit_image'] );
-			$v->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'attribute_pa_size' => 'm' ] );
+			$v->shouldReceive( 'get_variation_attributes' )->andReturn( array( 'attribute_pa_size' => 'm' ) );
 			$v->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
 			$v->shouldReceive( 'get_weight' )->andReturn( '' );
 			$v->shouldReceive( 'get_menu_order' )->andReturn( $spec['menu_order'] ?? 0 );
@@ -909,12 +954,12 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'hoodie' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( $featured_id );
 		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( $gallery_ids );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
-		$p->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'pa_size' => [ 'm' ] ] );
+		$p->shouldReceive( 'get_variation_attributes' )->andReturn( array( 'pa_size' => array( 'm' ) ) );
 		$p->shouldReceive( 'get_children' )->andReturn( array_keys( $doubles ) );
 
 		return WC_AI_Storefront_Products_Feed::map_product( $p );
@@ -928,25 +973,25 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_empty_taxonomy_lookups();
 		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
 		Functions\when( 'wp_get_attachment_metadata' )->justReturn(
-			[
+			array(
 				'width'  => 4000,
 				'height' => 2500,
-			]
+			)
 		);
 		Functions\when( 'get_post' )->justReturn(
-			(object) [
+			(object) array(
 				'post_date_gmt'     => '2026-06-18 17:40:09',
 				'post_modified_gmt' => '2026-06-18 17:40:12',
-			]
+			)
 		);
 		Functions\when( 'get_post_meta' )->justReturn( 'A red mug' );
 
-		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, array() ) );
 
 		// Key order mirrors Shopify's featured_image so a field-by-field diff
 		// against a live feed reads cleanly.
 		$this->assertSame(
-			[ 'id', 'product_id', 'position', 'created_at', 'updated_at', 'alt', 'width', 'height', 'src', 'variant_ids' ],
+			array( 'id', 'product_id', 'position', 'created_at', 'updated_at', 'alt', 'width', 'height', 'src', 'variant_ids' ),
 			array_keys( $out['images'][0] )
 		);
 		$this->assertSame( 4000, $out['images'][0]['width'] );
@@ -968,7 +1013,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post' )->justReturn( null );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 
-		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, array() ) );
 
 		$this->assertNull( $out['images'][0]['width'] );
 		$this->assertNull( $out['images'][0]['height'] );
@@ -984,16 +1029,16 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// cursor, the same reason iso_date() drops epoch 0.
 		$this->stub_empty_taxonomy_lookups();
 		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
-		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( array() );
 		Functions\when( 'get_post' )->justReturn(
-			(object) [
+			(object) array(
 				'post_date_gmt'     => '0000-00-00 00:00:00',
 				'post_modified_gmt' => '0000-00-00 00:00:00',
-			]
+			)
 		);
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 
-		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, array() ) );
 
 		$this->assertNull( $out['images'][0]['created_at'] );
 		$this->assertNull( $out['images'][0]['updated_at'] );
@@ -1006,16 +1051,16 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// diff-sync poisoning iso_date()'s `$ts > 0` guard prevents.
 		$this->stub_empty_taxonomy_lookups();
 		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://ex.test/a.jpg' );
-		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( array() );
 		Functions\when( 'get_post' )->justReturn(
-			(object) [
+			(object) array(
 				'post_date_gmt'     => '1969-07-20 20:17:40',
 				'post_modified_gmt' => '1970-01-01 00:00:00',
-			]
+			)
 		);
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 
-		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [] ) );
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, array() ) );
 
 		$this->assertNull( $out['images'][0]['created_at'], 'Pre-epoch dates are dropped.' );
 		$this->assertNull( $out['images'][0]['updated_at'], 'Epoch 0 itself is dropped too.' );
@@ -1030,14 +1075,14 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return 12 === $id ? '' : "https://ex.test/{$id}.jpg";
 			}
 		);
-		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( array() );
 		Functions\when( 'get_post' )->justReturn( null );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 
-		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12, 13 ] ) );
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, array( 12, 13 ) ) );
 
-		$this->assertSame( [ 11, 13 ], array_column( $out['images'], 'id' ) );
-		$this->assertSame( [ 1, 2 ], array_column( $out['images'], 'position' ) );
+		$this->assertSame( array( 11, 13 ), array_column( $out['images'], 'id' ) );
+		$this->assertSame( array( 1, 2 ), array_column( $out['images'], 'position' ) );
 	}
 
 	public function test_compact_truncates_length_without_thinning_the_record(): void {
@@ -1054,11 +1099,16 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return 11 === $id ? '' : "https://ex.test/{$id}.jpg";
 			}
 		);
-		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [ 'width' => 800, 'height' => 600 ] );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn(
+			array(
+				'width'  => 800,
+				'height' => 600,
+			)
+		);
 		Functions\when( 'get_post' )->justReturn( null );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 
-		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, [ 12, 13 ] ), true );
+		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_product_with_images( 11, array( 12, 13 ) ), true );
 
 		$this->assertCount( 1, $out['images'] );
 		$this->assertSame( 12, $out['images'][0]['id'] );
@@ -1085,7 +1135,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				return 77 === $id ? 'https://ex.test/77.jpg' : '';
 			}
 		);
-		Functions\when( 'wp_get_attachment_metadata' )->justReturn( [] );
+		Functions\when( 'wp_get_attachment_metadata' )->justReturn( array() );
 		Functions\when( 'get_post' )->justReturn( null );
 		Functions\when( 'sanitize_title' )->alias(
 			static function ( $t ) {
@@ -1098,7 +1148,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$variation->shouldReceive( 'get_id' )->andReturn( 501 );
 		$variation->shouldReceive( 'get_image_id' )->with( 'edit' )->andReturn( 77 );
 		$variation->shouldReceive( 'get_image_id' )->withNoArgs()->andReturn( 77 );
-		$variation->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'attribute_pa_size' => 'm' ] );
+		$variation->shouldReceive( 'get_variation_attributes' )->andReturn( array( 'attribute_pa_size' => 'm' ) );
 		$variation->shouldReceive( 'get_tax_status' )->andReturn( 'taxable' );
 		$variation->shouldReceive( 'get_weight' )->andReturn( '' );
 		$variation->shouldReceive( 'get_menu_order' )->andReturn( 0 );
@@ -1117,20 +1167,20 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Hoodie' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'hoodie' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 11 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [ 12 ] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array( 12 ) );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( true );
-		$p->shouldReceive( 'get_variation_attributes' )->andReturn( [ 'pa_size' => [ 'm' ] ] );
-		$p->shouldReceive( 'get_children' )->andReturn( [ 501 ] );
+		$p->shouldReceive( 'get_variation_attributes' )->andReturn( array( 'pa_size' => array( 'm' ) ) );
+		$p->shouldReceive( 'get_children' )->andReturn( array( 501 ) );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $p, true );
 
 		$this->assertCount( 1, $out['images'] );
 		$this->assertSame( 77, $out['images'][0]['id'] );
 		$this->assertSame( 1, $out['images'][0]['position'], 'It is the first image that resolved.' );
-		$this->assertSame( [ 501 ], $out['images'][0]['variant_ids'] );
+		$this->assertSame( array( 501 ), $out['images'][0]['variant_ids'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -1143,23 +1193,23 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// store, which is why wc_get_weight() is called without a $from_unit
 		// and left to read `woocommerce_weight_unit` itself.
 		$this->stub_empty_taxonomy_lookups();
-		$seen = [];
+		$seen = array();
 		Functions\when( 'wc_get_weight' )->alias(
 			static function ( $weight, $to_unit, $from_unit = '' ) use ( &$seen ) {
-				$seen[] = [ $to_unit, $from_unit ];
+				$seen[] = array( $to_unit, $from_unit );
 				return (float) $weight * 453.59237; // lbs -> g
 			}
 		);
 
 		$out = WC_AI_Storefront_Products_Feed::map_product(
-			$this->mappable_simple_product( [ 'weight' => '2' ] )
+			$this->mappable_simple_product( array( 'weight' => '2' ) )
 		);
 
 		$this->assertSame( 907, $out['variants'][0]['grams'] );
 		// Pin the call itself, not just its result: 'g' as the target, and an
 		// EMPTY source unit so wc_get_weight() reads woocommerce_weight_unit
 		// rather than us hardcoding an assumption about the store.
-		$this->assertSame( [ [ 'g', '' ] ], $seen );
+		$this->assertSame( array( array( 'g', '' ) ), $seen );
 	}
 
 	public function test_grams_is_integer_zero_when_no_weight_is_recorded(): void {
@@ -1177,7 +1227,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$out = WC_AI_Storefront_Products_Feed::map_product(
-			$this->mappable_simple_product( [ 'weight' => '' ] )
+			$this->mappable_simple_product( array( 'weight' => '' ) )
 		);
 
 		$this->assertArrayHasKey( 'grams', $out['variants'][0] );
@@ -1188,10 +1238,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_empty_taxonomy_lookups();
 
 		$taxable = WC_AI_Storefront_Products_Feed::map_product(
-			$this->mappable_simple_product( [ 'tax_status' => 'taxable' ] )
+			$this->mappable_simple_product( array( 'tax_status' => 'taxable' ) )
 		);
 		$exempt  = WC_AI_Storefront_Products_Feed::map_product(
-			$this->mappable_simple_product( [ 'tax_status' => 'none' ] )
+			$this->mappable_simple_product( array( 'tax_status' => 'none' ) )
 		);
 
 		$this->assertTrue( $taxable['variants'][0]['taxable'] );
@@ -1204,7 +1254,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_empty_taxonomy_lookups();
 
 		$out = WC_AI_Storefront_Products_Feed::map_product(
-			$this->mappable_simple_product( [ 'id' => 4242 ] )
+			$this->mappable_simple_product( array( 'id' => 4242 ) )
 		);
 
 		$this->assertSame( 4242, $out['variants'][0]['product_id'] );
@@ -1222,7 +1272,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 	}
 
 	/**
@@ -1234,9 +1284,9 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 	 * @param array $overrides price|regular_price|on_sale|in_stock|purchasable|weight|tax_status|id.
 	 * @return \Mockery\MockInterface
 	 */
-	private function mappable_simple_product( array $overrides = [] ) {
+	private function mappable_simple_product( array $overrides = array() ) {
 		$o = array_merge(
-			[
+			array(
 				'price'         => '20',
 				'regular_price' => '20',
 				'on_sale'       => false,
@@ -1245,7 +1295,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 				'weight'        => '',
 				'tax_status'    => 'taxable',
 				'id'            => 500,
-			],
+			),
 			$overrides
 		);
 
@@ -1259,10 +1309,10 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Gadget' );
 		$p->shouldReceive( 'get_slug' )->andReturn( 'gadget' );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
 		$p->shouldReceive( 'get_sku' )->andReturn( 'GAD' );
 		$p->shouldReceive( 'get_price' )->andReturn( $o['price'] );
@@ -1303,7 +1353,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 
 		$out = WC_AI_Storefront_Products_Feed::map_product( $this->mappable_simple_product() );
 
@@ -1345,7 +1395,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 		// Uncategorized/untagged so resolve_* take empty branches without
 		// needing get_post_meta/wp_get_post_terms function stubs.
 		Functions\when( 'get_post_meta' )->justReturn( '' );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 
 		return new class( $created, $modified ) extends \WC_Product {
 			private ?\DateTimeInterface $created;
@@ -1370,12 +1420,12 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 
 			/** @return int[] */
 			public function get_category_ids(): array {
-				return [];
+				return array();
 			}
 
 			/** @return int[] */
 			public function get_tag_ids(): array {
-				return [];
+				return array();
 			}
 
 			public function get_image_id( string $context = 'view' ): int {
@@ -1384,7 +1434,7 @@ class ProductsFeedMapperTest extends \PHPUnit\Framework\TestCase {
 
 			/** @return int[] */
 			public function get_gallery_image_ids(): array {
-				return [];
+				return array();
 			}
 
 			public function get_sku(): string {

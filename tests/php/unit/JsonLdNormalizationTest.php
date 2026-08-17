@@ -28,11 +28,11 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		Monkey\setUp();
 		$this->jsonld = new WC_AI_Storefront_JsonLd();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [ 'mode' => 'unconfigured' ],
-		];
+			'return_policy'          => array( 'mode' => 'unconfigured' ),
+		);
 
 		Functions\when( 'add_query_arg' )->alias(
 			static function ( $args, $url ) {
@@ -45,7 +45,7 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 				$fragment = '';
 				if ( str_contains( $url, '#' ) ) {
 					[ $url, $fragment ] = explode( '#', $url, 2 );
-					$fragment = '#' . $fragment;
+					$fragment           = '#' . $fragment;
 				}
 				$query = http_build_query( $args );
 				$sep   = str_contains( $url, '?' ) ? '&' : '?';
@@ -55,9 +55,9 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . $path
 		);
-		Functions\when( 'wc_get_product_cat_ids' )->justReturn( [] );
+		Functions\when( 'wc_get_product_cat_ids' )->justReturn( array() );
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => 'US' ]
+			array( 'country' => 'US' )
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'get_option' )->alias(
@@ -76,12 +76,12 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
 
-	private function make_product( array $overrides = [] ): Mockery\MockInterface {
+	private function make_product( array $overrides = array() ): Mockery\MockInterface {
 		$product = Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( $overrides['id'] ?? 42 );
 		$product->shouldReceive( 'get_permalink' )
@@ -93,11 +93,11 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_weight' )
 			->andReturn( $overrides['weight'] ?? '' );
 		$product->shouldReceive( 'has_dimensions' )->andReturn( false );
-		$product->shouldReceive( 'get_dimensions' )->andReturn( [] );
-		$product->shouldReceive( 'get_attributes' )->andReturn( [] );
-		$product->shouldReceive( 'get_children' )->andReturn( [] );
-		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
-		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
+		$product->shouldReceive( 'get_dimensions' )->andReturn( array() );
+		$product->shouldReceive( 'get_attributes' )->andReturn( array() );
+		$product->shouldReceive( 'get_children' )->andReturn( array() );
+		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( array() );
+		$product->shouldReceive( 'get_upsell_ids' )->andReturn( array() );
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
 		// Default to purchasable for the JSON-LD URL gate (#373).
 		$product->shouldReceive( 'is_purchasable' )
@@ -146,17 +146,17 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		// `&amp;`). After our normalization the value should read
 		// `Piero's Fashion House` so AI agents JSON.parse-ing the
 		// markup get the literal merchant-typed string.
-		$markup = [
-			'offers' => [
-				[
+		$markup = array(
+			'offers' => array(
+				array(
 					'@type'  => 'Offer',
-					'seller' => [
+					'seller' => array(
 						'@type' => 'Organization',
 						'name'  => 'Piero&amp;#039;s Fashion House',
-					],
-				],
-			],
-		];
+					),
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $this->make_product() );
 
@@ -177,13 +177,13 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		// Casting through (float) canonicalizes both the type and the
 		// surface form.
 		$product = $this->make_product(
-			[
+			array(
 				'has_weight' => true,
 				'weight'     => '.5',
-			]
+			)
 		);
 
-		$result = $this->jsonld->enhance_product_data( [], $product );
+		$result = $this->jsonld->enhance_product_data( array(), $product );
 
 		$this->assertSame( 0.5, $result['weight']['value'] );
 		$this->assertIsFloat( $result['weight']['value'] );
@@ -198,20 +198,20 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		// priceSpecification[0]; Google's preferred placement is on
 		// the outer Offer dict. We copy it up so consumers reading
 		// from either location resolve a value.
-		$markup = [
-			'offers' => [
-				[
-					'@type'             => 'Offer',
-					'priceSpecification' => [
-						[
+		$markup = array(
+			'offers' => array(
+				array(
+					'@type'              => 'Offer',
+					'priceSpecification' => array(
+						array(
 							'@type'         => 'UnitPriceSpecification',
 							'price'         => '19.99',
 							'priceCurrency' => 'USD',
-						],
-					],
-				],
-			],
-		];
+						),
+					),
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $this->make_product() );
 
@@ -222,20 +222,20 @@ class JsonLdNormalizationTest extends \PHPUnit\Framework\TestCase {
 		// Defensive: a third-party filter or future WC core change
 		// might already set Offer-level priceCurrency. Don't clobber
 		// it with the nested value.
-		$markup = [
-			'offers' => [
-				[
-					'@type'             => 'Offer',
-					'priceCurrency'     => 'EUR',
-					'priceSpecification' => [
-						[
+		$markup = array(
+			'offers' => array(
+				array(
+					'@type'              => 'Offer',
+					'priceCurrency'      => 'EUR',
+					'priceSpecification' => array(
+						array(
 							'@type'         => 'UnitPriceSpecification',
 							'priceCurrency' => 'USD',
-						],
-					],
-				],
-			],
-		];
+						),
+					),
+				),
+			),
+		);
 
 		$result = $this->jsonld->enhance_product_data( $markup, $this->make_product() );
 

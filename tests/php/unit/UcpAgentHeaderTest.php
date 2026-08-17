@@ -178,22 +178,22 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public static function known_host_provider(): array {
-		return [
-			'OpenAI ChatGPT'      => [ 'chatgpt.com', 'ChatGPT' ],
-			'OpenAI corporate'    => [ 'openai.com', 'ChatGPT' ],
-			'Anthropic Claude'    => [ 'claude.ai', 'Claude' ],
-			'Anthropic corporate' => [ 'anthropic.com', 'Claude' ],
-			'Google Gemini'       => [ 'gemini.google.com', 'Gemini' ],
-			'Google DeepMind'     => [ 'deepmind.google', 'Gemini' ],
-			'Microsoft Copilot'   => [ 'copilot.microsoft.com', 'Copilot' ],
-			'Microsoft Bing'      => [ 'bing.com', 'Copilot' ],
-			'Perplexity'          => [ 'perplexity.ai', 'Perplexity' ],
-			'Apple Siri'          => [ 'siri.apple.com', 'Siri' ],
-			'Amazon Rufus'        => [ 'rufus.amazon.com', 'Rufus' ],
-			'Klarna'              => [ 'klarna.com', 'Klarna' ],
-			'You.com'             => [ 'you.com', 'You' ],
-			'Kagi'                => [ 'kagi.com', 'Kagi' ],
-		];
+		return array(
+			'OpenAI ChatGPT'      => array( 'chatgpt.com', 'ChatGPT' ),
+			'OpenAI corporate'    => array( 'openai.com', 'ChatGPT' ),
+			'Anthropic Claude'    => array( 'claude.ai', 'Claude' ),
+			'Anthropic corporate' => array( 'anthropic.com', 'Claude' ),
+			'Google Gemini'       => array( 'gemini.google.com', 'Gemini' ),
+			'Google DeepMind'     => array( 'deepmind.google', 'Gemini' ),
+			'Microsoft Copilot'   => array( 'copilot.microsoft.com', 'Copilot' ),
+			'Microsoft Bing'      => array( 'bing.com', 'Copilot' ),
+			'Perplexity'          => array( 'perplexity.ai', 'Perplexity' ),
+			'Apple Siri'          => array( 'siri.apple.com', 'Siri' ),
+			'Amazon Rufus'        => array( 'rufus.amazon.com', 'Rufus' ),
+			'Klarna'              => array( 'klarna.com', 'Klarna' ),
+			'You.com'             => array( 'you.com', 'You' ),
+			'Kagi'                => array( 'kagi.com', 'Kagi' ),
+		);
 	}
 
 	public function test_canonicalize_host_is_case_insensitive(): void {
@@ -259,7 +259,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// traffic uses standard WP auth + rate-limit layers. Closing
 		// this would break manifest crawls and any non-UCP client.
 		$this->assertTrue(
-			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( '', [] )
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( '', array() )
 		);
 	}
 
@@ -271,14 +271,14 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET,
-				[]
+				array()
 			)
 		);
 		$this->assertTrue(
-			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( 'You', [] )
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( 'You', array() )
 		);
 		$this->assertTrue(
-			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( 'Kagi', [] )
+			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed( 'Kagi', array() )
 		);
 	}
 
@@ -290,13 +290,13 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'ChatGPT',
-				[ 'ChatGPT-User' ]
+				array( 'ChatGPT-User' )
 			)
 		);
 		$this->assertTrue(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'ChatGPT',
-				[ 'OAI-SearchBot' ]
+				array( 'OAI-SearchBot' )
 			)
 		);
 	}
@@ -307,7 +307,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'ChatGPT',
-				[ 'ChatGPT-User', 'OAI-SearchBot' ]
+				array( 'ChatGPT-User', 'OAI-SearchBot' )
 			)
 		);
 	}
@@ -320,7 +320,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'ChatGPT',
-				[ 'PerplexityBot', 'KlarnaBot' ]
+				array( 'PerplexityBot', 'KlarnaBot' )
 			)
 		);
 	}
@@ -334,7 +334,7 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'ChatGPT',
-				[]
+				array()
 			)
 		);
 	}
@@ -347,13 +347,13 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'ChatGPT',
-				[ 'chatgpt-user' ] // wrong case
+				array( 'chatgpt-user' ) // wrong case
 			)
 		);
 		$this->assertFalse(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'ChatGPT',
-				[ ' ChatGPT-User ' ] // padded whitespace
+				array( ' ChatGPT-User ' ) // padded whitespace
 			)
 		);
 	}
@@ -417,13 +417,13 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'UCPPlayground',
-				[ 'UCPPlayground' ]
+				array( 'UCPPlayground' )
 			)
 		);
 		$this->assertFalse(
 			WC_AI_Storefront_UCP_Agent_Header::is_agent_allowed(
 				'UCPPlayground',
-				[ 'ChatGPT-User' ]
+				array( 'ChatGPT-User' )
 			)
 		);
 	}
@@ -447,43 +447,43 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public static function host_normalization_provider(): array {
-		return [
-			'bare hostname'                 => [ 'openai.com', 'openai.com' ],
-			'mixed case'                    => [ 'OpenAI.COM', 'openai.com' ],
-			'https URL'                     => [ 'https://openai.com', 'openai.com' ],
-			'https URL trailing slash'      => [ 'https://openai.com/', 'openai.com' ],
-			'https URL with path'           => [ 'https://openai.com/foo/bar', 'openai.com' ],
-			'http URL'                      => [ 'http://openai.com', 'openai.com' ],
-			'host with port'                => [ 'openai.com:443', 'openai.com' ],
-			'URL with port'                 => [ 'https://openai.com:443/path', 'openai.com' ],
-			'FQDN trailing dot'             => [ 'openai.com.', 'openai.com' ],
-			'whitespace padding'            => [ '  openai.com  ', 'openai.com' ],
-			'bare host with path'           => [ 'openai.com/', 'openai.com' ],
-			'mixed case URL with path'      => [ 'HTTPS://OpenAI.COM/', 'openai.com' ],
-			'empty input'                   => [ '', '' ],
-			'whitespace-only input'         => [ '   ', '' ],
-			'malformed URL'                 => [ '://no-scheme', '' ],
-			'subdomain preserved'           => [ 'shopping.openai.com', 'shopping.openai.com' ],
+		return array(
+			'bare hostname'                => array( 'openai.com', 'openai.com' ),
+			'mixed case'                   => array( 'OpenAI.COM', 'openai.com' ),
+			'https URL'                    => array( 'https://openai.com', 'openai.com' ),
+			'https URL trailing slash'     => array( 'https://openai.com/', 'openai.com' ),
+			'https URL with path'          => array( 'https://openai.com/foo/bar', 'openai.com' ),
+			'http URL'                     => array( 'http://openai.com', 'openai.com' ),
+			'host with port'               => array( 'openai.com:443', 'openai.com' ),
+			'URL with port'                => array( 'https://openai.com:443/path', 'openai.com' ),
+			'FQDN trailing dot'            => array( 'openai.com.', 'openai.com' ),
+			'whitespace padding'           => array( '  openai.com  ', 'openai.com' ),
+			'bare host with path'          => array( 'openai.com/', 'openai.com' ),
+			'mixed case URL with path'     => array( 'HTTPS://OpenAI.COM/', 'openai.com' ),
+			'empty input'                  => array( '', '' ),
+			'whitespace-only input'        => array( '   ', '' ),
+			'malformed URL'                => array( '://no-scheme', '' ),
+			'subdomain preserved'          => array( 'shopping.openai.com', 'shopping.openai.com' ),
 			// Non-feature: leading `www.` is NOT stripped. `www.openai.com`
 			// is a different DNS name from `openai.com`. Recognizing it
 			// requires an explicit `KNOWN_AGENT_HOSTS` entry.
-			'www prefix preserved'          => [ 'www.openai.com', 'www.openai.com' ],
+			'www prefix preserved'         => array( 'www.openai.com', 'www.openai.com' ),
 			// Protocol-relative URLs (`//host/path`). `wp_parse_url`
 			// handles these when given a hint scheme; the bare-host
 			// branch's `strpos($value, '/')` would otherwise match
 			// at index 0 and silently drop the host.
-			'protocol-relative URL'         => [ '//openai.com', 'openai.com' ],
-			'protocol-relative with path'   => [ '//openai.com/agent.json', 'openai.com' ],
-			'protocol-relative trailing /'  => [ '//openai.com/', 'openai.com' ],
+			'protocol-relative URL'        => array( '//openai.com', 'openai.com' ),
+			'protocol-relative with path'  => array( '//openai.com/agent.json', 'openai.com' ),
+			'protocol-relative trailing /' => array( '//openai.com/', 'openai.com' ),
 			// IPv6 literals contain multiple colons and must NOT have
 			// any colon-stripping applied. The unbracketed form is
 			// what `wp_parse_url` produces from the bracketed
 			// `[2001:db8::1]:443` URL syntax. Pass through unchanged so
 			// a future IPv6-only KNOWN_AGENT_HOSTS entry would match.
-			'IPv6 literal'                  => [ '2001:db8::1', '2001:db8::1' ],
-			'IPv6 with embedded :: shape'   => [ 'fe80::1', 'fe80::1' ],
-			'IPv6 URL with port'            => [ 'http://[2001:db8::1]:443/', '2001:db8::1' ],
-		];
+			'IPv6 literal'                 => array( '2001:db8::1', '2001:db8::1' ),
+			'IPv6 with embedded :: shape'  => array( 'fe80::1', 'fe80::1' ),
+			'IPv6 URL with port'           => array( 'http://[2001:db8::1]:443/', '2001:db8::1' ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -722,27 +722,27 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, array{0: string, 1: string, 2: string}>
 	 */
 	public static function answer_agent_product_provider(): array {
-		return [
+		return array(
 			// Brand-name product tokens.
-			'claude'           => [ 'claude', 'Claude', 'claude.ai' ],
-			'chatgpt'          => [ 'chatgpt', 'ChatGPT', 'chatgpt.com' ],
-			'openai'           => [ 'openai', 'ChatGPT', 'openai.com' ],
-			'gemini'           => [ 'gemini', 'Gemini', 'gemini.google.com' ],
-			'perplexity'       => [ 'perplexity', 'Perplexity', 'perplexity.ai' ],
-			'copilot'          => [ 'copilot', 'Copilot', 'copilot.microsoft.com' ],
+			'claude'           => array( 'claude', 'Claude', 'claude.ai' ),
+			'chatgpt'          => array( 'chatgpt', 'ChatGPT', 'chatgpt.com' ),
+			'openai'           => array( 'openai', 'ChatGPT', 'openai.com' ),
+			'gemini'           => array( 'gemini', 'Gemini', 'gemini.google.com' ),
+			'perplexity'       => array( 'perplexity', 'Perplexity', 'perplexity.ai' ),
+			'copilot'          => array( 'copilot', 'Copilot', 'copilot.microsoft.com' ),
 
 			// Crawler user-agent tokens (mirror UA_AGENT_HOSTS) — a
 			// client that puts its User-Agent value in UCP-Agent
 			// resolves to the same brand + hostname as the brand token.
-			'gptbot'           => [ 'gptbot', 'ChatGPT', 'chatgpt.com' ],
-			'chatgpt-user'     => [ 'chatgpt-user', 'ChatGPT', 'chatgpt.com' ],
-			'oai-searchbot'    => [ 'oai-searchbot', 'ChatGPT', 'chatgpt.com' ],
-			'claudebot'        => [ 'claudebot', 'Claude', 'claude.ai' ],
-			'claude-user'      => [ 'claude-user', 'Claude', 'claude.ai' ],
-			'claude-searchbot' => [ 'claude-searchbot', 'Claude', 'claude.ai' ],
-			'perplexitybot'    => [ 'perplexitybot', 'Perplexity', 'perplexity.ai' ],
-			'perplexity-user'  => [ 'perplexity-user', 'Perplexity', 'perplexity.ai' ],
-		];
+			'gptbot'           => array( 'gptbot', 'ChatGPT', 'chatgpt.com' ),
+			'chatgpt-user'     => array( 'chatgpt-user', 'ChatGPT', 'chatgpt.com' ),
+			'oai-searchbot'    => array( 'oai-searchbot', 'ChatGPT', 'chatgpt.com' ),
+			'claudebot'        => array( 'claudebot', 'Claude', 'claude.ai' ),
+			'claude-user'      => array( 'claude-user', 'Claude', 'claude.ai' ),
+			'claude-searchbot' => array( 'claude-searchbot', 'Claude', 'claude.ai' ),
+			'perplexitybot'    => array( 'perplexitybot', 'Perplexity', 'perplexity.ai' ),
+			'perplexity-user'  => array( 'perplexity-user', 'Perplexity', 'perplexity.ai' ),
+		);
 	}
 
 	// ------------------------------------------------------------------

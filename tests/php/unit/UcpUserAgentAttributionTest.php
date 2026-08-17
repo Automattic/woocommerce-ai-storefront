@@ -127,9 +127,9 @@ class UcpUserAgentAttributionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public static function provide_mapped_ua_tokens(): array {
-		$cases = [];
+		$cases = array();
 		foreach ( WC_AI_Storefront_UCP_Agent_Header::UA_AGENT_HOSTS as $token => $host ) {
-			$cases[ $token ] = [ $token, $host ];
+			$cases[ $token ] = array( $token, $host );
 		}
 		return $cases;
 	}

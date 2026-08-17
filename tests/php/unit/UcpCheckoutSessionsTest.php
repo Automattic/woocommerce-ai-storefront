@@ -37,7 +37,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array<string, mixed>|null>
 	 */
-	private array $fake_store_api = [];
+	private array $fake_store_api = array();
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -45,9 +45,9 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		// Reset settings between tests so disabled-state tests don't
 		// leak. Stub defaults to `enabled => yes`.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 
-		$this->fake_store_api = [];
+		$this->fake_store_api = array();
 
 		Functions\when( '__' )->returnArg();
 		Functions\when( '_n' )->alias(
@@ -85,7 +85,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 					$url  = (string) $arg3;
 				}
 				$parts    = wp_parse_url( $url );
-				$existing = [];
+				$existing = array();
 				if ( isset( $parts['query'] ) ) {
 					parse_str( $parts['query'], $existing );
 				}
@@ -108,19 +108,40 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `[a-z0-9-_]` → collapse repeats → trim edges.
 		Functions\when( 'sanitize_title' )->alias(
 			static function ( $title ): string {
-				$title = (string) $title;
-				$accent_map = [
-					'à' => 'a', 'á' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'å' => 'a',
-					'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
-					'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
-					'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o',
-					'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u',
-					'ñ' => 'n', 'ç' => 'c', 'ý' => 'y', 'ÿ' => 'y',
-				];
-				$title = strtr( strtolower( $title ), $accent_map );
-				$title = preg_replace( '/[\s\/\\\\(),\[\]:;.\'"!?@#$%^&*+=<>{}|~`]+/', '-', $title );
-				$title = preg_replace( '/[^a-z0-9_-]/', '', $title );
-				$title = preg_replace( '/-+/', '-', $title );
+				$title      = (string) $title;
+				$accent_map = array(
+					'à' => 'a',
+					'á' => 'a',
+					'â' => 'a',
+					'ã' => 'a',
+					'ä' => 'a',
+					'å' => 'a',
+					'è' => 'e',
+					'é' => 'e',
+					'ê' => 'e',
+					'ë' => 'e',
+					'ì' => 'i',
+					'í' => 'i',
+					'î' => 'i',
+					'ï' => 'i',
+					'ò' => 'o',
+					'ó' => 'o',
+					'ô' => 'o',
+					'õ' => 'o',
+					'ö' => 'o',
+					'ù' => 'u',
+					'ú' => 'u',
+					'û' => 'u',
+					'ü' => 'u',
+					'ñ' => 'n',
+					'ç' => 'c',
+					'ý' => 'y',
+					'ÿ' => 'y',
+				);
+				$title      = strtr( strtolower( $title ), $accent_map );
+				$title      = preg_replace( '/[\s\/\\\\(),\[\]:;.\'"!?@#$%^&*+=<>{}|~`]+/', '-', $title );
+				$title      = preg_replace( '/[^a-z0-9_-]/', '', $title );
+				$title      = preg_replace( '/-+/', '-', $title );
 				return trim( (string) $title, '-' );
 			}
 		);
@@ -182,45 +203,45 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		bool $in_stock = true,
 		bool $is_purchasable = true
 	): void {
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'             => $id,
 			'name'           => 'Simple #' . $id,
 			'type'           => 'simple',
 			'is_in_stock'    => $in_stock,
 			'is_purchasable' => $is_purchasable,
-			'prices'         => [
+			'prices'         => array(
 				'price'         => (string) $price_minor,
 				'currency_code' => 'USD',
-			],
-		];
+			),
+		);
 	}
 
 	private function seed_variation( int $id, int $price_minor = 1500, bool $is_purchasable = true ): void {
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'             => $id,
 			'name'           => 'T-Shirt',
 			'type'           => 'variation',
 			'is_in_stock'    => true,
 			'is_purchasable' => $is_purchasable,
-			'prices'         => [
+			'prices'         => array(
 				'price'         => (string) $price_minor,
 				'currency_code' => 'USD',
-			],
-		];
+			),
+		);
 	}
 
 	private function seed_variable_parent( int $id ): void {
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'          => $id,
 			'name'        => 'T-Shirt',
 			'type'        => 'variable',
 			'permalink'   => "http://example.com/product/t-shirt-$id/",
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'         => '1000',
 				'currency_code' => 'USD',
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -237,39 +258,39 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 * @param array<int, int>|array<int, array<string, mixed>>  $children Child product IDs or per-child overrides.
 	 */
 	private function seed_deterministic_grouped( int $id, array $children, string $permalink = '' ): void {
-		$child_ids = [];
+		$child_ids = array();
 		foreach ( $children as $key => $value ) {
-			$is_assoc            = is_array( $value );
-			$child_id            = $is_assoc ? (int) $key : (int) $value;
-			$child_ids[]         = $child_id;
-			$is_in_stock         = $is_assoc ? (bool) ( $value['is_in_stock'] ?? true ) : true;
-			$add_to_cart_minimum = $is_assoc ? (int) ( $value['add_to_cart_minimum'] ?? 1 ) : 1;
-			$this->fake_store_api[ $child_id ] = [
+			$is_assoc                          = is_array( $value );
+			$child_id                          = $is_assoc ? (int) $key : (int) $value;
+			$child_ids[]                       = $child_id;
+			$is_in_stock                       = $is_assoc ? (bool) ( $value['is_in_stock'] ?? true ) : true;
+			$add_to_cart_minimum               = $is_assoc ? (int) ( $value['add_to_cart_minimum'] ?? 1 ) : 1;
+			$this->fake_store_api[ $child_id ] = array(
 				'id'          => $child_id,
 				'name'        => 'Grouped Child #' . $child_id,
 				'type'        => 'simple',
 				'is_in_stock' => $is_in_stock,
-				'prices'      => [
+				'prices'      => array(
 					'price'         => '1000',
 					'currency_code' => 'USD',
-				],
-				'add_to_cart' => [
+				),
+				'add_to_cart' => array(
 					'minimum' => $add_to_cart_minimum,
-				],
-			];
+				),
+			);
 		}
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'               => $id,
 			'name'             => 'Deterministic Grouped',
 			'type'             => 'grouped',
 			'permalink'        => '' !== $permalink ? $permalink : 'https://example.com/product/deterministic-grouped/',
 			'is_in_stock'      => true,
-			'prices'           => [
+			'prices'           => array(
 				'price'         => (string) ( count( $child_ids ) * 1000 ),
 				'currency_code' => 'USD',
-			],
+			),
 			'grouped_products' => $child_ids,
-		];
+		);
 	}
 
 	/**
@@ -279,37 +300,46 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 * parent's permalink (configurable case).
 	 */
 	private function seed_grouped_with_variable_child( int $id, int $simple_child_id, int $variable_child_id ): void {
-		$this->fake_store_api[ $simple_child_id ] = [
+		$this->fake_store_api[ $simple_child_id ]   = array(
 			'id'          => $simple_child_id,
 			'name'        => 'Simple Child',
 			'type'        => 'simple',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '1000', 'currency_code' => 'USD' ],
-		];
-		$this->fake_store_api[ $variable_child_id ] = [
+			'prices'      => array(
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			),
+		);
+		$this->fake_store_api[ $variable_child_id ] = array(
 			'id'          => $variable_child_id,
 			'name'        => 'Variable Child',
 			'type'        => 'variable',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '2000', 'currency_code' => 'USD' ],
-		];
-		$this->fake_store_api[ $id ] = [
+			'prices'      => array(
+				'price'         => '2000',
+				'currency_code' => 'USD',
+			),
+		);
+		$this->fake_store_api[ $id ]                = array(
 			'id'               => $id,
 			'name'             => 'Mixed Grouped',
 			'type'             => 'grouped',
 			'permalink'        => 'https://example.com/product/mixed-grouped/',
 			'is_in_stock'      => true,
-			'prices'           => [ 'price' => '3000', 'currency_code' => 'USD' ],
-			'grouped_products' => [ $simple_child_id, $variable_child_id ],
-		];
+			'prices'           => array(
+				'price'         => '3000',
+				'currency_code' => 'USD',
+			),
+			'grouped_products' => array( $simple_child_id, $variable_child_id ),
+		);
 	}
 
 	private function seed_external( int $id ): void {
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'   => $id,
 			'name' => 'Partner Product',
 			'type' => 'external',
-		];
+		);
 	}
 
 	/**
@@ -322,17 +352,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 * the UCP checkout error-handling spec.
 	 */
 	private function seed_bundle( int $id, string $permalink = '' ): void {
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'          => $id,
 			'name'        => 'Shirt Bundle',
 			'type'        => 'bundle',
 			'permalink'   => '' !== $permalink ? $permalink : 'https://example.com/product/shirt-bundle/',
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'         => '2000',
 				'currency_code' => 'USD',
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -348,54 +378,54 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 * @param array<int, int>    $children  [child_product_id => quantity_default, ...].
 	 */
 	private function seed_deterministic_bundle( int $id, array $children ): void {
-		$bundled_items = [];
+		$bundled_items = array();
 		$bid           = 0;
 		foreach ( $children as $child_id => $qty ) {
 			++$bid;
-			$bundled_items[]                          = [
+			$bundled_items[]                         = array(
 				'bundled_item_id'                       => $bid,
 				'product_id'                            => (int) $child_id,
 				'quantity_default'                      => (int) $qty,
 				'optional'                              => false,
 				'override_default_variation_attributes' => false,
-				'default_variation_attributes'          => [],
-			];
-			$this->fake_store_api[ (int) $child_id ] = [
+				'default_variation_attributes'          => array(),
+			);
+			$this->fake_store_api[ (int) $child_id ] = array(
 				'id'          => (int) $child_id,
 				'name'        => 'Bundled Simple #' . $child_id,
 				'type'        => 'simple',
 				'is_in_stock' => true,
-				'prices'      => [
+				'prices'      => array(
 					'price'         => '1000',
 					'currency_code' => 'USD',
-				],
-			];
+				),
+			);
 		}
-		$this->fake_store_api[ $id ] = [
+		$this->fake_store_api[ $id ] = array(
 			'id'          => $id,
 			'name'        => 'Deterministic Bundle',
 			'type'        => 'bundle',
 			'permalink'   => 'https://example.com/product/deterministic-bundle/',
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'         => '2000',
 				'currency_code' => 'USD',
-			],
-			'extensions'  => [
-				'bundles' => [
+			),
+			'extensions'  => array(
+				'bundles' => array(
 					'bundle_stock_status' => 'instock',
 					'bundle_min_size'     => '',
 					'bundle_max_size'     => '',
-					'bundle_price'        => [
-						'price' => [
-							'min' => [ 'excl_tax' => '2000' ],
-							'max' => [ 'excl_tax' => '2000' ],
-						],
-					],
+					'bundle_price'        => array(
+						'price' => array(
+							'min' => array( 'excl_tax' => '2000' ),
+							'max' => array( 'excl_tax' => '2000' ),
+						),
+					),
 					'bundled_items'       => $bundled_items,
-				],
-			],
-		];
+				),
+			),
+		);
 	}
 
 	/**
@@ -411,80 +441,109 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 * true`. The bundle's defaults specify both.
 	 */
 	private function seed_deterministic_bundle_with_variable_child( int $bundle_id, int $variable_child_id ): void {
-		$this->fake_store_api[ $variable_child_id ] = [
+		$this->fake_store_api[ $variable_child_id ] = array(
 			'id'          => $variable_child_id,
 			'name'        => 'Variable Child',
 			'type'        => 'variable',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '1500', 'currency_code' => 'USD' ],
-			'attributes'  => [
-				[
+			'prices'      => array(
+				'price'         => '1500',
+				'currency_code' => 'USD',
+			),
+			'attributes'  => array(
+				array(
 					'name'           => 'Color',
 					'taxonomy'       => 'pa_color',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'name' => 'White', 'slug' => 'white' ],
-						[ 'name' => 'Black', 'slug' => 'black' ],
-					],
-				],
-				[
+					'terms'          => array(
+						array(
+							'name' => 'White',
+							'slug' => 'white',
+						),
+						array(
+							'name' => 'Black',
+							'slug' => 'black',
+						),
+					),
+				),
+				array(
 					'name'           => 'Volume (mL)',
 					'taxonomy'       => '',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'name' => '250', 'slug' => '250' ],
-						[ 'name' => '500', 'slug' => '500' ],
-					],
-				],
+					'terms'          => array(
+						array(
+							'name' => '250',
+							'slug' => '250',
+						),
+						array(
+							'name' => '500',
+							'slug' => '500',
+						),
+					),
+				),
 				// Non-variation informational attribute — should be ignored
 				// by the axis-slug walk (`has_variations: false`).
-				[
+				array(
 					'name'           => 'Brand',
 					'taxonomy'       => 'pa_brand',
 					'has_variations' => false,
-					'terms'          => [ [ 'name' => 'Acme', 'slug' => 'acme' ] ],
-				],
-			],
-		];
-		$this->fake_store_api[ $bundle_id ] = [
+					'terms'          => array(
+						array(
+							'name' => 'Acme',
+							'slug' => 'acme',
+						),
+					),
+				),
+			),
+		);
+		$this->fake_store_api[ $bundle_id ] = array(
 			'id'          => $bundle_id,
 			'name'        => 'Variable-Child Bundle',
 			'type'        => 'bundle',
 			'permalink'   => 'https://example.com/product/variable-child-bundle/',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '1500', 'currency_code' => 'USD' ],
-			'extensions'  => [
-				'bundles' => [
+			'prices'      => array(
+				'price'         => '1500',
+				'currency_code' => 'USD',
+			),
+			'extensions'  => array(
+				'bundles' => array(
 					'bundle_stock_status' => 'instock',
 					'bundle_min_size'     => '',
 					'bundle_max_size'     => '',
-					'bundle_price'        => [
-						'price' => [
-							'min' => [ 'excl_tax' => '1500' ],
-							'max' => [ 'excl_tax' => '1500' ],
-						],
-					],
-					'bundled_items'       => [
-						[
-							'bundled_item_id'                       => 1,
-							'product_id'                            => $variable_child_id,
-							'quantity_default'                      => 1,
-							'optional'                              => false,
+					'bundle_price'        => array(
+						'price' => array(
+							'min' => array( 'excl_tax' => '1500' ),
+							'max' => array( 'excl_tax' => '1500' ),
+						),
+					),
+					'bundled_items'       => array(
+						array(
+							'bundled_item_id'              => 1,
+							'product_id'                   => $variable_child_id,
+							'quantity_default'             => 1,
+							'optional'                     => false,
 							'override_default_variation_attributes' => true,
-							'default_variation_attributes'          => [
+							'default_variation_attributes' => array(
 								// `pa_color` axis: bundle defaults stored
 								// under the post-`pa_` slug `color`.
-								[ 'name' => 'color', 'value' => 'white' ],
+								array(
+									'name'  => 'color',
+									'value' => 'white',
+								),
 								// Inline attribute: stored under the
 								// `sanitize_title` of "Volume (mL)" =
 								// `volume-ml`.
-								[ 'name' => 'volume-ml', 'value' => '250' ],
-							],
-						],
-					],
-				],
-			],
-		];
+								array(
+									'name'  => 'volume-ml',
+									'value' => '250',
+								),
+							),
+						),
+					),
+				),
+			),
+		);
 	}
 
 	/**
@@ -499,59 +558,68 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	 * not deterministic" path).
 	 */
 	private function seed_configurable_bundle_with_optional( int $id, int $required_simple_id, int $optional_simple_id ): void {
-		$this->fake_store_api[ $required_simple_id ] = [
+		$this->fake_store_api[ $required_simple_id ] = array(
 			'id'          => $required_simple_id,
 			'name'        => 'Required Simple',
 			'type'        => 'simple',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '1500', 'currency_code' => 'USD' ],
-		];
-		$this->fake_store_api[ $optional_simple_id ] = [
+			'prices'      => array(
+				'price'         => '1500',
+				'currency_code' => 'USD',
+			),
+		);
+		$this->fake_store_api[ $optional_simple_id ] = array(
 			'id'          => $optional_simple_id,
 			'name'        => 'Optional Simple',
 			'type'        => 'simple',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '1000', 'currency_code' => 'USD' ],
-		];
-		$this->fake_store_api[ $id ] = [
+			'prices'      => array(
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			),
+		);
+		$this->fake_store_api[ $id ]                 = array(
 			'id'          => $id,
 			'name'        => 'Mixed-Required-Optional Bundle',
 			'type'        => 'bundle',
 			'permalink'   => 'https://example.com/product/mixed-bundle/',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '2500', 'currency_code' => 'USD' ],
-			'extensions'  => [
-				'bundles' => [
+			'prices'      => array(
+				'price'         => '2500',
+				'currency_code' => 'USD',
+			),
+			'extensions'  => array(
+				'bundles' => array(
 					'bundle_stock_status' => 'instock',
 					'bundle_min_size'     => '',
 					'bundle_max_size'     => '',
-					'bundle_price'        => [
-						'price' => [
-							'min' => [ 'excl_tax' => '1500' ],
-							'max' => [ 'excl_tax' => '2500' ],
-						],
-					],
-					'bundled_items'       => [
-						[
-							'bundled_item_id'                       => 1,
-							'product_id'                            => $required_simple_id,
-							'quantity_default'                      => 1,
-							'optional'                              => false,
+					'bundle_price'        => array(
+						'price' => array(
+							'min' => array( 'excl_tax' => '1500' ),
+							'max' => array( 'excl_tax' => '2500' ),
+						),
+					),
+					'bundled_items'       => array(
+						array(
+							'bundled_item_id'              => 1,
+							'product_id'                   => $required_simple_id,
+							'quantity_default'             => 1,
+							'optional'                     => false,
 							'override_default_variation_attributes' => false,
-							'default_variation_attributes'          => [],
-						],
-						[
-							'bundled_item_id'                       => 2,
-							'product_id'                            => $optional_simple_id,
-							'quantity_default'                      => 1,
-							'optional'                              => true,
+							'default_variation_attributes' => array(),
+						),
+						array(
+							'bundled_item_id'              => 2,
+							'product_id'                   => $optional_simple_id,
+							'quantity_default'             => 1,
+							'optional'                     => true,
 							'override_default_variation_attributes' => false,
-							'default_variation_attributes'          => [],
-						],
-					],
-				],
-			],
-		];
+							'default_variation_attributes' => array(),
+						),
+					),
+				),
+			),
+		);
 	}
 
 	/**
@@ -578,10 +646,10 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertInstanceOf( WP_REST_Response::class, $response );
 
-		return [
+		return array(
 			'data'   => $response->get_data(),
 			'status' => $response->get_status(),
-		];
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -613,7 +681,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `currency`, `totals`, `links`. `messages` is required for
 		// error responses specifically (otherwise how does the agent
 		// learn what went wrong).
-		foreach ( [ 'ucp', 'id', 'status', 'currency', 'line_items', 'totals', 'links', 'messages' ] as $field ) {
+		foreach ( array( 'ucp', 'id', 'status', 'currency', 'line_items', 'totals', 'links', 'messages' ) as $field ) {
 			$this->assertArrayHasKey(
 				$field,
 				$data,
@@ -631,8 +699,8 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( 'incomplete', $data['status'] );
 
 		// Empty shapes for non-success fields.
-		$this->assertSame( [], $data['line_items'] );
-		$this->assertSame( [], $data['links'] );
+		$this->assertSame( array(), $data['line_items'] );
+		$this->assertSame( array(), $data['links'] );
 
 		// `totals` must carry BOTH `subtotal` and `total` entries per
 		// UCP 2026-04-08 spec (minContains:1, maxContains:1 each).
@@ -655,16 +723,16 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_missing_line_items_returns_400(): void {
-		$this->assert_checkout_error( [], 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
+		$this->assert_checkout_error( array(), 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
 	}
 
 	public function test_empty_line_items_array_returns_400(): void {
-		$this->assert_checkout_error( [ 'line_items' => [] ], 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
+		$this->assert_checkout_error( array( 'line_items' => array() ), 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
 	}
 
 	public function test_non_array_line_items_returns_400(): void {
 		$this->assert_checkout_error(
-			[ 'line_items' => 'not-an-array' ],
+			array( 'line_items' => 'not-an-array' ),
 			400,
 			WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT
 		);
@@ -678,11 +746,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 2500 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 2 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => 2,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -695,12 +766,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 456, 2000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 2 ],
-					[ 'item' => [ 'id' => 'prod_456' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => 2,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_456' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		// Format: /checkout-link/?products=ID:QTY,ID:QTY&utm_source=...&utm_medium=ai_agent
@@ -727,12 +804,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 1000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
-				],
-				'context'    => [ 'currency' => 'EUR' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => 1,
+					),
+				),
+				'context'    => array( 'currency' => 'EUR' ),
+			)
 		);
 
 		$this->assertArrayHasKey( 'continue_url', $result['data'] );
@@ -753,12 +833,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 1000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
-				],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => 1,
+					),
+				),
 				// No 'context' key.
-			]
+			)
 		);
 
 		$this->assertArrayHasKey( 'continue_url', $result['data'] );
@@ -779,12 +862,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 1000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
-				],
-				'context'    => [ 'currency' => 'JPY' ], // not in the set
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => 1,
+					),
+				),
+				'context'    => array( 'currency' => 'JPY' ), // not in the set
+			)
 		);
 
 		$this->assertArrayHasKey( 'continue_url', $result['data'] );
@@ -808,12 +894,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123, 1000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 1 ],
-				],
-				'context'    => [ 'currency' => 'EUR' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => 1,
+					),
+				),
+				'context'    => array( 'currency' => 'EUR' ),
+			)
 		);
 
 		$url          = $result['data']['continue_url'];
@@ -828,7 +917,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		// bin2hex(random_bytes(8)) = 16 hex chars.
@@ -838,8 +934,26 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_session_ids_are_unique_across_requests(): void {
 		$this->seed_simple_product( 1 );
 
-		$a = $this->call_handler( [ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ] );
-		$b = $this->call_handler( [ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ] );
+		$a = $this->call_handler(
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
+		);
+		$b = $this->call_handler(
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
+		);
 
 		$this->assertNotEquals( $a['data']['id'], $b['data']['id'] );
 	}
@@ -852,7 +966,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variation( 456, 1500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_456' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'var_456' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertStringContainsString( 'products=456:1', $result['data']['continue_url'] );
@@ -865,7 +986,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variation( 456 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_456' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'var_456' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'var_456', $result['data']['line_items'][0]['item']['id'] );
@@ -885,7 +1013,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variable_parent( 789 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_789' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_789' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		// 201 Created: session resource now exists (with continue_url
@@ -916,7 +1051,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_grouped_with_variable_child( 555, 556, 557 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_555' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -935,7 +1077,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_grouped_with_variable_child( 555, 556, 557 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_555' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$messages = $result['data']['messages'];
@@ -956,7 +1105,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_grouped_with_variable_child( 555, 556, 557 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_555' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -971,10 +1127,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `quantity[]=` is PHP's array-querystring syntax — WC's legacy
 		// `?add-to-cart=` form handler parses it back into
 		// `$_REQUEST['quantity'] = [child_id => qty]`.
-		$this->seed_deterministic_grouped( 600, [ 601, 602, 603 ] );
+		$this->seed_deterministic_grouped( 600, array( 601, 602, 603 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -998,10 +1161,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// must land as quantity[A]=3 + quantity[B]=3 (3 groups). Grouped
 		// has no parent inventory, so the multiplication happens at URL
 		// construction time (not server-side like bundles).
-		$this->seed_deterministic_grouped( 600, [ 601, 602 ] );
+		$this->seed_deterministic_grouped( 600, array( 601, 602 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 3 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 3,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -1010,10 +1180,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_deterministic_grouped_continue_url_carries_utm_attribution(): void {
-		$this->seed_deterministic_grouped( 600, [ 601 ] );
+		$this->seed_deterministic_grouped( 600, array( 601 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -1029,15 +1206,21 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// (a UX wrapper) instead of its children. Reject as recoverable
 		// so the agent splits and retries.
 		$this->seed_simple_product( 100, 1500, true );
-		$this->seed_deterministic_grouped( 600, [ 601 ] );
+		$this->seed_deterministic_grouped( 600, array( 601 ) );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
@@ -1059,21 +1242,27 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Two grouped parents in one cart can't be combined into one
 		// `?add-to-cart=` URL. Each grouped line item gets its own
 		// recoverable error so the agent knows which to peel off and retry.
-		$this->seed_deterministic_grouped( 600, [ 601 ] );
-		$this->seed_deterministic_grouped( 700, [ 701 ] );
+		$this->seed_deterministic_grouped( 600, array( 601 ) );
+		$this->seed_deterministic_grouped( 700, array( 701 ) );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_700' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_700' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 
-		$paths = [];
+		$paths = array();
 		foreach ( $result['data']['messages'] as $msg ) {
 			if ( 'field_required' === ( $msg['code'] ?? '' )
 				&& 'recoverable' === ( $msg['severity'] ?? '' )
@@ -1097,13 +1286,23 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// any OOS child as a configurable disqualifier so the buyer
 		// lands on the PDP and sees the OOS marker, rather than getting
 		// a half-configured cart-add at /checkout/.
-		$this->seed_deterministic_grouped( 600, [
-			601 => [ 'is_in_stock' => true ],
-			602 => [ 'is_in_stock' => false ],
-		] );
+		$this->seed_deterministic_grouped(
+			600,
+			array(
+				601 => array( 'is_in_stock' => true ),
+				602 => array( 'is_in_stock' => false ),
+			)
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		// Falls back to permalink (configurable case), not the
@@ -1120,13 +1319,23 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Otherwise WC's add-to-cart validator silently bumps or rejects
 		// the line and the buyer ends up with a different quantity than
 		// the URL implied.
-		$this->seed_deterministic_grouped( 600, [
-			601 => [ 'add_to_cart_minimum' => 1 ],
-			602 => [ 'add_to_cart_minimum' => 3 ],
-		] );
+		$this->seed_deterministic_grouped(
+			600,
+			array(
+				601 => array( 'add_to_cart_minimum' => 1 ),
+				602 => array( 'add_to_cart_minimum' => 3 ),
+			)
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -1137,13 +1346,23 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_grouped_minimum_quantity_multiplies_with_agent_quantity(): void {
 		// Minimum + agent quantity stack: child 602 minimum=2, agent
 		// quantity=3 → quantity[602]=6 (2 minimum × 3 groups).
-		$this->seed_deterministic_grouped( 600, [
-			601 => [ 'add_to_cart_minimum' => 1 ],
-			602 => [ 'add_to_cart_minimum' => 2 ],
-		] );
+		$this->seed_deterministic_grouped(
+			600,
+			array(
+				601 => array( 'add_to_cart_minimum' => 1 ),
+				602 => array( 'add_to_cart_minimum' => 2 ),
+			)
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 3 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 3,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -1158,18 +1377,28 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `'simple' !== $child_type` check rejects it, and the helper
 		// returns null → permalink fallback. No infinite recursion, no
 		// broken URL.
-		$this->fake_store_api[ 600 ] = [
+		$this->fake_store_api[600] = array(
 			'id'               => 600,
 			'name'             => 'Self-Referencing Grouped',
 			'type'             => 'grouped',
 			'permalink'        => 'https://example.com/product/self-grouped/',
 			'is_in_stock'      => true,
-			'prices'           => [ 'price' => '1000', 'currency_code' => 'USD' ],
-			'grouped_products' => [ 600 ],
-		];
+			'prices'           => array(
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			),
+			'grouped_products' => array( 600 ),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertStringContainsString( '/product/self-grouped/', $result['data']['continue_url'] );
@@ -1183,10 +1412,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// fallback. Severity stays recoverable because republishing the
 		// grouped product will populate the permalink.
 		$this->seed_grouped_with_variable_child( 555, 556, 557 );
-		$this->fake_store_api[ 555 ]['permalink'] = '';
+		$this->fake_store_api[555]['permalink'] = '';
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_555' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_555' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 200, $result['status'] );
@@ -1211,16 +1447,25 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// duplicates. This mirrors the bundle test: tests the
 		// `request_index` round-trip through dedup → handler.
 		$this->seed_simple_product( 100, 1500, true );
-		$this->seed_deterministic_grouped( 600, [ 601 ] );
+		$this->seed_deterministic_grouped( 600, array( 601 ) );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ], // dup, collapses
-					[ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 1,
+					), // dup, collapses
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$found = null;
@@ -1238,18 +1483,28 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_grouped_with_missing_child_falls_back_to_permalink(): void {
 		// Child not in fake_store_api → fetcher returns null →
 		// build_grouped_url_query returns null → configurable case → permalink.
-		$this->fake_store_api[ 600 ] = [
+		$this->fake_store_api[600] = array(
 			'id'               => 600,
 			'name'             => 'Grouped With Missing Child',
 			'type'             => 'grouped',
 			'permalink'        => 'https://example.com/product/missing-child-grouped/',
 			'is_in_stock'      => true,
-			'prices'           => [ 'price' => '1000', 'currency_code' => 'USD' ],
-			'grouped_products' => [ 999 ], // not seeded
-		];
+			'prices'           => array(
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			),
+			'grouped_products' => array( 999 ), // not seeded
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_600' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_600' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertStringContainsString( '/product/missing-child-grouped/', $result['data']['continue_url'] );
@@ -1260,7 +1515,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_external( 777 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_777' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_777' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1279,21 +1541,28 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// checkout page handles recurring-billing UI. The pre-#369
 		// rejection was based on an empirically-contradicted claim that
 		// subscriptions get charged as one-off purchases.
-		$this->fake_store_api[ 888 ] = [
+		$this->fake_store_api[888] = array(
 			'id'          => 888,
 			'name'        => 'Monthly Box',
 			'type'        => 'subscription',
 			'permalink'   => 'http://example.com/product/monthly-box/',
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'               => '2500',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-		];
+			),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_888' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_888' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1314,21 +1583,28 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// agents that drilled into a variable-subscription's variants.
 		// They route through the same Shareable Checkout path as
 		// regular variation IDs — `?products=<variation_id>:1`.
-		$this->fake_store_api[ 890 ] = [
+		$this->fake_store_api[890] = array(
 			'id'          => 890,
 			'name'        => 'Monthly Box — Annual plan',
 			'type'        => 'subscription_variation',
 			'permalink'   => 'http://example.com/product/monthly-box-annual/',
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'               => '24000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-		];
+			),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_890' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'var_890' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1349,21 +1625,28 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `_default_attributes` here. The merchant default pre-fills
 		// the dropdown on the PDP (WC core behavior), but the buyer
 		// can change it.
-		$this->fake_store_api[ 999 ] = [
+		$this->fake_store_api[999] = array(
 			'id'          => 999,
 			'name'        => 'Magazine Subscription',
 			'type'        => 'variable-subscription',
 			'permalink'   => 'http://example.com/product/magazine-subscription/',
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'               => '1000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-		];
+			),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_999' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_999' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1398,21 +1681,28 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// parent product ID for a variable t-shirt etc. now get a
 		// permalink continue_url instead of a hard variation_required
 		// rejection.
-		$this->fake_store_api[ 850 ] = [
+		$this->fake_store_api[850] = array(
 			'id'          => 850,
 			'name'        => 'Variable T-Shirt',
 			'type'        => 'variable',
 			'permalink'   => 'http://example.com/product/variable-tshirt/',
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'               => '2000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-		];
+			),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_850' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1436,27 +1726,33 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// variable line item, `should_redirect=false`, no continue_url.
 		// Agent must split the cart into separate /checkout-sessions
 		// requests and retry.
-		$this->fake_store_api[ 850 ] = [
+		$this->fake_store_api[850] = array(
 			'id'          => 850,
 			'name'        => 'Variable T-Shirt',
 			'type'        => 'variable',
 			'permalink'   => 'http://example.com/product/variable-tshirt/',
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'               => '2000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-		];
+			),
+		);
 		$this->seed_simple_product( 100, 1500 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_850' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 2,
+					),
+				),
+			)
 		);
 
 		// No `continue_url` — agent must split the cart and retry.
@@ -1486,34 +1782,44 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// mixed-with-simple, emitting one error per variable line item.
 		// Without this rule, the agent gets back ONE permalink (whichever
 		// variable wins) and the OTHER variable's intent is silently lost.
-		$this->fake_store_api[ 850 ] = [
+		$this->fake_store_api[850] = array(
 			'id'          => 850,
 			'name'        => 'Variable T-Shirt',
 			'type'        => 'variable',
 			'permalink'   => 'http://example.com/product/variable-tshirt/',
 			'is_in_stock' => true,
-			'prices'      => [
-				'price' => '2000', 'currency_code' => 'USD', 'currency_minor_unit' => 2,
-			],
-		];
-		$this->fake_store_api[ 860 ] = [
+			'prices'      => array(
+				'price'               => '2000',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			),
+		);
+		$this->fake_store_api[860] = array(
 			'id'          => 860,
 			'name'        => 'Variable Hoodie',
 			'type'        => 'variable',
 			'permalink'   => 'http://example.com/product/variable-hoodie/',
 			'is_in_stock' => true,
-			'prices'      => [
-				'price' => '4500', 'currency_code' => 'USD', 'currency_minor_unit' => 2,
-			],
-		];
+			'prices'      => array(
+				'price'               => '4500',
+				'currency_code'       => 'USD',
+				'currency_minor_unit' => 2,
+			),
+		);
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_850' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_860' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_850' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_860' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
@@ -1532,7 +1838,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$paths = array_column( $field_required_errors, 'path' );
 		sort( $paths );
 		$this->assertSame(
-			[ '$.line_items[0]', '$.line_items[1]' ],
+			array( '$.line_items[0]', '$.line_items[1]' ),
 			$paths
 		);
 	}
@@ -1550,7 +1856,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 1000, false );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		// No valid items → status: incomplete (spec-compliant, was
@@ -1583,12 +1896,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 200, 2500, false );  // $25, OOS
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],  // $30
-					[ 'item' => [ 'id' => 'prod_200' ], 'quantity' => 1 ],  // OOS — excluded
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 2,
+					),  // $30
+					array(
+						'item'     => array( 'id' => 'prod_200' ),
+						'quantity' => 1,
+					),  // OOS — excluded
+				),
+			)
 		);
 
 		// At least one valid item → 201 Created with continue_url.
@@ -1633,7 +1952,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 222, 1000, true, false );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_222' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_222' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 200, $result['status'] );
@@ -1670,12 +1996,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 400, 2500, true, false );   // $25, NOT purchasable
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_300' ], 'quantity' => 2 ],   // $30
-					[ 'item' => [ 'id' => 'prod_400' ], 'quantity' => 1 ],   // unpurchasable — excluded
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_300' ),
+						'quantity' => 2,
+					),   // $30
+					array(
+						'item'     => array( 'id' => 'prod_400' ),
+						'quantity' => 1,
+					),   // unpurchasable — excluded
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -1706,7 +2038,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_unknown_product_id_produces_not_found_message(): void {
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_9999' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
@@ -1721,7 +2060,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_123' ], 'quantity' => 0 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => 0,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1732,7 +2078,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 123 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_123' ], 'quantity' => -3 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_123' ),
+						'quantity' => -3,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1741,7 +2094,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_non_array_line_item_produces_invalid_line_item(): void {
 		$result = $this->call_handler(
-			[ 'line_items' => [ 'this-is-not-an-object' ] ]
+			array( 'line_items' => array( 'this-is-not-an-object' ) )
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1756,11 +2109,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// response code runs. Locks in the defensive shape check that
 		// emits `invalid_line_item` for this mis-shaped input.
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => 'prod_123', 'quantity' => 1 ],  // string, not array
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => 'prod_123',
+						'quantity' => 1,
+					),  // string, not array
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1779,11 +2135,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// shape check runs first and emits the more accurate
 		// `invalid_line_item` code with a JSONPath at the .id field.
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [], 'quantity' => 1 ],  // empty item object, no id
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array(),
+						'quantity' => 1,
+					),  // empty item object, no id
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1806,11 +2165,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// ID. `trim($raw_id) === ''` catches this before we try to
 		// parse-to-int it.
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => '   ' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => '   ' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -1828,12 +2190,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 100, 1000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],
-					[ 'item' => [ 'id' => 'prod_999' ], 'quantity' => 1 ],  // missing
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 2,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_999' ),
+						'quantity' => 1,
+					),  // missing
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -1872,7 +2240,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			),
 			'profile="https://agent.example.com/profile.json"'
 		);
 
@@ -1911,7 +2286,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			),
 			'profile="https://gemini.google.com/profile.json"'
 		);
 
@@ -1933,7 +2315,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			),
 			'profile="https://ucpplayground.com/profile.json"'
 		);
 
@@ -1951,7 +2340,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 			// No UCP-Agent header set.
 		);
 
@@ -1981,7 +2377,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			),
 			'UCP-Playground/1.0'
 		);
 
@@ -2009,7 +2412,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			),
 			'NovelAgent/2.0'
 		);
 
@@ -2032,10 +2442,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
-				'meta'       => [ 'source' => 'ucp-playground' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+				'meta'       => array( 'source' => 'ucp-playground' ),
+			)
 			// No UCP-Agent header set — falls through to meta.source.
 		);
 
@@ -2060,11 +2475,16 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
 				// Body says one thing.
-				'meta'       => [ 'source' => 'ucp-playground' ],
-			],
+				'meta'       => array( 'source' => 'ucp-playground' ),
+			),
 			// Header says another. Header wins.
 			'profile="https://gemini.google.com/profile.json"'
 		);
@@ -2083,10 +2503,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
-				'meta'       => [ 'source' => 'mysteryAgent' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+				'meta'       => array( 'source' => 'mysteryAgent' ),
+			)
 		);
 
 		$this->assertStringContainsString(
@@ -2112,10 +2537,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
 				'meta'       => 'ucp-playground', // String, not array.
-			]
+			)
 		);
 
 		$this->assertStringContainsString(
@@ -2133,10 +2563,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
-				'meta'       => [ 'source' => 42 ], // Number, not string.
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+				'meta'       => array( 'source' => 42 ), // Number, not string.
+			)
 		);
 
 		$this->assertStringContainsString(
@@ -2157,10 +2592,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
-				'meta'       => [ 'source' => "   \t\n  " ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+				'meta'       => array( 'source' => "   \t\n  " ),
+			)
 		);
 
 		$this->assertStringContainsString(
@@ -2178,10 +2618,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
-				'meta'       => [ 'source' => str_repeat( 'a', 254 ) ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+				'meta'       => array( 'source' => str_repeat( 'a', 254 ) ),
+			)
 		);
 
 		$this->assertStringContainsString(
@@ -2202,12 +2647,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// start storing attacker-controlled strings in order meta.
 		$this->seed_simple_product( 1 );
 
-		foreach ( [ '<script>', 'agent name', 'agent%2Fsource', 'agent/source' ] as $bad_source ) {
+		foreach ( array( '<script>', 'agent name', 'agent%2Fsource', 'agent/source' ) as $bad_source ) {
 			$result = $this->call_handler(
-				[
-					'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
-					'meta'       => [ 'source' => $bad_source ],
-				]
+				array(
+					'line_items' => array(
+						array(
+							'item'     => array( 'id' => 'prod_1' ),
+							'quantity' => 1,
+						),
+					),
+					'meta'       => array( 'source' => $bad_source ),
+				)
 			);
 
 			$this->assertStringContainsString(
@@ -2227,10 +2677,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ],
-				'meta'       => [ 'source' => 'my_agent' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+				'meta'       => array( 'source' => 'my_agent' ),
+			)
 		);
 
 		// Should NOT fall back to FALLBACK_SOURCE — the token is valid.
@@ -2247,7 +2702,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			),
 			'trust=anonymous'
 		);
 
@@ -2273,7 +2735,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$types = array_column( $result['data']['links'], 'type' );
@@ -2287,7 +2756,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$types = array_column( $result['data']['links'], 'type' );
@@ -2305,7 +2781,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$types = array_column( $result['data']['links'], 'type' );
@@ -2324,12 +2807,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 200, 2500 );  // $25 each
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 3 ],  // $30
-					[ 'item' => [ 'id' => 'prod_200' ], 'quantity' => 2 ],  // $50
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 3,
+					),  // $30
+					array(
+						'item'     => array( 'id' => 'prod_200' ),
+						'quantity' => 2,
+					),  // $50
+				),
+			)
 		);
 
 		// 3*1000 + 2*2500 = 8000 minor units = $80
@@ -2344,7 +2833,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 100, 1500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 3 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 3,
+					),
+				),
+			)
 		);
 
 		$line = $result['data']['line_items'][0];
@@ -2359,7 +2855,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1, 1000 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'EUR', $result['data']['currency'] );
@@ -2374,7 +2877,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayHasKey( 'ucp', $result['data'] );
@@ -2393,7 +2903,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 1 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$handoff = array_filter(
@@ -2425,7 +2942,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// the handoff message rather than confusing agents with a
 		// "redirect the user" hint when there's nothing to redirect to.
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_9999' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2446,7 +2970,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$cap    = WC_AI_Storefront_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $cap + 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => $cap + 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
@@ -2474,12 +3005,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 42, 1000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_42' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_42' ], 'quantity' => 2 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_42' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_42' ),
+						'quantity' => 2,
+					),
+				),
+			)
 		);
 
 		// Response should carry ONE line item per wc_id with the
@@ -2513,12 +3050,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 2, 2000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_2' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_2' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertCount( 2, $result['data']['line_items'] );
@@ -2542,12 +3085,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertGreaterThan( $cap, $expected_sum );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $line_qty ],
-					[ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $line_qty ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => $line_qty,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => $line_qty,
+					),
+				),
+			)
 		);
 
 		// Sum is over-cap → entry dropped. With nothing to redirect
@@ -2586,7 +3135,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		$cap    = WC_AI_Storefront_UCP_REST_Controller::MAX_QUANTITY_PER_LINE_ITEM;
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => $cap ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => $cap,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -2600,21 +3156,31 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Same DoS class as the ids cap on /catalog/lookup: each
 		// line item drives internal product-validation dispatches.
 		$cap   = WC_AI_Storefront_UCP_REST_Controller::MAX_LINE_ITEMS_PER_CHECKOUT;
-		$items = [];
+		$items = array();
 		for ( $i = 0; $i < $cap + 1; $i++ ) {
-			$items[] = [ 'item' => [ 'id' => 'prod_' . $i ], 'quantity' => 1 ];
+			$items[] = array(
+				'item'     => array( 'id' => 'prod_' . $i ),
+				'quantity' => 1,
+			);
 		}
 
-		$this->assert_checkout_error( [ 'line_items' => $items ], 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
+		$this->assert_checkout_error( array( 'line_items' => $items ), 400, WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT );
 	}
 
 	public function test_disabled_syndication_returns_503_ucp_disabled(): void {
 		// Checkout is the highest-stakes handler to leave serving when
 		// syndication is paused — lock in the gate.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$this->assert_checkout_error(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ] ],
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			),
 			503,
 			WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED
 		);
@@ -2632,7 +3198,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 2 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 2,
+					),
+				),
+			)
 		);
 
 		$types = array_column( $result['data']['totals'], 'type' );
@@ -2656,7 +3229,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2666,7 +3246,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			$result['data']['messages'],
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL === ( $m['code'] ?? '' )
 		);
-		$msg = array_values( $provisional )[0];
+		$msg         = array_values( $provisional )[0];
 		$this->assertSame( 'info', $msg['type'] );
 		// `message_info.json` doesn't define `severity`; dropped in 0.12.0.
 		$this->assertArrayNotHasKey( 'severity', $msg );
@@ -2679,7 +3259,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `total` entry itself is still emitted in `totals` per spec,
 		// zeroed.)
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_9999' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2693,15 +3280,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [ 'amount' => 2500, 'currency' => 'USD' ],
-					],
-				],
-			]
+						'expected_unit_price' => array(
+							'amount'   => 2500,
+							'currency' => 'USD',
+						),
+					),
+				),
+			)
 		);
 
 		$warnings = array_filter(
@@ -2718,15 +3308,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [ 'amount' => 2500, 'currency' => 'USD' ],
-					],
-				],
-			]
+						'expected_unit_price' => array(
+							'amount'   => 2500,
+							'currency' => 'USD',
+						),
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2739,11 +3332,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2758,15 +3354,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [ 'amount' => 2000, 'currency' => 'GBP' ],
-					],
-				],
-			]
+						'expected_unit_price' => array(
+							'amount'   => 2000,
+							'currency' => 'GBP',
+						),
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2780,15 +3379,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [ 'amount' => 2500, 'currency' => 'usd' ],
-					],
-				],
-			]
+						'expected_unit_price' => array(
+							'amount'   => 2500,
+							'currency' => 'usd',
+						),
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2802,15 +3404,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [ 'amount' => 2500 ],
-					],
-				],
-			]
+						'expected_unit_price' => array( 'amount' => 2500 ),
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2829,16 +3431,16 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
 						// String where an object was expected.
 						'expected_unit_price' => '25.00',
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		// Handler didn't crash (HTTP 201, not 500), line item is
@@ -2861,15 +3463,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [ 'amount' => '25.00', 'currency' => 'USD' ],
-					],
-				],
-			]
+						'expected_unit_price' => array(
+							'amount'   => '25.00',
+							'currency' => 'USD',
+						),
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2886,21 +3491,21 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [
+						'expected_unit_price' => array(
 							'amount'   => 2500,
 							// Non-string currency — would coerce to
 							// "Array" via (string) cast without the
 							// is_string() guard.
-							'currency' => [ 'USD' ],
-						],
-					],
-				],
-			]
+							'currency' => array( 'USD' ),
+						),
+					),
+				),
+			)
 		);
 
 		// Comparison ran (empty-currency lenient path) and fired the
@@ -2917,15 +3522,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 3000 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[
-						'item'                => [ 'id' => 'prod_111' ],
+			array(
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_111' ),
 						'quantity'            => 1,
-						'expected_unit_price' => [ 'amount' => '2500', 'currency' => 'USD' ],
-					],
-				],
-			]
+						'expected_unit_price' => array(
+							'amount'   => '2500',
+							'currency' => 'USD',
+						),
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -2936,7 +3544,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayHasKey( 'price_includes_tax', $result['data']['line_items'][0] );
@@ -2951,7 +3566,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertTrue( $result['data']['line_items'][0]['price_includes_tax'] );
@@ -2965,7 +3587,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_variation( 222, 3500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'var_222' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'var_222' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayHasKey( 'price_includes_tax', $result['data']['line_items'][0] );
@@ -2980,7 +3609,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -3001,7 +3637,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertCount( 1, $result['data']['line_items'] );
@@ -3028,7 +3671,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 100 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -3042,7 +3692,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 3 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 3,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -3057,7 +3714,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 100 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$codes = array_column( $result['data']['messages'], 'code' );
@@ -3074,14 +3738,21 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$handoff = array_filter(
 			$result['data']['messages'],
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED === ( $m['code'] ?? '' )
 		);
-		$msg = array_values( $handoff )[0];
+		$msg     = array_values( $handoff )[0];
 		$this->assertSame( 'Review & secure payment at Acme Store.', $msg['content'] );
 	}
 
@@ -3103,10 +3774,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
-				'context'    => [ 'locale' => 'fr-FR' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+				'context'    => array( 'locale' => 'fr-FR' ),
+			)
 		);
 
 		$this->assertSame( 'fr-FR', $captured_locale );
@@ -3132,10 +3808,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
-				'context'    => [ 'locale' => 'en-GB-oxendict' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+				'context'    => array( 'locale' => 'en-GB-oxendict' ),
+			)
 		);
 
 		$this->assertSame( 'en-GB-oxendict', $captured_locale );
@@ -3159,10 +3840,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$this->call_handler(
-			[
-				'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
-				'context'    => [ 'locale' => 'not a valid locale; DROP TABLE wp_users;' ],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+				'context'    => array( 'locale' => 'not a valid locale; DROP TABLE wp_users;' ),
+			)
 		);
 
 		$this->assertSame( '', $captured_locale );
@@ -3182,7 +3868,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		// Handler didn't fatal (status 201 = happy path preserved).
@@ -3207,13 +3900,20 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// the default for this instead of pollute the log.
 		$this->stub_apply_filters_for(
 			'wc_ai_storefront_checkout_handoff_message',
-			[ 'oops', 'array', 'return' ]
+			array( 'oops', 'array', 'return' )
 		);
 
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertSame( 201, $result['status'] );
@@ -3221,7 +3921,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			$result['data']['messages'],
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED === ( $m['code'] ?? '' )
 		);
-		$msg = array_values( $handoff )[0];
+		$msg     = array_values( $handoff )[0];
 		$this->assertIsString( $msg['content'] );
 		$this->assertNotSame( '', $msg['content'] );
 		$this->assertStringNotContainsString( 'Array', $msg['content'] );
@@ -3240,7 +3940,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 111, 2500 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_111' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayHasKey( 'expires_at', $result['data'] );
@@ -3255,7 +3962,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// consumer inspecting failure responses shouldn't have to
 		// branch on status to parse the envelope.
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_9999' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_9999' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertSame( 'incomplete', $result['data']['status'] );
@@ -3273,14 +3987,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		//   - "abcdefghi"  (9 chars, over max) → rejected
 		//   - 35-char legal → accepted
 		//   - 36-char legal → rejected (length cap)
-		$tests = [
-			'a'                                     => '',           // below min
-			'aa'                                    => 'aa',          // at min
-			'abcdefgh'                              => 'abcdefgh',    // 8-char lang subtag
-			'abcdefghi'                             => '',            // 9-char lang subtag, over max
-			'en-US-x-aaaaaaaa-bbbbbbbb'             => 'en-US-x-aaaaaaaa-bbbbbbbb',  // 25 chars, within cap
+		$tests = array(
+			'a'                         => '',           // below min
+			'aa'                        => 'aa',          // at min
+			'abcdefgh'                  => 'abcdefgh',    // 8-char lang subtag
+			'abcdefghi'                 => '',            // 9-char lang subtag, over max
+			'en-US-x-aaaaaaaa-bbbbbbbb' => 'en-US-x-aaaaaaaa-bbbbbbbb',  // 25 chars, within cap
 			str_repeat( 'a', 8 ) . '-' . str_repeat( 'b', 26 ) => '',  // 35 chars — rejected (extension subtag > 8 chars, not cap)
-		];
+		);
 		// The 35-char cap is exercised by the SQL-injection rejection
 		// test; the per-subtag 8-char limit is the stricter gate for
 		// malformed-but-long inputs. The last case above documents
@@ -3297,20 +4011,25 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 				}
 			);
 
-			$this->fake_store_api = [];
+			$this->fake_store_api = array();
 			$this->seed_simple_product( 111, 2500 );
 
 			$this->call_handler(
-				[
-					'line_items' => [ [ 'item' => [ 'id' => 'prod_111' ], 'quantity' => 1 ] ],
-					'context'    => [ 'locale' => $input ],
-				]
+				array(
+					'line_items' => array(
+						array(
+							'item'     => array( 'id' => 'prod_111' ),
+							'quantity' => 1,
+						),
+					),
+					'context'    => array( 'locale' => $input ),
+				)
 			);
 
 			$this->assertSame(
 				$expected_captured,
 				$captured_locale,
-				sprintf( "Locale boundary failure: input=%s (expected %s)", $input, $expected_captured )
+				sprintf( 'Locale boundary failure: input=%s (expected %s)', $input, $expected_captured )
 			);
 		}
 	}
@@ -3350,26 +4069,31 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	public function test_all_three_identification_paths_for_ucpplayground_emit_identical_utm_source(): void {
 		$this->seed_simple_product( 1 );
 
-		$line_items = [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ];
+		$line_items = array(
+			array(
+				'item'     => array( 'id' => 'prod_1' ),
+				'quantity' => 1,
+			),
+		);
 
 		// Path 1: profile-URL form (RFC 8941 Dictionary).
 		$profile_url_result = $this->call_handler(
-			[ 'line_items' => $line_items ],
+			array( 'line_items' => $line_items ),
 			'profile="https://ucpplayground.com/profile.json"'
 		);
 
 		// Path 2: Product/Version form (RFC 7231 §5.5.3 User-Agent).
 		$product_version_result = $this->call_handler(
-			[ 'line_items' => $line_items ],
+			array( 'line_items' => $line_items ),
 			'UCP-Playground/1.0'
 		);
 
 		// Path 3: meta.source body fallback.
 		$meta_source_result = $this->call_handler(
-			[
+			array(
 				'line_items' => $line_items,
-				'meta'       => [ 'source' => 'ucp-playground' ],
-			]
+				'meta'       => array( 'source' => 'ucp-playground' ),
+			)
 			// No UCP-Agent header.
 		);
 
@@ -3411,18 +4135,23 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// the same `claude.ai` utm_source as the profile-URL path.
 		$this->seed_simple_product( 1 );
 
-		$line_items = [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ];
+		$line_items = array(
+			array(
+				'item'     => array( 'id' => 'prod_1' ),
+				'quantity' => 1,
+			),
+		);
 
 		// Profile-URL form.
 		$profile_result = $this->call_handler(
-			[ 'line_items' => $line_items ],
+			array( 'line_items' => $line_items ),
 			'profile="https://claude.ai/profile.json"'
 		);
 
 		// Product/Version form WITH a trailing comment — the exact
 		// transcript header shape.
 		$product_result = $this->call_handler(
-			[ 'line_items' => $line_items ],
+			array( 'line_items' => $line_items ),
 			'Claude/4.6 (Anthropic)'
 		);
 
@@ -3454,10 +4183,15 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// resolves straight to `chatgpt.com`.
 		$this->seed_simple_product( 1 );
 
-		$line_items = [ [ 'item' => [ 'id' => 'prod_1' ], 'quantity' => 1 ] ];
+		$line_items = array(
+			array(
+				'item'     => array( 'id' => 'prod_1' ),
+				'quantity' => 1,
+			),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => $line_items ],
+			array( 'line_items' => $line_items ),
 			'GPTBot/1.2 (+https://openai.com/gptbot)'
 		);
 
@@ -3486,7 +4220,7 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		if ( ! is_string( $query ) ) {
 			return '';
 		}
-		$params = [];
+		$params = array();
 		parse_str( $query, $params );
 		return is_string( $params['utm_source'] ?? null ) ? $params['utm_source'] : '';
 	}
@@ -3510,7 +4244,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_bundle( 875, 'https://example.com/product/shirt-bundle/' );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_875' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -3531,7 +4272,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_bundle( 875 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_875' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$messages = $result['data']['messages'];
@@ -3555,7 +4303,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_bundle( 875 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_875' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -3572,10 +4327,23 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Buyer lands on /checkout/ via the 2-step internal redirect
 		// (WC's `?add-to-cart=` form handler runs on /checkout/ and
 		// completes the add then renders the page).
-		$this->seed_deterministic_bundle( 900, [ 901 => 1, 902 => 2 ] );
+		$this->seed_deterministic_bundle(
+			900,
+			array(
+				901 => 1,
+				902 => 2,
+			)
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_900' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 201, $result['status'] );
@@ -3595,10 +4363,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_deterministic_bundle_continue_url_carries_utm_attribution(): void {
-		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+		$this->seed_deterministic_bundle( 900, array( 901 => 1 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_900' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -3616,7 +4391,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_deterministic_bundle_with_variable_child( 920, 921 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_920' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_920' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
@@ -3639,11 +4421,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// is false — buyer must pick variations on the PDP. URL builder
 		// returns null; handler routes to permalink + emits field_required.
 		$this->seed_deterministic_bundle_with_variable_child( 920, 921 );
-		$this->fake_store_api[ 920 ]['extensions']['bundles']['bundled_items'][0]['override_default_variation_attributes'] = false;
-		$this->fake_store_api[ 920 ]['extensions']['bundles']['bundled_items'][0]['default_variation_attributes']          = [];
+		$this->fake_store_api[920]['extensions']['bundles']['bundled_items'][0]['override_default_variation_attributes'] = false;
+		$this->fake_store_api[920]['extensions']['bundles']['bundled_items'][0]['default_variation_attributes']          = array();
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_920' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_920' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
@@ -3658,13 +4447,23 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// Bundle has override=true but only one of two axes is specified.
 		// Strict rule: ALL axes must be covered, else fall back.
 		$this->seed_deterministic_bundle_with_variable_child( 920, 921 );
-		$this->fake_store_api[ 920 ]['extensions']['bundles']['bundled_items'][0]['default_variation_attributes'] = [
-			[ 'name' => 'color', 'value' => 'white' ],
+		$this->fake_store_api[920]['extensions']['bundles']['bundled_items'][0]['default_variation_attributes'] = array(
+			array(
+				'name'  => 'color',
+				'value' => 'white',
+			),
 			// `volume-ml` deliberately missing.
-		];
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_920' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_920' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		// Should fall back to permalink + field_required.
@@ -3679,40 +4478,50 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `fetch_store_api_product()` returns null for the missing
 		// child → URL builder can't classify → returns null → bundle
 		// treated as configurable → permalink + field_required.
-		$this->fake_store_api[ 930 ] = [
+		$this->fake_store_api[930] = array(
 			'id'          => 930,
 			'name'        => 'Bundle With Missing Child',
 			'type'        => 'bundle',
 			'permalink'   => 'https://example.com/product/bundle-missing-child/',
 			'is_in_stock' => true,
-			'prices'      => [ 'price' => '1000', 'currency_code' => 'USD' ],
-			'extensions'  => [
-				'bundles' => [
+			'prices'      => array(
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			),
+			'extensions'  => array(
+				'bundles' => array(
 					'bundle_stock_status' => 'instock',
-					'bundle_price'        => [
-						'price' => [
-							'min' => [ 'excl_tax' => '1000' ],
-							'max' => [ 'excl_tax' => '1000' ],
-						],
-					],
-					'bundled_items'       => [
-						[
-							'bundled_item_id'                       => 1,
+					'bundle_price'        => array(
+						'price' => array(
+							'min' => array( 'excl_tax' => '1000' ),
+							'max' => array( 'excl_tax' => '1000' ),
+						),
+					),
+					'bundled_items'       => array(
+						array(
+							'bundled_item_id'              => 1,
 							// product_id 999 is intentionally absent
 							// from $fake_store_api.
-							'product_id'                            => 999,
-							'quantity_default'                      => 1,
-							'optional'                              => false,
+							'product_id'                   => 999,
+							'quantity_default'             => 1,
+							'optional'                     => false,
 							'override_default_variation_attributes' => false,
-							'default_variation_attributes'          => [],
-						],
-					],
-				],
-			],
-		];
+							'default_variation_attributes' => array(),
+						),
+					),
+				),
+			),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_930' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_930' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertStringContainsString( '/product/bundle-missing-child/', $result['data']['continue_url'] );
@@ -3725,10 +4534,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// bundles). `bundle_quantity_<bid>` is the per-bundled-item
 		// quantity inside one bundle. Multiplying happens server-side:
 		// WC adds N bundles, each fully configured.
-		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+		$this->seed_deterministic_bundle( 900, array( 901 => 1 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 3 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_900' ),
+						'quantity' => 3,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -3745,10 +4561,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// both produce this. The URL builder must merge new params into
 		// the existing query string, not append `?` again.
 		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/checkout/?lang=es' );
-		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+		$this->seed_deterministic_bundle( 900, array( 901 => 1 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_900' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -3790,10 +4613,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 				return $value;
 			}
 		);
-		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+		$this->seed_deterministic_bundle( 900, array( 901 => 1 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_900' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertStringContainsString( '/filtered/?from=bundle', $result['data']['continue_url'] );
@@ -3806,10 +4636,17 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// builder must use that helper, not a hard-coded
 		// `home_url('/checkout/')` which 404s on those stores.
 		Functions\when( 'wc_get_checkout_url' )->justReturn( 'https://example.com/finalizar-compra/' );
-		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+		$this->seed_deterministic_bundle( 900, array( 901 => 1 ) );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_900' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$url = $result['data']['continue_url'];
@@ -3827,7 +4664,14 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_configurable_bundle_with_optional( 950, 951, 952 );
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_950' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_950' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'requires_escalation', $result['data']['status'] );
@@ -3849,19 +4693,30 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_bundle( 875 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_875' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
-		$bundle_errors = array_values( array_filter(
-			$result['data']['messages'],
-			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
-		) );
+		$bundle_errors = array_values(
+			array_filter(
+				$result['data']['messages'],
+				static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+			)
+		);
 		$this->assertCount( 1, $bundle_errors );
 		$this->assertSame( '$.line_items[2]', $bundle_errors[0]['path'] );
 	}
@@ -3878,12 +4733,18 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_simple_product( 100, 1500 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 2 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_875' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 2,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
@@ -3909,21 +4770,29 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_bundle( 876, 'https://example.com/product/another-bundle/' );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_876' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_875' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_876' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 
-		$field_required_errors = array_values( array_filter(
-			$result['data']['messages'],
-			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
-		) );
+		$field_required_errors = array_values(
+			array_filter(
+				$result['data']['messages'],
+				static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+			)
+		);
 		$this->assertCount( 2, $field_required_errors, 'One field_required error per bundle line item.' );
 		// Both must be `recoverable` — the agent can split the cart and retry.
 		foreach ( $field_required_errors as $err ) {
@@ -3936,16 +4805,22 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// non-bundle line items hits the must-split rule — the
 		// /checkout/?add-to-cart= URL form handles only one product
 		// at a time.
-		$this->seed_deterministic_bundle( 900, [ 901 => 1 ] );
+		$this->seed_deterministic_bundle( 900, array( 901 => 1 ) );
 		$this->seed_simple_product( 100, 1500 );
 
 		$result = $this->call_handler(
-			[
-				'line_items' => [
-					[ 'item' => [ 'id' => 'prod_900' ], 'quantity' => 1 ],
-					[ 'item' => [ 'id' => 'prod_100' ], 'quantity' => 1 ],
-				],
-			]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_900' ),
+						'quantity' => 1,
+					),
+					array(
+						'item'     => array( 'id' => 'prod_100' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertEquals( 'incomplete', $result['data']['status'] );
@@ -3963,29 +4838,38 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		// `incomplete` and `continue_url` is omitted entirely.
 		// Emitting a known-broken `/checkout-link/?products=` URL would
 		// just hand the agent something WC will reject.
-		$this->fake_store_api[ 875 ] = [
+		$this->fake_store_api[875] = array(
 			'id'          => 875,
 			'name'        => 'Shirt Bundle',
 			'type'        => 'bundle',
 			// permalink intentionally absent
 			'is_in_stock' => true,
-			'prices'      => [
+			'prices'      => array(
 				'price'         => '2000',
 				'currency_code' => 'USD',
-			],
-		];
+			),
+		);
 
 		$result = $this->call_handler(
-			[ 'line_items' => [ [ 'item' => [ 'id' => 'prod_875' ], 'quantity' => 1 ] ] ]
+			array(
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_875' ),
+						'quantity' => 1,
+					),
+				),
+			)
 		);
 
 		$this->assertSame( 'incomplete', $result['data']['status'] );
 		$this->assertArrayNotHasKey( 'continue_url', $result['data'] );
 
-		$bundle_errors = array_values( array_filter(
-			$result['data']['messages'],
-			static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
-		) );
+		$bundle_errors = array_values(
+			array_filter(
+				$result['data']['messages'],
+				static fn ( $m ) => 'field_required' === ( $m['code'] ?? '' )
+			)
+		);
 		$this->assertCount( 1, $bundle_errors );
 		$this->assertSame( 'recoverable', $bundle_errors[0]['severity'] );
 		$this->assertStringNotContainsString( 'Open continue_url', $bundle_errors[0]['content'] );
@@ -4017,25 +4901,36 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 			static function ( WP_REST_Request $req ) use ( &$selected_at_dispatch, &$captured_param ) {
 				$selected_at_dispatch = $GLOBALS['_mc_selected_currency'] ?? null;
 				$captured_param       = $req->get_param( 'currency' );
-				$response             = new \WP_REST_Response( array(
-					'id'             => 1,
-					'type'           => 'simple',
-					'is_in_stock'    => true,
-					'is_purchasable' => true,
-					'prices'         => array( 'price' => '1999', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
-				) );
+				$response             = new \WP_REST_Response(
+					array(
+						'id'             => 1,
+						'type'           => 'simple',
+						'is_in_stock'    => true,
+						'is_purchasable' => true,
+						'prices'         => array(
+							'price'               => '1999',
+							'currency_code'       => 'EUR',
+							'currency_minor_unit' => 2,
+						),
+					)
+				);
 				$response->set_status( 200 );
 				return $response;
 			}
 		);
 
 		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
-		$request->set_body_params( array(
-			'context'    => array( 'currency' => 'EUR' ),
-			'line_items' => array(
-				array( 'item' => array( 'id' => 'prod_1' ), 'quantity' => 1 ),
-			),
-		) );
+		$request->set_body_params(
+			array(
+				'context'    => array( 'currency' => 'EUR' ),
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_checkout_sessions_create( $request );
@@ -4061,29 +4956,40 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\when( 'rest_do_request' )->alias(
 			static function ( WP_REST_Request $req ) {
-				$response = new \WP_REST_Response( array(
-					'id'             => 1,
-					'type'           => 'simple',
-					'is_in_stock'    => true,
-					'is_purchasable' => true,
-					'prices'         => array( 'price' => '1999', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
-				) );
+				$response = new \WP_REST_Response(
+					array(
+						'id'             => 1,
+						'type'           => 'simple',
+						'is_in_stock'    => true,
+						'is_purchasable' => true,
+						'prices'         => array(
+							'price'               => '1999',
+							'currency_code'       => 'EUR',
+							'currency_minor_unit' => 2,
+						),
+					)
+				);
 				$response->set_status( 200 );
 				return $response;
 			}
 		);
 
 		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
-		$request->set_body_params( array(
-			'context'    => array( 'currency' => 'EUR' ),
-			'line_items' => array(
-				array(
-					'item'                => array( 'id' => 'prod_1' ),
-					'quantity'            => 1,
-					'expected_unit_price' => array( 'amount' => 1999, 'currency' => 'EUR' ),
+		$request->set_body_params(
+			array(
+				'context'    => array( 'currency' => 'EUR' ),
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_1' ),
+						'quantity'            => 1,
+						'expected_unit_price' => array(
+							'amount'   => 1999,
+							'currency' => 'EUR',
+						),
+					),
 				),
-			),
-		) );
+			)
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_checkout_sessions_create( $request );
@@ -4113,29 +5019,40 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\when( 'rest_do_request' )->alias(
 			static function ( WP_REST_Request $req ) {
-				$response = new \WP_REST_Response( array(
-					'id'             => 1,
-					'type'           => 'simple',
-					'is_in_stock'    => true,
-					'is_purchasable' => true,
-					'prices'         => array( 'price' => '2099', 'currency_code' => 'EUR', 'currency_minor_unit' => 2 ),
-				) );
+				$response = new \WP_REST_Response(
+					array(
+						'id'             => 1,
+						'type'           => 'simple',
+						'is_in_stock'    => true,
+						'is_purchasable' => true,
+						'prices'         => array(
+							'price'               => '2099',
+							'currency_code'       => 'EUR',
+							'currency_minor_unit' => 2,
+						),
+					)
+				);
 				$response->set_status( 200 );
 				return $response;
 			}
 		);
 
 		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
-		$request->set_body_params( array(
-			'context'    => array( 'currency' => 'EUR' ),
-			'line_items' => array(
-				array(
-					'item'                => array( 'id' => 'prod_1' ),
-					'quantity'            => 1,
-					'expected_unit_price' => array( 'amount' => 1999, 'currency' => 'EUR' ),
+		$request->set_body_params(
+			array(
+				'context'    => array( 'currency' => 'EUR' ),
+				'line_items' => array(
+					array(
+						'item'                => array( 'id' => 'prod_1' ),
+						'quantity'            => 1,
+						'expected_unit_price' => array(
+							'amount'   => 1999,
+							'currency' => 'EUR',
+						),
+					),
 				),
-			),
-		) );
+			)
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_checkout_sessions_create( $request );
@@ -4160,25 +5077,36 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\when( 'rest_do_request' )->alias(
 			static function ( WP_REST_Request $req ) {
-				$response = new \WP_REST_Response( array(
-					'id'             => 1,
-					'type'           => 'simple',
-					'is_in_stock'    => true,
-					'is_purchasable' => true,
-					'prices'         => array( 'price' => '1999', 'currency_code' => 'USD', 'currency_minor_unit' => 2 ),
-				) );
+				$response = new \WP_REST_Response(
+					array(
+						'id'             => 1,
+						'type'           => 'simple',
+						'is_in_stock'    => true,
+						'is_purchasable' => true,
+						'prices'         => array(
+							'price'               => '1999',
+							'currency_code'       => 'USD',
+							'currency_minor_unit' => 2,
+						),
+					)
+				);
 				$response->set_status( 200 );
 				return $response;
 			}
 		);
 
 		$request = new \WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
-		$request->set_body_params( array(
-			'context'    => array( 'currency' => 'XYZ' ),
-			'line_items' => array(
-				array( 'item' => array( 'id' => 'prod_1' ), 'quantity' => 1 ),
-			),
-		) );
+		$request->set_body_params(
+			array(
+				'context'    => array( 'currency' => 'XYZ' ),
+				'line_items' => array(
+					array(
+						'item'     => array( 'id' => 'prod_1' ),
+						'quantity' => 1,
+					),
+				),
+			)
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_checkout_sessions_create( $request );
@@ -4192,5 +5120,4 @@ class UcpCheckoutSessionsTest extends \PHPUnit\Framework\TestCase {
 		}
 		$this->assertTrue( $found, 'unaccepted currency must emit currency_conversion_unsupported on checkout-sessions' );
 	}
-
 }

@@ -53,13 +53,13 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array{namespace: string, route: string, args: array<string, mixed>}>
 	 */
-	private array $registered_routes = [];
+	private array $registered_routes = array();
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
 
-		$this->registered_routes = [];
+		$this->registered_routes = array();
 
 		// Capture every register_rest_route call made during the test.
 		// Alias is test-instance-bound via `use (&$this->...)` through
@@ -67,11 +67,11 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$capture = &$this->registered_routes;
 		Functions\when( 'register_rest_route' )->alias(
 			static function ( string $namespace, string $route, array $args ) use ( &$capture ): bool {
-				$capture[] = [
+				$capture[] = array(
 					'namespace' => $namespace,
 					'route'     => $route,
 					'args'      => $args,
-				];
+				);
 				return true;
 			}
 		);
@@ -193,7 +193,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		}
 
 		$this->assertNotNull( $get, 'GET catalog/search route should be registered' );
-		$this->assertEquals( [ $controller, 'check_agent_access' ], $get['args']['permission_callback'] );
+		$this->assertEquals( array( $controller, 'check_agent_access' ), $get['args']['permission_callback'] );
 	}
 
 	public function test_get_catalog_lookup_route_uses_check_agent_access(): void {
@@ -210,7 +210,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		}
 
 		$this->assertNotNull( $get, 'GET catalog/lookup route should be registered' );
-		$this->assertEquals( [ $controller, 'check_agent_access' ], $get['args']['permission_callback'] );
+		$this->assertEquals( array( $controller, 'check_agent_access' ), $get['args']['permission_callback'] );
 	}
 
 	public function test_checkout_sessions_route_registered(): void {
@@ -262,7 +262,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotNull( $route, 'unsupported-method stub route should be registered' );
 		$this->assertEquals( 'GET, PUT, PATCH, DELETE', $route['args']['methods'] );
 		$this->assertSame(
-			[ $controller, 'handle_checkout_sessions_unsupported_method' ],
+			array( $controller, 'handle_checkout_sessions_unsupported_method' ),
 			$route['args']['callback'],
 			'Stub must dispatch to handle_checkout_sessions_unsupported_method'
 		);
@@ -284,17 +284,17 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->register_routes();
 
-		$gated_paths = [
+		$gated_paths = array(
 			'/catalog/search',
 			'/catalog/lookup',
 			'/checkout-sessions',
 			'/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
-		];
+		);
 		foreach ( $gated_paths as $path ) {
 			$route = $this->route_for( $path );
 			$this->assertNotNull( $route, "Route {$path} should be registered" );
 			$this->assertSame(
-				[ $controller, 'check_agent_access' ],
+				array( $controller, 'check_agent_access' ),
 				$route['args']['permission_callback'],
 				"Route {$path} must be gated by check_agent_access"
 			);
@@ -401,7 +401,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 
 		$config_props = $data['properties']['config']['properties'];
 		$this->assertArrayNotHasKey( 'attribution', $config_props );
-		$this->assertSame( [ 'store_context' ], array_keys( $config_props ) );
+		$this->assertSame( array( 'store_context' ), array_keys( $config_props ) );
 	}
 
 	public function test_extension_schema_has_no_response_level_payloads(): void {
@@ -458,7 +458,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $inputs['custom_filters']['properties'] );
 
 		$custom = $inputs['custom_filters']['properties'];
-		foreach ( [ 'brand', 'tags', 'in_stock', 'featured', 'min_rating', 'on_sale', 'attributes' ] as $filter_name ) {
+		foreach ( array( 'brand', 'tags', 'in_stock', 'featured', 'min_rating', 'on_sale', 'attributes' ) as $filter_name ) {
 			$this->assertArrayHasKey(
 				$filter_name,
 				$custom,
@@ -482,19 +482,19 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		// chars survives concatenated, which is fine — it stays on
 		// the original line and can't impersonate a separate log
 		// entry. Assert on the control-char removal, not on text.
-		$out = $method->invoke( null, [ "dev.ucp.buyer_ip\nline2\r\x1b[31m" => 'x' ] );
+		$out = $method->invoke( null, array( "dev.ucp.buyer_ip\nline2\r\x1b[31m" => 'x' ) );
 		$this->assertStringNotContainsString( "\n", $out );
 		$this->assertStringNotContainsString( "\r", $out );
 		$this->assertStringNotContainsString( "\x1b", $out );
 
 		// Each key is length-capped with ellipsis marker.
 		$long_key = str_repeat( 'a', 500 );
-		$out      = $method->invoke( null, [ $long_key => 'x' ] );
+		$out      = $method->invoke( null, array( $long_key => 'x' ) );
 		$this->assertLessThan( 150, strlen( $out ), 'Over-long key must be truncated' );
 		$this->assertStringContainsString( '…', $out );
 
 		// Total-keys cap + overflow sigil.
-		$many = [];
+		$many = array();
 		for ( $i = 0; $i < 100; $i++ ) {
 			$many[ "key_{$i}" ] = true;
 		}
@@ -503,20 +503,33 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 
 		// Non-string keys (numeric) dropped silently — they're
 		// illegal under UCP's reverse-domain rule anyway.
-		$out = $method->invoke( null, [ 0 => 'x', 'dev.ucp.buyer_ip' => 'y' ] );
+		$out = $method->invoke(
+			null,
+			array(
+				0                  => 'x',
+				'dev.ucp.buyer_ip' => 'y',
+			)
+		);
 		$this->assertSame( 'dev.ucp.buyer_ip', $out );
 
 		// All keys filtered out (e.g. agent sent signals as a list
 		// with purely numeric keys) → explicit `(none)` placeholder
 		// instead of a confusing empty/overflow-only output.
-		$out = $method->invoke( null, [ 0 => 'x', 1 => 'y', 2 => 'z' ] );
+		$out = $method->invoke(
+			null,
+			array(
+				0 => 'x',
+				1 => 'y',
+				2 => 'z',
+			)
+		);
 		$this->assertSame( '(none)', $out );
 
 		// Overflow sigil derives from eligible string keys, not from
 		// the full $signals count. A payload mixing 40 valid keys
 		// with 28 numeric keys should show "(+8 more)" — based on
 		// the 40 eligible, not 68 total.
-		$mixed = [];
+		$mixed = array();
 		for ( $i = 0; $i < 40; $i++ ) {
 			$mixed[ "dev.ucp.key_{$i}" ] = true;
 		}

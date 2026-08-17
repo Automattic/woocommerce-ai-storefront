@@ -25,7 +25,7 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		\Brain\Monkey\setUp();
 		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		// Reset the per-request idempotency sentinel so each test
 		// can independently exercise `init()` without seeing the
 		// prior test's state. Without this, the regression-guard
@@ -50,7 +50,7 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		$drain = 0;
 		while ( $drain < 5 && \WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() ) {
 			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
-			$drain++;
+			++$drain;
 		}
 		\Brain\Monkey\tearDown();
 		parent::tearDown();
@@ -65,12 +65,12 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// Store API consumers — they all run `WP_Query` outside the
 		// UCP dispatch scope. The hook must NOT mutate them, even if
 		// the merchant configured aggressive scoping.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5, 12 ],
-		];
+			'selected_categories'    => array( 5, 12 ),
+		);
 
-		$query = new WP_Query( [ 'post_type' => 'product' ] );
+		$query = new WP_Query( array( 'post_type' => 'product' ) );
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$filter->on_pre_get_posts( $query );
@@ -88,14 +88,14 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// queries, etc. Mutating those would silently break unrelated
 		// parts of the site even inside UCP scope. Only product
 		// queries get touched.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5 ],
-		];
+			'selected_categories'    => array( 5 ),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query  = new WP_Query( [ 'post_type' => 'post' ] );
+			$query  = new WP_Query( array( 'post_type' => 'post' ) );
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
@@ -110,14 +110,14 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// Multi-type queries (e.g. cross-CPT search) also fire through
 		// pre_get_posts. If `product` isn't in the array, leave the
 		// query alone — same defense as the string case above.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 42 ],
-		];
+			'selected_products'      => array( 42 ),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query  = new WP_Query( [ 'post_type' => [ 'post', 'page' ] ] );
+			$query  = new WP_Query( array( 'post_type' => array( 'post', 'page' ) ) );
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
@@ -132,18 +132,18 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// `post_type = ['product', 'product_variation']` is a real
 		// shape that WC sometimes emits internally. The gate must
 		// admit it.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 42 ],
-		];
+			'selected_products'      => array( 42 ),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query  = new WP_Query( [ 'post_type' => [ 'product', 'product_variation' ] ] );
+			$query  = new WP_Query( array( 'post_type' => array( 'product', 'product_variation' ) ) );
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
-			$this->assertSame( [ 42 ], $query->get( 'post__in' ) );
+			$this->assertSame( array( 42 ), $query->get( 'post__in' ) );
 		} finally {
 			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
@@ -157,14 +157,14 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// The full UNION decision matrix lives in
 		// `UcpStoreApiFilterTest`. Here we just confirm the bridge
 		// reads/writes the right key on the WP_Query.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5, 12 ],
-		];
+			'selected_categories'    => array( 5, 12 ),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query  = new WP_Query( [ 'post_type' => 'product' ] );
+			$query  = new WP_Query( array( 'post_type' => 'product' ) );
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
@@ -172,25 +172,25 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 			$this->assertIsArray( $tax_query );
 			$this->assertSame( 'OR', $tax_query['relation'] );
 			$this->assertSame( 'product_cat', $tax_query[0]['taxonomy'] );
-			$this->assertSame( [ 5, 12 ], $tax_query[0]['terms'] );
+			$this->assertSame( array( 5, 12 ), $tax_query[0]['terms'] );
 		} finally {
 			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
 	}
 
 	public function test_pre_get_posts_applies_post_in_for_selected_mode(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 101, 202, 303 ],
-		];
+			'selected_products'      => array( 101, 202, 303 ),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query  = new WP_Query( [ 'post_type' => 'product' ] );
+			$query  = new WP_Query( array( 'post_type' => 'product' ) );
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
-			$this->assertSame( [ 101, 202, 303 ], $query->get( 'post__in' ) );
+			$this->assertSame( array( 101, 202, 303 ), $query->get( 'post__in' ) );
 		} finally {
 			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
@@ -199,13 +199,13 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 	public function test_pre_get_posts_no_op_for_all_mode(): void {
 		// `all` mode should leave the query untouched even when
 		// gates 1+2 pass.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query  = new WP_Query( [ 'post_type' => 'product' ] );
+			$query  = new WP_Query( array( 'post_type' => 'product' ) );
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
@@ -227,27 +227,27 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// caller's tax_query AND our UNION clause in an outer
 		// AND-relation so both filters stay in effect — overriding the
 		// caller would silently undo their intent.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 7 ],
-		];
+			'selected_categories'    => array( 7 ),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$incoming_tax_query = [
-				[
+			$incoming_tax_query = array(
+				array(
 					'taxonomy' => 'product_tag',
 					'field'    => 'slug',
-					'terms'    => [ 'featured' ],
-				],
-			];
-			$query = new WP_Query(
-				[
+					'terms'    => array( 'featured' ),
+				),
+			);
+			$query              = new WP_Query(
+				array(
 					'post_type' => 'product',
 					'tax_query' => $incoming_tax_query,
-				]
+				)
 			);
-			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
+			$filter             = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
 			$result = $query->get( 'tax_query' );
@@ -268,25 +268,25 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// Override would either expose the merchant's full allow-list
 		// (ignoring the caller) or hide everything (ignoring the
 		// merchant). Intersection respects both.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 10, 20, 30 ],
-		];
+			'selected_products'      => array( 10, 20, 30 ),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query = new WP_Query(
-				[
+			$query  = new WP_Query(
+				array(
 					'post_type' => 'product',
-					'post__in'  => [ 20, 30, 40 ],
-				]
+					'post__in'  => array( 20, 30, 40 ),
+				)
 			);
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
 			// 20 and 30 in both → intersection. 40 in caller only,
 			// 10 in merchant only → both excluded.
-			$this->assertSame( [ 20, 30 ], $query->get( 'post__in' ) );
+			$this->assertSame( array( 20, 30 ), $query->get( 'post__in' ) );
 		} finally {
 			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}
@@ -299,18 +299,18 @@ class UcpStoreApiPreGetPostsTest extends \PHPUnit\Framework\TestCase {
 		// results. WP_Query treats raw `[]` as "no filter applied",
 		// which would expose the entire catalog — exactly inverted
 		// from the merchant's "nothing picked yet" intent.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [],
-		];
+			'selected_products'      => array(),
+		);
 
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 		try {
-			$query  = new WP_Query( [ 'post_type' => 'product' ] );
+			$query  = new WP_Query( array( 'post_type' => 'product' ) );
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 			$filter->on_pre_get_posts( $query );
 
-			$this->assertSame( [ 0 ], $query->get( 'post__in' ) );
+			$this->assertSame( array( 0 ), $query->get( 'post__in' ) );
 		} finally {
 			\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		}

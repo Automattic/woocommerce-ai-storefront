@@ -23,9 +23,9 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// all_zones() throws — which is exactly what a #638-class regression
 		// looks like — an inline reset never runs and the statics contaminate
 		// the rest of the process.
-		\WC_Shipping_Zones::$test_zones           = array();
-		\WC_Shipping_Zones::$test_zone_rows       = null;
-		\WC_Shipping_Zones::$simulated_wc_version               = null;
+		\WC_Shipping_Zones::$test_zones                        = array();
+		\WC_Shipping_Zones::$test_zone_rows                    = null;
+		\WC_Shipping_Zones::$simulated_wc_version              = null;
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = null;
 		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
 		Monkey\tearDown();
@@ -385,8 +385,8 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 			array( $this->flat_method( '10' ) )
 		);
 
-		$out    = $this->policy( array( $zone ) )->build_conditions();
-		$by_cc  = array();
+		$out   = $this->policy( array( $zone ) )->build_conditions();
+		$by_cc = array();
 		foreach ( $out as $condition ) {
 			$by_cc[ $condition['shippingDestination']['addressCountry'] ] = $condition['shippingDestination']['addressRegion'];
 		}
@@ -474,7 +474,14 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// QuantitativeValue. Google documents both, differently, per surface —
 		// this divergence is deliberate, not an oversight to unify.
 		$block = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) )
-			->build( array( 'handling_time' => array( 'min' => 1, 'max' => 2 ) ) );
+			->build(
+				array(
+					'handling_time' => array(
+						'min' => 1,
+						'max' => 2,
+					),
+				)
+			);
 
 		$this->assertSame( 'ShippingService', $block['@type'] );
 		$this->assertSame( 'ServicePeriod', $block['handlingTime']['@type'] );
@@ -499,7 +506,14 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_handling_time_omitted_when_unconfigured(): void {
 		$block = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) )
-			->build( array( 'handling_time' => array( 'min' => 0, 'max' => 0 ) ) );
+			->build(
+				array(
+					'handling_time' => array(
+						'min' => 0,
+						'max' => 0,
+					),
+				)
+			);
 
 		$this->assertArrayNotHasKey( 'handlingTime', $block );
 		$this->assertArrayHasKey( 'shippingConditions', $block );
@@ -509,7 +523,14 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// Same guard the product block applies, so the two surfaces can never
 		// disagree about dispatch time.
 		$block = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) )
-			->build( array( 'handling_time' => array( 'min' => 5, 'max' => 2 ) ) );
+			->build(
+				array(
+					'handling_time' => array(
+						'min' => 5,
+						'max' => 2,
+					),
+				)
+			);
 
 		$this->assertArrayNotHasKey( 'handlingTime', $block );
 	}
@@ -524,7 +545,7 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// The stub THROWS for get_shipping_zones() at this simulated version,
 		// so this test passing proves the guard actually routed. A stub that
 		// always answers is what let the original bug through.
-		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		\WC_Shipping_Zones::$simulated_wc_version              = '10.2.2';
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
 
 		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
@@ -550,7 +571,7 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// inverted, 9.9-10.2 stores would reach get_shipping_zones() and
 		// white-screen — #638 restored verbatim. Without this the inversion is
 		// invisible, because both paths return identical objects under test.
-		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		\WC_Shipping_Zones::$simulated_wc_version              = '10.2.2';
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
 
 		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
@@ -569,7 +590,7 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_modern_woocommerce_uses_the_object_api(): void {
-		\WC_Shipping_Zones::$simulated_wc_version               = '10.9.1';
+		\WC_Shipping_Zones::$simulated_wc_version              = '10.9.1';
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.9.1';
 
 		$zone = \Mockery::mock( 'WC_Shipping_Zone' );
@@ -587,9 +608,9 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// admin deleting a zone between the two makes get_zone() return false.
 		// The production instanceof narrowing exists for exactly this, and
 		// without a row the stub cannot resolve, nothing exercises it.
-		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		\WC_Shipping_Zones::$simulated_wc_version              = '10.2.2';
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
-		\WC_Shipping_Zones::$test_zone_rows       = array(
+		\WC_Shipping_Zones::$test_zone_rows                    = array(
 			(object) array( 'zone_id' => 1 ),
 			(object) array( 'zone_id' => 99 ), // Listed, but already deleted.
 		);
@@ -620,7 +641,12 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 			$zone         = \Mockery::mock( 'WC_Shipping_Zone' );
 			$zone->shouldReceive( 'get_id' )->andReturn( 1 );
 			$zone->shouldReceive( 'get_zone_locations' )->andReturn(
-				array( (object) array( 'type' => 'country', 'code' => 'US' ) )
+				array(
+					(object) array(
+						'type' => 'country',
+						'code' => 'US',
+					),
+				)
 			);
 			$zone->shouldReceive( 'get_shipping_methods' )->andReturn( array( $method ) );
 			return $zone;
@@ -632,15 +658,15 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		\Brain\Monkey\Functions\when( 'wc_shipping_enabled' )->justReturn( true );
 		\Brain\Monkey\Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
-		\WC_Shipping_Zones::$simulated_wc_version               = '10.9.1';
+		\WC_Shipping_Zones::$simulated_wc_version              = '10.9.1';
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.9.1';
-		\WC_Shipping_Zones::$test_zones           = array( 1 => $make_zone() );
+		\WC_Shipping_Zones::$test_zones                        = array( 1 => $make_zone() );
 		$modern = ( new WC_AI_Storefront_Shipping_Policy() )->build_conditions();
 		WC_AI_Storefront_Shipping_Policy::reset_zone_memo();
 
-		\WC_Shipping_Zones::$simulated_wc_version               = '10.2.2';
+		\WC_Shipping_Zones::$simulated_wc_version              = '10.2.2';
 		WC_AI_Storefront_Shipping_Policy::$wc_version_override = '10.2.2';
-		\WC_Shipping_Zones::$test_zones           = array( 1 => $make_zone() );
+		\WC_Shipping_Zones::$test_zones                        = array( 1 => $make_zone() );
 		$legacy = new class() extends WC_AI_Storefront_Shipping_Policy {
 			protected static function uses_modern_zone_api(): bool {
 				return false;
@@ -658,7 +684,13 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 	public function test_service_period_carries_business_days(): void {
 		// The surface Google actually reads businessDays on.
 		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
-		$settings = array( 'handling_time' => array( 'min' => 1, 'max' => 2, 'business_days' => array( 'Monday', 'Friday' ) ) );
+		$settings = array(
+			'handling_time' => array(
+				'min'           => 1,
+				'max'           => 2,
+				'business_days' => array( 'Monday', 'Friday' ),
+			),
+		);
 
 		$handling = $policy->build( $settings )['handlingTime'];
 
@@ -671,7 +703,13 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// "We dispatch Monday to Friday" stands alone; the min/max guard must
 		// not suppress it.
 		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
-		$settings = array( 'handling_time' => array( 'min' => 0, 'max' => 0, 'business_days' => array( 'Monday' ) ) );
+		$settings = array(
+			'handling_time' => array(
+				'min'           => 0,
+				'max'           => 0,
+				'business_days' => array( 'Monday' ),
+			),
+		);
 
 		$handling = $policy->build( $settings )['handlingTime'];
 
@@ -681,14 +719,26 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_no_handling_data_omits_the_service_period(): void {
 		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
-		$settings = array( 'handling_time' => array( 'min' => 0, 'max' => 0, 'business_days' => array() ) );
+		$settings = array(
+			'handling_time' => array(
+				'min'           => 0,
+				'max'           => 0,
+				'business_days' => array(),
+			),
+		);
 
 		$this->assertArrayNotHasKey( 'handlingTime', $policy->build( $settings ) );
 	}
 
 	public function test_no_days_selected_omits_the_key_but_keeps_the_duration(): void {
 		$policy   = $this->policy( array( $this->zone( 0, array(), array( $this->flat_method( '20' ) ) ) ) );
-		$settings = array( 'handling_time' => array( 'min' => 1, 'max' => 2, 'business_days' => array() ) );
+		$settings = array(
+			'handling_time' => array(
+				'min'           => 1,
+				'max'           => 2,
+				'business_days' => array(),
+			),
+		);
 
 		$handling = $policy->build( $settings )['handlingTime'];
 
@@ -710,9 +760,9 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		// calculate_shipping() ADDS class_cost_<id> to the base cost, so
 		// cost=5 with class_cost_12=15 charges 20. Which class applies depends
 		// on the cart, so no static number is honest.
-		$method                     = $this->flat_method( '5' );
-		$method->instance_settings  = array( 'class_cost_12' => '15' );
-		$zone                       = $this->zone( 1, array( array( 'country', 'US' ) ), array( $method ) );
+		$method                    = $this->flat_method( '5' );
+		$method->instance_settings = array( 'class_cost_12' => '15' );
+		$zone                      = $this->zone( 1, array( array( 'country', 'US' ) ), array( $method ) );
 
 		$this->assertSame( array(), $this->policy( array( $zone ) )->build_conditions() );
 	}
