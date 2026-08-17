@@ -36,14 +36,14 @@ class WC_AI_Storefront_UCP_Envelope {
 	 * @return array<string, mixed>    The `ucp` wrapper object.
 	 */
 	public static function catalog_envelope( string $capability_name ): array {
-		return [
+		return array(
 			'version'      => WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
-			'capabilities' => [
-				$capability_name => [
-					[ 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ],
-				],
-			],
-		];
+			'capabilities' => array(
+				$capability_name => array(
+					array( 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ),
+				),
+			),
+		);
 	}
 
 	/**
@@ -56,18 +56,18 @@ class WC_AI_Storefront_UCP_Envelope {
 	 * @return array<string, mixed>    The `ucp` wrapper object.
 	 */
 	public static function checkout_envelope(): array {
-		return [
+		return array(
 			'version'          => WC_AI_Storefront_Ucp::PROTOCOL_VERSION,
-			'capabilities'     => [
-				'dev.ucp.shopping.checkout' => [
-					[ 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ],
-				],
-			],
+			'capabilities'     => array(
+				'dev.ucp.shopping.checkout' => array(
+					array( 'version' => WC_AI_Storefront_Ucp::PROTOCOL_VERSION ),
+				),
+			),
 
 			// `(object) []` ensures JSON serialization as `{}` not `[]`.
 			// UCP schema requires object shape here; an empty array
 			// would fail validation.
-			'payment_handlers' => (object) [],
-		];
+			'payment_handlers' => (object) array(),
+		);
 	}
 }

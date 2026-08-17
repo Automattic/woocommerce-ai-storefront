@@ -34,10 +34,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		// Configure the shared test settings (consumed by the stubbed
 		// `WC_AI_Storefront::get_settings()` in the bootstrap).
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		// Baseline WP/WC function stubs. Individual tests override these
 		// via `Functions\when()->alias()` for specific scenarios.
@@ -48,10 +48,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 			static fn( $path ) => 'https://example.com/wp-json/' . ltrim( $path, '/' )
 		);
 		Functions\when( 'get_bloginfo' )->alias(
-			static fn( $key ) => [
+			static fn( $key ) => array(
 				'name'        => 'Example Store',
 				'description' => 'A test storefront',
-			][ $key ] ?? ''
+			)[ $key ] ?? ''
 		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'get_woocommerce_currency_symbol' )->justReturn( '$' );
@@ -62,11 +62,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// itself is loaded, which is the case for our stubs.php. The
 		// global stub uses the real WordPress-equivalent implementation,
 		// so functional behavior for this test is unchanged.
-		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'get_terms' )->justReturn( array() );
 		Functions\when( 'get_term_link' )->alias(
 			static fn( $term ) => 'https://example.com/product-category/' . ( $term->slug ?? 'x' ) . '/'
 		);
-		Functions\when( 'wc_get_products' )->justReturn( [] );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		// `__()` returns its first arg (the source string). Used by
 		// generate()'s sprintf for the multi-currency Accepted-currencies
@@ -155,7 +155,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// `## Store` Location line. Default: US store, matches the
 		// WC default fixture.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => 'US', 'state' => '' ]
+			array(
+				'country' => 'US',
+				'state'   => '',
+			)
 		);
 
 		// Email validation helpers used by `get_validated_contact_email()`.
@@ -239,7 +242,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	protected function tearDown(): void {
 		WC_AI_Storefront_Multi_Currency::reset_cache();
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -293,7 +296,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// For agents → Read-only browsing → Extension schema.
 		$output = $this->llms->generate();
 
-		$expected_order = [
+		$expected_order = array(
 			'## Store',
 			'## Browse',
 			'## Structured data',
@@ -302,7 +305,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 			'## For agents',
 			'## Read-only browsing',
 			'## Extension schema',
-		];
+		);
 
 		$last_pos = -1;
 		foreach ( $expected_order as $section ) {
@@ -560,7 +563,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$p2 = \Mockery::mock( 'WC_Product' );
 		$p2->shouldReceive( 'get_id' )->andReturn( 22 );
 		$p2->shouldReceive( 'get_slug' )->andReturn( 'day-hoodie' );
-		Functions\when( 'wc_get_products' )->justReturn( [ $p1, $p2 ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $p1, $p2 ) );
 
 		$output = $this->llms->generate();
 
@@ -589,10 +592,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// $this->llms instance has no WC() stub so it would return
 		// the raw ISO code, which is the fallback we test separately.
 		$llms = $this->llms_with_countries(
-			[
+			array(
 				'US' => 'United States (US)',
 				'GB' => 'United Kingdom (UK)',
-			]
+			)
 		);
 
 		$output = $llms->generate();
@@ -612,11 +615,14 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_shipping_section_emits_handling_time_range(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'handling_time'          => [ 'min' => 1, 'max' => 3 ],
-		];
+			'handling_time'          => array(
+				'min' => 1,
+				'max' => 3,
+			),
+		);
 
 		$output = $this->llms->generate();
 
@@ -626,11 +632,14 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_shipping_section_handling_time_singular_grammar(): void {
 		// Min === max collapses to single-value grammar with the
 		// correct singular/plural.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'handling_time'          => [ 'min' => 1, 'max' => 1 ],
-		];
+			'handling_time'          => array(
+				'min' => 1,
+				'max' => 1,
+			),
+		);
 
 		$output = $this->llms->generate();
 
@@ -645,20 +654,20 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// accepted/final-sale distinction moved into `category`. Country
 		// is sourced from `wc_get_base_location()` (US default), mirroring
 		// the JSON-LD emitter — the old top-level `country` field is gone.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			],
-		];
+			),
+		);
 
 		// Country name resolves via the injected country-map seam so the
 		// "applies to" clause renders a human-readable name.
-		$llms   = $this->llms_with_countries( [ 'US' => 'United States' ] );
+		$llms   = $this->llms_with_countries( array( 'US' => 'United States' ) );
 		$output = $llms->generate();
 
 		$this->assertStringContainsString( '- **Returns**: 30 days', $output );
@@ -668,14 +677,14 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_shipping_section_emits_final_sale_when_no_returns(): void {
 		// New shape: mode='details' + category='final_sale'.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'     => 'details',
 				'category' => 'final_sale',
-			],
-		];
+			),
+		);
 
 		$output = $this->llms->generate();
 
@@ -686,14 +695,14 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// New shape: mode='link' + page_id. The Returns subline links the
 		// resolved, published policy-page permalink. Mirrors the
 		// `## Policies` section's gate: positive id + `publish` status.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'    => 'link',
 				'page_id' => 88,
-			],
-		];
+			),
+		);
 
 		Functions\when( 'get_post_status' )->justReturn( 'publish' );
 		Functions\when( 'get_permalink' )->alias(
@@ -712,14 +721,14 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// mode='link' but the page is no longer published (drift after
 		// save). No Returns line, mirroring the JSON-LD emitter and the
 		// `## Policies` trashed-page handling.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'    => 'link',
 				'page_id' => 88,
-			],
-		];
+			),
+		);
 
 		Functions\when( 'get_post_status' )->justReturn( 'trash' );
 		Functions\when( 'get_permalink' )->alias(
@@ -739,7 +748,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// section is omitted (rather than rendered with an empty
 		// bullet list).
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '', 'state' => '' ]
+			array(
+				'country' => '',
+				'state'   => '',
+			)
 		);
 
 		$output = $this->llms->generate();
@@ -752,14 +764,14 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// `page` post type are required. A page_id pointing at a `post` (or any
 		// non-`page` type) must not surface a Returns link in llms.txt —
 		// mirroring the JSON-LD emitter which also gates on post_type.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'    => 'link',
 				'page_id' => 88,
-			],
-		];
+			),
+		);
 
 		Functions\when( 'get_post_status' )->justReturn( 'publish' );
 		Functions\when( 'get_post_type' )->justReturn( 'post' ); // non-page type
@@ -777,18 +789,21 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// requires a non-empty store base country. Without a country the
 		// Returns line must be omitted entirely from llms.txt.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '', 'state' => '' ]
+			array(
+				'country' => '',
+				'state'   => '',
+			)
 		);
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			],
-		];
+			),
+		);
 
 		$output = $this->llms->generate();
 
@@ -800,16 +815,19 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// require a country — "no returns" is a globally meaningful claim.
 		// The Returns line must still appear even when base country is empty.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '', 'state' => '' ]
+			array(
+				'country' => '',
+				'state'   => '',
+			)
 		);
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-			'return_policy'          => [
+			'return_policy'          => array(
 				'mode'     => 'details',
 				'category' => 'final_sale',
-			],
-		];
+			),
+		);
 
 		$output = $this->llms->generate();
 
@@ -1177,10 +1195,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// in a Markdown document confuse AI crawlers; the generator must
 		// decode them.
 		Functions\when( 'get_bloginfo' )->alias(
-			static fn( $key ) => [
+			static fn( $key ) => array(
 				'name'        => 'Joe&#039;s Shop &amp; Cafe',
 				'description' => 'Best &quot;coffee&quot;',
-			][ $key ] ?? ''
+			)[ $key ] ?? ''
 		);
 
 		$output = $this->llms->generate();
@@ -1289,10 +1307,10 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'set_transient' )->alias(
 			static function ( $key, $value ) use ( &$set_transient_called_with, $expected_cache_key ) {
 				if ( $expected_cache_key === $key ) {
-					$set_transient_called_with = [
+					$set_transient_called_with = array(
 						'key'   => $key,
 						'value' => $value,
-					];
+					);
 				}
 				return true;
 			}
@@ -1348,7 +1366,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// test still catches them via the set_transient observation.
 		Functions\when( 'apply_filters' )->alias(
 			static function ( $hook, $lines ) {
-				return ( 'wc_ai_storefront_llms_txt_lines' === $hook ) ? [] : $lines;
+				return ( 'wc_ai_storefront_llms_txt_lines' === $hook ) ? array() : $lines;
 			}
 		);
 
@@ -1377,9 +1395,9 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_remote_head' )->alias(
 			static function ( string $url ): array {
 				if ( str_ends_with( $url, '/sitemap.xml' ) ) {
-					return [ 'response' => [ 'code' => 200 ] ];
+					return array( 'response' => array( 'code' => 200 ) );
 				}
-				return [ 'response' => [ 'code' => 404 ] ];
+				return array( 'response' => array( 'code' => 404 ) );
 			}
 		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
@@ -1411,7 +1429,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 				// Only /sitemap.xml responds; /sitemap_index.xml,
 				// /wp-sitemap.xml, /news-sitemap.xml all 404.
 				$code = str_ends_with( $url, '/sitemap.xml' ) ? 200 : 404;
-				return [ 'response' => [ 'code' => $code ] ];
+				return array( 'response' => array( 'code' => $code ) );
 			}
 		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
@@ -1443,7 +1461,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 				$captured_args = $args;
 				// Return a 200 so the probe succeeds and the llms.txt
 				// output includes a sitemap section we can assert on.
-				return [ 'response' => [ 'code' => 200 ] ];
+				return array( 'response' => array( 'code' => 200 ) );
 			}
 		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
@@ -1503,7 +1521,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_remote_head' )->alias(
 			static function ( string $url ): array {
 				$code = str_ends_with( $url, '/wp-sitemap.xml' ) ? 200 : 404;
-				return [ 'response' => [ 'code' => $code ] ];
+				return array( 'response' => array( 'code' => $code ) );
 			}
 		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->alias(
@@ -1643,10 +1661,13 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_agents_md_rewrite_rule_registered(): void {
-		$rules = [];
+		$rules = array();
 		Functions\when( 'add_rewrite_rule' )->alias(
 			static function ( $regex, $query, $after ) use ( &$rules ) {
-				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+				$rules[ $regex ] = array(
+					'query' => $query,
+					'after' => $after,
+				);
 			}
 		);
 
@@ -1663,10 +1684,13 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_agents_md_rewrite_rule_does_not_displace_llms_txt(): void {
 		// Both endpoints must be registered — /agents.md is additive, it
 		// does not replace the existing /llms.txt rule.
-		$rules = [];
+		$rules = array();
 		Functions\when( 'add_rewrite_rule' )->alias(
 			static function ( $regex, $query, $after ) use ( &$rules ) {
-				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+				$rules[ $regex ] = array(
+					'query' => $query,
+					'after' => $after,
+				);
 			}
 		);
 
@@ -1679,7 +1703,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_agents_md_query_var_registered(): void {
 		Functions\when( 'add_rewrite_rule' )->justReturn();
 
-		$vars = $this->llms->add_query_vars( [] );
+		$vars = $this->llms->add_query_vars( array() );
 
 		$this->assertContains( 'wc_ai_storefront_agents_md', $vars );
 		// The llms.txt query var must still be present too.
@@ -1772,7 +1796,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	 */
 	public function test_agents_md_returns_404_when_plugin_disabled(): void {
 		Functions\when( 'get_query_var' )->justReturn( 1 ); // agents.md requested.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$captured_status = null;
 		Functions\when( 'status_header' )->alias(
@@ -1872,11 +1896,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_typical_agent_flow_omits_mcp_line_when_mcp_disabled(): void {
 		// When the MCP transport is OFF, the flow must not advertise it (the
 		// endpoint would 404). mcp_enabled defaults to 'yes', so set it off.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'mcp_enabled'            => 'no',
-		];
+		);
 
 		$output = $this->llms->generate();
 
@@ -1886,11 +1910,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_typical_agent_flow_includes_mcp_line_when_mcp_enabled(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'mcp_enabled'            => 'yes',
-		];
+		);
 
 		$output = $this->llms->generate();
 
@@ -1924,11 +1948,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// snap to seen query strings, but CAN fetch one parameterless URL.
 		// The bulk /products.json is the simplest whole-catalog surface for
 		// them, so it IS listed in Read-only browsing when the feed is on.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'products_json_enabled'  => 'yes',
-		];
+		);
 
 		$output = $this->llms->generate();
 
@@ -1944,11 +1968,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// `image`, so the only reachable image URL is in the `*.json` feeds'
 		// `images[].src`. The Read-only browsing section must point agents
 		// there when the feed is on.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'products_json_enabled'  => 'yes',
-		];
+		);
 
 		$output = $this->llms->generate();
 
@@ -1959,11 +1983,11 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_image_steering_absent_when_feed_off(): void {
 		// Feed OFF → the image-steering line is gated out alongside the
 		// other `*.json` bullets.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'products_json_enabled'  => 'no',
-		];
+		);
 
 		$output = $this->llms->generate();
 
@@ -1973,24 +1997,24 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	public function test_read_only_browsing_scoped_json_gated_on_feed_toggle(): void {
 		// Feed OFF → no .json bullets, just the structured UCP reads.
 		// products_json_enabled defaults to 'yes', so set it off explicitly.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'products_json_enabled'  => 'no',
-		];
-		$off = $this->llms->generate();
+		);
+		$off                             = $this->llms->generate();
 		$this->assertStringContainsString( '## Read-only browsing', $off );
 		$this->assertStringNotContainsString( 'products/{handle}.json', $off );
 		$this->assertStringNotContainsString( 'collections.json', $off );
 		$this->assertStringNotContainsString( 'https://example.com/products.json', $off );
 
 		// Feed ON → the three scoped paths appear.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'products_json_enabled'  => 'yes',
-		];
-		$on = $this->llms->generate();
+		);
+		$on                              = $this->llms->generate();
 		$this->assertStringContainsString( 'products/{handle}.json', $on );
 		$this->assertStringContainsString( 'collections/{handle}/products.json', $on );
 		$this->assertStringContainsString( 'https://example.com/collections.json', $on );
@@ -2006,7 +2030,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		// RFC 8288 Link header pointing at /llms.txt, mirroring the <head> link's
 		// rel/type. No body output — invisible to shoppers, readable by clients
 		// that inspect response headers.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'yes' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 
 		$this->assertSame(
 			'<https://example.com/llms.txt>; rel="alternate"; type="text/markdown"',
@@ -2015,7 +2039,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_discovery_link_header_null_when_disabled(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		$this->assertNull( $this->llms->discovery_link_header() );
 	}
 
@@ -2027,7 +2051,7 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 		$source = file_get_contents( dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-llms-txt.php' );
 		$start  = strpos( $source, 'function send_discovery_link_header(' );
 		$this->assertNotFalse( $start, 'send_discovery_link_header() must exist.' );
-		$body   = substr( $source, $start );
+		$body = substr( $source, $start );
 
 		$this->assertStringContainsString( '$this->discovery_link_header()', $body );
 		$this->assertStringContainsString( "header( 'Link: '", $body );

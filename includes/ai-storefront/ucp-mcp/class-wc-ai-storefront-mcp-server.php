@@ -41,7 +41,7 @@ class WC_AI_Storefront_MCP_Server {
 	/**
 	 * Protocol versions this server accepts on post-handshake requests.
 	 */
-	const SUPPORTED = [ '2025-06-18', '2025-03-26' ];
+	const SUPPORTED = array( '2025-06-18', '2025-03-26' );
 
 	/**
 	 * Register the MCP endpoint.
@@ -56,18 +56,18 @@ class WC_AI_Storefront_MCP_Server {
 		register_rest_route(
 			'wc/ucp/v1',
 			'/mcp',
-			[
-				[
+			array(
+				array(
 					'methods'             => 'POST',
-					'callback'            => [ $this, 'handle' ],
+					'callback'            => array( $this, 'handle' ),
 					'permission_callback' => '__return_true',
-				],
-				[
+				),
+				array(
 					'methods'             => 'GET',
-					'callback'            => [ $this, 'handle_get' ],
+					'callback'            => array( $this, 'handle_get' ),
 					'permission_callback' => '__return_true',
-				],
-			]
+				),
+			)
 		);
 	}
 
@@ -111,12 +111,12 @@ class WC_AI_Storefront_MCP_Server {
 	 */
 	public function handle_get(): WP_REST_Response {
 		return new WP_REST_Response(
-			[
+			array(
 				'error' => __(
 					'This is an MCP (Model Context Protocol) JSON-RPC endpoint. Send a POST request with a JSON-RPC body — e.g. {"jsonrpc":"2.0","id":1,"method":"initialize"}. GET is reserved for SSE streams, which this endpoint does not provide.',
 					'woocommerce-ai-storefront'
 				),
-			],
+			),
 			405
 		);
 	}
@@ -165,7 +165,7 @@ class WC_AI_Storefront_MCP_Server {
 		}
 		$id     = $rpc['id'] ?? null;
 		$method = (string) $rpc['method'];
-		$params = is_array( $rpc['params'] ?? null ) ? $rpc['params'] : [];
+		$params = is_array( $rpc['params'] ?? null ) ? $rpc['params'] : array();
 
 		// A JSON-RPC request without an `id` MEMBER is a notification (the
 		// absence of the key, not `id: null`). Notifications receive no
@@ -208,7 +208,7 @@ class WC_AI_Storefront_MCP_Server {
 
 			case 'ping':
 				// Liveness — session-free.
-				return $this->rpc_result( $id, (object) [] );
+				return $this->rpc_result( $id, (object) array() );
 
 			case 'tools/list':
 				// Public discovery — session-free and ungated. The tool list is
@@ -216,7 +216,7 @@ class WC_AI_Storefront_MCP_Server {
 				// llms.txt), so first-contact and stateless clients can discover
 				// the tools before establishing identity. Invoking a tool (below)
 				// still requires passing the agent gate.
-				return $this->rpc_result( $id, [ 'tools' => WC_AI_Storefront_MCP_Tools::definitions() ] );
+				return $this->rpc_result( $id, array( 'tools' => WC_AI_Storefront_MCP_Tools::definitions() ) );
 
 			case 'tools/call':
 				// Identity IS required to invoke a tool. Sessions are OPTIONAL: a
@@ -234,7 +234,7 @@ class WC_AI_Storefront_MCP_Server {
 				}
 				// A non-string `name` coerces to '' → unknown tool → -32602.
 				$name = is_string( $params['name'] ?? null ) ? $params['name'] : '';
-				$args = is_array( $params['arguments'] ?? null ) ? $params['arguments'] : [];
+				$args = is_array( $params['arguments'] ?? null ) ? $params['arguments'] : array();
 				WC_AI_Storefront_Logger::debug( 'MCP tools/call: tool=%s client=%s', $name, $caller );
 				$result = WC_AI_Storefront_MCP_Tools::call( $name, $args, $caller );
 				if ( is_wp_error( $result ) ) {
@@ -259,7 +259,7 @@ class WC_AI_Storefront_MCP_Server {
 	private function do_initialize( $id, array $params, array $settings ): WP_REST_Response {
 		// Extract clientInfo.name defensively: a client may send `clientInfo`
 		// as a non-object (e.g. a string), which would warn on array access.
-		$client_info = is_array( $params['clientInfo'] ?? null ) ? $params['clientInfo'] : [];
+		$client_info = is_array( $params['clientInfo'] ?? null ) ? $params['clientInfo'] : array();
 		$client_name = is_string( $client_info['name'] ?? null ) ? $client_info['name'] : '';
 		$gated       = WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings );
 		if ( is_wp_error( $gated ) ) {
@@ -287,14 +287,14 @@ class WC_AI_Storefront_MCP_Server {
 		$session_id = WC_AI_Storefront_MCP_Session::start( $client_name );
 		$response   = $this->rpc_result(
 			$id,
-			[
+			array(
 				'protocolVersion' => $protocol,
-				'capabilities'    => [ 'tools' => (object) [] ],
-				'serverInfo'      => [
+				'capabilities'    => array( 'tools' => (object) array() ),
+				'serverInfo'      => array(
 					'name'    => 'dev.ucp.shopping',
 					'version' => defined( 'WC_AI_STOREFRONT_VERSION' ) ? WC_AI_STOREFRONT_VERSION : '0',
-				],
-			]
+				),
+			)
 		);
 		$response->header( 'Mcp-Session-Id', $session_id );
 		return $response;
@@ -322,12 +322,12 @@ class WC_AI_Storefront_MCP_Server {
 			$client_name = WC_AI_Storefront_MCP_Session::client_name_for( $session_id );
 			if ( null === $client_name ) {
 				WC_AI_Storefront_Logger::debug( 'MCP resolve_caller: unknown/expired session=%s', $session_id );
-				return new WP_Error( 'mcp_session_unknown', __( 'Unknown or expired session.', 'woocommerce-ai-storefront' ), [ 'status' => 404 ] );
+				return new WP_Error( 'mcp_session_unknown', __( 'Unknown or expired session.', 'woocommerce-ai-storefront' ), array( 'status' => 404 ) );
 			}
 			// Re-gate the stored identity (the allow-list may have tightened).
 			if ( is_wp_error( WC_AI_Storefront_MCP_Session::gate_client_name( $client_name, $settings ) ) ) {
 				WC_AI_Storefront_Logger::debug( 'MCP resolve_caller: re-gate blocked client=%s', $client_name );
-				return new WP_Error( 'mcp_agent_blocked', __( 'Agent is not allowed.', 'woocommerce-ai-storefront' ), [ 'status' => 403 ] );
+				return new WP_Error( 'mcp_agent_blocked', __( 'Agent is not allowed.', 'woocommerce-ai-storefront' ), array( 'status' => 403 ) );
 			}
 			return $client_name;
 		}
@@ -335,7 +335,7 @@ class WC_AI_Storefront_MCP_Server {
 		// No session → anonymous caller. Admitted only if unknown agents are
 		// allowed; attribute the call to the anonymous fallback ('').
 		if ( is_wp_error( WC_AI_Storefront_MCP_Session::gate_client_name( '', $settings ) ) ) {
-			return new WP_Error( 'mcp_agent_blocked', __( 'Anonymous agents are not allowed.', 'woocommerce-ai-storefront' ), [ 'status' => 403 ] );
+			return new WP_Error( 'mcp_agent_blocked', __( 'Anonymous agents are not allowed.', 'woocommerce-ai-storefront' ), array( 'status' => 403 ) );
 		}
 		return '';
 	}
@@ -349,11 +349,11 @@ class WC_AI_Storefront_MCP_Server {
 	 */
 	private function rpc_result( $id, $result ): WP_REST_Response {
 		return new WP_REST_Response(
-			[
+			array(
 				'jsonrpc' => '2.0',
 				'id'      => $id,
 				'result'  => $result,
-			],
+			),
 			200
 		);
 	}
@@ -369,14 +369,14 @@ class WC_AI_Storefront_MCP_Server {
 	 */
 	private function rpc_error( $id, int $code, string $message, int $status ): WP_REST_Response {
 		return new WP_REST_Response(
-			[
+			array(
 				'jsonrpc' => '2.0',
 				'id'      => $id,
-				'error'   => [
+				'error'   => array(
 					'code'    => $code,
 					'message' => $message,
-				],
-			],
+				),
+			),
 			$status
 		);
 	}

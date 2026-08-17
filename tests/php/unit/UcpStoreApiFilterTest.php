@@ -38,7 +38,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		\Brain\Monkey\setUp();
 		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( true );
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 
 		// As of 0.1.7 the filter is gated to UCP-controller-
 		// initiated dispatches via an `is_in_ucp_dispatch()`
@@ -72,13 +72,16 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// pair stays balanced.
 		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 		try {
-			WC_AI_Storefront::$test_settings = [
+			WC_AI_Storefront::$test_settings = array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 5, 12 ],
-			];
+				'selected_categories'    => array( 5, 12 ),
+			);
 
 			$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-			$input  = [ 'orderby' => 'date', 'posts_per_page' => 10 ];
+			$input  = array(
+				'orderby'        => 'date',
+				'posts_per_page' => 10,
+			);
 			$result = $filter->restrict_to_syndicated_products( $input );
 
 			// No tax_query, no post__in injection — the filter
@@ -122,10 +125,13 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// Default mode "all" = no restriction. The filter is a passthrough,
 		// preserving whatever the Store API / WC block-theme cart / etc.
 		// originally asked for.
-		WC_AI_Storefront::$test_settings = [ 'product_selection_mode' => 'all' ];
+		WC_AI_Storefront::$test_settings = array( 'product_selection_mode' => 'all' );
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$input  = [ 'orderby' => 'date', 'posts_per_page' => 10 ];
+		$input  = array(
+			'orderby'        => 'date',
+			'posts_per_page' => 10,
+		);
 		$result = $filter->restrict_to_syndicated_products( $input );
 
 		$this->assertSame( $input, $result );
@@ -134,10 +140,10 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	public function test_missing_mode_defaults_to_all_behavior(): void {
 		// Defensive: settings with no product_selection_mode key should
 		// not blow up. The filter treats missing as "all" (no-op).
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$input  = [ 'orderby' => 'date' ];
+		$input  = array( 'orderby' => 'date' );
 		$result = $filter->restrict_to_syndicated_products( $input );
 
 		$this->assertSame( $input, $result );
@@ -156,22 +162,22 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_by_taxonomy_mode_categories_only_emits_single_clause_or(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5, 12 ],
-		];
+			'selected_categories'    => array( 5, 12 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
 		$this->assertSame( 'OR', $result['tax_query']['relation'] );
 		$this->assertEquals(
-			[
+			array(
 				'taxonomy' => 'product_cat',
 				'field'    => 'term_id',
-				'terms'    => [ 5, 12 ],
-			],
+				'terms'    => array( 5, 12 ),
+			),
 			$result['tax_query'][0]
 		);
 		// No stray second clause.
@@ -186,22 +192,22 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// caller's clauses AND our UNION clause in an outer
 		// `AND`-relation tax_query: "the caller's intent still holds
 		// AND our UNION restriction also holds."
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 10 ],
-		];
+			'selected_categories'    => array( 10 ),
+		);
 
-		$incoming_tax_query = [
-			[
+		$incoming_tax_query = array(
+			array(
 				'taxonomy' => 'product_cat',
 				'field'    => 'slug',
-				'terms'    => [ 'sale' ],
-			],
-		];
+				'terms'    => array( 'sale' ),
+			),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products(
-			[ 'tax_query' => $incoming_tax_query ]
+			array( 'tax_query' => $incoming_tax_query )
 		);
 
 		$this->assertSame( 'AND', $result['tax_query']['relation'] );
@@ -210,7 +216,7 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// Our UNION clause lands at index 1 with OR relation + one clause.
 		$this->assertSame( 'OR', $result['tax_query'][1]['relation'] );
 		$this->assertEquals( 'term_id', $result['tax_query'][1][0]['field'] );
-		$this->assertEquals( [ 10 ], $result['tax_query'][1][0]['terms'] );
+		$this->assertEquals( array( 10 ), $result['tax_query'][1][0]['terms'] );
 	}
 
 	public function test_by_taxonomy_mode_with_empty_selected_categories_forces_zero_matches(): void {
@@ -219,17 +225,17 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// to keep the Store API + llms.txt/JSON-LD gates in lockstep
 		// (the latter also returns false in this state via
 		// `WC_AI_Storefront::is_product_syndicated()`).
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [],
-		];
+			'selected_categories'    => array(),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+		$result = $filter->restrict_to_syndicated_products( array( 'orderby' => 'date' ) );
 
 		// `post__in = [0]` is the same never-valid-ID sentinel the
 		// `selected` branch uses for empty intersections.
-		$this->assertSame( [ 0 ], $result['post__in'] );
+		$this->assertSame( array( 0 ), $result['post__in'] );
 	}
 
 	public function test_by_taxonomy_mode_absints_stringy_ids_before_tax_query(): void {
@@ -238,15 +244,15 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// interception producing non-int IDs. WordPress `absint()` =
 		// `abs((int) $v)`, so negatives flip to positive and strings
 		// coerce numerically.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ '5', '12', -3 ],
-		];
+			'selected_categories'    => array( '5', '12', -3 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
-		$this->assertSame( [ 5, 12, 3 ], $result['tax_query'][0]['terms'] );
+		$this->assertSame( array( 5, 12, 3 ), $result['tax_query'][0]['terms'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -254,22 +260,22 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_by_taxonomy_mode_tags_only_emits_single_clause_or(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_tags'          => [ 7, 21 ],
-		];
+			'selected_tags'          => array( 7, 21 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
 		$this->assertSame( 'OR', $result['tax_query']['relation'] );
 		$this->assertEquals(
-			[
+			array(
 				'taxonomy' => 'product_tag',
 				'field'    => 'term_id',
-				'terms'    => [ 7, 21 ],
-			],
+				'terms'    => array( 7, 21 ),
+			),
 			$result['tax_query'][0]
 		);
 		$this->assertArrayNotHasKey( 1, $result['tax_query'] );
@@ -289,22 +295,22 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	public function test_by_taxonomy_mode_brands_only_emits_single_clause_or_when_taxonomy_registered(): void {
 		// `taxonomy_exists` default in setUp() returns true — matches
 		// a store where `product_brand` is registered (WC 9.5+).
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_brands'        => [ 3, 14, 42 ],
-		];
+			'selected_brands'        => array( 3, 14, 42 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
 		$this->assertSame( 'OR', $result['tax_query']['relation'] );
 		$this->assertEquals(
-			[
+			array(
 				'taxonomy' => 'product_brand',
 				'field'    => 'term_id',
-				'terms'    => [ 3, 14, 42 ],
-			],
+				'terms'    => array( 3, 14, 42 ),
+			),
 			$result['tax_query'][0]
 		);
 		$this->assertArrayNotHasKey( 1, $result['tax_query'] );
@@ -331,13 +337,13 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// into. Declining to act preserves the pre-downgrade view.
 		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_brands'        => [ 3, 14 ],
-		];
+			'selected_brands'        => array( 3, 14 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$input  = [ 'orderby' => 'date' ];
+		$input  = array( 'orderby' => 'date' );
 		$result = $filter->restrict_to_syndicated_products( $input );
 
 		$this->assertSame( $input, $result );
@@ -347,15 +353,15 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// Parallel to categories + tags empty-selection policy.
 		// `taxonomy_exists` default stub returns true (taxonomy is
 		// registered); the merchant just hasn't picked any brands yet.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_brands'        => [],
-		];
+			'selected_brands'        => array(),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+		$result = $filter->restrict_to_syndicated_products( array( 'orderby' => 'date' ) );
 
-		$this->assertSame( [ 0 ], $result['post__in'] );
+		$this->assertSame( array( 0 ), $result['post__in'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -368,42 +374,42 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// product matches if it's in cat 5, cat 12, tag 7, tag 21,
 		// brand 3, OR brand 42.
 		// `taxonomy_exists` default stub returns true (brands registered).
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5, 12 ],
-			'selected_tags'          => [ 7, 21 ],
-			'selected_brands'        => [ 3, 42 ],
-		];
+			'selected_categories'    => array( 5, 12 ),
+			'selected_tags'          => array( 7, 21 ),
+			'selected_brands'        => array( 3, 42 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
 		$this->assertSame( 'OR', $result['tax_query']['relation'] );
 
 		// Three clauses, one per taxonomy, at positional indices 0..2.
 		$this->assertEquals(
-			[
+			array(
 				'taxonomy' => 'product_cat',
 				'field'    => 'term_id',
-				'terms'    => [ 5, 12 ],
-			],
+				'terms'    => array( 5, 12 ),
+			),
 			$result['tax_query'][0]
 		);
 		$this->assertEquals(
-			[
+			array(
 				'taxonomy' => 'product_tag',
 				'field'    => 'term_id',
-				'terms'    => [ 7, 21 ],
-			],
+				'terms'    => array( 7, 21 ),
+			),
 			$result['tax_query'][1]
 		);
 		$this->assertEquals(
-			[
+			array(
 				'taxonomy' => 'product_brand',
 				'field'    => 'term_id',
-				'terms'    => [ 3, 42 ],
-			],
+				'terms'    => array( 3, 42 ),
+			),
 			$result['tax_query'][2]
 		);
 
@@ -421,15 +427,15 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// remaining two-clause UNION.
 		\Brain\Monkey\Functions\when( 'taxonomy_exists' )->justReturn( false );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5 ],
-			'selected_tags'          => [ 7 ],
-			'selected_brands'        => [ 3 ],
-		];
+			'selected_categories'    => array( 5 ),
+			'selected_tags'          => array( 7 ),
+			'selected_brands'        => array( 3 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertArrayHasKey( 'tax_query', $result );
 		$this->assertSame( 'OR', $result['tax_query']['relation'] );
@@ -458,17 +464,17 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// configuration with the same selection.
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'categories',
-			'selected_categories'    => [ 5 ],
-		];
-		$legacy_result = $filter->restrict_to_syndicated_products( [] );
+			'selected_categories'    => array( 5 ),
+		);
+		$legacy_result                   = $filter->restrict_to_syndicated_products( array() );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5 ],
-		];
-		$canonical_result = $filter->restrict_to_syndicated_products( [] );
+			'selected_categories'    => array( 5 ),
+		);
+		$canonical_result                = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertEquals( $canonical_result, $legacy_result );
 	}
@@ -479,17 +485,17 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// (zero matches). Mirrors `is_product_syndicated()` returning
 		// false in the same state so llms.txt / JSON-LD and the Store
 		// API catalog stay in lockstep.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [],
-			'selected_tags'          => [],
-			'selected_brands'        => [],
-		];
+			'selected_categories'    => array(),
+			'selected_tags'          => array(),
+			'selected_brands'        => array(),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [ 'orderby' => 'date' ] );
+		$result = $filter->restrict_to_syndicated_products( array( 'orderby' => 'date' ) );
 
-		$this->assertSame( [ 0 ], $result['post__in'] );
+		$this->assertSame( array( 0 ), $result['post__in'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -497,15 +503,15 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_selected_mode_sets_post_in_when_no_existing_restriction(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 101, 202, 303 ],
-		];
+			'selected_products'      => array( 101, 202, 303 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
-		$this->assertEquals( [ 101, 202, 303 ], $result['post__in'] );
+		$this->assertEquals( array( 101, 202, 303 ), $result['post__in'] );
 	}
 
 	public function test_selected_mode_intersects_with_incoming_post_in(): void {
@@ -514,17 +520,17 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// INTERSECT with the merchant's allow-list rather than replacing.
 		// Replacing would let the agent see products the original
 		// request explicitly excluded.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 2, 4, 6 ],
-		];
+			'selected_products'      => array( 2, 4, 6 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products(
-			[ 'post__in' => [ 1, 2, 3 ] ]
+			array( 'post__in' => array( 1, 2, 3 ) )
 		);
 
-		$this->assertSame( [ 2 ], $result['post__in'] );
+		$this->assertSame( array( 2 ), $result['post__in'] );
 	}
 
 	public function test_selected_mode_empty_intersection_forces_zero_matches(): void {
@@ -534,17 +540,17 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// ID — to force zero results. Without this, an incompatible
 		// filter combination would silently match everything, the
 		// opposite of what the merchant configured.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 2, 4 ],
-		];
+			'selected_products'      => array( 2, 4 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 		$result = $filter->restrict_to_syndicated_products(
-			[ 'post__in' => [ 99, 100 ] ]
+			array( 'post__in' => array( 99, 100 ) )
 		);
 
-		$this->assertSame( [ 0 ], $result['post__in'] );
+		$this->assertSame( array( 0 ), $result['post__in'] );
 	}
 
 	public function test_selected_mode_with_empty_selected_products_forces_zero_matches(): void {
@@ -555,16 +561,16 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// `is_product_syndicated()` (returns false in the same
 		// state) and `get_product_count()` (returns 0). All three
 		// gates now agree: empty allow-list => zero products.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [],
-		];
+			'selected_products'      => array(),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$input  = [ 'post__in' => [ 1, 2, 3 ] ];
+		$input  = array( 'post__in' => array( 1, 2, 3 ) );
 		$result = $filter->restrict_to_syndicated_products( $input );
 
-		$this->assertSame( [ 0 ], $result['post__in'] );
+		$this->assertSame( array( 0 ), $result['post__in'] );
 	}
 
 	public function test_selected_mode_ignores_malformed_incoming_post_in(): void {
@@ -572,20 +578,20 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// (null, scalar, empty array), treat as "no incoming restriction"
 		// and apply our allow-list directly. Defends against upstream
 		// filters producing unexpected shapes.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 10, 20 ],
-		];
+			'selected_products'      => array( 10, 20 ),
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
 
-		$result_null   = $filter->restrict_to_syndicated_products( [ 'post__in' => null ] );
-		$result_scalar = $filter->restrict_to_syndicated_products( [ 'post__in' => 42 ] );
-		$result_empty  = $filter->restrict_to_syndicated_products( [ 'post__in' => [] ] );
+		$result_null   = $filter->restrict_to_syndicated_products( array( 'post__in' => null ) );
+		$result_scalar = $filter->restrict_to_syndicated_products( array( 'post__in' => 42 ) );
+		$result_empty  = $filter->restrict_to_syndicated_products( array( 'post__in' => array() ) );
 
-		$this->assertSame( [ 10, 20 ], $result_null['post__in'] );
-		$this->assertSame( [ 10, 20 ], $result_scalar['post__in'] );
-		$this->assertSame( [ 10, 20 ], $result_empty['post__in'] );
+		$this->assertSame( array( 10, 20 ), $result_null['post__in'] );
+		$this->assertSame( array( 10, 20 ), $result_scalar['post__in'] );
+		$this->assertSame( array( 10, 20 ), $result_empty['post__in'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -593,29 +599,29 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_by_taxonomy_mode_does_not_set_post_in(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5 ],
-			'selected_products'      => [ 999 ],  // present but ignored in by_taxonomy mode
-		];
+			'selected_categories'    => array( 5 ),
+			'selected_products'      => array( 999 ),  // present but ignored in by_taxonomy mode
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertArrayNotHasKey( 'post__in', $result );
 	}
 
 	public function test_selected_mode_does_not_set_tax_query(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 42 ],
-			'selected_categories'    => [ 999 ],  // present but ignored in selected mode
-			'selected_tags'          => [ 888 ],  // present but ignored in selected mode
-			'selected_brands'        => [ 777 ],  // present but ignored in selected mode
-		];
+			'selected_products'      => array( 42 ),
+			'selected_categories'    => array( 999 ),  // present but ignored in selected mode
+			'selected_tags'          => array( 888 ),  // present but ignored in selected mode
+			'selected_brands'        => array( 777 ),  // present but ignored in selected mode
+		);
 
 		$filter = new WC_AI_Storefront_UCP_Store_API_Filter();
-		$result = $filter->restrict_to_syndicated_products( [] );
+		$result = $filter->restrict_to_syndicated_products( array() );
 
 		$this->assertArrayNotHasKey( 'tax_query', $result );
 	}

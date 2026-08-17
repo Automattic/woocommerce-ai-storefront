@@ -360,19 +360,19 @@ class WC_AI_Storefront_Attribution {
 	 */
 	public function init() {
 		// Capture ai_session_id from the request and store on the order.
-		add_action( 'woocommerce_checkout_order_created', [ $this, 'capture_ai_attribution' ], 10, 1 );
+		add_action( 'woocommerce_checkout_order_created', array( $this, 'capture_ai_attribution' ), 10, 1 );
 
 		// Also capture from Store API / Blocks checkout.
-		add_action( 'woocommerce_store_api_checkout_order_processed', [ $this, 'capture_ai_attribution' ], 10, 1 );
+		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'capture_ai_attribution' ), 10, 1 );
 
 		// Flag orders whose session landed on the /checkout-link/ handler —
 		// recovers the "routed via our checkout link" signal now that
 		// JSON-LD checkout URLs are bare (see BUY_LINK_ORIGIN_META_KEY).
-		add_action( 'woocommerce_checkout_order_created', [ $this, 'stamp_buy_link_origin' ], 10, 1 );
-		add_action( 'woocommerce_store_api_checkout_order_processed', [ $this, 'stamp_buy_link_origin' ], 10, 1 );
+		add_action( 'woocommerce_checkout_order_created', array( $this, 'stamp_buy_link_origin' ), 10, 1 );
+		add_action( 'woocommerce_store_api_checkout_order_processed', array( $this, 'stamp_buy_link_origin' ), 10, 1 );
 
 		// Display AI attribution data in admin order view.
-		add_action( 'woocommerce_admin_order_data_after_billing_address', [ $this, 'display_attribution_in_admin' ], 20, 1 );
+		add_action( 'woocommerce_admin_order_data_after_billing_address', array( $this, 'display_attribution_in_admin' ), 20, 1 );
 
 		// Bust stats transient cache when order status changes or an order is
 		// removed so the admin dashboard stays accurate within one TTL cycle.
@@ -835,13 +835,13 @@ class WC_AI_Storefront_Attribution {
 		// model. Each `strtotime` call resolves against the request
 		// time so daylight-savings transitions don't skew the
 		// boundary either.
-		$date_map = [
+		$date_map = array(
 			'day'     => '1 day ago',
 			'week'    => '7 days ago',
 			'month'   => '30 days ago',
 			'quarter' => '90 days ago',
 			'year'    => '12 months ago',
-		];
+		);
 
 		// $period is already validated to one of the five keys above.
 		$after    = $date_map[ $period ];
@@ -922,7 +922,7 @@ class WC_AI_Storefront_Attribution {
 					sprintf( 'channel_results query failed (HPOS, period=%s): %s', $period, $wpdb->last_error ),
 					array( 'source' => 'wc-ai-storefront' )
 				);
-				$channel_results = [];
+				$channel_results = array();
 			}
 			// phpcs:enable
 		} else {
@@ -981,14 +981,14 @@ class WC_AI_Storefront_Attribution {
 					sprintf( 'channel_results query failed (legacy, period=%s): %s', $period, $wpdb->last_error ),
 					array( 'source' => 'wc-ai-storefront' )
 				);
-				$channel_results = [];
+				$channel_results = array();
 			}
 			// phpcs:enable
 		}
 
 		$total_orders  = 0;
 		$total_revenue = 0.0;
-		$by_agent      = [];
+		$by_agent      = array();
 
 		if ( $results ) {
 			foreach ( $results as $row ) {
@@ -1003,10 +1003,10 @@ class WC_AI_Storefront_Attribution {
 					$by_agent[ $canonical ]['orders']  += $count;
 					$by_agent[ $canonical ]['revenue'] += $revenue;
 				} else {
-					$by_agent[ $canonical ] = [
+					$by_agent[ $canonical ] = array(
 						'orders'  => $count,
 						'revenue' => $revenue,
-					];
+					);
 				}
 			}
 		}
@@ -1016,13 +1016,13 @@ class WC_AI_Storefront_Attribution {
 		// because the SQL's `IN ( %s, %s, %s )` already restricted to
 		// those three constants. Each row maps 1:1 to an entry in
 		// $by_channel.
-		$by_channel = [];
+		$by_channel = array();
 		if ( $channel_results ) {
 			foreach ( $channel_results as $row ) {
-				$by_channel[ (string) $row->channel ] = [
+				$by_channel[ (string) $row->channel ] = array(
 					'orders'  => (int) $row->order_count,
 					'revenue' => (float) $row->revenue,
-				];
+				);
 			}
 		}
 
@@ -1214,25 +1214,25 @@ class WC_AI_Storefront_Attribution {
 	 * @param array<string, array{orders: int<0, max>, revenue: float}>        $by_channel    Per-channel breakdown keyed by utm_id (`woo_ucp` / `woo_jsonld`). Empty by default; populated by `get_stats()` from a separate utm_id-grouped query. Self-normalizes share_percent against the sum of its own rows, NOT against $total_orders — `$total_orders` may include legacy LENIENT-attributed orders that lack a channel signature and aren't represented here.
 	 * @return array{ai_aov: float, top_agent: array{name: string, orders: int, revenue: float, share_percent: float}|null, by_channel: array<string, array{orders: int, revenue: float, share_percent: float}>, top_channel: string|null}
 	 */
-	public static function derive_stats( int $total_orders, float $total_revenue, array $by_agent, array $by_channel = [] ): array {
+	public static function derive_stats( int $total_orders, float $total_revenue, array $by_agent, array $by_channel = array() ): array {
 		// Defensive early-exit. Negative or zero totals can't yield a
 		// meaningful AOV, top-agent ranking, or channel split; render
 		// empty state. by_channel is necessarily empty here because it's
 		// a subset of AI orders, and AI orders is zero.
 		if ( $total_orders <= 0 ) {
-			return [
+			return array(
 				'ai_aov'      => 0.0,
 				'top_agent'   => null,
-				'by_channel'  => [],
+				'by_channel'  => array(),
 				'top_channel' => null,
-			];
+			);
 		}
 
 		$ai_aov = round( $total_revenue / $total_orders, 2 );
 
 		$top_agent = null;
 		if ( ! empty( $by_agent ) ) {
-			$ranked = [];
+			$ranked = array();
 			foreach ( $by_agent as $name => $row ) {
 				// Skip empty-string agent names defensively. The SQL
 				// in `get_stats()` already filters these out (see
@@ -1243,11 +1243,11 @@ class WC_AI_Storefront_Attribution {
 				if ( '' === $name ) {
 					continue;
 				}
-				$ranked[] = [
+				$ranked[] = array(
 					'name'    => $name,
 					'orders'  => $row['orders'],
 					'revenue' => $row['revenue'],
-				];
+				);
 			}
 
 			if ( ! empty( $ranked ) ) {
@@ -1286,7 +1286,7 @@ class WC_AI_Storefront_Attribution {
 					}
 				);
 				$winner    = $ranked[0];
-				$top_agent = [
+				$top_agent = array(
 					// Cap at TOP_AGENT_NAME_MAX_LENGTH chars so an
 					// abnormally long utm_source can't push the card
 					// width past its layout slot. mbstring is a
@@ -1306,7 +1306,7 @@ class WC_AI_Storefront_Attribution {
 					// Always a float — `round()` returns float on the
 					// happy path; the early-exit handles the zero case.
 					'share_percent' => round( ( $winner['orders'] / $total_orders ) * 100, 1 ),
-				];
+				);
 			}
 		}
 
@@ -1327,7 +1327,7 @@ class WC_AI_Storefront_Attribution {
 		// for a card whose job is to answer "which channel matters
 		// more." The merchant reads the all-AI-orders count from a
 		// different card; this card answers a different question.
-		$derived_by_channel = [];
+		$derived_by_channel = array();
 		$top_channel        = null;
 		if ( ! empty( $by_channel ) ) {
 			// Filter to well-formed rows up front. `derive_stats()` is
@@ -1338,7 +1338,7 @@ class WC_AI_Storefront_Attribution {
 			// undefined-key read below. Match the existing divide-by-
 			// zero guard's defensive posture: drop the bad row, keep the
 			// dashboard rendering, surface partial-but-honest numbers.
-			$clean_by_channel = [];
+			$clean_by_channel = array();
 			foreach ( $by_channel as $key => $row ) {
 				if ( isset( $row['orders'], $row['revenue'] ) ) {
 					$clean_by_channel[ $key ] = $row;
@@ -1359,11 +1359,11 @@ class WC_AI_Storefront_Attribution {
 					? round( ( $row['orders'] / $channel_total_orders ) * 100, 1 )
 					: 0.0;
 
-				$derived_by_channel[ $key ] = [
+				$derived_by_channel[ $key ] = array(
 					'orders'        => $row['orders'],
 					'revenue'       => $row['revenue'],
 					'share_percent' => $share,
-				];
+				);
 			}
 
 			// top_channel ranking mirrors top_agent: orders DESC,
@@ -1371,13 +1371,13 @@ class WC_AI_Storefront_Attribution {
 			// break. Same `<=>` + explicit branching shape so PHPCS's
 			// short-ternary lint and `usort`-int-truncation guard
 			// stay consistent with the top_agent comparator above.
-			$ranked = [];
+			$ranked = array();
 			foreach ( $clean_by_channel as $key => $row ) {
-				$ranked[] = [
+				$ranked[] = array(
 					'key'     => $key,
 					'orders'  => $row['orders'],
 					'revenue' => $row['revenue'],
-				];
+				);
 			}
 			// `$ranked` can be empty if every input row was malformed
 			// (filtered out by the isset-guard above). Mirrors the
@@ -1402,11 +1402,11 @@ class WC_AI_Storefront_Attribution {
 			}
 		}
 
-		return [
+		return array(
 			'ai_aov'      => $ai_aov,
 			'top_agent'   => $top_agent,
 			'by_channel'  => $derived_by_channel,
 			'top_channel' => $top_channel,
-		];
+		);
 	}
 }

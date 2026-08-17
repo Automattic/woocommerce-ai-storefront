@@ -22,7 +22,7 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 		// Reset the test-controllable settings so a `$test_settings`
 		// override can't leak into other tests. Mirrors the discipline in
 		// UcpNeutralCoresTest.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -41,12 +41,12 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function settings( string $allow_unknown ): array {
-		return [
+		return array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => $allow_unknown,
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 	}
 
 	public function test_gate_denies_unknown_agent_when_allow_unknown_off(): void {
@@ -82,7 +82,7 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 		// the allow-list, is_agent_allowed returns true and the gate yields
 		// the canonical brand name.
 		$settings                     = $this->settings( 'no' );
-		$settings['allowed_crawlers'] = [ 'OAI-SearchBot' ];
+		$settings['allowed_crawlers'] = array( 'OAI-SearchBot' );
 
 		$result = WC_AI_Storefront_MCP_Session::gate_client_name( 'chatgpt.com', $settings );
 
@@ -109,7 +109,7 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 		// would skip the unknown-agent block and be silently admitted
 		// (is_agent_allowed( '', … ) is true). With allow_unknown off, every
 		// blank form MUST be rejected with a 403.
-		foreach ( [ '', '   ', "\t" ] as $blank ) {
+		foreach ( array( '', '   ', "\t" ) as $blank ) {
 			$result = WC_AI_Storefront_MCP_Session::gate_client_name(
 				$blank,
 				$this->settings( 'no' )
@@ -134,7 +134,7 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_start_and_lookup_round_trip_via_transients(): void {
-		$store = [];
+		$store = array();
 		Functions\when( 'wp_generate_uuid4' )->justReturn( '11111111-2222-3333-4444-555555555555' );
 		Functions\when( 'set_transient' )->alias(
 			function ( $key, $value, $ttl ) use ( &$store ) {
@@ -160,7 +160,7 @@ class McpSessionTest extends \PHPUnit\Framework\TestCase {
 	public function test_start_caps_stored_name_at_253_bytes(): void {
 		// An untrusted handshake name is persisted to a transient (options
 		// table); cap it so an oversized name can't bloat the DB.
-		$store = [];
+		$store = array();
 		Functions\when( 'wp_generate_uuid4' )->justReturn( 'cap-test-session-id' );
 		Functions\when( 'set_transient' )->alias(
 			function ( $key, $value, $ttl ) use ( &$store ) {

@@ -75,11 +75,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_passes_through_known_crawlers(): void {
-		$input = [ 'GPTBot', 'ClaudeBot', 'PerplexityBot' ];
+		$input = array( 'GPTBot', 'ClaudeBot', 'PerplexityBot' );
 
 		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
-		$this->assertSame( [ 'GPTBot', 'ClaudeBot', 'PerplexityBot' ], $result );
+		$this->assertSame( array( 'GPTBot', 'ClaudeBot', 'PerplexityBot' ), $result );
 	}
 
 	public function test_accepts_full_canonical_list(): void {
@@ -111,7 +111,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// traffic. Restored to the canonical list and is now a kept
 		// entry, not stripped. `Bytespider`, `CCBot`, and `cohere-ai`
 		// followed a similar drop-then-restore arc and remain kept.
-		$input = [
+		$input = array(
 			'GPTBot',          // kept
 			'ChatGPT-User',    // kept
 			'Gemini',          // dropped (phantom entry)
@@ -120,12 +120,12 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 			'Bytespider',      // kept (restored to canonical list)
 			'CCBot',           // kept (restored to canonical list)
 			'Claude-User',     // kept
-		];
+		);
 
 		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
 		$this->assertSame(
-			[ 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'anthropic-ai', 'Bytespider', 'CCBot', 'Claude-User' ],
+			array( 'GPTBot', 'ChatGPT-User', 'ClaudeBot', 'anthropic-ai', 'Bytespider', 'CCBot', 'Claude-User' ),
 			$result
 		);
 		$this->assertCount( 7, $result );
@@ -135,11 +135,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// `array_intersect` preserves source keys — if we don't re-index,
 		// the REST response JSON-encodes as an object, which breaks the
 		// reducer's `.filter()` / `.includes()` calls in the admin UI.
-		$input = [ 'Unknown', 'GPTBot', 'Unknown2', 'ClaudeBot' ];
+		$input = array( 'Unknown', 'GPTBot', 'Unknown2', 'ClaudeBot' );
 
 		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
-		$this->assertSame( [ 0, 1 ], array_keys( $result ) );
+		$this->assertSame( array( 0, 1 ), array_keys( $result ) );
 	}
 
 	// ------------------------------------------------------------------
@@ -147,44 +147,44 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_returns_empty_for_non_array_input(): void {
-		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( null ) );
-		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( 'GPTBot' ) );
-		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( 42 ) );
-		$this->assertSame( [], WC_AI_Storefront_Robots::sanitize_allowed_crawlers( false ) );
+		$this->assertSame( array(), WC_AI_Storefront_Robots::sanitize_allowed_crawlers( null ) );
+		$this->assertSame( array(), WC_AI_Storefront_Robots::sanitize_allowed_crawlers( 'GPTBot' ) );
+		$this->assertSame( array(), WC_AI_Storefront_Robots::sanitize_allowed_crawlers( 42 ) );
+		$this->assertSame( array(), WC_AI_Storefront_Robots::sanitize_allowed_crawlers( false ) );
 	}
 
 	public function test_strips_injected_garbage(): void {
-		$input = [
+		$input = array(
 			'GPTBot',
 			'<script>alert(1)</script>',
 			'../../etc/passwd',
 			'ClaudeBot',
 			'',
-		];
+		);
 
 		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
-		$this->assertSame( [ 'GPTBot', 'ClaudeBot' ], $result );
+		$this->assertSame( array( 'GPTBot', 'ClaudeBot' ), $result );
 	}
 
 	public function test_trims_whitespace_before_matching(): void {
 		// Stored data could have trailing spaces from an older stringy
 		// sanitizer or a hand-edited option. `sanitize_text_field`
 		// trims, so these should still match the canonical constant.
-		$input = [ '  GPTBot  ', "ClaudeBot\n", "\tPerplexityBot" ];
+		$input = array( '  GPTBot  ', "ClaudeBot\n", "\tPerplexityBot" );
 
 		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
-		$this->assertSame( [ 'GPTBot', 'ClaudeBot', 'PerplexityBot' ], $result );
+		$this->assertSame( array( 'GPTBot', 'ClaudeBot', 'PerplexityBot' ), $result );
 	}
 
 	public function test_empty_array_returns_empty_array(): void {
 		// A merchant who unchecked everything ("block all crawlers") must
 		// be able to persist that state — the sanitizer cannot quietly
 		// refill with defaults.
-		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( [] );
+		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( array() );
 
-		$this->assertSame( [], $result );
+		$this->assertSame( array(), $result );
 	}
 
 	public function test_duplicates_are_preserved_not_deduplicated(): void {
@@ -193,11 +193,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// duplicates are benign (well-behaved crawlers ignore repeats).
 		// Documenting this here so a future "helpful" dedupe doesn't
 		// accidentally collapse a legitimate case we haven't foreseen.
-		$input = [ 'GPTBot', 'GPTBot', 'ClaudeBot' ];
+		$input = array( 'GPTBot', 'GPTBot', 'ClaudeBot' );
 
 		$result = WC_AI_Storefront_Robots::sanitize_allowed_crawlers( $input );
 
-		$this->assertSame( [ 'GPTBot', 'GPTBot', 'ClaudeBot' ], $result );
+		$this->assertSame( array( 'GPTBot', 'GPTBot', 'ClaudeBot' ), $result );
 	}
 
 	// ------------------------------------------------------------------
@@ -210,29 +210,29 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	 * the generated robots.txt content with base WP output passed through.
 	 */
 	private function generate_robots_output( string $base = "User-agent: *\nDisallow: /wp-admin/\n" ): string {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'          => 'yes',
-			'allowed_crawlers' => [ 'GPTBot', 'ClaudeBot' ],
-		];
+			'allowed_crawlers' => array( 'GPTBot', 'ClaudeBot' ),
+		);
 
 		Functions\when( 'wc_get_page_permalink' )->alias(
 			static function ( string $page ): string {
-				$map = [
+				$map = array(
 					'shop'      => 'https://example.com/shop/',
 					'cart'      => 'https://example.com/cart/',
 					'checkout'  => 'https://example.com/checkout/',
 					'myaccount' => 'https://example.com/my-account/',
-				];
+				);
 				return $map[ $page ] ?? '';
 			}
 		);
 		Functions\when( 'get_option' )->alias(
-			static function ( string $key, $default = [] ) {
+			static function ( string $key, $default = array() ) {
 				if ( 'woocommerce_permalinks' === $key ) {
-					return [
+					return array(
 						'product_base'  => 'product',
 						'category_base' => 'product-category',
-					];
+					);
 				}
 				return $default;
 			}
@@ -390,7 +390,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// syndication, robots.txt doesn't advertise the endpoints at
 		// all. Locks in the relationship between the enabled setting
 		// and public discoverability.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$output = ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules(
 			"User-agent: *\nDisallow: /wp-admin/\n",
@@ -405,10 +405,10 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// A merchant who flipped Reading → "Discourage search engines"
 		// doesn't want AI crawlers pointed at the catalog either.
 		// Tested via the $is_public parameter WP passes to the filter.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'          => 'yes',
-			'allowed_crawlers' => [ 'GPTBot' ],
-		];
+			'allowed_crawlers' => array( 'GPTBot' ),
+		);
 
 		$output = ( new WC_AI_Storefront_Robots() )->add_ai_crawler_rules(
 			"User-agent: *\nDisallow: /wp-admin/\n",
@@ -454,7 +454,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// Amazonbot moved here from TRAINING_CRAWLERS: indexing
 		// prerequisite for Amazon Rufus (live AI shopping surface).
 		$this->assertSame(
-			[
+			array(
 				// AI search & discovery (alphabetical).
 				'Applebot',
 				'Bingbot',
@@ -478,14 +478,14 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'Amazonbot',
 				'Pinterestbot',
 				'Storebot-Google',
-			],
+			),
 			WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 		);
 	}
 
 	public function test_regional_crawlers_has_expected_members(): void {
 		$this->assertSame(
-			[
+			array(
 				// Asia — alphabetical.
 				'Baiduspider',
 				'coccocbot-web',
@@ -501,7 +501,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'Qwantify',
 				'SeznamBot',
 				'YandexBot',
-			],
+			),
 			WC_AI_Storefront_Robots::REGIONAL_CRAWLERS
 		);
 	}
@@ -520,7 +520,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// cohere-ai (Cohere). These are widely-encountered training
 		// crawlers merchants need to consciously allow or block.
 		$this->assertSame(
-			[
+			array(
 				// Alphabetical (case-insensitive) for scannability.
 				// anthropic-ai (Anthropic legacy crawler still seen in
 				// real logs) and Diffbot (Knowledge Graph licensed by
@@ -542,7 +542,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 				'Google-Extended',
 				'Meta-ExternalAgent',
 				'Microsoft-BingBot-Extended',
-			],
+			),
 			WC_AI_Storefront_Robots::TRAINING_CRAWLERS
 		);
 	}
@@ -563,7 +563,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// Empty settings array → no prior configuration → commerce-safe
 		// default. Regional, training, and test crawlers must NOT be
 		// present so merchants get the protection-by-default posture.
-		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers( [] );
+		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers( array() );
 
 		$this->assertSame( WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS, $result );
 
@@ -590,11 +590,11 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// default. Pre-fix code used `! empty()` which treated empty
 		// array identically to "key missing."
 		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
-			[ 'allowed_crawlers' => [] ]
+			array( 'allowed_crawlers' => array() )
 		);
 
 		$this->assertSame(
-			[],
+			array(),
 			$result,
 			'Explicit empty array (merchant opt-out) must be preserved, not reverted to defaults'
 		);
@@ -641,10 +641,10 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// fresh-install default (which would be wrong — the key IS
 		// present, it's just garbled).
 		$result = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
-			[ 'allowed_crawlers' => 'not-an-array' ]
+			array( 'allowed_crawlers' => 'not-an-array' )
 		);
 
-		$this->assertSame( [], $result );
+		$this->assertSame( array(), $result );
 	}
 
 	public function test_phantom_gemini_entry_is_removed(): void {
@@ -776,12 +776,12 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		$training = WC_AI_Storefront_Robots::TRAINING_CRAWLERS;
 		$test     = WC_AI_Storefront_Robots::TEST_CRAWLERS;
 
-		$this->assertSame( [], array_intersect( $live, $regional ),  'LIVE and REGIONAL must be disjoint.' );
-		$this->assertSame( [], array_intersect( $live, $training ),  'LIVE and TRAINING must be disjoint.' );
-		$this->assertSame( [], array_intersect( $live, $test ),      'LIVE and TEST must be disjoint.' );
-		$this->assertSame( [], array_intersect( $regional, $training ), 'REGIONAL and TRAINING must be disjoint.' );
-		$this->assertSame( [], array_intersect( $regional, $test ),  'REGIONAL and TEST must be disjoint.' );
-		$this->assertSame( [], array_intersect( $training, $test ),  'TRAINING and TEST must be disjoint.' );
+		$this->assertSame( array(), array_intersect( $live, $regional ), 'LIVE and REGIONAL must be disjoint.' );
+		$this->assertSame( array(), array_intersect( $live, $training ), 'LIVE and TRAINING must be disjoint.' );
+		$this->assertSame( array(), array_intersect( $live, $test ), 'LIVE and TEST must be disjoint.' );
+		$this->assertSame( array(), array_intersect( $regional, $training ), 'REGIONAL and TRAINING must be disjoint.' );
+		$this->assertSame( array(), array_intersect( $regional, $test ), 'REGIONAL and TEST must be disjoint.' );
+		$this->assertSame( array(), array_intersect( $training, $test ), 'TRAINING and TEST must be disjoint.' );
 	}
 
 	public function test_ai_crawlers_has_no_duplicates(): void {
@@ -953,17 +953,20 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 	public function test_no_opt_out_block_when_all_bots_allowed(): void {
 		// If the merchant has every known crawler checked, there's
 		// nothing to opt out — the opt-out block must not appear.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'          => 'yes',
 			'allowed_crawlers' => WC_AI_Storefront_Robots::AI_CRAWLERS,
-		];
+		);
 		Functions\when( 'wc_get_page_permalink' )->alias(
 			static fn( string $page ): string => 'https://example.com/' . $page . '/'
 		);
 		Functions\when( 'get_option' )->alias(
-			static fn( string $key, $default = [] ): mixed =>
+			static fn( string $key, $default = array() ): mixed =>
 				'woocommerce_permalinks' === $key
-					? [ 'product_base' => 'product', 'category_base' => 'product-category' ]
+					? array(
+						'product_base'  => 'product',
+						'category_base' => 'product-category',
+					)
 					: $default
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
@@ -985,17 +988,20 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// "Clear selection" merchant path: zero allowed crawlers.
 		// Every AI bot in AI_CRAWLERS should appear in the explicit
 		// opt-out block — strongest possible "no AI" signal.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'          => 'yes',
-			'allowed_crawlers' => [],
-		];
+			'allowed_crawlers' => array(),
+		);
 		Functions\when( 'wc_get_page_permalink' )->alias(
 			static fn( string $page ): string => 'https://example.com/' . $page . '/'
 		);
 		Functions\when( 'get_option' )->alias(
-			static fn( string $key, $default = [] ): mixed =>
+			static fn( string $key, $default = array() ): mixed =>
 				'woocommerce_permalinks' === $key
-					? [ 'product_base' => 'product', 'category_base' => 'product-category' ]
+					? array(
+						'product_base'  => 'product',
+						'category_base' => 'product-category',
+					)
 					: $default
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
@@ -1028,7 +1034,7 @@ class RobotsTest extends \PHPUnit\Framework\TestCase {
 		// Sanity: the gates for syndication-disabled / site-private
 		// cases already bail before the Allow directives. Same gate
 		// covers Sitemap Allow / opt-out blocks.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 
 		$base   = "Sitemap: https://example.com/sitemap.xml\nUser-agent: *\n";

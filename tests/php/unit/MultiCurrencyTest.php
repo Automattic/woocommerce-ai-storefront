@@ -740,6 +740,5 @@ namespace {
 				'second call switches from the clean USD baseline, proving no leak'
 			);
 		}
-
 	}
 }

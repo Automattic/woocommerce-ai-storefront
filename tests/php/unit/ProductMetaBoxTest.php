@@ -33,7 +33,7 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 		$this->meta_box = new WC_AI_Storefront_Product_Meta_Box();
 
 		// Clear $_POST between tests.
-		$_POST = [];
+		$_POST = array();
 
 		// save_meta() reads `$_POST` through `wp_unslash` +
 		// `sanitize_text_field` (per WP conventions), then calls
@@ -54,7 +54,7 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		$_POST = [];
+		$_POST = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -111,7 +111,7 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 		// string returns false. Locks the contract so a future
 		// change to WC's boolean meta convention doesn't silently
 		// flip the override on for existing product data.
-		foreach ( [ '1', 'true', 'YES', 'Yes', 'on', 'enabled' ] as $value ) {
+		foreach ( array( '1', 'true', 'YES', 'Yes', 'on', 'enabled' ) as $value ) {
 			Functions\when( 'get_post_meta' )->justReturn( $value );
 			$this->assertFalse(
 				WC_AI_Storefront_Product_Meta_Box::is_final_sale( 42 ),
@@ -270,7 +270,7 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 		// against a different tab (e.g. General, Advanced) would
 		// hide the checkbox from merchants but pass every other
 		// test.
-		$hooks = [];
+		$hooks = array();
 		Functions\when( 'add_action' )->alias(
 			static function ( $hook ) use ( &$hooks ) {
 				$hooks[] = $hook;
@@ -289,7 +289,7 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 	public function test_init_registers_save_hook(): void {
 		// init() must register the save callback. Without this, the
 		// checkbox would render correctly but never persist.
-		$hooks = [];
+		$hooks = array();
 		Functions\when( 'add_action' )->alias(
 			static function ( $hook ) use ( &$hooks ) {
 				$hooks[] = $hook;

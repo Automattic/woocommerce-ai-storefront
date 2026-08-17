@@ -41,7 +41,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 				$fragment = '';
 				if ( str_contains( $url, '#' ) ) {
 					[ $url, $fragment ] = explode( '#', $url, 2 );
-					$fragment = '#' . $fragment;
+					$fragment           = '#' . $fragment;
 				}
 				$query = http_build_query( $args );
 				$sep   = str_contains( $url, '?' ) ? '&' : '?';
@@ -51,9 +51,9 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'home_url' )->alias(
 			static fn( $path = '' ) => 'https://example.com' . $path
 		);
-		Functions\when( 'wc_get_product_cat_ids' )->justReturn( [] );
+		Functions\when( 'wc_get_product_cat_ids' )->justReturn( array() );
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => 'US' ]
+			array( 'country' => 'US' )
 		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'get_permalink' )->alias(
@@ -87,7 +87,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -107,12 +107,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'has_weight' )->andReturn( false );
 		$product->shouldReceive( 'get_weight' )->andReturn( '' );
 		$product->shouldReceive( 'has_dimensions' )->andReturn( false );
-		$product->shouldReceive( 'get_dimensions' )->andReturn( [] );
-		$product->shouldReceive( 'get_attributes' )->andReturn( [] );
-		$product->shouldReceive( 'get_children' )->andReturn( [] );
+		$product->shouldReceive( 'get_dimensions' )->andReturn( array() );
+		$product->shouldReceive( 'get_attributes' )->andReturn( array() );
+		$product->shouldReceive( 'get_children' )->andReturn( array() );
 		$product->shouldReceive( 'get_sku' )->andReturn( '' );
-		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( [] );
-		$product->shouldReceive( 'get_upsell_ids' )->andReturn( [] );
+		$product->shouldReceive( 'get_cross_sell_ids' )->andReturn( array() );
+		$product->shouldReceive( 'get_upsell_ids' )->andReturn( array() );
 		// Default to purchasable; the JSON-LD URL gate (#373) calls
 		// `is_purchasable()` before emitting `BuyAction` /
 		// `checkoutPageURLTemplate`.
@@ -148,17 +148,17 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	/** Convenience for tests that always start from a baseline-syndicated product. */
 	private function set_settings( array $return_policy ): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
 			'return_policy'          => $return_policy,
-		];
+		);
 	}
 
-	private function run_with_offer( array $extra_offer = [], ?Mockery\MockInterface $product = null ): array {
-		$offer = array_merge( [ '@type' => 'Offer' ], $extra_offer );
+	private function run_with_offer( array $extra_offer = array(), ?Mockery\MockInterface $product = null ): array {
+		$offer = array_merge( array( '@type' => 'Offer' ), $extra_offer );
 		return $this->jsonld->enhance_product_data(
-			[ 'offers' => [ $offer ] ],
+			array( 'offers' => array( $offer ) ),
 			$product ?? $this->make_product()
 		);
 	}
@@ -186,7 +186,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_unconfigured_mode_emits_no_policy_block(): void {
-		$this->set_settings( [ 'mode' => 'unconfigured' ] );
+		$this->set_settings( array( 'mode' => 'unconfigured' ) );
 		$result = $this->run_with_offer();
 
 		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result );
@@ -197,7 +197,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// After the mode-aware sanitizer runs, unconfigured can never carry
 		// page_id — but a direct DB write or legacy stored value could. Gate
 		// must still emit nothing.
-		$this->set_settings( [ 'mode' => 'unconfigured', 'page_id' => 99 ] );
+		$this->set_settings(
+			array(
+				'mode'    => 'unconfigured',
+				'page_id' => 99,
+			)
+		);
 		$result = $this->run_with_offer();
 
 		$this->assertArrayNotHasKey( 'hasMerchantReturnPolicy', $result['offers'][0] );
@@ -211,10 +216,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// Option B: only merchantReturnLink, no returnPolicyCategory,
 		// no applicableCountry.
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 99,
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -231,10 +236,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// mode='link' with page_id=0 produces nothing — the merchant
 		// chose "link" but hasn't picked a page yet.
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 0,
-			]
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -247,10 +252,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	public function test_link_mode_with_unpublished_page_emits_null(): void {
 		Functions\when( 'get_post_status' )->justReturn( 'draft' );
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 99,
-			]
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -269,10 +274,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// JSON-LD.
 		Functions\when( 'get_post_type' )->justReturn( 'post' );
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 99,
-			]
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -286,13 +291,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// Option B carries no applicableCountry, so the country gate
 		// must not block it.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 99,
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -305,10 +310,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_details_final_sale_emits_not_permitted(): void {
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'final_sale',
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -325,13 +330,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_details_final_sale_emits_without_country_when_unset(): void {
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'final_sale',
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -349,13 +354,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_details_returns_accepted_days_gt_0_emits_finite_window(): void {
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-				'methods'  => [ 'ReturnByMail' ],
-			]
+				'methods'  => array( 'ReturnByMail' ),
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -373,13 +378,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_details_returns_accepted_days_0_smart_degrades_to_unspecified(): void {
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => null,
 				'fees'     => 'FreeReturn',
-				'methods'  => [],
-			]
+				'methods'  => array(),
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -393,16 +398,16 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_details_returns_accepted_no_country_emits_null(): void {
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-				'methods'  => [],
-			]
+				'methods'  => array(),
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -414,13 +419,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_details_returns_accepted_single_method_emits_scalar(): void {
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 14,
 				'fees'     => 'FreeReturn',
-				'methods'  => [ 'ReturnInStore' ],
-			]
+				'methods'  => array( 'ReturnInStore' ),
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -431,37 +436,37 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_details_returns_accepted_multiple_methods_emits_array(): void {
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 14,
 				'fees'     => 'FreeReturn',
-				'methods'  => [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ],
-			]
+				'methods'  => array( 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ),
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
 
 		$this->assertIsArray( $block['returnMethod'] );
 		$this->assertSame(
-			[
+			array(
 				'https://schema.org/ReturnByMail',
 				'https://schema.org/ReturnInStore',
 				'https://schema.org/ReturnAtKiosk',
-			],
+			),
 			$block['returnMethod']
 		);
 	}
 
 	public function test_details_returns_accepted_no_methods_omits_return_method_field(): void {
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 14,
 				'fees'     => 'FreeReturn',
-				'methods'  => [],
-			]
+				'methods'  => array(),
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -475,12 +480,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_policy_block_emitted_at_offer_level_not_product_level(): void {
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			]
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -493,7 +498,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_shipping_details_moved_to_offer_level(): void {
-		$this->set_settings( [ 'mode' => 'unconfigured' ] );
+		$this->set_settings( array( 'mode' => 'unconfigured' ) );
 		$result = $this->run_with_offer();
 
 		$this->assertArrayNotHasKey( 'shippingDetails', $result );
@@ -510,15 +515,15 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_no_country_emits_no_policy_or_shipping_blocks(): void {
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			]
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -547,10 +552,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// Flagged product + store is mode='link' + page resolves → link wins.
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 99,
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -564,10 +569,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// fall back to NotPermitted.
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 0,
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -584,13 +589,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// emit NotPermitted.
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-				'methods'  => [],
-			]
+				'methods'  => array(),
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -611,7 +616,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// store would silently emit nothing, defeating the merchant's
 		// per-product opt-in.
 		$this->flag_product_as_final_sale();
-		$this->set_settings( [ 'mode' => 'unconfigured' ] );
+		$this->set_settings( array( 'mode' => 'unconfigured' ) );
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
 
@@ -631,10 +636,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// continue to emit the same shape.
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'final_sale',
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -665,10 +670,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// configured. applicableCountry must be absent (not set to a
 		// fallback like 'US'), and the block must be structurally valid.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->flag_product_as_final_sale();
-		$this->set_settings( [ 'mode' => 'unconfigured' ] );
+		$this->set_settings( array( 'mode' => 'unconfigured' ) );
 
 		$result = $this->run_with_offer();
 
@@ -704,13 +709,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// applicableCountry when the base country is unset, for
 		// the same Schema.org rationale as the per-product override.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'final_sale',
-			]
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -731,15 +736,15 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// before the issue #124 fix). A return-window declaration
 		// without a target region is not useful to validators.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			]
+			)
 		);
 
 		$result = $this->run_with_offer();
@@ -760,13 +765,13 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// stores with no base country — exactly the merchants most likely
 		// to lean on a hosted policy page.
 		Functions\when( 'wc_get_base_location' )->justReturn(
-			[ 'country' => '' ]
+			array( 'country' => '' )
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 99,
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -785,12 +790,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// dedicated assertion here makes the contract explicit.
 		// (No flag — setUp's default get_post_meta('') applies.)
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];
@@ -837,16 +842,16 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			static fn( int $post_id ) => 43 === $post_id ? 42 : 0
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			]
+			)
 		);
 
 		$variant = $this->make_product( 43 );
-		$block   = $this->run_with_offer( [], $variant )['offers'][0]['hasMerchantReturnPolicy'];
+		$block   = $this->run_with_offer( array(), $variant )['offers'][0]['hasMerchantReturnPolicy'];
 
 		$this->assertSame(
 			'https://schema.org/MerchantReturnNotPermitted',
@@ -866,16 +871,16 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 			static fn( int $post_id ) => 43 === $post_id ? 42 : 0
 		);
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			]
+			)
 		);
 
 		$variant = $this->make_product( 43 );
-		$block   = $this->run_with_offer( [], $variant )['offers'][0]['hasMerchantReturnPolicy'];
+		$block   = $this->run_with_offer( array(), $variant )['offers'][0]['hasMerchantReturnPolicy'];
 
 		$this->assertSame(
 			'https://schema.org/MerchantReturnFiniteReturnWindow',
@@ -910,12 +915,12 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $method->invoke(
 			$this->jsonld,
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-			],
+			),
 			'US',
 			null
 		);
@@ -937,23 +942,23 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// direct DB write or import could bypass it. The emission-time
 		// allow-list must catch it and fall back to FreeReturn rather
 		// than concatenating an arbitrary string onto the schema.org URL.
-		$markup = [
-			'offers' => [
-				[
+		$markup = array(
+			'offers' => array(
+				array(
 					'@type' => 'Offer',
-				],
-			],
-		];
+				),
+			),
+		);
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'return_policy' => [
+			'return_policy' => array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'EvilReturn',  // Not in allow-list.
-			],
-		];
+			),
+		);
 
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data( $markup, $product );
@@ -971,24 +976,24 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// emission time. If the only stored methods are invalid, the
 		// returnMethod property must be omitted entirely rather than
 		// emitting an empty array or an invalid schema.org URL.
-		$markup = [
-			'offers' => [
-				[
+		$markup = array(
+			'offers' => array(
+				array(
 					'@type' => 'Offer',
-				],
-			],
-		];
+				),
+			),
+		);
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'return_policy' => [
+			'return_policy' => array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-				'methods'  => [ 'ReturnByMail', 'NotAValidMethod', 'ReturnInStore' ],
-			],
-		];
+				'methods'  => array( 'ReturnByMail', 'NotAValidMethod', 'ReturnInStore' ),
+			),
+		);
 
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data( $markup, $product );
@@ -1006,24 +1011,24 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// A tampered or imported settings value could contain duplicate
 		// method entries. `array_unique()` at emission time must remove
 		// them so the JSON-LD doesn't emit repeated schema.org URLs.
-		$markup = [
-			'offers' => [
-				[
+		$markup = array(
+			'offers' => array(
+				array(
 					'@type' => 'Offer',
-				],
-			],
-		];
+				),
+			),
+		);
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
-			'return_policy' => [
+			'return_policy' => array(
 				'mode'     => 'details',
 				'category' => 'returns_accepted',
 				'days'     => 30,
 				'fees'     => 'FreeReturn',
-				'methods'  => [ 'ReturnByMail', 'ReturnByMail', 'ReturnInStore' ],
-			],
-		];
+				'methods'  => array( 'ReturnByMail', 'ReturnByMail', 'ReturnInStore' ),
+			),
+		);
 
 		$product = $this->make_product();
 		$result  = $this->jsonld->enhance_product_data( $markup, $product );
@@ -1044,7 +1049,7 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// could bypass it. The emitter must also fail closed: an
 		// unrecognized top-level mode value must produce no policy block,
 		// matching the JS derivePreview() fail-closed guard.
-		$this->set_settings( [ 'mode' => 'gibberish' ] );
+		$this->set_settings( array( 'mode' => 'gibberish' ) );
 		$result = $this->run_with_offer();
 
 		$this->assertArrayNotHasKey(
@@ -1059,10 +1064,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		// fail closed. Mirrors the JS guard: `category !== RETURNS_ACCEPTED
 		// && category !== FINAL_SALE → return null`.
 		$this->set_settings(
-			[
+			array(
 				'mode'     => 'details',
 				'category' => 'gibberish',
-			]
+			)
 		);
 		$result = $this->run_with_offer();
 
@@ -1091,10 +1096,10 @@ class JsonLdReturnPolicyTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_status' )->justReturn( 'draft' );
 		$this->flag_product_as_final_sale();
 		$this->set_settings(
-			[
+			array(
 				'mode'    => 'link',
 				'page_id' => 99,
-			]
+			)
 		);
 
 		$block = $this->run_with_offer()['offers'][0]['hasMerchantReturnPolicy'];

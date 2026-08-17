@@ -36,14 +36,14 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'esc_url' )->returnArg();
 		Functions\when( '__' )->returnArg( 1 );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -61,10 +61,13 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_opensearch_rewrite_rule_registered(): void {
-		$rules = [];
+		$rules = array();
 		Functions\when( 'add_rewrite_rule' )->alias(
 			static function ( $regex, $query, $after ) use ( &$rules ) {
-				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+				$rules[ $regex ] = array(
+					'query' => $query,
+					'after' => $after,
+				);
 			}
 		);
 
@@ -84,7 +87,7 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_opensearch_query_var_registered(): void {
 		Functions\when( 'add_rewrite_rule' )->justReturn();
-		$vars = $this->ucp->add_query_vars( [] );
+		$vars = $this->ucp->add_query_vars( array() );
 		$this->assertContains( WC_AI_Storefront_Ucp::OPENSEARCH_QUERY_VAR, $vars );
 	}
 
@@ -127,7 +130,7 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_head_link_silent_when_disabled(): void {
 		// All three head links (ucp-agent, search, llms.txt) gate behind one
 		// enabled-check; pin that a disabled store advertises none of them.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		ob_start();
 		$this->ucp->inject_head_link();
@@ -225,7 +228,7 @@ class UcpOpenSearchTest extends \PHPUnit\Framework\TestCase {
 	 */
 	public function test_serve_returns_404_when_plugin_disabled(): void {
 		Functions\when( 'get_query_var' )->justReturn( 1 ); // descriptor requested.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$captured_status = null;
 		Functions\when( 'status_header' )->alias(

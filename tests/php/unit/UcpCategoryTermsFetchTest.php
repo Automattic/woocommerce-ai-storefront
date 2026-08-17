@@ -27,7 +27,7 @@ class UcpCategoryTermsFetchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array{include: string, per_page: int}>
 	 */
-	private array $captured_dispatches = [];
+	private array $captured_dispatches = array();
 
 	/**
 	 * Canned per-call responses indexed by 1-based call number. Each
@@ -37,7 +37,7 @@ class UcpCategoryTermsFetchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, mixed>
 	 */
-	private array $canned_calls = [];
+	private array $canned_calls = array();
 
 	/**
 	 * Set of 1-indexed call numbers where the stub should return a
@@ -46,19 +46,19 @@ class UcpCategoryTermsFetchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, bool>
 	 */
-	private array $error_calls = [];
+	private array $error_calls = array();
 
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
 
-		$this->captured_dispatches = [];
-		$this->canned_calls        = [];
-		$this->error_calls         = [];
+		$this->captured_dispatches = array();
+		$this->canned_calls        = array();
+		$this->error_calls         = array();
 
-		$captured     = &$this->captured_dispatches;
-		$canned       = &$this->canned_calls;
-		$errors       = &$this->error_calls;
+		$captured = &$this->captured_dispatches;
+		$canned   = &$this->canned_calls;
+		$errors   = &$this->error_calls;
 		Functions\when( 'rest_do_request' )->alias(
 			static function ( WP_REST_Request $request ) use ( &$captured, &$canned, &$errors ) {
 				$captured[]  = array(
@@ -74,7 +74,7 @@ class UcpCategoryTermsFetchTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 	}
 
 	protected function tearDown(): void {
@@ -142,8 +142,14 @@ class UcpCategoryTermsFetchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			array(
-				10 => array( 'name' => 'Tops', 'parent' => 0 ),
-				11 => array( 'name' => 'Tees', 'parent' => 10 ),
+				10 => array(
+					'name'   => 'Tops',
+					'parent' => 0,
+				),
+				11 => array(
+					'name'   => 'Tees',
+					'parent' => 10,
+				),
 			),
 			$result
 		);
@@ -180,8 +186,14 @@ class UcpCategoryTermsFetchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame(
 			array(
-				10 => array( 'name' => 'Tops', 'parent' => 0 ),
-				11 => array( 'name' => 'Tees', 'parent' => 10 ),
+				10 => array(
+					'name'   => 'Tops',
+					'parent' => 0,
+				),
+				11 => array(
+					'name'   => 'Tees',
+					'parent' => 10,
+				),
 			),
 			$result
 		);
@@ -195,9 +207,9 @@ class UcpCategoryTermsFetchTest extends \PHPUnit\Framework\TestCase {
 		// 150 IDs → 2 chunks (100 + 50). Without chunking, WC Store
 		// API's per_page cap would silently truncate the response to
 		// the first 100 terms.
-		$ids        = range( 1, 150 );
-		$chunk_one  = array();
-		$chunk_two  = array();
+		$ids       = range( 1, 150 );
+		$chunk_one = array();
+		$chunk_two = array();
 		foreach ( range( 1, 100 ) as $id ) {
 			$chunk_one[] = $this->array_term( $id, "Cat $id", 0 );
 		}

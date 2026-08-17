@@ -23,13 +23,13 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 		Monkey\setUp();
 		$this->feed = new WC_AI_Storefront_Products_Feed();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
-		$_GET = [];
+		$_GET = array();
 		Functions\when( 'wp_unslash' )->returnArg();
 		Functions\when( 'wp_json_encode' )->alias(
 			static fn( $data, $options = 0, $depth = 512 ) => json_encode( $data, $options, $depth )
@@ -38,8 +38,8 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
-		$_GET = [];
+		WC_AI_Storefront::$test_settings = array();
+		$_GET                            = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -65,10 +65,13 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_collections_rewrite_rule_registered(): void {
-		$rules = [];
+		$rules = array();
 		Functions\when( 'add_rewrite_rule' )->alias(
 			static function ( $regex, $query, $after ) use ( &$rules ) {
-				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+				$rules[ $regex ] = array(
+					'query' => $query,
+					'after' => $after,
+				);
 			}
 		);
 		$this->feed->add_rewrite_rules();
@@ -81,7 +84,7 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_collections_query_var_registered(): void {
-		$vars = $this->feed->add_query_vars( [] );
+		$vars = $this->feed->add_query_vars( array() );
 		$this->assertContains( WC_AI_Storefront_Products_Feed::QUERY_VAR_COLLECTIONS, $vars );
 	}
 
@@ -157,20 +160,20 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_build_collections_empty_when_no_terms(): void {
-		Functions\when( 'get_terms' )->justReturn( [] );
+		Functions\when( 'get_terms' )->justReturn( array() );
 
 		$json    = $this->invoke_private( 'build_collections_json' );
 		$decoded = json_decode( (string) $json, true );
 
-		$this->assertSame( [ 'collections' => [] ], $decoded );
+		$this->assertSame( array( 'collections' => array() ), $decoded );
 	}
 
 	public function test_build_collections_shape(): void {
 		Functions\when( 'get_terms' )->justReturn(
-			[ $this->term( 7, 'hoodies', 'Hoodies', 'Cozy <strong>hoodies</strong>.' ) ]
+			array( $this->term( 7, 'hoodies', 'Hoodies', 'Cozy <strong>hoodies</strong>.' ) )
 		);
 		// 'all' mode → every product syndicated; 2 ids → count 2.
-		Functions\when( 'wc_get_products' )->justReturn( [ 11, 12 ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( 11, 12 ) );
 
 		$json    = $this->invoke_private( 'build_collections_json' );
 		$decoded = json_decode( (string) $json, true );
@@ -194,15 +197,15 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 		// the post-gate 2, never the raw 3 — otherwise /collections.json and
 		// the per-collection endpoint disagree.
 		Functions\when( 'get_terms' )->justReturn(
-			[ $this->term( 7, 'hoodies', 'Hoodies', '' ) ]
+			array( $this->term( 7, 'hoodies', 'Hoodies', '' ) )
 		);
-		Functions\when( 'wc_get_products' )->justReturn( [ 11, 12, 13 ] );
-		WC_AI_Storefront::$test_settings = [
+		Functions\when( 'wc_get_products' )->justReturn( array( 11, 12, 13 ) );
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 11, 12 ], // 13 excluded.
-		];
+			'selected_products'      => array( 11, 12 ), // 13 excluded.
+		);
 
 		$json    = $this->invoke_private( 'build_collections_json' );
 		$decoded = json_decode( (string) $json, true );
@@ -216,23 +219,23 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 		// list never advertises a category the per-collection endpoint returns
 		// empty for.
 		Functions\when( 'get_terms' )->justReturn(
-			[
+			array(
 				$this->term( 7, 'hoodies', 'Hoodies', '' ),
 				$this->term( 8, 'secret', 'Secret', '' ),
-			]
+			)
 		);
 		Functions\when( 'wc_get_products' )->alias(
 			static function ( $query ) {
 				$slug = $query['category'][0] ?? '';
-				return 'hoodies' === $slug ? [ 11, 12 ] : [ 90, 91 ];
+				return 'hoodies' === $slug ? array( 11, 12 ) : array( 90, 91 );
 			}
 		);
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 11, 12 ], // none of secret's 90,91.
-		];
+			'selected_products'      => array( 11, 12 ), // none of secret's 90,91.
+		);
 
 		$json    = $this->invoke_private( 'build_collections_json' );
 		$decoded = json_decode( (string) $json, true );
@@ -249,13 +252,13 @@ class ProductsFeedCollectionsTest extends \PHPUnit\Framework\TestCase {
 		// would inflate products_count above what the per-collection endpoint
 		// returns).
 		Functions\when( 'get_terms' )->justReturn(
-			[ $this->term( 7, 'hoodies', 'Hoodies', '' ) ]
+			array( $this->term( 7, 'hoodies', 'Hoodies', '' ) )
 		);
 		$captured = null;
 		Functions\when( 'wc_get_products' )->alias(
 			static function ( $query ) use ( &$captured ) {
 				$captured = $query;
-				return [];
+				return array();
 			}
 		);
 

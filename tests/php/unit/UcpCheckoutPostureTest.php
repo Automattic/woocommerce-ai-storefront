@@ -82,7 +82,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// instruments — which could flow through our server without
 		// the buyer touching merchant UI. Empty object = zero
 		// handlers = buyer MUST reach merchant checkout for payment.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertSame( '{}', json_encode( $manifest['ucp']['payment_handlers'] ) );
 	}
@@ -96,7 +96,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// adding `dev.ucp.shopping.ap2_mandate` to their
 		// capabilities list." Absence is the spec-canonical way
 		// to declare non-support.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayNotHasKey(
 			'dev.ucp.shopping.ap2_mandate',
@@ -113,7 +113,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// to programmatic (agent-initiated) finalization that
 		// bypasses merchant UI. Non-declaration keeps the session
 		// stateless and handoff-only.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayNotHasKey(
 			'dev.ucp.shopping.cart',
@@ -138,9 +138,9 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// boundary this test exists to protect. The forbidden set is
 		// therefore the inline/agent-mediated transports: `embedded`
 		// (EP) and `a2a`. `rest` and `mcp` are the only allowed values.
-		$allowed   = [ 'rest', 'mcp' ];
-		$forbidden = [ 'embedded', 'ep', 'a2a' ];
-		$manifest  = $this->ucp->generate_manifest( [] );
+		$allowed   = array( 'rest', 'mcp' );
+		$forbidden = array( 'embedded', 'ep', 'a2a' );
+		$manifest  = $this->ucp->generate_manifest( array() );
 
 		foreach ( $manifest['ucp']['services'] as $service_name => $bindings ) {
 			foreach ( $bindings as $binding ) {
@@ -165,7 +165,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// Regression guard: if config re-appears, we've either
 		// re-introduced templates (spec-unfavored) or added some
 		// other capability override that might weaken the posture.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
 
 		$this->assertArrayNotHasKey(
@@ -180,7 +180,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// future refactor adds something like `mode: "embedded"` or
 		// `mode: "delegated"`, this test fires — those modes would
 		// imply non-merchant completion paths.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$binding  = $manifest['ucp']['capabilities']['dev.ucp.shopping.checkout'][0];
 
 		$this->assertArrayNotHasKey( 'mode', $binding );
@@ -191,7 +191,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// tokens for payment instruments. Any capability key
 		// containing "payment" or "token" beyond what we advertise
 		// warrants review.
-		$manifest         = $this->ucp->generate_manifest( [] );
+		$manifest         = $this->ucp->generate_manifest( array() );
 		$capability_names = array_keys( $manifest['ucp']['capabilities'] );
 
 		foreach ( $capability_names as $name ) {
@@ -205,7 +205,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// legitimately ours to extend — but the merchant-only
 		// posture requires that it carry only store_context +
 		// attribution guidance, not any payment-related fields.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 		$config   = $manifest['ucp']['capabilities']['com.woocommerce.ai_storefront'][0]['config'];
 
 		foreach ( array_keys( $config ) as $key ) {
@@ -270,7 +270,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// same path with different methods; each call appears as a separate
 		// entry in $registered, hence catalog/lookup and catalog/search
 		// each appear twice (once for POST, once for GET).
-		$registered = [];
+		$registered = array();
 		Functions\when( 'register_rest_route' )->alias(
 			static function ( $namespace, $route ) use ( &$registered ) {
 				$registered[] = rtrim( $namespace, '/' ) . $route;
@@ -283,7 +283,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 
 		sort( $registered );
 		$this->assertSame(
-			[
+			array(
 				'wc/ucp/v1/catalog/lookup',
 				'wc/ucp/v1/catalog/lookup',
 				'wc/ucp/v1/catalog/search',
@@ -291,7 +291,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 				'wc/ucp/v1/checkout-sessions',
 				'wc/ucp/v1/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
 				'wc/ucp/v1/extension/schema',
-			],
+			),
 			$registered
 		);
 	}
@@ -333,15 +333,15 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// we implement + one merchant-specific extension. Any additional
 		// key risks introducing a path we haven't reviewed for posture
 		// compliance.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertEqualsCanonicalizing(
-			[
+			array(
 				'dev.ucp.shopping.catalog.search',
 				'dev.ucp.shopping.catalog.lookup',
 				'dev.ucp.shopping.checkout',
 				'com.woocommerce.ai_storefront',
-			],
+			),
 			array_keys( $manifest['ucp']['capabilities'] ),
 			'Capability set changed — audit new capability for merchant-only-checkout impact'
 		);
@@ -355,7 +355,7 @@ class UcpCheckoutPostureTest extends \PHPUnit\Framework\TestCase {
 		// the agent could then complete. We don't. Absence of
 		// signing_keys at root is a signal that this merchant
 		// doesn't participate in agent-delegated payment flows.
-		$manifest = $this->ucp->generate_manifest( [] );
+		$manifest = $this->ucp->generate_manifest( array() );
 
 		$this->assertArrayNotHasKey(
 			'signing_keys',

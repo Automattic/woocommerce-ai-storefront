@@ -4,6 +4,7 @@
 
     <!-- What to scan. -->
     <file>./includes</file>
+    <file>./tests</file>
     <file>./woocommerce-ai-storefront.php</file>
     <file>./uninstall.php</file>
 
@@ -11,7 +12,6 @@
     <exclude-pattern>*/vendor/*</exclude-pattern>
     <exclude-pattern>*/node_modules/*</exclude-pattern>
     <exclude-pattern>*/build/*</exclude-pattern>
-    <exclude-pattern>*/tests/*</exclude-pattern>
     <!--
         Third-party vendored libraries — not our code, not our style.
         PUC follows its own conventions (tabs, no WPCS prefixes, etc.)
@@ -56,11 +56,116 @@
         -->
 
         <!--
-            These sniffs are fine in principle but produce a lot of noise
-            on a small plugin. Re-enable later as the codebase grows.
+            Fine in principle, but noisy for the file layout this plugin
+            already ships. Renaming every class file is a bigger change
+            than the consistency is worth today.
+
+            `Universal.Arrays.DisallowShortArraySyntax` used to sit here for
+            the same "noisy on a small plugin, re-enable as it grows" reason.
+            It is now enabled: the plugin grew, and the exclusion had left
+            AGENTS.md asserting a rule that nothing enforced, which is worse
+            than either enforcing it or dropping it.
         -->
         <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
-        <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
+    </rule>
+
+
+    <!--
+        Sniffs scoped to PRODUCTION code only.
+
+        tests/ is held to the same FORMATTING standard as the plugin —
+        array syntax, spacing, alignment, indentation — which is what
+        brought it into scope. The sniffs below are excluded there because
+        they encode rules about shipping a WordPress plugin, and a test
+        suite is not one. Excluding them is not a lower standard; applying
+        them would be applying the wrong standard.
+    -->
+
+    <!-- Test classes and helpers are discovered by PHPUnit, never loaded
+         into a WordPress global scope, so a plugin prefix buys nothing. -->
+    <rule ref="WordPress.NamingConventions.PrefixAllGlobals">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- PHPUnit requires ClassNameTest.php, not hyphenated-lowercase. -->
+    <rule ref="WordPress.Files.FileName">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- Test files deliberately define fixtures and doubles alongside the
+         test class; splitting each into its own file would scatter them. -->
+    <rule ref="Generic.Files.OneObjectStructurePerFile">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Universal.Files.SeparateFunctionsFromOO">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.Classes.DuplicateClassName">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- stubs.php declares global-namespace stubs with `namespace { }`,
+         which is the only syntax that expresses that. -->
+    <rule ref="Universal.Namespaces.DisallowCurlyBraceSyntax">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Universal.Namespaces.DisallowDeclarationWithoutName">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- WP_Filesystem, wp_json_encode and friends exist for portability and
+         escaping in a running site. A test reading a fixture off disk has
+         neither concern. -->
+    <rule ref="WordPress.WP.AlternativeFunctions">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- Escaping guards output rendered to a browser. Assertion messages
+         and exception text are never rendered. -->
+    <rule ref="WordPress.Security.EscapeOutput">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- var_export/error_log/ini_set are debugging tools in production and
+         legitimate instruments in a bootstrap. -->
+    <rule ref="WordPress.PHP.DevelopmentFunctions">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.PHP.IniSet">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.PHP.DiscouragedPHPFunctions">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.PHP.NoSilencedErrors">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- A mock callback must match the signature it replaces, so unused
+         parameters are required rather than sloppy. Reserved-word names
+         like $default come from the WordPress signatures being doubled. -->
+    <rule ref="Generic.CodeAnalysis.UnusedFunctionParameter">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Universal.NamingConventions.NoReservedKeywordParameterNames">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- PHPUnit's own API is camelCase (setUp, tearDown). -->
+    <rule ref="WordPress.NamingConventions.ValidFunctionName">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="PEAR.NamingConventions.ValidClassName">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="PSR2.Classes.PropertyDeclaration">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- Fires on comments that quote code, which test comments do often. -->
+    <rule ref="Squiz.PHP.CommentedOutCode">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <!-- Style preferences with no correctness argument in test code. -->
+    <rule ref="Universal.Operators.DisallowShortTernary">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="WordPress.CodeAnalysis.AssignmentInTernaryCondition">
+        <exclude-pattern>*/tests/*</exclude-pattern>
+    </rule>
+    <rule ref="Generic.CodeAnalysis.EmptyStatement">
+        <exclude-pattern>*/tests/*</exclude-pattern>
     </rule>
 
     <!-- Function/class prefixes for the WPCS prefix sniff. -->

@@ -50,7 +50,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		parent::setUp();
 		Monkey\setUp();
 
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 
 		Functions\when( '__' )->returnArg();
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
@@ -88,12 +88,12 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 	 * @return array<string, array{0: string}>
 	 */
 	public static function verb_provider(): array {
-		return [
-			'GET'    => [ 'GET' ],
-			'PUT'    => [ 'PUT' ],
-			'PATCH'  => [ 'PATCH' ],
-			'DELETE' => [ 'DELETE' ],
-		];
+		return array(
+			'GET'    => array( 'GET' ),
+			'PUT'    => array( 'PUT' ),
+			'PATCH'  => array( 'PATCH' ),
+			'DELETE' => array( 'DELETE' ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -164,7 +164,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		$response = $this->call_handler( 'chk_abcdef0123456789' );
 		$data     = $response->get_data();
 
-		foreach ( [ 'ucp', 'id', 'status', 'currency', 'line_items', 'totals', 'links', 'messages' ] as $field ) {
+		foreach ( array( 'ucp', 'id', 'status', 'currency', 'line_items', 'totals', 'links', 'messages' ) as $field ) {
 			$this->assertArrayHasKey(
 				$field,
 				$data,
@@ -218,8 +218,8 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		$response = $this->call_handler( 'chk_abcdef0123456789' );
 		$data     = $response->get_data();
 
-		$this->assertSame( [], $data['line_items'] );
-		$this->assertSame( [], $data['links'] );
+		$this->assertSame( array(), $data['line_items'] );
+		$this->assertSame( array(), $data['links'] );
 	}
 
 	public function test_totals_carry_zero_subtotal_and_zero_total(): void {
@@ -232,7 +232,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 
 		$this->assertCount( 2, $totals );
 
-		$by_type = [];
+		$by_type = array();
 		foreach ( $totals as $entry ) {
 			$by_type[ $entry['type'] ] = $entry['amount'];
 		}
@@ -316,7 +316,7 @@ class UcpCheckoutSessionsUnsupportedMethodTest extends \PHPUnit\Framework\TestCa
 		// non-string (filter chain mishandle, etc.) shouldn't crash.
 		// `is_string()` guard kicks in, fresh `chk_<hex>` issued.
 		$request = new WP_REST_Request( 'PATCH', '/wc/ucp/v1/checkout-sessions/' );
-		$request->set_param( 'id', [ 'array', 'not', 'string' ] );
+		$request->set_param( 'id', array( 'array', 'not', 'string' ) );
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$response   = $controller->handle_checkout_sessions_unsupported_method( $request );

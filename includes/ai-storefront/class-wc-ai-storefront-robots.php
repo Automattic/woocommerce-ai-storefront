@@ -33,7 +33,7 @@ class WC_AI_Storefront_Robots {
 	 *
 	 * @var string[]
 	 */
-	const LIVE_BROWSING_AGENTS = [
+	const LIVE_BROWSING_AGENTS = array(
 		// AI search & discovery crawlers — alphabetical.
 		//
 		// These build indexes that AI surfaces draw on when answering
@@ -113,7 +113,7 @@ class WC_AI_Storefront_Robots {
 		'Amazonbot',
 		'Pinterestbot',
 		'Storebot-Google',
-	];
+	);
 
 	/**
 	 * Regional search + AI crawlers — default off.
@@ -133,7 +133,7 @@ class WC_AI_Storefront_Robots {
 	 *
 	 * @var string[]
 	 */
-	const REGIONAL_CRAWLERS = [
+	const REGIONAL_CRAWLERS = array(
 		// Asia — alphabetical.
 		// Baiduspider (China) is the primary Baidu crawler — gates
 		// Baidu Search and Ernie Bot. ERNIEBot + YiyanBot are Baidu's
@@ -169,7 +169,7 @@ class WC_AI_Storefront_Robots {
 		'Qwantify',
 		'SeznamBot',
 		'YandexBot',
-	];
+	);
 
 	/**
 	 * AI training / indexing crawlers.
@@ -196,7 +196,7 @@ class WC_AI_Storefront_Robots {
 	 *
 	 * @var string[]
 	 */
-	const TRAINING_CRAWLERS = [
+	const TRAINING_CRAWLERS = array(
 		// Alphabetical (case-insensitive). The list is a flat
 		// brand-strategy decision — no functional sub-grouping
 		// (compare LIVE_BROWSING_AGENTS where revenue-vs-discovery
@@ -223,7 +223,7 @@ class WC_AI_Storefront_Robots {
 		'Google-Extended',
 		'Meta-ExternalAgent',
 		'Microsoft-BingBot-Extended',
-	];
+	);
 
 	/**
 	 * Test / validation crawlers.
@@ -245,7 +245,7 @@ class WC_AI_Storefront_Robots {
 	 *
 	 * @var string[]
 	 */
-	const TEST_CRAWLERS = [
+	const TEST_CRAWLERS = array(
 		// UCP Playground (ucpplayground.com) — third-party validation
 		// tool that exercises the UCP catalog/search/lookup/checkout
 		// flow against a merchant's store. Useful when merchants want
@@ -253,7 +253,7 @@ class WC_AI_Storefront_Robots {
 		// soliciting traffic from real AI agents. Default-off; merchant
 		// flips it on while validating, off when done.
 		'UCPPlayground',
-	];
+	);
 
 	/**
 	 * Combined allow-list — live browsing + regional + training + test.
@@ -279,7 +279,7 @@ class WC_AI_Storefront_Robots {
 	 *
 	 * @var string[]
 	 */
-	const AI_CRAWLERS = [
+	const AI_CRAWLERS = array(
 		// Live browsing — order mirrors LIVE_BROWSING_AGENTS.
 		'Applebot',
 		'Bingbot',
@@ -334,7 +334,7 @@ class WC_AI_Storefront_Robots {
 		// Test / validation crawlers (default-off; merchant opts in
 		// for validation sessions). Alphabetical for forward-compat.
 		'UCPPlayground',
-	];
+	);
 
 	/**
 	 * Resolve a recordable identifier from the current request's User-Agent.
@@ -450,7 +450,7 @@ class WC_AI_Storefront_Robots {
 	 */
 	public static function sanitize_allowed_crawlers( $input ): array {
 		if ( ! is_array( $input ) ) {
-			return [];
+			return array();
 		}
 
 		$sanitized = array_map( 'sanitize_text_field', $input );
@@ -506,12 +506,12 @@ class WC_AI_Storefront_Robots {
 
 		$stored = $stored_settings['allowed_crawlers'];
 		if ( ! is_array( $stored ) ) {
-			return [];
+			return array();
 		}
 
 		// Empty list = merchant's explicit "block all" choice. Preserve as-is.
 		if ( empty( $stored ) ) {
-			return [];
+			return array();
 		}
 
 		// Non-empty list: always include Bingbot and Googlebot regardless of
@@ -527,7 +527,7 @@ class WC_AI_Storefront_Robots {
 	 * Initialize hooks.
 	 */
 	public function init() {
-		add_filter( 'robots_txt', [ $this, 'add_ai_crawler_rules' ], 20, 2 );
+		add_filter( 'robots_txt', array( $this, 'add_ai_crawler_rules' ), 20, 2 );
 
 		// CORS + nosniff headers on the robots.txt response. Same
 		// rationale as the llms.txt CORS fix in 1.4.1: AI browsing
@@ -541,7 +541,7 @@ class WC_AI_Storefront_Robots {
 		// `do_robots()` after WP sets Content-Type but BEFORE the
 		// body is flushed, which is the right moment to inject
 		// additional headers without fighting WP core.
-		add_action( 'do_robotstxt', [ $this, 'send_cors_headers' ], 5 );
+		add_action( 'do_robotstxt', array( $this, 'send_cors_headers' ), 5 );
 	}
 
 	/**
@@ -803,10 +803,10 @@ class WC_AI_Storefront_Robots {
 	 *
 	 * @var string[]
 	 */
-	const COMMON_SITEMAP_PATHS = [
+	const COMMON_SITEMAP_PATHS = array(
 		'/sitemap.xml',
 		'/sitemap_index.xml',
 		'/wp-sitemap.xml',
 		'/news-sitemap.xml',
-	];
+	);
 }

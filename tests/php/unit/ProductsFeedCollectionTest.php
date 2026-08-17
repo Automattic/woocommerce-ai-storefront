@@ -41,13 +41,13 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post' )->justReturn( null );
 		$this->feed = new WC_AI_Storefront_Products_Feed();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
-		$_GET = [];
+		$_GET = array();
 		Functions\when( 'wp_unslash' )->returnArg();
 		Functions\when( 'wp_json_encode' )->alias(
 			static fn( $data, $options = 0, $depth = 512 ) => json_encode( $data, $options, $depth )
@@ -56,8 +56,8 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
-		$_GET = [];
+		WC_AI_Storefront::$test_settings = array();
+		$_GET                            = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -80,10 +80,13 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, array{query:string, after:string}>
 	 */
 	private function captured_rules(): array {
-		$rules = [];
+		$rules = array();
 		Functions\when( 'add_rewrite_rule' )->alias(
 			static function ( $regex, $query, $after ) use ( &$rules ) {
-				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+				$rules[ $regex ] = array(
+					'query' => $query,
+					'after' => $after,
+				);
 			}
 		);
 		$this->feed->add_rewrite_rules();
@@ -111,7 +114,7 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_collection_query_var_registered(): void {
-		$vars = $this->feed->add_query_vars( [] );
+		$vars = $this->feed->add_query_vars( array() );
 		$this->assertContains( WC_AI_Storefront_Products_Feed::QUERY_VAR_COLLECTION, $vars );
 	}
 
@@ -142,7 +145,7 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		// Behavioural proof: the registered per-collection regex MUST NOT match
 		// `collections/all/products.json` (the lookahead excludes it), so it
 		// can never steal the bulk path — regardless of WP rule ordering.
-		$regex   = '^collections/(?!all/)([^/]+)/products\.json$';
+		$regex = '^collections/(?!all/)([^/]+)/products\.json$';
 		$this->assertArrayHasKey( $regex, $rules, 'per-collection regex must be registered verbatim' );
 		$pattern = '#' . $regex . '#';
 
@@ -227,12 +230,12 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		$json    = $this->invoke_private( 'build_collection_products_json', 'ghost', 30, 1 );
 		$decoded = json_decode( (string) $json, true );
 
-		$this->assertSame( [ 'products' => [] ], $decoded );
+		$this->assertSame( array( 'products' => array() ), $decoded );
 	}
 
 	public function test_build_collection_emits_syndicated_products(): void {
 		Functions\when( 'get_term_by' )->justReturn( $this->term( 'hoodies' ) );
-		Functions\when( 'wc_get_products' )->justReturn( [ $this->simple_product( 5, 'day-hoodie' ) ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->simple_product( 5, 'day-hoodie' ) ) );
 
 		$json    = $this->invoke_private( 'build_collection_products_json', 'hoodies', 30, 1 );
 		$decoded = json_decode( (string) $json, true );
@@ -251,7 +254,7 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_products' )->alias(
 			static function ( $query ) use ( &$captured ) {
 				$captured = $query;
-				return [];
+				return array();
 			}
 		);
 
@@ -260,7 +263,7 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $captured );
 		$this->assertSame( 'catalog', $captured['visibility'] ?? null );
 		$this->assertSame( 'publish', $captured['status'] ?? null );
-		$this->assertSame( [ 'hoodies' ], $captured['category'] ?? null );
+		$this->assertSame( array( 'hoodies' ), $captured['category'] ?? null );
 		$this->assertSame( 24, $captured['limit'] ?? null );
 		$this->assertSame( 3, $captured['page'] ?? null );
 	}
@@ -270,14 +273,14 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		// must omit it ('selected' mode without that id).
 		Functions\when( 'get_term_by' )->justReturn( $this->term( 'hoodies' ) );
 		Functions\when( 'wc_get_products' )->justReturn(
-			[ $this->simple_product( 1, 'kept' ), $this->simple_product( 2, 'dropped' ) ]
+			array( $this->simple_product( 1, 'kept' ), $this->simple_product( 2, 'dropped' ) )
 		);
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 1 ],
-		];
+			'selected_products'      => array( 1 ),
+		);
 
 		$json    = $this->invoke_private( 'build_collection_products_json', 'hoodies', 30, 1 );
 		$decoded = json_decode( (string) $json, true );
@@ -316,10 +319,10 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Product ' . $id );
 		$p->shouldReceive( 'get_slug' )->andReturn( $handle );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
 		$p->shouldReceive( 'get_sku' )->andReturn( '' );
 		$p->shouldReceive( 'get_price' )->andReturn( '10' );
@@ -329,7 +332,7 @@ class ProductsFeedCollectionTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'is_purchasable' )->andReturn( true );
 		$p->shouldReceive( 'needs_shipping' )->andReturn( true );
 
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'wp_get_attachment_image_url' )->justReturn( false );

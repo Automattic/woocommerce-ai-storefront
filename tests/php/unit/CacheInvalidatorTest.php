@@ -41,7 +41,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		// to purge host-keyed transient variants. Provide a minimal mock
 		// so callers don't hit "Call to a member function query() on null".
 		global $wpdb;
-		$wpdb         = Mockery::mock( 'wpdb' );
+		$wpdb          = Mockery::mock( 'wpdb' );
 		$wpdb->options = 'wp_options';
 		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
 			static function ( string $query, ...$args ) {
@@ -116,11 +116,13 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\expect( 'wp_schedule_single_event' )
 			->once()
-			->andReturnUsing( function ( $timestamp, $hook ) {
-				$this->assertEqualsWithDelta( time() + 30, $timestamp, 2 );
-				$this->assertEquals( WC_AI_Storefront_Cache_Invalidator::WARMUP_CRON_HOOK, $hook );
-				return true;
-			} );
+			->andReturnUsing(
+				function ( $timestamp, $hook ) {
+					$this->assertEqualsWithDelta( time() + 30, $timestamp, 2 );
+					$this->assertEquals( WC_AI_Storefront_Cache_Invalidator::WARMUP_CRON_HOOK, $hook );
+					return true;
+				}
+			);
 
 		$this->invalidator->invalidate();
 	}
@@ -204,7 +206,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 			->with( WC_AI_Storefront_Llms_Txt::host_cache_key() )
 			->andReturn( false );
 
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		// Should not attempt to set transient.
 		Functions\expect( 'set_transient' )->never();
@@ -608,7 +610,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'update_option' )->alias(
 			function ( $name, $value, $autoload = null ) use ( &$captured ) {
 				if ( WC_AI_Storefront_Products_Feed::VERSION_OPTION === $name ) {
-					$captured = [ $value, $autoload ];
+					$captured = array( $value, $autoload );
 				}
 				return true;
 			}
@@ -616,6 +618,6 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 		WC_AI_Storefront_Products_Feed::bump_cache_version();
 
-		$this->assertSame( [ 4, false ], $captured ); // incremented, autoload disabled
+		$this->assertSame( array( 4, false ), $captured ); // incremented, autoload disabled
 	}
 }

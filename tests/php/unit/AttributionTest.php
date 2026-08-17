@@ -25,11 +25,11 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		$this->attribution = new WC_AI_Storefront_Attribution();
 
 		// Clear $_GET between tests.
-		$_GET = [];
+		$_GET = array();
 	}
 
 	protected function tearDown(): void {
-		$_GET = [];
+		$_GET = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -418,7 +418,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		// hooks. This is a regression guard: the 1.6.7 removal wasn't
 		// enforced by runtime code — it was enforced by not attaching
 		// the hooks. If someone re-adds the hooks, this test fires.
-		$hooks = [];
+		$hooks = array();
 		Functions\when( 'add_action' )->alias(
 			static function ( $hook ) use ( &$hooks ) {
 				$hooks[] = $hook;
@@ -432,7 +432,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 
 		$this->attribution->init();
 
-		$forbidden = [
+		$forbidden = array(
 			'manage_woocommerce_page_wc-orders_columns',
 			'manage_woocommerce_page_wc-orders_custom_column',
 			'manage_edit-shop_order_columns',
@@ -441,7 +441,7 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 			'restrict_manage_posts',
 			'woocommerce_order_list_table_prepare_items_query_args',
 			'pre_get_posts',
-		];
+		);
 		foreach ( $forbidden as $hook ) {
 			$this->assertNotContains(
 				$hook,
@@ -457,14 +457,14 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 		// render_agent_filter, filter_orders_by_agent), they must
 		// also wire up the hooks — which the test above prevents.
 		// Belt-and-braces: catch the method-level reintroduction too.
-		$removed = [
+		$removed = array(
 			'add_order_list_column',
 			'render_order_list_column',
 			'render_agent_filter',
 			'render_agent_filter_legacy',
 			'filter_orders_by_agent',
 			'filter_orders_by_agent_legacy',
-		];
+		);
 		foreach ( $removed as $method ) {
 			$this->assertFalse(
 				method_exists( $this->attribution, $method ),
@@ -927,13 +927,13 @@ class AttributionTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public static function lenient_gate_url_shaped_variant_provider(): array {
-		return [
-			'https URL'                 => [ 'https://openai.com' ],
-			'https URL trailing slash'  => [ 'https://openai.com/' ],
-			'https URL with path'       => [ 'https://openai.com/some/path' ],
-			'host with port'            => [ 'openai.com:443' ],
-			'FQDN trailing dot'         => [ 'openai.com.' ],
-		];
+		return array(
+			'https URL'                => array( 'https://openai.com' ),
+			'https URL trailing slash' => array( 'https://openai.com/' ),
+			'https URL with path'      => array( 'https://openai.com/some/path' ),
+			'host with port'           => array( 'openai.com:443' ),
+			'FQDN trailing dot'        => array( 'openai.com.' ),
+		);
 	}
 
 	public function test_capture_strict_path_uses_url_param_for_host_raw(): void {

@@ -20,7 +20,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<string, mixed>
 	 */
-	private array $transients = [];
+	private array $transients = array();
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -32,15 +32,15 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		// allow_unknown on, an unrecognized client name ("Other AI") passes
 		// the gate; is_agent_allowed( 'Other AI', [] ) is true (no crawler-map
 		// entry), so the allowed path is deterministic.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => 'yes',
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 
 		// Session transient round-trip.
-		$this->transients = [];
+		$this->transients = array();
 		Functions\when( 'wp_generate_uuid4' )->justReturn( 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee' );
 		Functions\when( 'set_transient' )->alias(
 			function ( $key, $value, $ttl ) {
@@ -64,7 +64,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		WC_AI_Storefront_Logger::reset_cache();
 		Monkey\tearDown();
 		parent::tearDown();
@@ -77,7 +77,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	 * @param array<string, string> $headers Header name => value.
 	 * @return WP_REST_Request
 	 */
-	private function rpc_request( array $rpc, array $headers = [] ): WP_REST_Request {
+	private function rpc_request( array $rpc, array $headers = array() ): WP_REST_Request {
 		$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/mcp' );
 		$request->set_body( wp_json_encode( $rpc ) );
 		foreach ( $headers as $name => $value ) {
@@ -87,13 +87,13 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_register_routes_registers_mcp_route(): void {
-		$registered = [];
+		$registered = array();
 		Functions\when( 'register_rest_route' )->alias(
 			static function ( $namespace, $route, $args ) use ( &$registered ) {
-				$registered[ $route ] = [
+				$registered[ $route ] = array(
 					'namespace' => $namespace,
 					'args'      => $args,
-				];
+				);
 				return true;
 			}
 		);
@@ -116,12 +116,12 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_initialize_returns_session_header_and_server_info(): void {
 		$request  = $this->rpc_request(
-			[
+			array(
 				'jsonrpc' => '2.0',
 				'id'      => 1,
 				'method'  => 'initialize',
-				'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-			]
+				'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+			)
 		);
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
@@ -139,12 +139,12 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		// Discovery is session-free: a first-contact / stateless client can list
 		// tools without establishing a session.
 		$request  = $this->rpc_request(
-			[
+			array(
 				'jsonrpc' => '2.0',
 				'id'      => 2,
 				'method'  => 'tools/list',
-			],
-			[ 'MCP-Protocol-Version' => '2025-06-18' ]
+			),
+			array( 'MCP-Protocol-Version' => '2025-06-18' )
 		);
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
@@ -156,15 +156,15 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		// tools/list is ungated discovery — even an unknown session id is
 		// ignored and the full tool list is returned.
 		$request  = $this->rpc_request(
-			[
+			array(
 				'jsonrpc' => '2.0',
 				'id'      => 3,
 				'method'  => 'tools/list',
-			],
-			[
+			),
+			array(
 				'MCP-Protocol-Version' => '2025-06-18',
 				'Mcp-Session-Id'       => 'no-such-session',
-			]
+			)
 		);
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
@@ -175,29 +175,29 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_tools_list_with_valid_session_returns_tool_list(): void {
 		// Mint a session via initialize, then reuse its id on tools/list.
 		$server  = new WC_AI_Storefront_MCP_Server();
-		$init     = $server->handle(
+		$init    = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
-		$session  = $init->get_headers()['Mcp-Session-Id'];
+		$session = $init->get_headers()['Mcp-Session-Id'];
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 4,
 					'method'  => 'tools/list',
-				],
-				[
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -207,15 +207,15 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_feature_disabled_returns_404(): void {
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$request  = $this->rpc_request(
-			[
+			array(
 				'jsonrpc' => '2.0',
 				'id'      => 5,
 				'method'  => 'initialize',
-				'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-			]
+				'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+			)
 		);
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
@@ -224,18 +224,18 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_mcp_disabled_returns_404(): void {
 		// enabled but mcp_enabled off → 404 (feature gate is the conjunction).
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'     => 'yes',
 			'mcp_enabled' => 'no',
-		];
+		);
 
 		$request  = $this->rpc_request(
-			[
+			array(
 				'jsonrpc' => '2.0',
 				'id'      => 6,
 				'method'  => 'initialize',
-				'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-			]
+				'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+			)
 		);
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
@@ -306,36 +306,39 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$init    = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
 		$session = $init->get_headers()['Mcp-Session-Id'];
 
 		// Merchant tightens the allow-list AFTER the session was minted.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => 'no',
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 2,
 					'method'  => 'tools/call',
-					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
-				],
-				[
+					'params'  => array(
+						'name'      => 'catalog_search',
+						'arguments' => array( 'query' => 'x' ),
+					),
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -349,12 +352,12 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$init    = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
 		$session = $init->get_headers()['Mcp-Session-Id'];
@@ -374,15 +377,15 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 2,
 					'method'  => 'tools/list',
-				],
-				[
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -402,31 +405,31 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$init    = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
 		$session = $init->get_headers()['Mcp-Session-Id'];
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 7,
 					'method'  => 'tools/call',
-					'params'  => [
+					'params'  => array(
 						'name'      => 'checkout_create',
-						'arguments' => [ 'line_items' => [] ],
-					],
-				],
-				[
+						'arguments' => array( 'line_items' => array() ),
+					),
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -440,31 +443,31 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$init    = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
 		$session = $init->get_headers()['Mcp-Session-Id'];
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 8,
 					'method'  => 'tools/call',
-					'params'  => [
+					'params'  => array(
 						'name'      => 'gibberish_tool',
-						'arguments' => [],
-					],
-				],
-				[
+						'arguments' => array(),
+					),
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -487,12 +490,12 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
 
@@ -502,21 +505,21 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_initialize_blank_client_name_blocked_when_unknown_disallowed(): void {
 		// SECURITY: a blank clientInfo.name must not bypass the merchant's
 		// "block unknown agents" gate.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => 'no',
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => '' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => '' ) ),
+				)
 			)
 		);
 
@@ -556,12 +559,12 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		try {
 			$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 				$this->rpc_request(
-					[
+					array(
 						'jsonrpc' => '2.0',
 						'id'      => 1,
 						'method'  => 'initialize',
-						'params'  => [ 'clientInfo' => 'not-an-object' ],
-					]
+						'params'  => array( 'clientInfo' => 'not-an-object' ),
+					)
 				)
 			);
 		} finally {
@@ -579,34 +582,37 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$session = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		)->get_headers()['Mcp-Session-Id'];
 
 		$call = function ( array $arguments ) use ( $server, $session ) {
 			return $server->handle(
 				$this->rpc_request(
-					[
+					array(
 						'jsonrpc' => '2.0',
 						'id'      => 2,
 						'method'  => 'tools/call',
-						'params'  => [ 'name' => 'catalog_lookup', 'arguments' => $arguments ],
-					],
-					[
+						'params'  => array(
+							'name'      => 'catalog_lookup',
+							'arguments' => $arguments,
+						),
+					),
+					array(
 						'MCP-Protocol-Version' => '2025-06-18',
 						'Mcp-Session-Id'       => $session,
-					]
+					)
 				)
 			)->get_data()['result'];
 		};
 
-		$missing = $call( [] );
-		$empty   = $call( [ 'ids' => [] ] );
+		$missing = $call( array() );
+		$empty   = $call( array( 'ids' => array() ) );
 
 		$this->assertTrue( $missing['isError'] );
 		$this->assertTrue( $empty['isError'] );
@@ -624,28 +630,41 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$session = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		)->get_headers()['Mcp-Session-Id'];
 
-		$headers = [
+		$headers = array(
 			'MCP-Protocol-Version' => '2025-06-18',
 			'Mcp-Session-Id'       => $session,
-		];
+		);
 
 		$notification = $server->handle(
-			$this->rpc_request( [ 'jsonrpc' => '2.0', 'method' => 'ping' ], $headers )
+			$this->rpc_request(
+				array(
+					'jsonrpc' => '2.0',
+					'method'  => 'ping',
+				),
+				$headers
+			)
 		);
 		$this->assertSame( 202, $notification->get_status() );
 		$this->assertNull( $notification->get_data() );
 
 		$request = $server->handle(
-			$this->rpc_request( [ 'jsonrpc' => '2.0', 'id' => 9, 'method' => 'ping' ], $headers )
+			$this->rpc_request(
+				array(
+					'jsonrpc' => '2.0',
+					'id'      => 9,
+					'method'  => 'ping',
+				),
+				$headers
+			)
 		);
 		$this->assertSame( 200, $request->get_status() );
 		$this->assertArrayHasKey( 'result', $request->get_data() );
@@ -660,13 +679,16 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'tools/call',
-					'params'  => [ 'name' => 'checkout_create', 'arguments' => [ 'line_items' => [] ] ],
-				],
-				[ 'MCP-Protocol-Version' => '2025-06-18' ]
+					'params'  => array(
+						'name'      => 'checkout_create',
+						'arguments' => array( 'line_items' => array() ),
+					),
+				),
+				array( 'MCP-Protocol-Version' => '2025-06-18' )
 			)
 		);
 
@@ -677,22 +699,25 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_tools_call_without_session_blocked_when_unknown_agents_disallowed(): void {
 		// With allow_unknown_ucp_agents off, an anonymous (sessionless) caller is
 		// blocked at the gate → 403, before any tool runs.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => 'no',
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'tools/call',
-					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
-				],
-				[ 'MCP-Protocol-Version' => '2025-06-18' ]
+					'params'  => array(
+						'name'      => 'catalog_search',
+						'arguments' => array( 'query' => 'x' ),
+					),
+				),
+				array( 'MCP-Protocol-Version' => '2025-06-18' )
 			)
 		);
 
@@ -704,16 +729,19 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		// re-initialize (404) — distinct from the anonymous (no-header) path.
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'tools/call',
-					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
-				],
-				[
+					'params'  => array(
+						'name'      => 'catalog_search',
+						'arguments' => array( 'query' => 'x' ),
+					),
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => 'no-such-session',
-				]
+				)
 			)
 		);
 
@@ -730,34 +758,37 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$session = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		)->get_headers()['Mcp-Session-Id'];
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => 'no',
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 2,
 					'method'  => 'tools/call',
-					'params'  => [ 'name' => 'catalog_search', 'arguments' => [ 'query' => 'x' ] ],
-				],
-				[
+					'params'  => array(
+						'name'      => 'catalog_search',
+						'arguments' => array( 'query' => 'x' ),
+					),
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -768,21 +799,21 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_initialize_gate_rejection_returns_jsonrpc_error_envelope(): void {
 		// When initialize is blocked, it must return a JSON-RPC error envelope
 		// (not bare null), so the agent sees -32000 rather than a blank 403 body.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => 'no',
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
 
@@ -797,26 +828,26 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$session = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		)->get_headers()['Mcp-Session-Id'];
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 2,
 					'method'  => 'ping',
-				],
-				[
+				),
+				array(
 					'MCP-Protocol-Version' => 'gibberish-version',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -830,26 +861,26 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$session = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		)->get_headers()['Mcp-Session-Id'];
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 2,
 					'method'  => 'ping',
-				],
-				[
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-03-26',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -864,33 +895,33 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$server  = new WC_AI_Storefront_MCP_Server();
 		$session = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		)->get_headers()['Mcp-Session-Id'];
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'yes',
 			'mcp_enabled'              => 'yes',
 			'allow_unknown_ucp_agents' => 'no',
-			'allowed_crawlers'         => [],
-		];
+			'allowed_crawlers'         => array(),
+		);
 
 		$response = $server->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 2,
 					'method'  => 'tools/list',
-				],
-				[
+				),
+				array(
 					'MCP-Protocol-Version' => '2025-06-18',
 					'Mcp-Session-Id'       => $session,
-				]
+				)
 			)
 		);
 
@@ -904,15 +935,15 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		// return its own latest.
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [
+					'params'  => array(
 						'protocolVersion' => '2025-03-26',
-						'clientInfo'      => [ 'name' => 'gibberish-agent' ],
-					],
-				]
+						'clientInfo'      => array( 'name' => 'gibberish-agent' ),
+					),
+				)
 			)
 		);
 
@@ -922,15 +953,15 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_initialize_falls_back_to_latest_for_unsupported_version(): void {
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [
+					'params'  => array(
 						'protocolVersion' => '1999-01-01',
-						'clientInfo'      => [ 'name' => 'gibberish-agent' ],
-					],
-				]
+						'clientInfo'      => array( 'name' => 'gibberish-agent' ),
+					),
+				)
 			)
 		);
 
@@ -940,12 +971,12 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_initialize_defaults_to_latest_when_version_omitted(): void {
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle(
 			$this->rpc_request(
-				[
+				array(
 					'jsonrpc' => '2.0',
 					'id'      => 1,
 					'method'  => 'initialize',
-					'params'  => [ 'clientInfo' => [ 'name' => 'gibberish-agent' ] ],
-				]
+					'params'  => array( 'clientInfo' => array( 'name' => 'gibberish-agent' ) ),
+				)
 			)
 		);
 

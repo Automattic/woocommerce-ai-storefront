@@ -38,7 +38,7 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		// Defense in depth: reset the variation-redirect map. Static
 		// properties on `WC_AI_Storefront` persist across PHPUnit
 		// instances within one process, so a future variation test
@@ -46,7 +46,7 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// tests' product_id → parent_id resolution. Empty map = no
 		// redirect, which matches what every test in this file
 		// implicitly expects.
-		WC_AI_Storefront::$test_variations = [];
+		WC_AI_Storefront::$test_variations = array();
 
 		// Default: brands taxonomy registered. Tests exercising the
 		// downgrade branch override with `justReturn( false )`.
@@ -79,8 +79,8 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function stub_terms( array $returns ): void {
 		Functions\when( 'wp_get_post_terms' )->alias(
-			static function ( $product_id, $taxonomy, $args = [] ) use ( $returns ) {
-				return $returns[ $taxonomy ] ?? [];
+			static function ( $product_id, $taxonomy, $args = array() ) use ( $returns ) {
+				return $returns[ $taxonomy ] ?? array();
 			}
 		);
 	}
@@ -94,21 +94,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// merchant selected [7]. UNION branch finds the match on the
 		// categories dimension and returns true.
 		$this->stub_terms(
-			[
-				'product_cat'   => [ 7 ],
-				'product_tag'   => [],
-				'product_brand' => [],
-			]
+			array(
+				'product_cat'   => array( 7 ),
+				'product_tag'   => array(),
+				'product_brand' => array(),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 7, 12 ],
-				'selected_tags'          => [],
-				'selected_brands'        => [],
-			]
+				'selected_categories'    => array( 7, 12 ),
+				'selected_tags'          => array(),
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -118,21 +118,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// Tags-only configuration. Product is in tag 11; merchant
 		// selected [11, 22]. Match on tags → true.
 		$this->stub_terms(
-			[
-				'product_cat'   => [],
-				'product_tag'   => [ 11 ],
-				'product_brand' => [],
-			]
+			array(
+				'product_cat'   => array(),
+				'product_tag'   => array( 11 ),
+				'product_brand' => array(),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [],
-				'selected_tags'          => [ 11, 22 ],
-				'selected_brands'        => [],
-			]
+				'selected_categories'    => array(),
+				'selected_tags'          => array( 11, 22 ),
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -142,21 +142,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// Brands-only configuration with the taxonomy registered.
 		// Product carries brand 5; merchant selected [5]. Match → true.
 		$this->stub_terms(
-			[
-				'product_cat'   => [],
-				'product_tag'   => [],
-				'product_brand' => [ 5 ],
-			]
+			array(
+				'product_cat'   => array(),
+				'product_tag'   => array(),
+				'product_brand' => array( 5 ),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [],
-				'selected_tags'          => [],
-				'selected_brands'        => [ 5, 9 ],
-			]
+				'selected_categories'    => array(),
+				'selected_tags'          => array(),
+				'selected_brands'        => array( 5, 9 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -171,21 +171,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// UNION semantics: any single match suffices, but verifying
 		// the intersection-of-matches case pins the all-active path.
 		$this->stub_terms(
-			[
-				'product_cat'   => [ 1 ],
-				'product_tag'   => [ 11 ],
-				'product_brand' => [ 5 ],
-			]
+			array(
+				'product_cat'   => array( 1 ),
+				'product_tag'   => array( 11 ),
+				'product_brand' => array( 5 ),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 1 ],
-				'selected_tags'          => [ 11 ],
-				'selected_brands'        => [ 5 ],
-			]
+				'selected_categories'    => array( 1 ),
+				'selected_tags'          => array( 11 ),
+				'selected_brands'        => array( 5 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -198,21 +198,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// require ALL dimensions to match (which would be intersection,
 		// not union).
 		$this->stub_terms(
-			[
-				'product_cat'   => [ 999 ],
-				'product_tag'   => [ 11 ],
-				'product_brand' => [ 999 ],
-			]
+			array(
+				'product_cat'   => array( 999 ),
+				'product_tag'   => array( 11 ),
+				'product_brand' => array( 999 ),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 1 ],
-				'selected_tags'          => [ 11 ],
-				'selected_brands'        => [ 5 ],
-			]
+				'selected_categories'    => array( 1 ),
+				'selected_tags'          => array( 11 ),
+				'selected_brands'        => array( 5 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -226,21 +226,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// All three dimensions populated but product matches nothing
 		// in any of them.
 		$this->stub_terms(
-			[
-				'product_cat'   => [ 999 ],
-				'product_tag'   => [ 999 ],
-				'product_brand' => [ 999 ],
-			]
+			array(
+				'product_cat'   => array( 999 ),
+				'product_tag'   => array( 999 ),
+				'product_brand' => array( 999 ),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 1 ],
-				'selected_tags'          => [ 11 ],
-				'selected_brands'        => [ 5 ],
-			]
+				'selected_categories'    => array( 1 ),
+				'selected_tags'          => array( 11 ),
+				'selected_brands'        => array( 5 ),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -254,12 +254,12 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// before the per-taxonomy lookups.
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [],
-				'selected_tags'          => [],
-				'selected_brands'        => [],
-			]
+				'selected_categories'    => array(),
+				'selected_tags'          => array(),
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -279,12 +279,12 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [],
-				'selected_tags'          => [],
-				'selected_brands'        => [ 5, 9 ],
-			]
+				'selected_categories'    => array(),
+				'selected_tags'          => array(),
+				'selected_brands'        => array( 5, 9 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -299,12 +299,12 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [],
-				'selected_tags'          => [],
-				'selected_brands'        => [],
-			]
+				'selected_categories'    => array(),
+				'selected_tags'          => array(),
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -317,21 +317,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// Product matches no selected category → false.
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
 		$this->stub_terms(
-			[
-				'product_cat'   => [ 999 ],
-				'product_tag'   => [],
-				'product_brand' => [],
-			]
+			array(
+				'product_cat'   => array( 999 ),
+				'product_tag'   => array(),
+				'product_brand' => array(),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 1, 2 ],
-				'selected_tags'          => [],
-				'selected_brands'        => [ 5 ],
-			]
+				'selected_categories'    => array( 1, 2 ),
+				'selected_tags'          => array(),
+				'selected_brands'        => array( 5 ),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -347,31 +347,31 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// before evaluation. Verify the rewrite produces the same
 		// result as passing `by_taxonomy` directly.
 		$this->stub_terms(
-			[
-				'product_cat'   => [ 7 ],
-				'product_tag'   => [],
-				'product_brand' => [],
-			]
+			array(
+				'product_cat'   => array( 7 ),
+				'product_tag'   => array(),
+				'product_brand' => array(),
+			)
 		);
 
 		$legacy = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'categories',
-				'selected_categories'    => [ 7 ],
-				'selected_tags'          => [],
-				'selected_brands'        => [],
-			]
+				'selected_categories'    => array( 7 ),
+				'selected_tags'          => array(),
+				'selected_brands'        => array(),
+			)
 		);
 
 		$canonical = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 7 ],
-				'selected_tags'          => [],
-				'selected_brands'        => [],
-			]
+				'selected_categories'    => array( 7 ),
+				'selected_tags'          => array(),
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertSame( $canonical, $legacy );
@@ -386,21 +386,21 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// dimension — brand inertness doesn't poison the union.
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
 		$this->stub_terms(
-			[
-				'product_cat'   => [ 1 ],
-				'product_tag'   => [],
-				'product_brand' => [],
-			]
+			array(
+				'product_cat'   => array( 1 ),
+				'product_tag'   => array(),
+				'product_brand' => array(),
+			)
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 1 ],
-				'selected_tags'          => [],
-				'selected_brands'        => [ 5 ],
-			]
+				'selected_categories'    => array( 1 ),
+				'selected_tags'          => array(),
+				'selected_brands'        => array( 5 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -417,25 +417,25 @@ class IsSyndicatedUnionTest extends \PHPUnit\Framework\TestCase {
 		// — fall through to the next dimension and return true on a
 		// real match. This pins UNION resilience.
 		Functions\when( 'wp_get_post_terms' )->alias(
-			static function ( $product_id, $taxonomy, $args = [] ) {
+			static function ( $product_id, $taxonomy, $args = array() ) {
 				if ( 'product_tag' === $taxonomy ) {
 					return new WP_Error( 'invalid_taxonomy', 'Boom.' );
 				}
 				if ( 'product_cat' === $taxonomy ) {
-					return [ 1 ];
+					return array( 1 );
 				}
-				return [];
+				return array();
 			}
 		);
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 1 ],
-				'selected_tags'          => [ 11 ],
-				'selected_brands'        => [],
-			]
+				'selected_categories'    => array( 1 ),
+				'selected_tags'          => array( 11 ),
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertTrue( $result );

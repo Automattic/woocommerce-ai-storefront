@@ -43,13 +43,13 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		WC_AI_Storefront::$test_settings   = [];
-		WC_AI_Storefront::$test_variations = [];
+		WC_AI_Storefront::$test_settings   = array();
+		WC_AI_Storefront::$test_variations = array();
 		Functions\when( 'taxonomy_exists' )->justReturn( true );
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_variations = [];
+		WC_AI_Storefront::$test_variations = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -63,12 +63,12 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		// `selected_products` (only the parent ID 23 is). After fix,
 		// the variation redirects to the parent and the parent is in
 		// the list, so syndicated.
-		WC_AI_Storefront::$test_variations = [ 1112 => 23 ];
+		WC_AI_Storefront::$test_variations = array( 1112 => 23 );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 23 ],
-		];
+			'selected_products'      => array( 23 ),
+		);
 
 		$this->assertTrue( WC_AI_Storefront::is_product_syndicated( 1112 ) );
 	}
@@ -77,12 +77,12 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		// Parent (23) is NOT in selected_products. Variation should
 		// inherit that "not syndicated" verdict, not get its own
 		// independent check.
-		WC_AI_Storefront::$test_variations = [ 1112 => 23 ];
+		WC_AI_Storefront::$test_variations = array( 1112 => 23 );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 99 ],
-		];
+			'selected_products'      => array( 99 ),
+		);
 
 		$this->assertFalse( WC_AI_Storefront::is_product_syndicated( 1112 ) );
 	}
@@ -96,7 +96,7 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		// 5. With `by_taxonomy` + selected_categories=[5], the parent
 		// is syndicated. The variation should inherit that verdict via
 		// the redirect rather than failing its own (empty) term check.
-		WC_AI_Storefront::$test_variations = [ 1112 => 23 ];
+		WC_AI_Storefront::$test_variations = array( 1112 => 23 );
 		// `wp_get_post_terms` is queried with the resolved parent ID
 		// (23), not the variation ID. Stub returns the parent's terms.
 		//
@@ -107,17 +107,17 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		// path today but a future PHP/runtime upgrade with strict
 		// callable enforcement would reject it.
 		Functions\when( 'wp_get_post_terms' )->alias(
-			static fn( $id, $tax, $args = [] ) => 23 === $id && 'product_cat' === $tax
-				? [ 5 ]
-				: []
+			static fn( $id, $tax, $args = array() ) => 23 === $id && 'product_cat' === $tax
+				? array( 5 )
+				: array()
 		);
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 5 ],
-			'selected_tags'          => [],
-			'selected_brands'        => [],
-		];
+			'selected_categories'    => array( 5 ),
+			'selected_tags'          => array(),
+			'selected_brands'        => array(),
+		);
 
 		$this->assertTrue( WC_AI_Storefront::is_product_syndicated( 1112 ) );
 	}
@@ -130,11 +130,11 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		// `all` mode short-circuits AFTER the variation redirect runs.
 		// Pinning the success path: a variation in `all` mode passes,
 		// AND the redirect doesn't break the short-circuit.
-		WC_AI_Storefront::$test_variations = [ 1112 => 23 ];
+		WC_AI_Storefront::$test_variations = array( 1112 => 23 );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		$this->assertTrue( WC_AI_Storefront::is_product_syndicated( 1112 ) );
 	}
@@ -150,11 +150,11 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		// silently leak. Tested in `all` mode to prove the orphan check
 		// fires BEFORE the all-short-circuit; otherwise this test would
 		// pass for the wrong reason.
-		WC_AI_Storefront::$test_variations = [ 1112 => 0 ];
+		WC_AI_Storefront::$test_variations = array( 1112 => 0 );
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		$this->assertFalse( WC_AI_Storefront::is_product_syndicated( 1112 ) );
 	}
@@ -172,12 +172,12 @@ class IsSyndicatedVariationTest extends \PHPUnit\Framework\TestCase {
 		// The two mechanisms map 1:1 — "missing key" in the stub
 		// corresponds to "non-variation post type" in production —
 		// so this test pins the equivalent behavior.
-		WC_AI_Storefront::$test_variations = [];
+		WC_AI_Storefront::$test_variations = array();
 
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 23 ],
-		];
+			'selected_products'      => array( 23 ),
+		);
 
 		$this->assertTrue( WC_AI_Storefront::is_product_syndicated( 23 ) );
 	}

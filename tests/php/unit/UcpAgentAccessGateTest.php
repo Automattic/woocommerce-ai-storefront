@@ -81,11 +81,11 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 
 		// Reset between tests so leakage from earlier cases doesn't
 		// influence the gate's reading of `allowed_crawlers`.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		// Reset the Logger cache on the way out too — leaving a
 		// `false` cached value behind from this test's stub would
 		// suppress legit debug logging in any subsequent test that
@@ -115,7 +115,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// No header → pre-UCP traffic. Allow unconditionally so we
 		// don't break Store API consumers, manifest crawlers, or any
 		// non-UCP client.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access( $this->make_request( null ) );
 
@@ -124,7 +124,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_empty_ucp_agent_header_passes(): void {
 		// Header was set but to an empty string. Treat as missing.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access( $this->make_request( '' ) );
 
@@ -139,7 +139,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// `profile=` field absent → extract_profile_hostname() returns
 		// '', the gate short-circuits to allow. Don't penalize
 		// malformed clients.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'version="1"; tool="curl"' )
@@ -161,10 +161,10 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// merchant's strict-allow-list intent. Setting key entirely
 		// absent (fresh install or upgraded store that hasn't seen
 		// the new UI yet) takes the same path — secure-by-default.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [],
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array(),
 			// Setting key intentionally absent.
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
@@ -181,10 +181,10 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// `'no'` value stored. Pinning both paths separately so a
 		// future bug that special-cases "key absent" doesn't silently
 		// skip the explicit-no enforcement (or vice versa).
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers'         => [],
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers'         => array(),
 			'allow_unknown_ucp_agents' => 'no',
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
@@ -199,10 +199,10 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// recognition. This is the "research / dev / open ecosystem"
 		// posture — preserves pre-this-flag behavior for merchants
 		// who explicitly opt in.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers'         => [],
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers'         => array(),
 			'allow_unknown_ucp_agents' => 'yes',
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
@@ -218,9 +218,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// traffic. The known-brand block carries the canonical name
 		// for the same reason; this is the parallel for the unknown
 		// path.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'allow_unknown_ucp_agents' => 'no',
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
@@ -243,9 +243,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// crawler IDs are absent from allowed_crawlers) yet a UCP
 		// request from openai.com succeeded anyway. The fix: gate
 		// returns WP_Error 403, WP REST short-circuits.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [ 'PerplexityBot', 'KlarnaBot' ],
-		];
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array( 'PerplexityBot', 'KlarnaBot' ),
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt-shopping.json"' )
@@ -262,7 +262,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// pipeline) needs to know WHICH brand was blocked, not just
 		// that a generic 403 happened. Pin the canonical name into
 		// the message so support tickets are actionable.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/agent.json"' )
@@ -279,7 +279,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	public function test_known_brand_blocked_when_allow_list_is_empty(): void {
 		// Empty allow-list = merchant turned every crawler off. Don't
 		// let any branded UCP request slip through.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://anthropic.com/claude-shopping.json"' )
@@ -295,9 +295,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// is_agent_allowed() falls through to the default ALLOW path
 		// for unmapped brands — regardless of what the merchant has
 		// toggled in the allow-list. Issue #275.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [],
-		];
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array(),
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://klarna.com/shopping-agent.json"' )
@@ -314,9 +314,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// Merchant has one of ChatGPT's two crawler IDs in their
 		// allow-list — the gate treats that as "this brand is
 		// approved" (OR-semantics across mapped IDs).
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [ 'ChatGPT-User' ],
-		];
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array( 'ChatGPT-User' ),
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
@@ -326,9 +326,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_known_brand_passes_when_all_mapped_crawler_ids_in_allow_list(): void {
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [ 'ChatGPT-User', 'OAI-SearchBot' ],
-		];
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array( 'ChatGPT-User', 'OAI-SearchBot' ),
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
@@ -349,7 +349,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// user with no UI changes still sees ChatGPT pass through.
 		// Honors "secure-by-default" for new brands but doesn't break
 		// existing default behavior.
-		WC_AI_Storefront::$test_settings = []; // no allowed_crawlers key
+		WC_AI_Storefront::$test_settings = array(); // no allowed_crawlers key
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
@@ -366,7 +366,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// Reverting to LIVE_BROWSING_AGENTS instead would silently
 		// undo a corrupted-but-present opt-out, masking the bad state
 		// from the merchant. Failing closed surfaces it.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => 'not-an-array' ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => 'not-an-array' );
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
@@ -384,7 +384,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// trips this test loudly. The pre-1.0 plugin had this exact
 		// regression and silently re-enabled brands the merchant had
 		// turned off.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
@@ -405,10 +405,10 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// Test setup: paused store + brand explicitly blocked. The
 		// gate's per-brand check would otherwise return WP_Error 403.
 		// The syndication-disabled short-circuit must win.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'          => 'no', // syndication paused
-			'allowed_crawlers' => [],   // and no brands enabled
-		];
+			'allowed_crawlers' => array(),   // and no brands enabled
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://openai.com/chatgpt.json"' )
@@ -427,10 +427,10 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// that moved the syndication check or added an unknown-host
 		// fast-path BEFORE the syndication check would silently flip
 		// 503 to 403 for paused stores. Pin the precedence explicitly.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                  => 'no',  // syndication paused
 			'allow_unknown_ucp_agents' => 'no',  // and unknown blocked
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
@@ -458,9 +458,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	 * @dataProvider type_juggled_stored_value_provider
 	 */
 	public function test_unknown_host_blocked_for_type_juggled_stored_value( $stored_value ): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'allow_unknown_ucp_agents' => $stored_value,
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'profile="https://novel-vendor.example/agent.json"' )
@@ -474,15 +474,15 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public static function type_juggled_stored_value_provider(): array {
-		return [
-			'boolean true'      => [ true ],
-			'integer 1'         => [ 1 ],
-			'string 1'          => [ '1' ],
-			'uppercase YES'     => [ 'YES' ],
-			'whitespace padded' => [ ' yes ' ],
-			'truthy string'     => [ 'true' ],
-			'array'             => [ [ 'yes' ] ],
-		];
+		return array(
+			'boolean true'      => array( true ),
+			'integer 1'         => array( 1 ),
+			'string 1'          => array( '1' ),
+			'uppercase YES'     => array( 'YES' ),
+			'whitespace padded' => array( ' yes ' ),
+			'truthy string'     => array( 'true' ),
+			'array'             => array( array( 'yes' ) ),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -497,7 +497,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// merge resolved a conflict by accidentally setting the
 		// default to `'yes'` (or removing the key entirely), every
 		// upgraded store would silently lose protection. Pin it.
-		WC_AI_Storefront::$test_settings = []; // fresh-install simulation
+		WC_AI_Storefront::$test_settings = array(); // fresh-install simulation
 
 		$settings = WC_AI_Storefront::get_settings();
 
@@ -545,7 +545,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// `UCP-Playground/1.0` canonicalizes to `UCPPlayground` via
 		// `KNOWN_AGENT_PRODUCT_NAMES`. With an empty allow_list, the
 		// brand-blocked gate should 403, NOT silently allow through.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'UCP-Playground/1.0' )
@@ -561,10 +561,10 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// not in `KNOWN_AGENT_PRODUCT_NAMES`, so canonicalize_product()
 		// returns the OTHER_AI bucket. Default `allow_unknown_ucp_agents`
 		// (key absent / 'no') should 403 just like profile-URL form.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [],
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array(),
 			// `allow_unknown_ucp_agents` intentionally absent.
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'Random-Agent/1.0' )
@@ -578,10 +578,10 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// Product-form analog of test_unknown_host_allowed_when_setting_yes.
 		// Pinning the symmetric-permissive case so a future refactor that
 		// special-cases one form doesn't break the other.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers'         => [],
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers'         => array(),
 			'allow_unknown_ucp_agents' => 'yes',
-		];
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'Random-Agent/1.0' )
@@ -597,9 +597,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// `BRAND_TO_CRAWLER_IDS` maps `UCPPlayground` (canonical brand)
 		// to crawler ID `UCPPlayground` (no dash), so the allow_list
 		// must contain that exact ID — not the dashed product name.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [ 'UCPPlayground' ],
-		];
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array( 'UCPPlayground' ),
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'UCP-Playground/1.0' )
@@ -628,7 +628,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// allow-list → the brand-blocked gate must 403, matching the
 		// profile-URL form's behavior — NOT fall through to the
 		// pre-#588 permissive allow.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'Claude/4.6 (Anthropic)' )
@@ -644,9 +644,9 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// Same comment-form header, but the merchant has one of Claude's
 		// mapped crawler IDs in the allow-list → allowed (OR-semantics),
 		// mirroring the profile-URL allow case.
-		WC_AI_Storefront::$test_settings = [
-			'allowed_crawlers' => [ 'Claude-User' ],
-		];
+		WC_AI_Storefront::$test_settings = array(
+			'allowed_crawlers' => array( 'Claude-User' ),
+		);
 
 		$result = $this->controller->check_agent_access(
 			$this->make_request( 'Claude/4.6 (Anthropic)' )
@@ -661,7 +661,7 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// under identical settings. Asserting both are WP_Error (rather
 		// than a literal) means a future divergence in either parser
 		// path is caught regardless of which side moved.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		$comment_form = $this->controller->check_agent_access(
 			$this->make_request( 'Claude/4.6 (Anthropic)' )
@@ -696,13 +696,13 @@ class UcpAgentAccessGateTest extends \PHPUnit\Framework\TestCase {
 		// gate would report the body-derived canonical and either
 		// allow (if the brand is in allow_list) or block (if not).
 		// Either change would fail this test's assumption.
-		WC_AI_Storefront::$test_settings = [ 'allowed_crawlers' => [] ];
+		WC_AI_Storefront::$test_settings = array( 'allowed_crawlers' => array() );
 
 		// No UCP-Agent header at all → gate's existing "no header"
 		// branch short-circuits to allow. The body could have anything;
 		// the gate doesn't read it.
 		$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/checkout-sessions' );
-		$request->set_json_params( [ 'meta' => [ 'source' => 'ucp-playground' ] ] );
+		$request->set_json_params( array( 'meta' => array( 'source' => 'ucp-playground' ) ) );
 
 		$this->assertTrue( $this->controller->check_agent_access( $request ) );
 	}

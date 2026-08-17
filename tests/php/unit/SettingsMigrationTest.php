@@ -54,14 +54,14 @@ class SettingsMigrationHarness {
 	 * @return array{settings: array, migrated: bool}
 	 */
 	public static function run_migration(): array {
-		$settings = get_option( self::SETTINGS_OPTION, [] );
+		$settings = get_option( self::SETTINGS_OPTION, array() );
 
 		$needs_migration =
 			is_array( $settings )
 			&& isset( $settings['product_selection_mode'] )
 			&& in_array(
 				$settings['product_selection_mode'],
-				[ 'categories', 'tags', 'brands' ],
+				array( 'categories', 'tags', 'brands' ),
 				true
 			);
 		if ( $needs_migration ) {
@@ -73,20 +73,18 @@ class SettingsMigrationHarness {
 			if ( $updated ) {
 				wp_cache_delete( self::SETTINGS_OPTION, 'options' );
 				wp_cache_delete( 'alloptions', 'options' );
-			} else {
-				if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+			} elseif ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
 					WC_AI_Storefront_Logger::debug(
 						'silent migration: update_option returned false for %s',
 						self::SETTINGS_OPTION
 					);
-				}
 			}
 		}
 
-		return [
-			'settings' => is_array( $settings ) ? $settings : [],
+		return array(
+			'settings' => is_array( $settings ) ? $settings : array(),
 			'migrated' => $needs_migration,
-		];
+		);
 	}
 }
 
@@ -98,14 +96,14 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array{0: string, 1: mixed, 2: mixed}>
 	 */
-	public static array $update_option_calls = [];
+	public static array $update_option_calls = array();
 
 	/**
 	 * Tracks wp_cache_delete invocations.
 	 *
 	 * @var array<int, array{0: string, 1: string}>
 	 */
-	public static array $cache_delete_calls = [];
+	public static array $cache_delete_calls = array();
 
 	/**
 	 * Tracks WC_AI_Storefront_Logger::debug invocations. Populated
@@ -114,7 +112,7 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array{0: string, 1: array}>
 	 */
-	public static array $logger_calls = [];
+	public static array $logger_calls = array();
 
 	/**
 	 * Configurable return value for `update_option` stub. Default
@@ -125,22 +123,22 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		self::$update_option_calls = [];
-		self::$cache_delete_calls  = [];
-		self::$logger_calls        = [];
+		self::$update_option_calls  = array();
+		self::$cache_delete_calls   = array();
+		self::$logger_calls         = array();
 		self::$update_option_return = true;
 
 		// Default: capture every update_option / wp_cache_delete
 		// call. Tests assert on the captured arrays.
 		Functions\when( 'update_option' )->alias(
 			static function ( $key, $value, $autoload = null ) {
-				SettingsMigrationTest::$update_option_calls[] = [ $key, $value, $autoload ];
+				SettingsMigrationTest::$update_option_calls[] = array( $key, $value, $autoload );
 				return SettingsMigrationTest::$update_option_return;
 			}
 		);
 		Functions\when( 'wp_cache_delete' )->alias(
 			static function ( $key, $group = '' ) {
-				SettingsMigrationTest::$cache_delete_calls[] = [ $key, $group ];
+				SettingsMigrationTest::$cache_delete_calls[] = array( $key, $group );
 				return true;
 			}
 		);
@@ -157,10 +155,10 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_get_settings_rewrites_legacy_categories_mode_to_by_taxonomy(): void {
 		Functions\when( 'get_option' )->justReturn(
-			[
+			array(
 				'product_selection_mode' => 'categories',
-				'selected_categories'    => [ 5, 7 ],
-			]
+				'selected_categories'    => array( 5, 7 ),
+			)
 		);
 
 		$result = SettingsMigrationHarness::run_migration();
@@ -180,10 +178,10 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_get_settings_rewrites_legacy_tags_mode_to_by_taxonomy(): void {
 		Functions\when( 'get_option' )->justReturn(
-			[
+			array(
 				'product_selection_mode' => 'tags',
-				'selected_tags'          => [ 11 ],
-			]
+				'selected_tags'          => array( 11 ),
+			)
 		);
 
 		$result = SettingsMigrationHarness::run_migration();
@@ -191,23 +189,23 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $result['migrated'] );
 		$this->assertSame( 'by_taxonomy', $result['settings']['product_selection_mode'] );
 		// Existing selection arrays must be preserved through the rewrite.
-		$this->assertSame( [ 11 ], $result['settings']['selected_tags'] );
+		$this->assertSame( array( 11 ), $result['settings']['selected_tags'] );
 		$this->assertCount( 1, self::$update_option_calls );
 	}
 
 	public function test_get_settings_rewrites_legacy_brands_mode_to_by_taxonomy(): void {
 		Functions\when( 'get_option' )->justReturn(
-			[
+			array(
 				'product_selection_mode' => 'brands',
-				'selected_brands'        => [ 99 ],
-			]
+				'selected_brands'        => array( 99 ),
+			)
 		);
 
 		$result = SettingsMigrationHarness::run_migration();
 
 		$this->assertTrue( $result['migrated'] );
 		$this->assertSame( 'by_taxonomy', $result['settings']['product_selection_mode'] );
-		$this->assertSame( [ 99 ], $result['settings']['selected_brands'] );
+		$this->assertSame( array( 99 ), $result['settings']['selected_brands'] );
 		$this->assertCount( 1, self::$update_option_calls );
 	}
 
@@ -223,10 +221,10 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 		// request — exactly what the migration is designed to avoid
 		// once the rewrite has happened.
 		Functions\when( 'get_option' )->justReturn(
-			[
+			array(
 				'product_selection_mode' => 'by_taxonomy',
-				'selected_categories'    => [ 1 ],
-			]
+				'selected_categories'    => array( 1 ),
+			)
 		);
 
 		$result = SettingsMigrationHarness::run_migration();
@@ -240,9 +238,9 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 	public function test_get_settings_does_not_rewrite_all_mode(): void {
 		// `all` is the fresh-install default; no rewrite needed.
 		Functions\when( 'get_option' )->justReturn(
-			[
+			array(
 				'product_selection_mode' => 'all',
-			]
+			)
 		);
 
 		$result = SettingsMigrationHarness::run_migration();
@@ -256,10 +254,10 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 		// `selected` is the explicit-allowlist mode; not a legacy
 		// value, so the migration guard must skip it.
 		Functions\when( 'get_option' )->justReturn(
-			[
+			array(
 				'product_selection_mode' => 'selected',
-				'selected_products'      => [ 1, 2, 3 ],
-			]
+				'selected_products'      => array( 1, 2, 3 ),
+			)
 		);
 
 		$result = SettingsMigrationHarness::run_migration();
@@ -276,7 +274,7 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 	public function test_get_settings_does_not_rewrite_when_option_is_empty_array(): void {
 		// Fresh install or option-deleted state. No `product_selection_mode`
 		// key → the `isset()` guard short-circuits the migration.
-		Functions\when( 'get_option' )->justReturn( [] );
+		Functions\when( 'get_option' )->justReturn( array() );
 
 		$result = SettingsMigrationHarness::run_migration();
 
@@ -307,7 +305,7 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 		// class would write to error_log; intercept via a nested test
 		// double class so we don't depend on PHP's error_log target.
 		self::$update_option_return = false;
-		self::$logger_calls         = [];
+		self::$logger_calls         = array();
 
 		// Re-alias the logger via runkit-free shim: define a child
 		// class in this file's namespace if needed. Production uses
@@ -328,9 +326,9 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 
 		try {
 			Functions\when( 'get_option' )->justReturn(
-				[
+				array(
 					'product_selection_mode' => 'categories',
-				]
+				)
 			);
 
 			$result = SettingsMigrationHarness::run_migration();
@@ -369,18 +367,18 @@ class SettingsMigrationTest extends \PHPUnit\Framework\TestCase {
 		// (option key + alloptions). This pins the parity with
 		// update_settings()' cache-invalidation path.
 		Functions\when( 'get_option' )->justReturn(
-			[ 'product_selection_mode' => 'tags' ]
+			array( 'product_selection_mode' => 'tags' )
 		);
 
 		SettingsMigrationHarness::run_migration();
 
 		$this->assertCount( 2, self::$cache_delete_calls );
 		$this->assertSame(
-			[ SettingsMigrationHarness::SETTINGS_OPTION, 'options' ],
+			array( SettingsMigrationHarness::SETTINGS_OPTION, 'options' ),
 			self::$cache_delete_calls[0]
 		);
 		$this->assertSame(
-			[ 'alloptions', 'options' ],
+			array( 'alloptions', 'options' ),
 			self::$cache_delete_calls[1]
 		);
 	}

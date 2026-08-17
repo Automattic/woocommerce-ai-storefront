@@ -49,167 +49,167 @@ class WC_AI_Storefront_MCP_Tools {
 	 * @return array<int,array<string,mixed>>
 	 */
 	public static function definitions(): array {
-		return [
-			[
+		return array(
+			array(
 				'name'        => 'catalog_search',
 				'description' => __( 'Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse — at least one is recommended.', 'woocommerce-ai-storefront' ),
-				'inputSchema' => [
+				'inputSchema' => array(
 					'type'       => 'object',
-					'properties' => [
-						'query'      => [
+					'properties' => array(
+						'query'      => array(
 							'type'        => 'string',
 							'description' => __( "Keyword search, e.g. 'blue hoodie'. Optional — you may browse with filters alone — but provide it for text search.", 'woocommerce-ai-storefront' ),
-						],
-						'filters'    => [
+						),
+						'filters'    => array(
 							'type'        => 'object',
 							'description' => __( 'Structured filters to narrow results. All fields optional.', 'woocommerce-ai-storefront' ),
-							'properties'  => [
-								'categories' => [
+							'properties'  => array(
+								'categories' => array(
 									'type'        => 'array',
-									'items'       => [ 'type' => 'string' ],
+									'items'       => array( 'type' => 'string' ),
 									'description' => __( 'Category slugs or names to match.', 'woocommerce-ai-storefront' ),
-								],
-								'tags'       => [
+								),
+								'tags'       => array(
 									'type'        => 'array',
-									'items'       => [ 'type' => 'string' ],
+									'items'       => array( 'type' => 'string' ),
 									'description' => __( 'Tag slugs or names to match.', 'woocommerce-ai-storefront' ),
-								],
-								'brand'      => [
+								),
+								'brand'      => array(
 									'type'        => 'array',
-									'items'       => [ 'type' => 'string' ],
+									'items'       => array( 'type' => 'string' ),
 									'description' => __( 'Brand slugs or names to match.', 'woocommerce-ai-storefront' ),
-								],
-								'price'      => [
+								),
+								'price'      => array(
 									'type'        => 'object',
 									'description' => __( 'Price range in minor units (e.g. cents), denominated in context.currency.', 'woocommerce-ai-storefront' ),
-									'properties'  => [
-										'min' => [
+									'properties'  => array(
+										'min' => array(
 											'type'        => 'integer',
 											'description' => __( 'Minimum price in minor units.', 'woocommerce-ai-storefront' ),
-										],
-										'max' => [
+										),
+										'max' => array(
 											'type'        => 'integer',
 											'description' => __( 'Maximum price in minor units.', 'woocommerce-ai-storefront' ),
-										],
-									],
-								],
-								'on_sale'    => [
+										),
+									),
+								),
+								'on_sale'    => array(
 									'type'        => 'boolean',
 									'description' => __( 'Only products currently on sale.', 'woocommerce-ai-storefront' ),
-								],
-								'in_stock'   => [
+								),
+								'in_stock'   => array(
 									'type'        => 'boolean',
 									'description' => __( 'Only in-stock products.', 'woocommerce-ai-storefront' ),
-								],
-								'featured'   => [
+								),
+								'featured'   => array(
 									'type'        => 'boolean',
 									'description' => __( 'Only featured products.', 'woocommerce-ai-storefront' ),
-								],
-								'min_rating' => [
+								),
+								'min_rating' => array(
 									'type'        => 'integer',
 									'description' => __( 'Minimum average star rating, from 1 to 5.', 'woocommerce-ai-storefront' ),
-								],
-								'attributes' => [
+								),
+								'attributes' => array(
 									'type'        => 'object',
 									'description' => __( 'Map of attribute slug to an array of accepted values, e.g. {"color":["blue"],"size":["M"]}.', 'woocommerce-ai-storefront' ),
-								],
-							],
-						],
-						'sort'       => [
+								),
+							),
+						),
+						'sort'       => array(
 							'type'        => 'object',
 							'description' => __( 'Result ordering.', 'woocommerce-ai-storefront' ),
-							'properties'  => [
-								'field'     => [
+							'properties'  => array(
+								'field'     => array(
 									'type'        => 'string',
-									'enum'        => [ 'price', 'title', 'date', 'newest', 'popularity', 'rating', 'menu_order' ],
+									'enum'        => array( 'price', 'title', 'date', 'newest', 'popularity', 'rating', 'menu_order' ),
 									'description' => __( "Field to sort by. 'newest' is an alias for date descending.", 'woocommerce-ai-storefront' ),
-								],
-								'direction' => [
+								),
+								'direction' => array(
 									'type'        => 'string',
-									'enum'        => [ 'asc', 'desc' ],
+									'enum'        => array( 'asc', 'desc' ),
 									'description' => __( "Sort direction. Defaults to 'asc'; ignored for 'newest' (always descending).", 'woocommerce-ai-storefront' ),
-								],
-							],
-						],
-						'pagination' => [
+								),
+							),
+						),
+						'pagination' => array(
 							'type'        => 'object',
 							'description' => __( 'Pagination controls.', 'woocommerce-ai-storefront' ),
-							'properties'  => [
-								'limit'  => [
+							'properties'  => array(
+								'limit'  => array(
 									'type'        => 'integer',
 									'description' => __( 'Maximum number of products to return (a positive integer).', 'woocommerce-ai-storefront' ),
-								],
-								'cursor' => [
+								),
+								'cursor' => array(
 									'type'        => 'string',
 									'description' => __( "Opaque cursor from a prior response's pagination.cursor, to fetch the next page.", 'woocommerce-ai-storefront' ),
-								],
-							],
-						],
+								),
+							),
+						),
 						'context'    => self::context_schema(),
-					],
+					),
 					// A meaningful search needs a keyword or at least one filter.
 					// Expressed as anyOf (not a hard `required: [query]`) so the
 					// filters-only browse the core supports stays valid. See the
 					// class docblock re: the Gemini anyOf caveat.
-					'anyOf'      => [
-						[ 'required' => [ 'query' ] ],
-						[ 'required' => [ 'filters' ] ],
-					],
-				],
-			],
-			[
+					'anyOf'      => array(
+						array( 'required' => array( 'query' ) ),
+						array( 'required' => array( 'filters' ) ),
+					),
+				),
+			),
+			array(
 				'name'        => 'catalog_lookup',
 				'description' => __( 'Look up specific products by their UCP id; returns full UCP product records. Use ids returned by catalog_search.', 'woocommerce-ai-storefront' ),
-				'inputSchema' => [
+				'inputSchema' => array(
 					'type'       => 'object',
-					'properties' => [
-						'ids'     => [
+					'properties' => array(
+						'ids'     => array(
 							'type'        => 'array',
-							'items'       => [ 'type' => 'string' ],
+							'items'       => array( 'type' => 'string' ),
 							'description' => __( "UCP product ids to fetch, e.g. ['prod_123','var_456']. Provide between 1 and 100 ids.", 'woocommerce-ai-storefront' ),
-						],
+						),
 						'context' => self::context_schema(),
-					],
-					'required'   => [ 'ids' ],
-				],
-			],
-			[
+					),
+					'required'   => array( 'ids' ),
+				),
+			),
+			array(
 				'name'        => 'checkout_create',
 				'description' => __( 'Create a stateless checkout session for one or more products and return a continue_url to redirect the shopper to. Does not place the order.', 'woocommerce-ai-storefront' ),
-				'inputSchema' => [
+				'inputSchema' => array(
 					'type'       => 'object',
-					'properties' => [
-						'line_items' => [
+					'properties' => array(
+						'line_items' => array(
 							'type'        => 'array',
 							'description' => __( 'Items to purchase (at least one).', 'woocommerce-ai-storefront' ),
-							'items'       => [
+							'items'       => array(
 								'type'       => 'object',
-								'properties' => [
-									'item'     => [
+								'properties' => array(
+									'item'     => array(
 										'type'        => 'object',
 										'description' => __( 'The product or variation to add.', 'woocommerce-ai-storefront' ),
-										'properties'  => [
-											'id' => [
+										'properties'  => array(
+											'id' => array(
 												'type' => 'string',
 												'description' => __( "UCP product or variation id, e.g. 'prod_123' or 'var_456'.", 'woocommerce-ai-storefront' ),
-											],
-										],
-										'required'    => [ 'id' ],
-									],
-									'quantity' => [
+											),
+										),
+										'required'    => array( 'id' ),
+									),
+									'quantity' => array(
 										'type'        => 'integer',
 										'description' => __( 'Quantity to purchase (a positive integer). Defaults to 1.', 'woocommerce-ai-storefront' ),
-									],
-								],
-								'required'   => [ 'item' ],
-							],
-						],
+									),
+								),
+								'required'   => array( 'item' ),
+							),
+						),
 						'context'    => self::context_schema(),
-					],
-					'required'   => [ 'line_items' ],
-				],
-			],
-		];
+					),
+					'required'   => array( 'line_items' ),
+				),
+			),
+		);
 	}
 
 	/**
@@ -221,20 +221,20 @@ class WC_AI_Storefront_MCP_Tools {
 	 * @return array<string,mixed>
 	 */
 	private static function context_schema(): array {
-		return [
+		return array(
 			'type'        => 'object',
 			'description' => __( 'Optional request context.', 'woocommerce-ai-storefront' ),
-			'properties'  => [
-				'currency' => [
+			'properties'  => array(
+				'currency' => array(
 					'type'        => 'string',
 					'description' => __( "ISO 4217 currency code, e.g. 'USD', for price-filter denomination and price display.", 'woocommerce-ai-storefront' ),
-				],
-				'locale'   => [
+				),
+				'locale'   => array(
 					'type'        => 'string',
 					'description' => __( "BCP 47 locale, e.g. 'en-US'.", 'woocommerce-ai-storefront' ),
-				],
-			],
-		];
+				),
+			),
+		);
 	}
 
 	/**
@@ -250,58 +250,58 @@ class WC_AI_Storefront_MCP_Tools {
 		// REST transport produces (resolve_agent_host), so MCP-originated orders
 		// land in the same WC Order Attribution cohort (utm_source) as REST.
 		$agent_data = WC_AI_Storefront_UCP_REST_Controller::resolve_agent_data_from_name( $client_name );
-		$base       = [
+		$base       = array(
 			'agent_data'       => $agent_data,
 			'ucp_agent_header' => '',
-		];
+		);
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 
 		switch ( $tool_name ) {
 			case 'catalog_search':
 				$params = array_merge(
 					$base,
-					[
+					array(
 						'query'      => $arguments['query'] ?? null,
 						'context'    => $arguments['context'] ?? null,
 						'signals'    => $arguments['signals'] ?? null,
 						'filters'    => $arguments['filters'] ?? null,
 						'pagination' => $arguments['pagination'] ?? null,
 						'sort'       => $arguments['sort'] ?? null,
-					]
+					)
 				);
 				return self::core_result_to_mcp(
 					$controller->run_catalog_search( $params ),
 					__( 'Catalog search', 'woocommerce-ai-storefront' ),
 					false,
-					[ self::class, 'summarize_search' ]
+					array( self::class, 'summarize_search' )
 				);
 
 			case 'catalog_lookup':
 				$params = array_merge(
 					$base,
-					[
+					array(
 						// Pass null (not []) when ids is absent so the core can
 						// distinguish "missing ids array" from "empty ids array"
 						// and return the accurate error message.
 						'ids'     => $arguments['ids'] ?? null,
 						'context' => $arguments['context'] ?? null,
 						'signals' => $arguments['signals'] ?? null,
-					]
+					)
 				);
 				return self::core_result_to_mcp(
 					$controller->run_catalog_lookup( $params ),
 					__( 'Catalog lookup', 'woocommerce-ai-storefront' ),
 					false,
-					[ self::class, 'summarize_lookup' ]
+					array( self::class, 'summarize_lookup' )
 				);
 
 			case 'checkout_create':
 				$params = array_merge(
 					$base,
-					[
-						'line_items' => $arguments['line_items'] ?? [],
+					array(
+						'line_items' => $arguments['line_items'] ?? array(),
 						'context'    => $arguments['context'] ?? null,
-					]
+					)
 				);
 				return self::core_result_to_mcp(
 					$controller->run_checkout_create( $params ),
@@ -310,7 +310,7 @@ class WC_AI_Storefront_MCP_Tools {
 					// returns HTTP 200 with the reason in messages[], and must
 					// surface as an MCP error rather than a silent success.
 					true,
-					[ self::class, 'summarize_checkout' ]
+					array( self::class, 'summarize_checkout' )
 				);
 
 			default:
@@ -346,7 +346,7 @@ class WC_AI_Storefront_MCP_Tools {
 	 */
 	public static function core_result_to_mcp( array $result, string $summary, bool $require_continue_url = false, ?callable $summarize_success = null ): array {
 		$status = (int) ( $result['status'] ?? 200 );
-		$body   = is_array( $result['body'] ?? null ) ? $result['body'] : [];
+		$body   = is_array( $result['body'] ?? null ) ? $result['body'] : array();
 
 		// A checkout that produced no continue_url is a total failure even when
 		// the core returns HTTP 200 with the reason in messages[] (e.g. every
@@ -358,7 +358,7 @@ class WC_AI_Storefront_MCP_Tools {
 		if ( $status >= 400 || $checkout_failed ) {
 			$messages = isset( $body['messages'] ) && is_array( $body['messages'] )
 				? $body['messages']
-				: [];
+				: array();
 
 			// Phase 1: prefer the first error-typed message.
 			$error_msg = null;
@@ -373,7 +373,7 @@ class WC_AI_Storefront_MCP_Tools {
 			// non-conforming envelope still yields some detail.
 			if ( null === $error_msg ) {
 				$first     = $messages[0] ?? null;
-				$error_msg = is_array( $first ) ? $first : [];
+				$error_msg = is_array( $first ) ? $first : array();
 			}
 
 			$code    = (string) ( $error_msg['code'] ?? '' );
@@ -395,30 +395,30 @@ class WC_AI_Storefront_MCP_Tools {
 				);
 			}
 
-			return [
+			return array(
 				'isError' => true,
-				'content' => [
-					[
+				'content' => array(
+					array(
 						'type' => 'text',
 						'text' => trim( $code . ' ' . $message ),
-					],
-				],
-			];
+					),
+				),
+			);
 		}
 
 		$text = null !== $summarize_success
 			? (string) call_user_func( $summarize_success, $body )
 			: $summary;
 
-		return [
-			'content'           => [
-				[
+		return array(
+			'content'           => array(
+				array(
 					'type' => 'text',
 					'text' => $text,
-				],
-			],
+				),
+			),
 			'structuredContent' => $body,
-		];
+		);
 	}
 
 	/**
@@ -435,7 +435,7 @@ class WC_AI_Storefront_MCP_Tools {
 	 *
 	 * @var string[]
 	 */
-	private const ZERO_DECIMAL_CURRENCIES = [
+	private const ZERO_DECIMAL_CURRENCIES = array(
 		'BIF',
 		'CLP',
 		'DJF',
@@ -452,14 +452,14 @@ class WC_AI_Storefront_MCP_Tools {
 		'XAF',
 		'XOF',
 		'XPF',
-	];
+	);
 
 	/**
 	 * ISO 4217 currencies whose minor unit has three digits.
 	 *
 	 * @var string[]
 	 */
-	private const THREE_DECIMAL_CURRENCIES = [ 'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND' ];
+	private const THREE_DECIMAL_CURRENCIES = array( 'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND' );
 
 	/**
 	 * Build the `content` text for a successful catalog_search result.
@@ -474,7 +474,7 @@ class WC_AI_Storefront_MCP_Tools {
 		}
 
 		$count      = count( $products );
-		$pagination = is_array( $body['pagination'] ?? null ) ? $body['pagination'] : [];
+		$pagination = is_array( $body['pagination'] ?? null ) ? $body['pagination'] : array();
 		$total      = isset( $pagination['total_count'] ) ? (int) $pagination['total_count'] : null;
 
 		$head = ( null !== $total && $total > $count )
@@ -597,7 +597,7 @@ class WC_AI_Storefront_MCP_Tools {
 	 * @return array<int,array<string,mixed>>
 	 */
 	private static function products_of( array $body ): array {
-		$products = is_array( $body['products'] ?? null ) ? $body['products'] : [];
+		$products = is_array( $body['products'] ?? null ) ? $body['products'] : array();
 		return array_values( array_filter( $products, 'is_array' ) );
 	}
 
@@ -624,7 +624,7 @@ class WC_AI_Storefront_MCP_Tools {
 	 */
 	private static function product_lines( array $products ): array {
 		$shown = array_slice( $products, 0, self::SUMMARY_MAX_ITEMS );
-		$lines = array_map( [ self::class, 'product_line' ], $shown );
+		$lines = array_map( array( self::class, 'product_line' ), $shown );
 
 		$extra = count( $products ) - count( $shown );
 		if ( $extra > 0 ) {

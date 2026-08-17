@@ -42,13 +42,13 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'current_time' )->justReturn( '2025-01-01 12:00:00' );
 		Functions\when( 'delete_transient' )->justReturn( true );
 		// Reset static state between tests.
-		self::$rp_pending->setValue( null, [] );
+		self::$rp_pending->setValue( null, array() );
 		self::$rp_shutdown->setValue( null, false );
 	}
 
 	protected function tearDown(): void {
 		// Drain any buffered events so they don't leak into the next test class.
-		self::$rp_pending->setValue( null, [] );
+		self::$rp_pending->setValue( null, array() );
 		self::$rp_shutdown->setValue( null, false );
 		global $wpdb;
 		$wpdb = null;
@@ -127,7 +127,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		foreach ( $cases as $raw => $expected ) {
-			self::$rp_pending->setValue( null, [] );
+			self::$rp_pending->setValue( null, array() );
 			self::$rp_shutdown->setValue( null, false );
 			WC_AI_Storefront_Crawl_Logger::record(
 				WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP,
@@ -202,7 +202,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	public function test_record_registers_shutdown_on_first_call(): void {
 		Functions\expect( 'add_action' )
 			->once()
-			->with( 'shutdown', [ WC_AI_Storefront_Crawl_Logger::class, 'flush' ] );
+			->with( 'shutdown', array( WC_AI_Storefront_Crawl_Logger::class, 'flush' ) );
 
 		WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP, 0, 'GPTBot' );
 
@@ -279,7 +279,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Crawl_Logger::record( WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE, 7, 'PerplexityBot' );
 
 		$captured_sql    = '';
-		$captured_values = [];
+		$captured_values = array();
 
 		global $wpdb;
 		$wpdb         = Mockery::mock( 'wpdb' );
@@ -388,13 +388,13 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_endpoint_constants_are_distinct(): void {
-		$constants = [
+		$constants = array(
 			WC_AI_Storefront_Crawl_Logger::ENDPOINT_PRODUCT_PAGE,
 			WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SINGLE,
 			WC_AI_Storefront_Crawl_Logger::ENDPOINT_STORE_API_SEARCH,
 			WC_AI_Storefront_Crawl_Logger::ENDPOINT_LLMS_TXT,
 			WC_AI_Storefront_Crawl_Logger::ENDPOINT_UCP,
-		];
+		);
 
 		$this->assertSame(
 			count( $constants ),
@@ -439,7 +439,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_prune_raw_log_cutoff_matches_retention_days(): void {
 		$captured_sql    = '';
-		$captured_values = [];
+		$captured_values = array();
 
 		global $wpdb;
 		$wpdb         = Mockery::mock( 'wpdb' );
@@ -561,8 +561,8 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		// every nightly cron to fail with a MySQL parse error on `{`.
 		// Capture only the first prepare() call (the INSERT); the second
 		// is from prune_summary() which is an unrelated DELETE.
-		$captured_sql  = '';
-		$call_index    = 0;
+		$captured_sql = '';
+		$call_index   = 0;
 
 		global $wpdb;
 		$wpdb             = Mockery::mock( 'wpdb' );
@@ -640,7 +640,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 				}
 			);
 		Functions\when( 'wc_get_logger' )->justReturn(
-			Mockery::mock( [ 'error' => null ] )
+			Mockery::mock( array( 'error' => null ) )
 		);
 
 		WC_AI_Storefront_Crawl_Logger::rollup();
@@ -656,7 +656,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 		$expected_start = '2025-06-14 00:00:00';
 		$expected_end   = '2025-06-16 00:00:00';
 
-		$captured_args = [];
+		$captured_args = array();
 		$call_index    = 0;
 
 		global $wpdb;
@@ -668,7 +668,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 			->andReturnUsing(
 				static function ( $sql, $range_start, $range_end = null ) use ( &$captured_args, &$call_index ) {
 					if ( 0 === $call_index++ ) {
-						$captured_args = [ $range_start, $range_end ];
+						$captured_args = array( $range_start, $range_end );
 					}
 					return 'PREPARED';
 				}
@@ -743,7 +743,7 @@ class CrawlLoggerTest extends \PHPUnit\Framework\TestCase {
 	 * @preserveGlobalState disabled
 	 */
 	public function test_schedule_crons_uses_hourly_interval_by_default(): void {
-		$scheduled_interval = null;
+		$scheduled_interval  = null;
 		$scheduled_timestamp = null;
 		$before              = time();
 

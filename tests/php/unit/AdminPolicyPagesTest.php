@@ -48,7 +48,7 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// `get_posts()` default: no system-slug pages exist.
 		// Tests that exercise the slug-based fallback override this
 		// with a per-test alias returning specific IDs.
-		Functions\when( 'get_posts' )->justReturn( [] );
+		Functions\when( 'get_posts' )->justReturn( array() );
 	}
 
 	protected function tearDown(): void {
@@ -78,9 +78,11 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// nest differently, the dropdown blanks silently. Lock the
 		// shape here so a future refactor breaks loudly.
 		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
-		Functions\when( 'get_pages' )->justReturn( [
-			$this->make_page( 100, 'Privacy Policy' ),
-		] );
+		Functions\when( 'get_pages' )->justReturn(
+			array(
+				$this->make_page( 100, 'Privacy Policy' ),
+			)
+		);
 
 		$response = $this->controller->get_policy_pages();
 		$data     = $response->get_data();
@@ -119,14 +121,14 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_pages' )->alias(
 			static function ( $args ) use ( &$captured_args ) {
 				$captured_args = $args;
-				return [];
+				return array();
 			}
 		);
 
 		$this->controller->get_policy_pages();
 
 		$this->assertSame(
-			[ 10, 20, 30, 40 ],
+			array( 10, 20, 30, 40 ),
 			$captured_args['exclude'] ?? null,
 			'`exclude` must contain the canonical Cart/Checkout/MyAccount/Shop page IDs.'
 		);
@@ -151,14 +153,14 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_pages' )->alias(
 			static function ( $args ) use ( &$captured_args ) {
 				$captured_args = $args;
-				return [];
+				return array();
 			}
 		);
 
 		$this->controller->get_policy_pages();
 
 		$this->assertSame(
-			[ 10, 40 ],
+			array( 10, 40 ),
 			$captured_args['exclude'] ?? null,
 			'Only positive page IDs should land in `exclude`; -1 (unconfigured) and 0 (never set) must be skipped.'
 		);
@@ -189,14 +191,14 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_pages' )->alias(
 			static function ( $args ) use ( &$captured_args ) {
 				$captured_args = $args;
-				return [];
+				return array();
 			}
 		);
 
 		$this->controller->get_policy_pages();
 
 		$this->assertSame(
-			[ 11, 22, 33, 44 ],
+			array( 11, 22, 33, 44 ),
 			$captured_args['exclude'] ?? null,
 			'Slug-based fallback must exclude pages with default WC system slugs even when wc_get_page_id() is unconfigured. The two `my-account` aliases must dedupe.'
 		);
@@ -231,14 +233,14 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_pages' )->alias(
 			static function ( $args ) use ( &$captured_args ) {
 				$captured_args = $args;
-				return [];
+				return array();
 			}
 		);
 
 		$this->controller->get_policy_pages();
 
 		$this->assertSame(
-			[ 10, 20, 30, 40 ],
+			array( 10, 20, 30, 40 ),
 			$captured_args['exclude'] ?? null,
 			'When both exclusion paths converge on the same IDs, the merged list must dedupe.'
 		);
@@ -260,14 +262,14 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_pages' )->alias(
 			static function ( $args ) use ( &$captured_args, $page ) {
 				$captured_args = $args;
-				return [ $page ];
+				return array( $page );
 			}
 		);
 
 		$response = $this->controller->get_policy_pages();
 		$data     = $response->get_data();
 
-		$this->assertSame( [], $captured_args['exclude'] ?? null );
+		$this->assertSame( array(), $captured_args['exclude'] ?? null );
 		$this->assertCount( 1, $data );
 		$this->assertSame( 100, $data[0]['id'] );
 	}
@@ -287,7 +289,7 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_pages' )->alias(
 			static function ( $args ) use ( &$captured_args ) {
 				$captured_args = $args;
-				return [];
+				return array();
 			}
 		);
 
@@ -328,12 +330,12 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// yet"), not a DB failure. The endpoint must return [] with
 		// 200 OK, not WP_Error.
 		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
-		Functions\when( 'get_pages' )->justReturn( [] );
+		Functions\when( 'get_pages' )->justReturn( array() );
 
 		$response = $this->controller->get_policy_pages();
 
 		$this->assertNotInstanceOf( WP_Error::class, $response );
-		$this->assertSame( [], $response->get_data() );
+		$this->assertSame( array(), $response->get_data() );
 	}
 
 	// ------------------------------------------------------------------
@@ -348,18 +350,20 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// same filter — otherwise a merchant's title containing
 		// `&amp;` or shortcodes would render differently here than
 		// in WP admin or `/wp/v2/pages`.
-		$apply_filters_calls = [];
+		$apply_filters_calls = array();
 		Functions\when( 'apply_filters' )->alias(
 			static function ( $hook, $value, ...$rest ) use ( &$apply_filters_calls ) {
-				$apply_filters_calls[] = [ $hook, $value, $rest ];
+				$apply_filters_calls[] = array( $hook, $value, $rest );
 				return $value;
 			}
 		);
 
 		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
-		Functions\when( 'get_pages' )->justReturn( [
-			$this->make_page( 100, 'Privacy & Cookies' ),
-		] );
+		Functions\when( 'get_pages' )->justReturn(
+			array(
+				$this->make_page( 100, 'Privacy & Cookies' ),
+			)
+		);
 
 		$this->controller->get_policy_pages();
 
@@ -383,13 +387,13 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 		// `__return_true` would expose merchant page titles to anyone;
 		// a regression that drops the route entirely would silently
 		// blank the dropdown. Asserting the wiring catches both.
-		$registered = [];
+		$registered = array();
 		Functions\when( 'register_rest_route' )->alias(
 			static function ( $namespace, $route, $args ) use ( &$registered ) {
-				$registered[ $route ] = [
+				$registered[ $route ] = array(
 					'namespace' => $namespace,
 					'args'      => $args,
-				];
+				);
 				return true;
 			}
 		);
@@ -415,12 +419,12 @@ class AdminPolicyPagesTest extends \PHPUnit\Framework\TestCase {
 			'`/policy-pages` must be GET-only — it returns merchant page metadata.'
 		);
 		$this->assertSame(
-			[ $controller, 'check_admin_permission' ],
+			array( $controller, 'check_admin_permission' ),
 			$args['permission_callback'],
 			'`/policy-pages` must use the admin permission gate, not `__return_true`.'
 		);
 		$this->assertSame(
-			[ $controller, 'get_policy_pages' ],
+			array( $controller, 'get_policy_pages' ),
 			$args['callback'],
 			'`/policy-pages` must dispatch to `get_policy_pages()`.'
 		);

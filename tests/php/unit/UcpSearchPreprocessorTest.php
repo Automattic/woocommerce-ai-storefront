@@ -165,9 +165,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_exact_name_match(): void {
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 5, 'Hoodies', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 5, 'Hoodies', 'product_cat' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'hoodies' ) );
 
@@ -178,9 +180,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_plural_to_singular(): void {
 		// Signal term "hoodies" should match category named "Hoodie".
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 5, 'Hoodie', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 5, 'Hoodie', 'product_cat' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'hoodies' ) );
 
@@ -191,9 +195,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_singular_to_plural(): void {
 		// Signal term "shoe" should match category named "Shoes".
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 3, 'Shoes', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 3, 'Shoes', 'product_cat' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'shoe' ) );
 
@@ -203,9 +209,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_unmatched_term_absent_from_result(): void {
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 5, 'Hoodies', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 5, 'Hoodies', 'product_cat' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'logo' ) );
 
@@ -213,14 +221,18 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_resolve_matches_across_multiple_taxonomies(): void {
-		Functions\when( 'get_taxonomies' )->justReturn( array(
-			'product_cat' => 'product_cat',
-			'product_tag' => 'product_tag',
-		) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 5, 'Hoodies', 'product_cat' ),
-			$this->fake_term( 12, 'Men', 'product_tag' ),
-		) );
+		Functions\when( 'get_taxonomies' )->justReturn(
+			array(
+				'product_cat' => 'product_cat',
+				'product_tag' => 'product_tag',
+			)
+		);
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 5, 'Hoodies', 'product_cat' ),
+				$this->fake_term( 12, 'Men', 'product_tag' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'hoodies', 'men' ) );
 
@@ -233,9 +245,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_ches_es_to_ch(): void {
 		// "watches" → "watch" via {ch}es → ch rule.
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 8, 'Watch', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 8, 'Watch', 'product_cat' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'watches' ) );
 
@@ -246,9 +260,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_ies_to_y(): void {
 		// "accessories" → "accessory" via ies → y rule.
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 9, 'Accessory', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 9, 'Accessory', 'product_cat' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'accessories' ) );
 
@@ -259,9 +275,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_y_to_ies(): void {
 		// "accessory" → "accessories" via y → ies rule (singular query, plural category).
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 9, 'Accessories', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 9, 'Accessories', 'product_cat' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'accessory' ) );
 
@@ -272,9 +290,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_matches_by_slug(): void {
 		// slug "hooded-jacket" → lookup indexes by slug; "hooded-jacket" signal matches.
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_tag' => 'product_tag' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 20, 'Hooded Jacket', 'product_tag' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 20, 'Hooded Jacket', 'product_tag' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'hooded-jacket' ) );
 
@@ -339,9 +359,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// Locks the contract in get_product_taxonomy_names() so a regression
 		// dropping 'product_brand' from the allowlist fails this test.
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_brand' => 'product_brand' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 40, 'Nike', 'product_brand' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 40, 'Nike', 'product_brand' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'nike' ) );
 
@@ -352,9 +374,11 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_includes_pa_attribute_taxonomy(): void {
 		// pa_color is a product attribute taxonomy — should be included in resolution.
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'pa_color' => 'pa_color' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 30, 'Blue', 'pa_color' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 30, 'Blue', 'pa_color' ),
+			)
+		);
 
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'blue' ) );
 
@@ -380,8 +404,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		\WC_AI_Storefront_UCP_Store_API_Filter::exit_ucp_dispatch();
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'hoodie',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -394,8 +426,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => '' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => '',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -407,8 +447,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'for the a' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'for the a',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -420,8 +468,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue shirt' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'blue shirt',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -434,8 +490,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// No taxonomy terms → all signal words fall back to title LIKE.
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodie with logo' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'Hoodie with logo',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -449,8 +513,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue shirt' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'blue shirt',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -461,14 +533,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 5, 'Hoodies', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 5, 'Hoodies', 'product_cat' ),
+			)
+		);
 
-		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$filter = new \WC_AI_Storefront_UCP_Store_API_Filter();
 		// "hoodies" matches the "Hoodies" category via plural→singular; "logo" does not.
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodies logo' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'hoodies logo',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -483,13 +565,23 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 7, 'Running', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 7, 'Running', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'running' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'running',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -505,8 +597,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( true );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'hoodie',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -518,11 +618,19 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( true );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'hoodie',
+			)
+		);
 		// WC core's actual JOIN form (table AS the `wc_product_meta_lookup`
 		// alias) — already present, so our filter must not add a second one.
 		$existing_join = 'LEFT JOIN wp_wc_product_meta_lookup wc_product_meta_lookup ON wp_posts.ID = wc_product_meta_lookup.product_id';
-		$args          = array( 'where' => '', 'join' => $existing_join );
+		$args          = array(
+			'where' => '',
+			'join'  => $existing_join,
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -534,8 +642,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( true );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'hoodie',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -561,8 +677,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodie' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'hoodie',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -579,8 +703,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'hoodies' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'hoodies',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -594,8 +726,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'shoe' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'shoe',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -610,8 +750,16 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'logo' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'logo',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -629,14 +777,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 10, 'Hoodies', 'product_cat' ),
-			$this->fake_term( 11, 'Belts', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 10, 'Hoodies', 'product_cat' ),
+				$this->fake_term( 11, 'Belts', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies and Belts' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'Hoodies and Belts',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -650,14 +808,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 12, 'Hats', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 12, 'Hats', 'product_cat' ),
+			)
+		);
 
-		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$filter = new \WC_AI_Storefront_UCP_Store_API_Filter();
 		// "blue" won't match the "Hats" term; only "hat"/"hats" will — partial match → AND.
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue and hat' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'blue and hat',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -676,14 +844,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 13, 'Hoodies', 'product_cat' ),
-			$this->fake_term( 14, 'Belts', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 13, 'Hoodies', 'product_cat' ),
+				$this->fake_term( 14, 'Belts', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies AND Belts' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'Hoodies AND Belts',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -697,14 +875,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 15, 'Hoodies', 'product_cat' ),
-			$this->fake_term( 16, 'Belts', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 15, 'Hoodies', 'product_cat' ),
+				$this->fake_term( 16, 'Belts', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies, Belts' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'Hoodies, Belts',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -718,13 +906,23 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 20, 'Hats', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 20, 'Hats', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue, Hats' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'blue, Hats',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -738,14 +936,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 21, 'Hoodies', 'product_cat' ),
-			$this->fake_term( 22, 'Belts', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 21, 'Hoodies', 'product_cat' ),
+				$this->fake_term( 22, 'Belts', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies,Belts' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'Hoodies,Belts',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -759,14 +967,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 23, 'Hats', 'product_cat' ),
-			$this->fake_term( 24, 'Shoes', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 23, 'Hats', 'product_cat' ),
+				$this->fake_term( 24, 'Shoes', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hat or Shoes' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'Hat or Shoes',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -780,14 +998,24 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 25, 'Shoes', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 25, 'Shoes', 'product_cat' ),
+			)
+		);
 
-		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$filter = new \WC_AI_Storefront_UCP_Store_API_Filter();
 		// "blue" won't resolve to a taxonomy term; "shoes" will.
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'blue or Shoes' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'blue or Shoes',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
@@ -801,15 +1029,25 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
 		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
-		Functions\when( 'get_terms' )->justReturn( array(
-			$this->fake_term( 17, 'Hoodies', 'product_cat' ),
-			$this->fake_term( 18, 'Belts', 'product_cat' ),
-			$this->fake_term( 19, 'Caps', 'product_cat' ),
-		) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 17, 'Hoodies', 'product_cat' ),
+				$this->fake_term( 18, 'Belts', 'product_cat' ),
+				$this->fake_term( 19, 'Caps', 'product_cat' ),
+			)
+		);
 
 		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
-		$wp_query = new WP_Query( array( 'post_type' => 'product', 'search' => 'Hoodies and Belts and Caps' ) );
-		$args     = array( 'where' => '', 'join' => '' );
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'Hoodies and Belts and Caps',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 

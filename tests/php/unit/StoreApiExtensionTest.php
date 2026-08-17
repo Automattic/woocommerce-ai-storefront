@@ -71,11 +71,11 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 		$result = $this->extension->get_product_data( null );
 
 		$this->assertSame(
-			[
-				'barcodes'      => [],
+			array(
+				'barcodes'      => array(),
 				'date_created'  => null,
 				'date_modified' => null,
-			],
+			),
 			$result
 		);
 	}
@@ -90,7 +90,7 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $this->extension->get_product_data( $old_product );
 
-		$this->assertSame( [], $result['barcodes'] );
+		$this->assertSame( array(), $result['barcodes'] );
 	}
 
 	public function test_emits_gtin13_for_13_digit_value(): void {
@@ -155,7 +155,7 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $this->extension->get_product_data( $product );
 
-		$this->assertSame( [], $result['barcodes'] );
+		$this->assertSame( array(), $result['barcodes'] );
 	}
 
 	public function test_emits_empty_barcodes_when_value_is_whitespace_only(): void {
@@ -168,7 +168,7 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $this->extension->get_product_data( $product );
 
-		$this->assertSame( [], $result['barcodes'] );
+		$this->assertSame( array(), $result['barcodes'] );
 	}
 
 	public function test_trims_whitespace_around_gtin_before_type_detection(): void {
@@ -242,11 +242,11 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 		$schema = $this->extension->get_schema();
 
 		$this->assertArrayHasKey( 'date_created', $schema );
-		$this->assertSame( [ 'string', 'null' ], $schema['date_created']['type'] );
+		$this->assertSame( array( 'string', 'null' ), $schema['date_created']['type'] );
 		$this->assertTrue( $schema['date_created']['readonly'] );
 
 		$this->assertArrayHasKey( 'date_modified', $schema );
-		$this->assertSame( [ 'string', 'null' ], $schema['date_modified']['type'] );
+		$this->assertSame( array( 'string', 'null' ), $schema['date_modified']['type'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -259,7 +259,7 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 		// lifecycle. Running earlier risks the Store API plumbing
 		// not being ready; running later risks missing the first
 		// request.
-		$hooks = [];
+		$hooks = array();
 		\Brain\Monkey\Functions\when( 'add_action' )->alias(
 			static function ( $hook, $callback ) use ( &$hooks ) {
 				$hooks[] = $hook;
@@ -327,5 +327,4 @@ class StoreApiExtensionTest extends \PHPUnit\Framework\TestCase {
 			}
 		};
 	}
-
 }

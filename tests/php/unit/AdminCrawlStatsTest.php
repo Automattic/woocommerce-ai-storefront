@@ -137,8 +137,8 @@ class AdminCrawlStatsTest extends \PHPUnit\Framework\TestCase {
 		$req = new WP_REST_Request();
 		$req->set_param( 'period', 'quarter' );
 
-		$response       = $this->controller->get_crawl_stats( $req );
-		$response_data  = $response->get_data();
+		$response      = $this->controller->get_crawl_stats( $req );
+		$response_data = $response->get_data();
 
 		$this->assertNotNull(
 			$captured_top_queries_arg,

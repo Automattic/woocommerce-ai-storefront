@@ -27,26 +27,37 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function simple_product_fixture(): array {
-		return [
+		return array(
 			'id'                => 123,
 			'name'              => 'Widget',
 			'slug'              => 'widget',
 			'permalink'         => 'https://example.com/product/widget/',
 			'short_description' => '<p>A simple <em>widget</em>.</p>',
 			'is_in_stock'       => true,
-			'prices'            => [
+			'prices'            => array(
 				'price'               => '2500',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-			'categories'        => [
-				[ 'id' => 5, 'name' => 'Widgets', 'slug' => 'widgets' ],
-				[ 'id' => 12, 'name' => 'Gadgets', 'slug' => 'gadgets' ],
-			],
-			'images'            => [
-				[ 'src' => 'https://example.com/widget.jpg', 'alt' => 'A widget' ],
-			],
-		];
+			),
+			'categories'        => array(
+				array(
+					'id'   => 5,
+					'name' => 'Widgets',
+					'slug' => 'widgets',
+				),
+				array(
+					'id'   => 12,
+					'name' => 'Gadgets',
+					'slug' => 'gadgets',
+				),
+			),
+			'images'            => array(
+				array(
+					'src' => 'https://example.com/widget.jpg',
+					'alt' => 'A widget',
+				),
+			),
+		);
 	}
 
 	/**
@@ -57,19 +68,19 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	 * variable_product_with_variations_fixture().
 	 */
 	private function variable_product_fixture(): array {
-		return [
-			'id'                => 789,
-			'name'              => 'T-Shirt',
-			'prices'            => [
+		return array(
+			'id'     => 789,
+			'name'   => 'T-Shirt',
+			'prices' => array(
 				'price'               => '1000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-				'price_range'         => [
+				'price_range'         => array(
 					'min_amount' => '1000',
 					'max_amount' => '1500',
-				],
-			],
-		];
+				),
+			),
+		);
 	}
 
 	/**
@@ -84,61 +95,83 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	 * @return array{product: array<string, mixed>, variations: array<int, array<string, mixed>>}
 	 */
 	private function variable_product_with_variations_fixture(): array {
-		return [
-			'product'    => [
+		return array(
+			'product'    => array(
 				'id'         => 789,
 				'name'       => 'T-Shirt',
 				'type'       => 'variable',
-				'prices'     => [
+				'prices'     => array(
 					'price'               => '1000',
 					'currency_code'       => 'USD',
 					'currency_minor_unit' => 2,
-					'price_range'         => [
+					'price_range'         => array(
 						'min_amount' => '1000',
 						'max_amount' => '1500',
-					],
-				],
+					),
+				),
 				// WC Store API emits this as a thin list of
 				// {id, attributes} pointers — full variation details
 				// require a follow-up call per ID.
-				'variations' => [
-					[ 'id' => 101, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Small' ] ] ],
-					[ 'id' => 102, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Large' ] ] ],
-				],
-			],
-			'variations' => [
-				[
+				'variations' => array(
+					array(
+						'id'         => 101,
+						'attributes' => array(
+							array(
+								'name'  => 'Size',
+								'value' => 'Small',
+							),
+						),
+					),
+					array(
+						'id'         => 102,
+						'attributes' => array(
+							array(
+								'name'  => 'Size',
+								'value' => 'Large',
+							),
+						),
+					),
+				),
+			),
+			'variations' => array(
+				array(
 					'id'                => 101,
 					'name'              => 'T-Shirt',
 					'sku'               => 'SHIRT-S',
 					'is_in_stock'       => true,
 					'short_description' => '',
-					'prices'            => [
+					'prices'            => array(
 						'price'               => '1000',
 						'currency_code'       => 'USD',
 						'currency_minor_unit' => 2,
-					],
-					'attributes'        => [
-						[ 'name' => 'Size', 'value' => 'Small' ],
-					],
-				],
-				[
+					),
+					'attributes'        => array(
+						array(
+							'name'  => 'Size',
+							'value' => 'Small',
+						),
+					),
+				),
+				array(
 					'id'                => 102,
 					'name'              => 'T-Shirt',
 					'sku'               => 'SHIRT-L',
 					'is_in_stock'       => true,
 					'short_description' => '',
-					'prices'            => [
+					'prices'            => array(
 						'price'               => '1500',
 						'currency_code'       => 'USD',
 						'currency_minor_unit' => 2,
-					],
-					'attributes'        => [
-						[ 'name' => 'Size', 'value' => 'Large' ],
-					],
-				],
-			],
-		];
+					),
+					'attributes'        => array(
+						array(
+							'name'  => 'Size',
+							'value' => 'Large',
+						),
+					),
+				),
+			),
+		);
 	}
 
 	// ------------------------------------------------------------------
@@ -245,7 +278,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_currency_passes_through_unchanged(): void {
 		// Currency code is opaque to us — whatever WC says, we echo.
-		$fixture                         = $this->simple_product_fixture();
+		$fixture                            = $this->simple_product_fixture();
 		$fixture['prices']['currency_code'] = 'GBP';
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
@@ -261,11 +294,11 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// No discount → regular_price == price → list_price_range
 		// would be redundant with price_range. Omit to keep payload
 		// tight; agents can read price_range directly.
-		$fixture                             = $this->simple_product_fixture();
-		$fixture['prices']['regular_price']  = '2500';
-		$fixture['prices']['price']          = '2500';
+		$fixture                            = $this->simple_product_fixture();
+		$fixture['prices']['regular_price'] = '2500';
+		$fixture['prices']['price']         = '2500';
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'list_price_range', $result );
 	}
@@ -274,11 +307,11 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Simple product on sale: regular_price > price. Emit
 		// list_price_range as a single-point range (min == max ==
 		// regular_price) so agents render "was $X, now $Y".
-		$fixture                             = $this->simple_product_fixture();
-		$fixture['prices']['regular_price']  = '3500';
-		$fixture['prices']['price']          = '2500';
+		$fixture                            = $this->simple_product_fixture();
+		$fixture['prices']['regular_price'] = '3500';
+		$fixture['prices']['price']         = '2500';
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame( 3500, $result['list_price_range']['min']['amount'] );
 		$this->assertSame( 3500, $result['list_price_range']['max']['amount'] );
@@ -291,34 +324,37 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// min/max across ALL variants (including non-sale ones
 		// whose regular_price == price). A shopper sees "was X-Y,
 		// now A-B" where A-B is tighter than or equal to X-Y.
-		$product    = [
-			'id'    => 789,
-			'name'  => 'T-Shirt',
-			'type'  => 'variable',
-			'prices' => [
+		$product    = array(
+			'id'     => 789,
+			'name'   => 'T-Shirt',
+			'type'   => 'variable',
+			'prices' => array(
 				'price'         => '1000',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
-			],
-		];
-		$variations = [
-			[
+				'price_range'   => array(
+					'min_amount' => '1000',
+					'max_amount' => '1500',
+				),
+			),
+		);
+		$variations = array(
+			array(
 				'id'     => 101,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1000',
 					'regular_price' => '2000', // on sale
 					'currency_code' => 'USD',
-				],
-			],
-			[
+				),
+			),
+			array(
 				'id'     => 102,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1500',
 					'regular_price' => '1500', // not on sale
 					'currency_code' => 'USD',
-				],
-			],
-		];
+				),
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $product, $variations );
 
@@ -346,34 +382,37 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Fixture: Active range: 1000-1500 (discounted max). List
 		// range: 1000-2000 (pre-discount max). Min matches between
 		// ranges, max differs → emit.
-		$product    = [
-			'id'    => 789,
-			'name'  => 'T-Shirt',
-			'type'  => 'variable',
-			'prices' => [
+		$product    = array(
+			'id'     => 789,
+			'name'   => 'T-Shirt',
+			'type'   => 'variable',
+			'prices' => array(
 				'price'         => '1000',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
-			],
-		];
-		$variations = [
-			[
+				'price_range'   => array(
+					'min_amount' => '1000',
+					'max_amount' => '1500',
+				),
+			),
+		);
+		$variations = array(
+			array(
 				'id'     => 101,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1000',
 					'regular_price' => '1000', // not on sale
 					'currency_code' => 'USD',
-				],
-			],
-			[
+				),
+			),
+			array(
 				'id'     => 102,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1500',
 					'regular_price' => '2000', // on sale (20% off)
 					'currency_code' => 'USD',
-				],
-			],
-		];
+				),
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $product, $variations );
 
@@ -387,34 +426,37 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// anywhere → omit list_price_range as redundant with
 		// price_range. Same redundancy check as the simple-product
 		// path but exercised via the variation-walk code path.
-		$product    = [
-			'id'    => 789,
-			'name'  => 'T-Shirt',
-			'type'  => 'variable',
-			'prices' => [
+		$product    = array(
+			'id'     => 789,
+			'name'   => 'T-Shirt',
+			'type'   => 'variable',
+			'prices' => array(
 				'price'         => '1000',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '1500' ],
-			],
-		];
-		$variations = [
-			[
+				'price_range'   => array(
+					'min_amount' => '1000',
+					'max_amount' => '1500',
+				),
+			),
+		);
+		$variations = array(
+			array(
 				'id'     => 101,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1000',
 					'regular_price' => '1000',
 					'currency_code' => 'USD',
-				],
-			],
-			[
+				),
+			),
+			array(
 				'id'     => 102,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1500',
 					'regular_price' => '1500',
 					'currency_code' => 'USD',
-				],
-			],
-		];
+				),
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $product, $variations );
 
@@ -428,7 +470,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture = $this->simple_product_fixture();
 		unset( $fixture['prices']['regular_price'] );
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'list_price_range', $result );
 	}
@@ -447,42 +489,45 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// regular prices. Active price_range = $10-$20 (from prices.price).
 		// List price_range = $10-$20 (same numbers, different variants).
 		// The ranges coincide numerically but a sale exists — emit.
-		$product    = [
-			'id'    => 790,
-			'name'  => 'T-Shirt',
-			'type'  => 'variable',
-			'prices' => [
+		$product    = array(
+			'id'     => 790,
+			'name'   => 'T-Shirt',
+			'type'   => 'variable',
+			'prices' => array(
 				'price'         => '1000',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2000' ],
-			],
-		];
-		$variations = [
-			[
+				'price_range'   => array(
+					'min_amount' => '1000',
+					'max_amount' => '2000',
+				),
+			),
+		);
+		$variations = array(
+			array(
 				'id'     => 201,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1000',
 					'regular_price' => '1000', // not on sale
 					'currency_code' => 'USD',
-				],
-			],
-			[
+				),
+			),
+			array(
 				'id'     => 202,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1500',
 					'regular_price' => '1800', // on sale (mid-priced!)
 					'currency_code' => 'USD',
-				],
-			],
-			[
+				),
+			),
+			array(
 				'id'     => 203,
-				'prices' => [
+				'prices' => array(
 					'price'         => '2000',
 					'regular_price' => '2000', // not on sale
 					'currency_code' => 'USD',
-				],
-			],
-		];
+				),
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $product, $variations );
 
@@ -508,40 +553,52 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// though one of the provided variants is on sale, we omit
 		// because the unseen variant might carry a different
 		// regular-price range.
-		$product    = [
+		$product    = array(
 			'id'         => 791,
 			'name'       => 'T-Shirt',
 			'type'       => 'variable',
-			'prices'     => [
+			'prices'     => array(
 				'price'         => '1000',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2500' ],
-			],
-			'variations' => [
-				[ 'id' => 301, 'attributes' => [] ],
-				[ 'id' => 302, 'attributes' => [] ],
-				[ 'id' => 303, 'attributes' => [] ], // unfetched
-			],
-		];
-		$variations = [
-			[
+				'price_range'   => array(
+					'min_amount' => '1000',
+					'max_amount' => '2500',
+				),
+			),
+			'variations' => array(
+				array(
+					'id'         => 301,
+					'attributes' => array(),
+				),
+				array(
+					'id'         => 302,
+					'attributes' => array(),
+				),
+				array(
+					'id'         => 303,
+					'attributes' => array(),
+				), // unfetched
+			),
+		);
+		$variations = array(
+			array(
 				'id'     => 301,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1000',
 					'regular_price' => '1200', // on sale
 					'currency_code' => 'USD',
-				],
-			],
-			[
+				),
+			),
+			array(
 				'id'     => 302,
-				'prices' => [
+				'prices' => array(
 					'price'         => '1500',
 					'regular_price' => '1500',
 					'currency_code' => 'USD',
-				],
-			],
+				),
+			),
 			// 303 unfetched
-		];
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $product, $variations );
 
@@ -600,7 +657,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// UTM stamping is the controller's job (see issue #176).
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[],
+			array(),
 			null
 		);
 
@@ -621,7 +678,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$fixture,
-			[],
+			array(),
 			null
 		);
 
@@ -644,11 +701,17 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertCount( 2, $result['categories'] );
 		$this->assertEquals(
-			[ 'value' => 'Widgets', 'taxonomy' => 'merchant' ],
+			array(
+				'value'    => 'Widgets',
+				'taxonomy' => 'merchant',
+			),
 			$result['categories'][0]
 		);
 		$this->assertEquals(
-			[ 'value' => 'Gadgets', 'taxonomy' => 'merchant' ],
+			array(
+				'value'    => 'Gadgets',
+				'taxonomy' => 'merchant',
+			),
 			$result['categories'][1]
 		);
 	}
@@ -664,11 +727,17 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_categories_skip_entries_without_name(): void {
 		$fixture               = $this->simple_product_fixture();
-		$fixture['categories'] = [
-			[ 'id' => 5, 'name' => 'Widgets' ],
-			[ 'id' => 6 ],  // malformed — no name
-			[ 'id' => 7, 'name' => 'Other' ],
-		];
+		$fixture['categories'] = array(
+			array(
+				'id'   => 5,
+				'name' => 'Widgets',
+			),
+			array( 'id' => 6 ),  // malformed — no name
+			array(
+				'id'   => 7,
+				'name' => 'Other',
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
@@ -685,18 +754,18 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertEquals(
-			[
+			array(
 				'type'     => 'image',
 				'url'      => 'https://example.com/widget.jpg',
 				'alt_text' => 'A widget',
-			],
+			),
 			$result['media'][0]
 		);
 	}
 
 	public function test_media_omits_alt_text_when_absent(): void {
 		$fixture           = $this->simple_product_fixture();
-		$fixture['images'] = [ [ 'src' => 'https://example.com/img.jpg' ] ];
+		$fixture['images'] = array( array( 'src' => 'https://example.com/img.jpg' ) );
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
@@ -714,11 +783,11 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_media_skips_image_entries_without_src(): void {
 		$fixture           = $this->simple_product_fixture();
-		$fixture['images'] = [
-			[ 'src' => 'https://example.com/a.jpg' ],
-			[],  // malformed
-			[ 'src' => 'https://example.com/b.jpg' ],
-		];
+		$fixture['images'] = array(
+			array( 'src' => 'https://example.com/a.jpg' ),
+			array(),  // malformed
+			array( 'src' => 'https://example.com/b.jpg' ),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
@@ -817,7 +886,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// suffix makes the fallback self-documenting.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[]
+			array()
 		);
 
 		$this->assertCount( 1, $result['variants'] );
@@ -834,85 +903,97 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// to-end: parent has Color+Size, variations carry only the
 		// formatted string, and emitted variants pick up correct
 		// titles + options.
-		$product = [
+		$product = array(
 			'id'         => 999,
 			'name'       => 'Leather Shoes',
 			'type'       => 'variable',
-			'prices'     => [
+			'prices'     => array(
 				'price'               => '15000',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-				'price_range'         => [
+				'price_range'         => array(
 					'min_amount' => '15000',
 					'max_amount' => '15000',
-				],
-			],
-			'attributes' => [
-				[
+				),
+			),
+			'attributes' => array(
+				array(
 					'name'           => 'Color',
 					'has_variations' => true,
-					'terms'          => [ [ 'name' => 'Tan' ], [ 'name' => 'Black' ] ],
-				],
-				[
+					'terms'          => array( array( 'name' => 'Tan' ), array( 'name' => 'Black' ) ),
+				),
+				array(
 					'name'           => 'Size',
 					'has_variations' => true,
-					'terms'          => [ [ 'name' => '8' ], [ 'name' => '9' ] ],
-				],
-			],
-			'variations' => [
-				[ 'id' => 1001 ],
-				[ 'id' => 1002 ],
-			],
-		];
+					'terms'          => array( array( 'name' => '8' ), array( 'name' => '9' ) ),
+				),
+			),
+			'variations' => array(
+				array( 'id' => 1001 ),
+				array( 'id' => 1002 ),
+			),
+		);
 
-		$variations = [
-			[
+		$variations = array(
+			array(
 				'id'                => 1001,
 				'name'              => 'Leather Shoes',
 				'sku'               => 'SHOE-TAN-9',
 				'is_in_stock'       => true,
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'               => '15000',
 					'currency_code'       => 'USD',
 					'currency_minor_unit' => 2,
-				],
+				),
 				// The empty-array shape WC Store API actually returns.
-				'attributes'        => [],
+				'attributes'        => array(),
 				'variation'         => 'Color: Tan, Size: 9',
-			],
-			[
+			),
+			array(
 				'id'                => 1002,
 				'name'              => 'Leather Shoes',
 				'sku'               => 'SHOE-BLACK-8',
 				'is_in_stock'       => true,
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'               => '15000',
 					'currency_code'       => 'USD',
 					'currency_minor_unit' => 2,
-				],
-				'attributes'        => [],
+				),
+				'attributes'        => array(),
 				'variation'         => 'Color: Black, Size: 8',
-			],
-		];
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $product, $variations );
 
 		$this->assertSame( 'Tan / 9', $result['variants'][0]['title'] );
 		$this->assertSame( 'Black / 8', $result['variants'][1]['title'] );
 		$this->assertSame(
-			[
-				[ 'name' => 'Color', 'label' => 'Tan' ],
-				[ 'name' => 'Size', 'label' => '9' ],
-			],
+			array(
+				array(
+					'name'  => 'Color',
+					'label' => 'Tan',
+				),
+				array(
+					'name'  => 'Size',
+					'label' => '9',
+				),
+			),
 			$result['variants'][0]['options']
 		);
 		$this->assertSame(
-			[
-				[ 'name' => 'Color', 'label' => 'Black' ],
-				[ 'name' => 'Size', 'label' => '8' ],
-			],
+			array(
+				array(
+					'name'  => 'Color',
+					'label' => 'Black',
+				),
+				array(
+					'name'  => 'Size',
+					'label' => '8',
+				),
+			),
 			$result['variants'][1]['options']
 		);
 	}
@@ -925,7 +1006,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture                      = $this->simple_product_fixture();
 		$fixture['short_description'] = '<ul><li>Waterproof</li><li>Light</li></ul>';
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayHasKey( 'html', $result['description'] );
 		$this->assertSame( '<ul><li>Waterproof</li><li>Light</li></ul>', $result['description']['html'] );
@@ -936,7 +1017,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture                      = $this->simple_product_fixture();
 		$fixture['short_description'] = 'Just plain text';
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'html', $result['description'] );
 		$this->assertSame( 'Just plain text', $result['description']['plain'] );
@@ -953,7 +1034,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture                      = $this->simple_product_fixture();
 		$fixture['short_description'] = "Just plain text\n\n";
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'html', $result['description'] );
 		$this->assertSame( 'Just plain text', $result['description']['plain'] );
@@ -969,7 +1050,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture                      = $this->simple_product_fixture();
 		$fixture['short_description'] = 'Fish &amp; Chips';
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'html', $result['description'] );
 		$this->assertSame( 'Fish & Chips', $result['description']['plain'] );
@@ -981,21 +1062,29 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// UCP core product shape. Categories and brands stay in
 		// `categories[]` with the taxonomy discriminator.
 		$fixture         = $this->simple_product_fixture();
-		$fixture['tags'] = [
-			[ 'id' => 5, 'name' => 'summer', 'slug' => 'summer' ],
-			[ 'id' => 6, 'name' => 'eco-friendly', 'slug' => 'eco-friendly' ],
-		];
+		$fixture['tags'] = array(
+			array(
+				'id'   => 5,
+				'name' => 'summer',
+				'slug' => 'summer',
+			),
+			array(
+				'id'   => 6,
+				'name' => 'eco-friendly',
+				'slug' => 'eco-friendly',
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame(
-			[ 'summer', 'eco-friendly' ],
+			array( 'summer', 'eco-friendly' ),
 			$result['tags']
 		);
 
 		// Categories block must NOT leak a `taxonomy:tag` entry anymore —
 		// regression guard for the split.
-		foreach ( $result['categories'] ?? [] as $cat ) {
+		foreach ( $result['categories'] ?? array() as $cat ) {
 			$this->assertNotSame( 'tag', $cat['taxonomy'] ?? null );
 		}
 	}
@@ -1006,7 +1095,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// but omission is cleaner for downstream serializers.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[]
+			array()
 		);
 
 		$this->assertArrayNotHasKey( 'tags', $result );
@@ -1017,14 +1106,21 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Brands" plugin) surfaces via Store API under `brands[]`. Shape
 		// mirrors categories/tags — emit with `taxonomy: "brand"`.
 		$fixture           = $this->simple_product_fixture();
-		$fixture['brands'] = [
-			[ 'id' => 88, 'name' => 'ACME', 'slug' => 'acme' ],
-		];
+		$fixture['brands'] = array(
+			array(
+				'id'   => 88,
+				'name' => 'ACME',
+				'slug' => 'acme',
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertContains(
-			[ 'value' => 'ACME', 'taxonomy' => 'brand' ],
+			array(
+				'value'    => 'ACME',
+				'taxonomy' => 'brand',
+			),
 			$result['categories']
 		);
 	}
@@ -1038,18 +1134,34 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// axis while keeping the others green. This locks the
 		// three-way interaction.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['categories'] = [
-			[ 'id' => 10, 'name' => 'Apparel', 'slug' => 'apparel' ],
-		];
-		$fixture['tags']       = [
-			[ 'id' => 20, 'name' => 'summer', 'slug' => 'summer' ],
-			[ 'id' => 21, 'name' => 'eco-friendly', 'slug' => 'eco-friendly' ],
-		];
-		$fixture['brands']     = [
-			[ 'id' => 30, 'name' => 'Acme', 'slug' => 'acme' ],
-		];
+		$fixture['categories'] = array(
+			array(
+				'id'   => 10,
+				'name' => 'Apparel',
+				'slug' => 'apparel',
+			),
+		);
+		$fixture['tags']       = array(
+			array(
+				'id'   => 20,
+				'name' => 'summer',
+				'slug' => 'summer',
+			),
+			array(
+				'id'   => 21,
+				'name' => 'eco-friendly',
+				'slug' => 'eco-friendly',
+			),
+		);
+		$fixture['brands']     = array(
+			array(
+				'id'   => 30,
+				'name' => 'Acme',
+				'slug' => 'acme',
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		// `categories[]` carries ONLY merchant + brand entries —
 		// never a `taxonomy:"tag"` leak.
@@ -1060,7 +1172,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotContains( 'tag', $taxonomies );
 
 		// `tags[]` carries plain strings of tag names only.
-		$this->assertSame( [ 'summer', 'eco-friendly' ], $result['tags'] );
+		$this->assertSame( array( 'summer', 'eco-friendly' ), $result['tags'] );
 
 		// No 1.x `attributes`-style leak anywhere on the product shape.
 		$this->assertArrayNotHasKey( 'attributes', $result );
@@ -1071,11 +1183,11 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// empty `brand` taxonomy entries should appear.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[]
+			array()
 		);
 
 		$brand_entries = array_filter(
-			$result['categories'] ?? [],
+			$result['categories'] ?? array(),
 			static fn( array $entry ): bool => 'brand' === ( $entry['taxonomy'] ?? '' )
 		);
 		$this->assertEmpty( $brand_entries );
@@ -1090,30 +1202,50 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// no distinction; splitting matches UCP core shape and lets
 		// agents distinguish "selectable dimension" from "product fact".
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Material',
 				'taxonomy'       => 'pa_material',
 				'has_variations' => false,
-				'terms'          => [
-					[ 'id' => 10, 'name' => 'Cotton', 'slug' => 'cotton' ],
-					[ 'id' => 11, 'name' => 'Organic', 'slug' => 'organic' ],
-				],
-			],
-			[
+				'terms'          => array(
+					array(
+						'id'   => 10,
+						'name' => 'Cotton',
+						'slug' => 'cotton',
+					),
+					array(
+						'id'   => 11,
+						'name' => 'Organic',
+						'slug' => 'organic',
+					),
+				),
+			),
+			array(
 				// Variation-defining attribute — lands in `options[]`.
 				'name'           => 'Size',
 				'taxonomy'       => 'pa_size',
 				'has_variations' => true,
-				'terms'          => [
-					[ 'id' => 20, 'name' => 'S', 'slug' => 's' ],
-					[ 'id' => 21, 'name' => 'M', 'slug' => 'm' ],
-					[ 'id' => 22, 'name' => 'L', 'slug' => 'l' ],
-				],
-			],
-		];
+				'terms'          => array(
+					array(
+						'id'   => 20,
+						'name' => 'S',
+						'slug' => 's',
+					),
+					array(
+						'id'   => 21,
+						'name' => 'M',
+						'slug' => 'm',
+					),
+					array(
+						'id'   => 22,
+						'name' => 'L',
+						'slug' => 'l',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		// Variation axis landed in options[] with `option_value` shape
 		// items (UCP 2026-04-08: required `label`, optional `id`).
@@ -1123,11 +1255,20 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $result['options'] );
 		$this->assertSame( 'Size', $result['options'][0]['name'] );
 		$this->assertSame(
-			[
-				[ 'label' => 'S', 'id' => 'pa_size:s' ],
-				[ 'label' => 'M', 'id' => 'pa_size:m' ],
-				[ 'label' => 'L', 'id' => 'pa_size:l' ],
-			],
+			array(
+				array(
+					'label' => 'S',
+					'id'    => 'pa_size:s',
+				),
+				array(
+					'label' => 'M',
+					'id'    => 'pa_size:m',
+				),
+				array(
+					'label' => 'L',
+					'id'    => 'pa_size:l',
+				),
+			),
 			$result['options'][0]['values']
 		);
 
@@ -1140,10 +1281,16 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertCount( 1, $result['metadata']['attributes'] );
 		$this->assertSame( 'Material', $result['metadata']['attributes'][0]['name'] );
 		$this->assertSame(
-			[
-				[ 'label' => 'Cotton', 'id' => 'pa_material:cotton' ],
-				[ 'label' => 'Organic', 'id' => 'pa_material:organic' ],
-			],
+			array(
+				array(
+					'label' => 'Cotton',
+					'id'    => 'pa_material:cotton',
+				),
+				array(
+					'label' => 'Organic',
+					'id'    => 'pa_material:organic',
+				),
+			),
 			$result['metadata']['attributes'][0]['values']
 		);
 
@@ -1160,10 +1307,10 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture = $this->simple_product_fixture();
 		unset( $fixture['attributes'] );
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'options', $result );
-		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? [] );
+		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? array() );
 	}
 
 	public function test_simple_product_reserved_attribute_demoted_to_metadata(): void {
@@ -1173,20 +1320,30 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// no buyer-selectable variation axis — Color is descriptive, not
 		// selectable. Reverts the #356 promotion.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Color',
 				'has_variations' => false,
-				'terms'          => [ [ 'id' => 1, 'name' => 'White' ] ],
-			],
-			[
+				'terms'          => array(
+					array(
+						'id'   => 1,
+						'name' => 'White',
+					),
+				),
+			),
+			array(
 				'name'           => 'Fabric Weight',
 				'has_variations' => false,
-				'terms'          => [ [ 'id' => 2, 'name' => '180gsm' ] ],
-			],
-		];
+				'terms'          => array(
+					array(
+						'id'   => 2,
+						'name' => '180gsm',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		// No options[] — non-variable product has no selectable axes.
 		$this->assertArrayNotHasKey( 'options', $result );
@@ -1206,15 +1363,20 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// the attribute in metadata.attributes (unchanged from prior
 		// behavior — the demote-uniform rule preserves this path).
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Origin',
 				'has_variations' => false,
-				'terms'          => [ [ 'id' => 10, 'name' => 'Italy' ] ],
-			],
-		];
+				'terms'          => array(
+					array(
+						'id'   => 10,
+						'name' => 'Italy',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'options', $result );
 		$this->assertArrayHasKey( 'metadata', $result );
@@ -1233,14 +1395,50 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// the case-sensitivity question is moot — there's no name-based
 		// branch left to be sensitive about.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[ 'name' => 'COLOR',   'has_variations' => false, 'terms' => [ [ 'id' => 1, 'name' => 'White' ] ] ],
-			[ 'name' => 'Size',    'has_variations' => false, 'terms' => [ [ 'id' => 2, 'name' => 'M' ] ] ],
-			[ 'name' => 'Pattern', 'has_variations' => false, 'terms' => [ [ 'id' => 3, 'name' => 'Solid' ] ] ],
-			[ 'name' => 'material','has_variations' => false, 'terms' => [ [ 'id' => 4, 'name' => 'Cotton' ] ] ],
-		];
+		$fixture['attributes'] = array(
+			array(
+				'name'           => 'COLOR',
+				'has_variations' => false,
+				'terms'          => array(
+					array(
+						'id'   => 1,
+						'name' => 'White',
+					),
+				),
+			),
+			array(
+				'name'           => 'Size',
+				'has_variations' => false,
+				'terms'          => array(
+					array(
+						'id'   => 2,
+						'name' => 'M',
+					),
+				),
+			),
+			array(
+				'name'           => 'Pattern',
+				'has_variations' => false,
+				'terms'          => array(
+					array(
+						'id'   => 3,
+						'name' => 'Solid',
+					),
+				),
+			),
+			array(
+				'name'           => 'material',
+				'has_variations' => false,
+				'terms'          => array(
+					array(
+						'id'   => 4,
+						'name' => 'Cotton',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'options', $result );
 		$this->assertArrayHasKey( 'metadata', $result );
@@ -1257,21 +1455,33 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// not advertising a specific concrete combination because no
 		// combination was chosen.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Color',
 				'taxonomy'       => 'pa_color',
 				'has_variations' => false,
-				'terms'          => [ [ 'id' => 1, 'name' => 'White', 'slug' => 'white' ] ],
-			],
-			[
+				'terms'          => array(
+					array(
+						'id'   => 1,
+						'name' => 'White',
+						'slug' => 'white',
+					),
+				),
+			),
+			array(
 				'name'           => 'Size',
 				'has_variations' => false,
-				'terms'          => [ [ 'id' => 0, 'name' => 'L', 'slug' => 'L' ] ],
-			],
-		];
+				'terms'          => array(
+					array(
+						'id'   => 0,
+						'name' => 'L',
+						'slug' => 'L',
+					),
+				),
+			),
+		);
 
-		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result  = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 		$variant = $result['variants'][0];
 
 		$this->assertArrayNotHasKey( 'options', $variant );
@@ -1286,48 +1496,84 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// metadata.attributes (no truncation possible because there's no
 		// promote path).
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Color',
 				'taxonomy'       => 'pa_color',
 				'has_variations' => false,
-				'terms'          => [
-					[ 'id' => 1, 'name' => 'Beige', 'slug' => 'beige' ],
-					[ 'id' => 2, 'name' => 'Blue',  'slug' => 'blue' ],
-					[ 'id' => 3, 'name' => 'Gray',  'slug' => 'gray' ],
-				],
-			],
-			[
+				'terms'          => array(
+					array(
+						'id'   => 1,
+						'name' => 'Beige',
+						'slug' => 'beige',
+					),
+					array(
+						'id'   => 2,
+						'name' => 'Blue',
+						'slug' => 'blue',
+					),
+					array(
+						'id'   => 3,
+						'name' => 'Gray',
+						'slug' => 'gray',
+					),
+				),
+			),
+			array(
 				'name'           => 'Size',
 				'has_variations' => false,
-				'terms'          => [
-					[ 'id' => 0, 'name' => 'XS',  'slug' => 'XS' ],
-					[ 'id' => 0, 'name' => 'S',   'slug' => 'S' ],
-					[ 'id' => 0, 'name' => 'M',   'slug' => 'M' ],
-					[ 'id' => 0, 'name' => 'L',   'slug' => 'L' ],
-					[ 'id' => 0, 'name' => 'XL',  'slug' => 'XL' ],
-					[ 'id' => 0, 'name' => 'XXL', 'slug' => 'XXL' ],
-				],
-			],
-		];
+				'terms'          => array(
+					array(
+						'id'   => 0,
+						'name' => 'XS',
+						'slug' => 'XS',
+					),
+					array(
+						'id'   => 0,
+						'name' => 'S',
+						'slug' => 'S',
+					),
+					array(
+						'id'   => 0,
+						'name' => 'M',
+						'slug' => 'M',
+					),
+					array(
+						'id'   => 0,
+						'name' => 'L',
+						'slug' => 'L',
+					),
+					array(
+						'id'   => 0,
+						'name' => 'XL',
+						'slug' => 'XL',
+					),
+					array(
+						'id'   => 0,
+						'name' => 'XXL',
+						'slug' => 'XXL',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'options', $result );
 		$this->assertArrayHasKey( 'metadata', $result );
 
-		$attrs_by_name = [];
+		$attrs_by_name = array();
 		foreach ( $result['metadata']['attributes'] as $attr ) {
 			$attrs_by_name[ $attr['name'] ] = $attr;
 		}
 
 		// All three colors emitted, not just the first.
 		$color_labels = array_column( $attrs_by_name['Color']['values'], 'label' );
-		$this->assertEqualsCanonicalizing( [ 'Beige', 'Blue', 'Gray' ], $color_labels );
+		$this->assertEqualsCanonicalizing( array( 'Beige', 'Blue', 'Gray' ), $color_labels );
 
 		// All six sizes emitted, not just XS.
 		$size_labels = array_column( $attrs_by_name['Size']['values'], 'label' );
-		$this->assertEqualsCanonicalizing( [ 'XS', 'S', 'M', 'L', 'XL', 'XXL' ], $size_labels );
+		$this->assertEqualsCanonicalizing( array( 'XS', 'S', 'M', 'L', 'XL', 'XXL' ), $size_labels );
 
 		// pa_* taxonomy IDs survive the demote path. Color uses real
 		// `pa_color` taxonomy with slugs, so each value should carry a
@@ -1358,34 +1604,42 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// selectable axes (its `options[]` is non-empty), but the
 		// synthesized fallback variant doesn't represent any one
 		// concrete combination, so it shouldn't claim one.
-		$fixture = [
+		$fixture = array(
 			'id'                => 999,
 			'name'              => 'Variable T-Shirt',
 			'slug'              => 'variable-t-shirt',
 			'permalink'         => 'https://example.com/product/variable-t-shirt/',
 			'short_description' => '',
 			'is_in_stock'       => true,
-			'prices'            => [
+			'prices'            => array(
 				'price'         => '2000',
 				'currency_code' => 'USD',
-			],
-			'attributes'        => [
-				[
+			),
+			'attributes'        => array(
+				array(
 					'name'           => 'Color',
 					'taxonomy'       => 'pa_color',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'id' => 1, 'name' => 'Black', 'slug' => 'black' ],
-						[ 'id' => 2, 'name' => 'White', 'slug' => 'white' ],
-					],
-				],
-			],
-		];
+					'terms'          => array(
+						array(
+							'id'   => 1,
+							'name' => 'Black',
+							'slug' => 'black',
+						),
+						array(
+							'id'   => 2,
+							'name' => 'White',
+							'slug' => 'white',
+						),
+					),
+				),
+			),
+		);
 
 		// Translate with empty $wc_variations (no pre-fetched variations
 		// supplied) — caller pretends the pre-fetch step was skipped.
 		// extract_variants() should fall back to synthesize_default().
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		// `options[]` is still emitted at the product level (variable
 		// product, has_variations:true axis is real) — so a future
@@ -1404,38 +1658,47 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Variable product with only has_variations:true attributes —
 		// `options[]` present, `metadata.attributes` absent.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Color',
 				'has_variations' => true,
-				'terms'          => [ [ 'id' => 30, 'name' => 'Red' ] ],
-			],
-		];
+				'terms'          => array(
+					array(
+						'id'   => 30,
+						'name' => 'Red',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayHasKey( 'options', $result );
-		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? [] );
+		$this->assertArrayNotHasKey( 'attributes', $result['metadata'] ?? array() );
 	}
 
 	public function test_translate_decodes_html_entities_in_title_and_term_labels(): void {
 		// The WC Store API returns name fields with HTML entities intact.
 		// Product title, attribute axis name, and term label must all be
 		// decoded to plain Unicode before emission.
-		$fixture         = $this->simple_product_fixture();
-		$fixture['name'] = 'Shirt &#8211; Green';
-		$fixture['attributes'] = [
-			[
+		$fixture               = $this->simple_product_fixture();
+		$fixture['name']       = 'Shirt &#8211; Green';
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Coul&#233;e',
 				'taxonomy'       => 'pa_coulee',
 				'has_variations' => true,
-				'terms'          => [
-					[ 'id' => 1, 'name' => 'Cr&#232;me', 'slug' => 'creme' ],
-				],
-			],
-		];
+				'terms'          => array(
+					array(
+						'id'   => 1,
+						'name' => 'Cr&#232;me',
+						'slug' => 'creme',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame( 'Shirt – Green', $result['title'] );
 		$this->assertSame( 'Coulée', $result['options'][0]['name'] );
@@ -1449,7 +1712,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture         = $this->simple_product_fixture();
 		$fixture['name'] = '&lt;strong&gt;Sale&lt;/strong&gt; Shirt';
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame( 'Sale Shirt', $result['title'] );
 	}
@@ -1463,7 +1726,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture['average_rating'] = '4.67';
 		$fixture['review_count']   = 42;
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayHasKey( 'rating', $result );
 		$this->assertSame( 4.67, $result['rating']['value'] );
@@ -1488,7 +1751,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture['average_rating'] = '0';
 		$fixture['review_count']   = 0;
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertArrayNotHasKey( 'rating', $result );
 		$this->assertArrayNotHasKey( 'extensions', $result );
@@ -1509,7 +1772,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// `status` is not in `product.json`.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[]
+			array()
 		);
 
 		$this->assertSame( 'published', $result['metadata']['lifecycle']['status'] );
@@ -1523,15 +1786,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// top-level date fields; the extension is the only reliable
 		// path to these values. Emitted under `metadata.timestamps`
 		// post-#374.
-		$fixture                 = $this->simple_product_fixture();
-		$fixture['extensions']   = [
-			'com-woocommerce-ai-storefront' => [
+		$fixture               = $this->simple_product_fixture();
+		$fixture['extensions'] = array(
+			'com-woocommerce-ai-storefront' => array(
 				'date_created'  => '2026-01-15T10:30:00Z',
 				'date_modified' => '2026-04-20T14:22:31Z',
-			],
-		];
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame( '2026-01-15T10:30:00Z', $result['metadata']['timestamps']['published_at'] );
 		$this->assertSame( '2026-04-20T14:22:31Z', $result['metadata']['timestamps']['updated_at'] );
@@ -1549,7 +1812,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture['date_created']  = '2026-01-15T10:30:00';
 		$fixture['date_modified'] = '2026-04-20T14:22:31';
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame( '2026-01-15T10:30:00', $result['metadata']['timestamps']['published_at'] );
 		$this->assertSame( '2026-04-20T14:22:31', $result['metadata']['timestamps']['updated_at'] );
@@ -1563,13 +1826,13 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// guaranteed to be in the UCP-expected RFC 3339 shape.
 		$fixture                 = $this->simple_product_fixture();
 		$fixture['date_created'] = '2020-01-01T00:00:00'; // stale / wrong
-		$fixture['extensions']   = [
-			'com-woocommerce-ai-storefront' => [
+		$fixture['extensions']   = array(
+			'com-woocommerce-ai-storefront' => array(
 				'date_created' => '2026-01-15T10:30:00Z', // authoritative
-			],
-		];
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame( '2026-01-15T10:30:00Z', $result['metadata']['timestamps']['published_at'] );
 	}
@@ -1582,21 +1845,21 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// fallback path (and ultimately to omission) without error.
 		// Post-#374: `metadata.timestamps` is omitted entirely when no
 		// timestamps survive (rather than emitted as an empty sub-block).
-		foreach ( [
-			'extensions-is-string' => [ 'extensions' => 'surprise string' ],
-			'extensions-is-int'    => [ 'extensions' => 42 ],
-			'namespace-is-string'  => [ 'extensions' => [ 'com-woocommerce-ai-storefront' => 'nope' ] ],
-			'namespace-is-object'  => [ 'extensions' => [ 'com-woocommerce-ai-storefront' => (object) [ 'foo' => 'bar' ] ] ],
-		] as $label => $overlay ) {
+		foreach ( array(
+			'extensions-is-string' => array( 'extensions' => 'surprise string' ),
+			'extensions-is-int'    => array( 'extensions' => 42 ),
+			'namespace-is-string'  => array( 'extensions' => array( 'com-woocommerce-ai-storefront' => 'nope' ) ),
+			'namespace-is-object'  => array( 'extensions' => array( 'com-woocommerce-ai-storefront' => (object) array( 'foo' => 'bar' ) ) ),
+		) as $label => $overlay ) {
 			$fixture = array_merge( $this->simple_product_fixture(), $overlay );
 
 			// Must not throw, and must omit timestamps entirely
 			// (no top-level date_* either in this fixture).
-			$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+			$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 			$this->assertArrayNotHasKey(
 				'timestamps',
-				$result['metadata'] ?? [],
+				$result['metadata'] ?? array(),
 				"Fatal-averted path failed: {$label}"
 			);
 		}
@@ -1612,7 +1875,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// conditional on input.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[]
+			array()
 		);
 
 		$this->assertArrayHasKey( 'lifecycle', $result['metadata'] );
@@ -1625,13 +1888,13 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// on each variant — not on the product (no `product.seller`
 		// field exists in the spec). Single-merchant store: every
 		// variant in the response carries the same seller.
-		$seller = [
+		$seller = array(
 			'name' => 'Example Store',
-		];
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[],
+			array(),
 			$seller
 		);
 
@@ -1644,7 +1907,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Variable products: same seller threads through to every
 		// translated variation, not just the first.
 		$fixture = $this->variable_product_with_variations_fixture();
-		$seller  = [ 'name' => 'Example Store' ];
+		$seller  = array( 'name' => 'Example Store' );
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$fixture['product'],
@@ -1664,7 +1927,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// keep working, just without seller emission on variants.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[]
+			array()
 		);
 
 		$this->assertArrayNotHasKey( 'seller', $result );
@@ -1678,8 +1941,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// skip the key than emit `seller: {}` on every variant.
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$this->simple_product_fixture(),
-			[],
-			[]
+			array(),
+			array()
 		);
 
 		$this->assertArrayNotHasKey( 'seller', $result );
@@ -1696,19 +1959,25 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// `option_value.json`, `id` is optional — omit it cleanly
 		// rather than emit a synthetic one.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Custom Axis',
 				'taxonomy'       => '', // no taxonomy → custom inline
 				'has_variations' => true,
-				'terms'          => [
-					[ 'name' => 'A', 'slug' => 'a' ],
-					[ 'name' => 'B', 'slug' => 'b' ],
-				],
-			],
-		];
+				'terms'          => array(
+					array(
+						'name' => 'A',
+						'slug' => 'a',
+					),
+					array(
+						'name' => 'B',
+						'slug' => 'b',
+					),
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame( 'Custom Axis', $result['options'][0]['name'] );
 		foreach ( $result['options'][0]['values'] as $value ) {
@@ -1722,19 +1991,22 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// `slug` (corrupt data, plugin override) should still emit
 		// `label` but skip `id` per term — graceful degradation.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['attributes'] = [
-			[
+		$fixture['attributes'] = array(
+			array(
 				'name'           => 'Color',
 				'taxonomy'       => 'pa_color',
 				'has_variations' => true,
-				'terms'          => [
-					[ 'name' => 'Black', 'slug' => 'black' ],
-					[ 'name' => 'NoSlug' ], // missing slug
-				],
-			],
-		];
+				'terms'          => array(
+					array(
+						'name' => 'Black',
+						'slug' => 'black',
+					),
+					array( 'name' => 'NoSlug' ), // missing slug
+				),
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$values = $result['options'][0]['values'];
 		$this->assertSame( 'pa_color:black', $values[0]['id'] );
@@ -1751,53 +2023,66 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// The structured per-axis shape (vs. an earlier sentinel-key
 		// design) eliminates collision risk with merchant-defined
 		// term names.
-		$wc_product = [
+		$wc_product = array(
 			'id'         => 999,
 			'name'       => 'Tee',
 			'type'       => 'variable',
-			'prices'     => [
+			'prices'     => array(
 				'price'         => '1500',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '1500', 'max_amount' => '1500' ],
-			],
-			'attributes' => [
-				[
+				'price_range'   => array(
+					'min_amount' => '1500',
+					'max_amount' => '1500',
+				),
+			),
+			'attributes' => array(
+				array(
 					'name'           => 'Color',
 					'taxonomy'       => 'pa_color',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'name' => 'Black', 'slug' => 'black' ],
-						[ 'name' => 'Green', 'slug' => 'green' ],
-					],
-				],
-			],
-			'variations' => [ [ 'id' => 991 ] ],
-		];
+					'terms'          => array(
+						array(
+							'name' => 'Black',
+							'slug' => 'black',
+						),
+						array(
+							'name' => 'Green',
+							'slug' => 'green',
+						),
+					),
+				),
+			),
+			'variations' => array( array( 'id' => 991 ) ),
+		);
 
-		$wc_variations = [
-			[
+		$wc_variations = array(
+			array(
 				'id'                => 991,
 				'name'              => 'Tee',
 				'is_in_stock'       => true,
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'         => '1500',
 					'currency_code' => 'USD',
-				],
+				),
 				// Live WC variations carry empty `attributes[]` plus a
 				// formatted `variation` string (post-#347 path).
-				'attributes'        => [],
+				'attributes'        => array(),
 				'variation'         => 'Color: Black',
-			],
-		];
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $wc_product, $wc_variations );
 
 		$variant = $result['variants'][0];
 		$this->assertSame(
-			[
-				[ 'name' => 'Color', 'label' => 'Black', 'id' => 'pa_color:black' ],
-			],
+			array(
+				array(
+					'name'  => 'Color',
+					'label' => 'Black',
+					'id'    => 'pa_color:black',
+				),
+			),
 			$variant['options']
 		);
 	}
@@ -1813,19 +2098,29 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// `[42 => "Clothing > Tshirts"]`), the translator emits the
 		// path string instead of the bare leaf name.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['categories'] = [
-			[ 'id' => 42, 'name' => 'Tshirts', 'slug' => 'tshirts', 'parent' => 41 ],
-		];
+		$fixture['categories'] = array(
+			array(
+				'id'     => 42,
+				'name'   => 'Tshirts',
+				'slug'   => 'tshirts',
+				'parent' => 41,
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$fixture,
-			[],
+			array(),
 			null,
-			[ 42 => 'Clothing > Tshirts' ]
+			array( 42 => 'Clothing > Tshirts' )
 		);
 
 		$this->assertSame(
-			[ [ 'value' => 'Clothing > Tshirts', 'taxonomy' => 'merchant' ] ],
+			array(
+				array(
+					'value'    => 'Clothing > Tshirts',
+					'taxonomy' => 'merchant',
+				),
+			),
 			$result['categories']
 		);
 	}
@@ -1835,19 +2130,29 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// for a category id (controller couldn't fetch its parents,
 		// dispatch failed, etc.), emit the bare leaf name.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['categories'] = [
-			[ 'id' => 99, 'name' => 'OrphanCat', 'slug' => 'orphancat', 'parent' => 0 ],
-		];
+		$fixture['categories'] = array(
+			array(
+				'id'     => 99,
+				'name'   => 'OrphanCat',
+				'slug'   => 'orphancat',
+				'parent' => 0,
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$fixture,
-			[],
+			array(),
 			null,
-			[ /* no entry for 99 */ ]
+			array( /* no entry for 99 */ )
 		);
 
 		$this->assertSame(
-			[ [ 'value' => 'OrphanCat', 'taxonomy' => 'merchant' ] ],
+			array(
+				array(
+					'value'    => 'OrphanCat',
+					'taxonomy' => 'merchant',
+				),
+			),
 			$result['categories']
 		);
 	}
@@ -1857,14 +2162,24 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// callers), emit the bare leaf name as before. Strict shape
 		// preserved.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['categories'] = [
-			[ 'id' => 5, 'name' => 'Widgets', 'slug' => 'widgets', 'parent' => 0 ],
-		];
+		$fixture['categories'] = array(
+			array(
+				'id'     => 5,
+				'name'   => 'Widgets',
+				'slug'   => 'widgets',
+				'parent' => 0,
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 
 		$this->assertSame(
-			[ [ 'value' => 'Widgets', 'taxonomy' => 'merchant' ] ],
+			array(
+				array(
+					'value'    => 'Widgets',
+					'taxonomy' => 'merchant',
+				),
+			),
 			$result['categories']
 		);
 	}
@@ -1873,29 +2188,47 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// WC `product_brand` taxonomy has no native hierarchy — brands
 		// stay flat even when the controller supplies a path map.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['brands']     = [
-			[ 'id' => 70, 'name' => 'NorthPeak', 'slug' => 'northpeak' ],
-		];
-		$fixture['categories'] = [
-			[ 'id' => 42, 'name' => 'Tshirts', 'slug' => 'tshirts', 'parent' => 41 ],
-		];
+		$fixture['brands']     = array(
+			array(
+				'id'   => 70,
+				'name' => 'NorthPeak',
+				'slug' => 'northpeak',
+			),
+		);
+		$fixture['categories'] = array(
+			array(
+				'id'     => 42,
+				'name'   => 'Tshirts',
+				'slug'   => 'tshirts',
+				'parent' => 41,
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$fixture,
-			[],
+			array(),
 			null,
-			[ 42 => 'Clothing > Tshirts', 70 => 'Should-Not-Be-Used' ]
+			array(
+				42 => 'Clothing > Tshirts',
+				70 => 'Should-Not-Be-Used',
+			)
 		);
 
 		// Two categories: hierarchical merchant + flat brand.
 		$this->assertCount( 2, $result['categories'] );
 		$this->assertSame(
-			[ 'value' => 'Clothing > Tshirts', 'taxonomy' => 'merchant' ],
+			array(
+				'value'    => 'Clothing > Tshirts',
+				'taxonomy' => 'merchant',
+			),
 			$result['categories'][0]
 		);
 		// Brand entry: bare name even though path map has key 70.
 		$this->assertSame(
-			[ 'value' => 'NorthPeak', 'taxonomy' => 'brand' ],
+			array(
+				'value'    => 'NorthPeak',
+				'taxonomy' => 'brand',
+			),
 			$result['categories'][1]
 		);
 	}
@@ -1905,11 +2238,16 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// cat['name'] decoded via self::decode(). Entities in the bare
 		// name must be resolved to plain Unicode.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['categories'] = [
-			[ 'id' => 7, 'name' => 'Caf&#233;', 'slug' => 'cafe', 'parent' => 0 ],
-		];
+		$fixture['categories'] = array(
+			array(
+				'id'     => 7,
+				'name'   => 'Caf&#233;',
+				'slug'   => 'cafe',
+				'parent' => 0,
+			),
+		);
 
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, [], null, [] );
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array(), null, array() );
 
 		$this->assertSame( 'Café', $result['categories'][0]['value'] );
 	}
@@ -1919,15 +2257,20 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// before storing names). This test documents that the translator emits
 		// the map value as-is — decoding responsibility sits upstream.
 		$fixture               = $this->simple_product_fixture();
-		$fixture['categories'] = [
-			[ 'id' => 8, 'name' => 'Cafe', 'slug' => 'cafe', 'parent' => 5 ],
-		];
+		$fixture['categories'] = array(
+			array(
+				'id'     => 8,
+				'name'   => 'Cafe',
+				'slug'   => 'cafe',
+				'parent' => 5,
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate(
 			$fixture,
-			[],
+			array(),
 			null,
-			[ 8 => 'Food & Drink > Café' ]
+			array( 8 => 'Food & Drink > Café' )
 		);
 
 		$this->assertSame( 'Food & Drink > Café', $result['categories'][0]['value'] );
@@ -1937,43 +2280,49 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// String-path variation references a value not in the map
 		// (e.g. label-case mismatch, custom-per-variation override).
 		// Emit name + label without `id` — silent graceful degradation.
-		$wc_product = [
+		$wc_product = array(
 			'id'         => 999,
 			'name'       => 'Tee',
 			'type'       => 'variable',
-			'prices'     => [
+			'prices'     => array(
 				'price'         => '1500',
 				'currency_code' => 'USD',
-				'price_range'   => [ 'min_amount' => '1500', 'max_amount' => '1500' ],
-			],
-			'attributes' => [
-				[
+				'price_range'   => array(
+					'min_amount' => '1500',
+					'max_amount' => '1500',
+				),
+			),
+			'attributes' => array(
+				array(
 					'name'           => 'Color',
 					'taxonomy'       => 'pa_color',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'name' => 'Black', 'slug' => 'black' ],
-					],
-				],
-			],
-			'variations' => [ [ 'id' => 991 ] ],
-		];
+					'terms'          => array(
+						array(
+							'name' => 'Black',
+							'slug' => 'black',
+						),
+					),
+				),
+			),
+			'variations' => array( array( 'id' => 991 ) ),
+		);
 
-		$wc_variations = [
-			[
+		$wc_variations = array(
+			array(
 				'id'                => 991,
 				'name'              => 'Tee',
 				'is_in_stock'       => true,
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'         => '1500',
 					'currency_code' => 'USD',
-				],
-				'attributes'        => [],
+				),
+				'attributes'        => array(),
 				// "Charcoal" not in the term slug map.
 				'variation'         => 'Color: Charcoal',
-			],
-		];
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $wc_product, $wc_variations );
 
@@ -2003,64 +2352,76 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	 * full price; regular range is $25 (2500) to $43 (4300).
 	 */
 	private function bundle_product_fixture(): array {
-		return [
-			'id'        => 875,
-			'name'      => 'Shirt Bundle',
-			'type'      => 'bundle',
-			'permalink' => 'https://example.com/product/shirt-bundle/',
-			'prices'    => [
+		return array(
+			'id'         => 875,
+			'name'       => 'Shirt Bundle',
+			'type'       => 'bundle',
+			'permalink'  => 'https://example.com/product/shirt-bundle/',
+			'prices'     => array(
 				'price'         => '2000',
 				'regular_price' => '2500',
 				'currency_code' => 'USD',
-			],
-			'extensions' => [
-				'bundles' => [
-					'bundle_min_size'      => '2',
-					'bundle_max_size'      => '4',
-					'bundle_stock_status'  => 'instock',
-					'bundle_price'         => [
-						'price'         => [
-							'min' => [ 'incl_tax' => '2215', 'excl_tax' => '2000' ],
-							'max' => [ 'incl_tax' => '4009', 'excl_tax' => '3620' ],
-						],
-						'regular_price' => [
-							'min' => [ 'incl_tax' => '2769', 'excl_tax' => '2500' ],
-							'max' => [ 'incl_tax' => '4763', 'excl_tax' => '4300' ],
-						],
+			),
+			'extensions' => array(
+				'bundles' => array(
+					'bundle_min_size'     => '2',
+					'bundle_max_size'     => '4',
+					'bundle_stock_status' => 'instock',
+					'bundle_price'        => array(
+						'price'         => array(
+							'min' => array(
+								'incl_tax' => '2215',
+								'excl_tax' => '2000',
+							),
+							'max' => array(
+								'incl_tax' => '4009',
+								'excl_tax' => '3620',
+							),
+						),
+						'regular_price' => array(
+							'min' => array(
+								'incl_tax' => '2769',
+								'excl_tax' => '2500',
+							),
+							'max' => array(
+								'incl_tax' => '4763',
+								'excl_tax' => '4300',
+							),
+						),
 						'currency_code' => 'USD',
-					],
-					'bundled_items'        => [
-						[
-							'bundled_item_id'                       => 1,
-							'product_id'                            => 77,
-							'quantity_default'                      => 1,
-							'optional'                              => false,
-							'priced_individually'                   => false,
-							'discount'                              => '',
+					),
+					'bundled_items'       => array(
+						array(
+							'bundled_item_id'     => 1,
+							'product_id'          => 77,
+							'quantity_default'    => 1,
+							'optional'            => false,
+							'priced_individually' => false,
+							'discount'            => '',
 							'override_default_variation_attributes' => false,
-						],
-						[
-							'bundled_item_id'                       => 2,
-							'product_id'                            => 80,
-							'quantity_default'                      => 1,
-							'optional'                              => false,
-							'priced_individually'                   => false,
-							'discount'                              => '',
+						),
+						array(
+							'bundled_item_id'     => 2,
+							'product_id'          => 80,
+							'quantity_default'    => 1,
+							'optional'            => false,
+							'priced_individually' => false,
+							'discount'            => '',
 							'override_default_variation_attributes' => false,
-						],
-						[
-							'bundled_item_id'                       => 3,
-							'product_id'                            => 24,
-							'quantity_default'                      => 1,
-							'optional'                              => true,
-							'priced_individually'                   => true,
-							'discount'                              => '10',
+						),
+						array(
+							'bundled_item_id'     => 3,
+							'product_id'          => 24,
+							'quantity_default'    => 1,
+							'optional'            => true,
+							'priced_individually' => true,
+							'discount'            => '10',
 							'override_default_variation_attributes' => false,
-						],
-					],
-				],
-			],
-		];
+						),
+					),
+				),
+			),
+		);
 	}
 
 	public function test_bundle_price_range_uses_bundle_extension_min_max(): void {
@@ -2104,14 +2465,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$fixture = $this->bundle_product_fixture();
 		// Strip the `max` legs from BOTH live and regular price.
 		// Regular legs match live legs in value (no discount).
-		$fixture['extensions']['bundles']['bundle_price']['price'] = [
-			'min' => [ 'excl_tax' => '2000' ],
+		$fixture['extensions']['bundles']['bundle_price']['price'] = array(
+			'min' => array( 'excl_tax' => '2000' ),
 			// max omitted — flat-price bundle.
-		];
-		$fixture['extensions']['bundles']['bundle_price']['regular_price'] = [
-			'min' => [ 'excl_tax' => '2000' ],
-			'max' => [ 'excl_tax' => '2000' ],
-		];
+		);
+		$fixture['extensions']['bundles']['bundle_price']['regular_price'] = array(
+			'min' => array( 'excl_tax' => '2000' ),
+			'max' => array( 'excl_tax' => '2000' ),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
@@ -2123,8 +2484,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// list_price_range must fall back to the parent's
 		// `prices.currency_code`, not hard-default to USD. Regression
 		// for round-2 Copilot review on a non-USD store.
-		$fixture                                                     = $this->bundle_product_fixture();
-		$fixture['prices']['currency_code']                          = 'GBP';
+		$fixture                            = $this->bundle_product_fixture();
+		$fixture['prices']['currency_code'] = 'GBP';
 		unset( $fixture['extensions']['bundles']['bundle_price']['currency_code'] );
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
@@ -2171,22 +2532,22 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Inject one invalid entry (missing bundled_item_id) before the valid items.
 		array_unshift(
 			$fixture['extensions']['bundles']['bundled_items'],
-			[
+			array(
 				'product_id'                            => 999,
 				'quantity_default'                      => 1,
 				'optional'                              => false,
 				'override_default_variation_attributes' => false,
 				// `bundled_item_id` deliberately absent.
-			]
+			)
 		);
 		// And one with product_id=0.
-		$fixture['extensions']['bundles']['bundled_items'][] = [
+		$fixture['extensions']['bundles']['bundled_items'][] = array(
 			'bundled_item_id'                       => 4,
 			'product_id'                            => 0,
 			'quantity_default'                      => 1,
 			'optional'                              => false,
 			'override_default_variation_attributes' => false,
-		];
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
@@ -2204,10 +2565,10 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Per the docblock contract, emit no metadata.bundle at all
 		// rather than `metadata.bundle.items: []`.
 		$fixture = $this->bundle_product_fixture();
-		$fixture['extensions']['bundles']['bundled_items'] = [
-			[ 'product_id' => 0 ],
+		$fixture['extensions']['bundles']['bundled_items'] = array(
+			array( 'product_id' => 0 ),
 			'not-an-array-at-all',
-		];
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
@@ -2281,19 +2642,19 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	 * children as a flat int[] under `grouped_products`.
 	 */
 	private function grouped_product_fixture(): array {
-		return [
+		return array(
 			'id'               => 600,
 			'name'             => 'Grouped Parent',
 			'slug'             => 'grouped-parent',
 			'permalink'        => 'https://example.com/product/grouped-parent/',
 			'is_in_stock'      => true,
-			'prices'           => [
+			'prices'           => array(
 				'price'         => '3000',
 				'currency_code' => 'USD',
-			],
+			),
 			'type'             => 'grouped',
-			'grouped_products' => [ 601, 602, 603 ],
-		];
+			'grouped_products' => array( 601, 602, 603 ),
+		);
 	}
 
 	public function test_grouped_metadata_emitted_with_children_list(): void {
@@ -2301,7 +2662,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayHasKey( 'metadata', $result );
 		$this->assertArrayHasKey( 'grouped', $result['metadata'] );
-		$this->assertSame( [ 601, 602, 603 ], $result['metadata']['grouped']['children'] );
+		$this->assertSame( array( 601, 602, 603 ), $result['metadata']['grouped']['children'] );
 	}
 
 	public function test_non_grouped_product_omits_grouped_metadata(): void {
@@ -2318,12 +2679,12 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Merchant misconfiguration: same child listed twice + a zero ID
 		// + a negative ID. Translator dedupes via array_unique and drops
 		// non-positive IDs.
-		$fixture                       = $this->grouped_product_fixture();
-		$fixture['grouped_products']  = [ 601, 601, 0, -5, 602 ];
+		$fixture                     = $this->grouped_product_fixture();
+		$fixture['grouped_products'] = array( 601, 601, 0, -5, 602 );
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
-		$this->assertSame( [ 601, 602 ], $result['metadata']['grouped']['children'] );
+		$this->assertSame( array( 601, 602 ), $result['metadata']['grouped']['children'] );
 	}
 
 	public function test_grouped_metadata_omitted_when_children_empty(): void {
@@ -2332,8 +2693,8 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// grouped" from "grouped with no children" (the former: omit; the
 		// latter: misconfiguration, also omit because the empty list is
 		// not actionable).
-		$fixture                      = $this->grouped_product_fixture();
-		$fixture['grouped_products']  = [];
+		$fixture                     = $this->grouped_product_fixture();
+		$fixture['grouped_products'] = array();
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture );
 
@@ -2347,19 +2708,25 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Lazy fetcher returns a `simple` Store API record for every child
 		// → result is `['quantity' => [cid => '1', ...]]`.
 		$fetcher = function ( int $cid ): array {
-			return [
+			return array(
 				'id'   => $cid,
 				'type' => 'simple',
-			];
+			);
 		};
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601, 602, 603 ],
+			array( 601, 602, 603 ),
 			$fetcher
 		);
 
 		$this->assertSame(
-			[ 'quantity' => [ 601 => '1', 602 => '1', 603 => '1' ] ],
+			array(
+				'quantity' => array(
+					601 => '1',
+					602 => '1',
+					603 => '1',
+				),
+			),
 			$result
 		);
 	}
@@ -2368,15 +2735,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// A single variable child poisons the whole grouped product —
 		// caller falls back to the parent permalink for buyer configuration.
 		$fetcher = function ( int $cid ): array {
-			return [
+			return array(
 				'id'          => $cid,
 				'type'        => 601 === $cid ? 'simple' : 'variable',
 				'is_in_stock' => true,
-			];
+			);
 		};
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601, 602 ],
+			array( 601, 602 ),
 			$fetcher
 		);
 
@@ -2388,15 +2755,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// just variable. External children (affiliate links to partner
 		// sites) are realistic in the wild.
 		$fetcher = function ( int $cid ): array {
-			return [
+			return array(
 				'id'          => $cid,
 				'type'        => 601 === $cid ? 'simple' : 'external',
 				'is_in_stock' => true,
-			];
+			);
 		};
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601, 602 ],
+			array( 601, 602 ),
 			$fetcher
 		);
 
@@ -2409,15 +2776,15 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// children slip through. Helper must check each child's
 		// `is_in_stock` independently.
 		$fetcher = function ( int $cid ): array {
-			return [
+			return array(
 				'id'          => $cid,
 				'type'        => 'simple',
 				'is_in_stock' => 601 === $cid,
-			];
+			);
 		};
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601, 602 ],
+			array( 601, 602 ),
 			$fetcher
 		);
 
@@ -2429,28 +2796,34 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// returned quantity_map. Defaults to 1 when missing or
 		// non-positive.
 		$fetcher = function ( int $cid ): array {
-			$minimums = [
+			$minimums = array(
 				601 => 1,
 				602 => 3,
 				603 => 0, // invalid → defaults to 1
-			];
-			return [
+			);
+			return array(
 				'id'          => $cid,
 				'type'        => 'simple',
 				'is_in_stock' => true,
-				'add_to_cart' => [
+				'add_to_cart' => array(
 					'minimum' => $minimums[ $cid ] ?? null,
-				],
-			];
+				),
+			);
 		};
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601, 602, 603 ],
+			array( 601, 602, 603 ),
 			$fetcher
 		);
 
 		$this->assertSame(
-			[ 'quantity' => [ 601 => '1', 602 => '3', 603 => '1' ] ],
+			array(
+				'quantity' => array(
+					601 => '1',
+					602 => '3',
+					603 => '1',
+				),
+			),
 			$result
 		);
 	}
@@ -2461,20 +2834,20 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// helper functional rather than null-returning when the field
 		// isn't present.
 		$fetcher = function ( int $cid ): array {
-			return [
+			return array(
 				'id'          => $cid,
 				'type'        => 'simple',
 				'is_in_stock' => true,
 				// no add_to_cart key
-			];
+			);
 		};
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601 ],
+			array( 601 ),
 			$fetcher
 		);
 
-		$this->assertSame( [ 'quantity' => [ 601 => '1' ] ], $result );
+		$this->assertSame( array( 'quantity' => array( 601 => '1' ) ), $result );
 	}
 
 	public function test_build_grouped_url_query_returns_null_when_child_fetch_fails(): void {
@@ -2484,7 +2857,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		};
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601 ],
+			array( 601 ),
 			$fetcher
 		);
 
@@ -2498,11 +2871,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$call_count = 0;
 		$fetcher    = function ( int $cid ) use ( &$call_count ): array {
 			++$call_count;
-			return [ 'id' => $cid, 'type' => 'variable' ];
+			return array(
+				'id'   => $cid,
+				'type' => 'variable',
+			);
 		};
 
 		WC_AI_Storefront_UCP_Product_Translator::build_grouped_url_query(
-			[ 601, 602, 603 ],
+			array( 601, 602, 603 ),
 			$fetcher
 		);
 
@@ -2536,29 +2912,29 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	 *                                  or empty string for no default.
 	 */
 	private function variable_parent_with_length_axis( string $default_term_slug ): array {
-		$terms = [];
-		foreach ( [ '1-month', '3-months', '6-months', '1-year' ] as $slug ) {
-			$terms[] = [
+		$terms = array();
+		foreach ( array( '1-month', '3-months', '6-months', '1-year' ) as $slug ) {
+			$terms[] = array(
 				'id'      => crc32( $slug ),
 				'name'    => str_replace( '-', ' ', $slug ),
 				'slug'    => $slug,
 				'default' => $slug === $default_term_slug,
-			];
+			);
 		}
-		return [
+		return array(
 			'id'         => 100,
 			'name'       => 'Variable Subscription',
 			'type'       => 'variable',
-			'attributes' => [
-				[
+			'attributes' => array(
+				array(
 					'id'             => 3,
 					'name'           => 'Length',
 					'taxonomy'       => 'pa_length',
 					'has_variations' => true,
 					'terms'          => $terms,
-				],
-			],
-		];
+				),
+			),
+		);
 	}
 
 	/**
@@ -2566,15 +2942,18 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	 * 1mo/3mo/6mo/1yr). Mirrors WC Store API variation response shape.
 	 */
 	private function length_axis_variations(): array {
-		$out = [];
+		$out = array();
 		$id  = 101;
-		foreach ( [ '1-month', '3-months', '6-months', '1-year' ] as $slug ) {
-			$out[] = [
+		foreach ( array( '1-month', '3-months', '6-months', '1-year' ) as $slug ) {
+			$out[] = array(
 				'id'         => $id++,
-				'attributes' => [
-					[ 'name' => 'Length', 'value' => $slug ],
-				],
-			];
+				'attributes' => array(
+					array(
+						'name'  => 'Length',
+						'value' => $slug,
+					),
+				),
+			);
 		}
 		return $out;
 	}
@@ -2612,13 +2991,13 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// slug: ''. That's not deterministic.
 		$parent = $this->variable_parent_with_length_axis( '' );
 		// Override: explicitly add a default-true term with empty slug.
-		$parent['attributes'][0]['terms'][] = [
+		$parent['attributes'][0]['terms'][] = array(
 			'id'      => 999,
 			'name'    => 'Any',
 			'slug'    => '',
 			'default' => true,
-		];
-		$variations = $this->length_axis_variations();
+		);
+		$variations                         = $this->length_axis_variations();
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
 			$parent,
@@ -2631,36 +3010,92 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 	public function test_resolve_default_variation_id_returns_null_when_partial_coverage(): void {
 		// Two axes: Color + Size. Color has a default, Size doesn't.
 		// Partial coverage → null.
-		$parent = [
+		$parent     = array(
 			'id'         => 200,
 			'name'       => 'Two-axis Variable',
 			'type'       => 'variable',
-			'attributes' => [
-				[
+			'attributes' => array(
+				array(
 					'name'           => 'Color',
 					'taxonomy'       => 'pa_color',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'id' => 1, 'name' => 'Red',  'slug' => 'red',  'default' => true  ],
-						[ 'id' => 2, 'name' => 'Blue', 'slug' => 'blue', 'default' => false ],
-					],
-				],
-				[
+					'terms'          => array(
+						array(
+							'id'      => 1,
+							'name'    => 'Red',
+							'slug'    => 'red',
+							'default' => true,
+						),
+						array(
+							'id'      => 2,
+							'name'    => 'Blue',
+							'slug'    => 'blue',
+							'default' => false,
+						),
+					),
+				),
+				array(
 					'name'           => 'Size',
 					'taxonomy'       => 'pa_size',
 					'has_variations' => true,
-					'terms'          => [
-						[ 'id' => 3, 'name' => 'Small', 'slug' => 'small', 'default' => false ],
-						[ 'id' => 4, 'name' => 'Large', 'slug' => 'large', 'default' => false ],
-					],
-				],
-			],
-		];
-		$variations = [
-			[ 'id' => 201, 'attributes' => [ [ 'name' => 'Color', 'value' => 'red'  ], [ 'name' => 'Size', 'value' => 'small' ] ] ],
-			[ 'id' => 202, 'attributes' => [ [ 'name' => 'Color', 'value' => 'red'  ], [ 'name' => 'Size', 'value' => 'large' ] ] ],
-			[ 'id' => 203, 'attributes' => [ [ 'name' => 'Color', 'value' => 'blue' ], [ 'name' => 'Size', 'value' => 'small' ] ] ],
-		];
+					'terms'          => array(
+						array(
+							'id'      => 3,
+							'name'    => 'Small',
+							'slug'    => 'small',
+							'default' => false,
+						),
+						array(
+							'id'      => 4,
+							'name'    => 'Large',
+							'slug'    => 'large',
+							'default' => false,
+						),
+					),
+				),
+			),
+		);
+		$variations = array(
+			array(
+				'id'         => 201,
+				'attributes' => array(
+					array(
+						'name'  => 'Color',
+						'value' => 'red',
+					),
+					array(
+						'name'  => 'Size',
+						'value' => 'small',
+					),
+				),
+			),
+			array(
+				'id'         => 202,
+				'attributes' => array(
+					array(
+						'name'  => 'Color',
+						'value' => 'red',
+					),
+					array(
+						'name'  => 'Size',
+						'value' => 'large',
+					),
+				),
+			),
+			array(
+				'id'         => 203,
+				'attributes' => array(
+					array(
+						'name'  => 'Color',
+						'value' => 'blue',
+					),
+					array(
+						'name'  => 'Size',
+						'value' => 'small',
+					),
+				),
+			),
+		);
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
 			$parent,
@@ -2693,7 +3128,7 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
 			$parent,
-			[]
+			array()
 		);
 
 		$this->assertNull( $result );
@@ -2706,13 +3141,13 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// no variation has that value — resolution fails closed.
 		$parent = $this->variable_parent_with_length_axis( 'discontinued-term' );
 		// Inject a fake default-marked term that no variation matches.
-		$parent['attributes'][0]['terms'][] = [
+		$parent['attributes'][0]['terms'][] = array(
 			'id'      => 9999,
 			'name'    => 'Discontinued',
 			'slug'    => 'discontinued-term',
 			'default' => true,
-		];
-		$variations = $this->length_axis_variations();
+		);
+		$variations                         = $this->length_axis_variations();
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
 			$parent,
@@ -2729,13 +3164,18 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// must parse that string and match by LABEL since the formatted
 		// string uses labels, not slugs.
 		$parent     = $this->variable_parent_with_length_axis( '6-months' );
-		$variations = [];
-		foreach ( [ '101' => '1 month', '102' => '3 months', '103' => '6 months', '104' => '1 year' ] as $id => $label ) {
-			$variations[] = [
+		$variations = array();
+		foreach ( array(
+			'101' => '1 month',
+			'102' => '3 months',
+			'103' => '6 months',
+			'104' => '1 year',
+		) as $id => $label ) {
+			$variations[] = array(
 				'id'         => (int) $id,
-				'attributes' => [],
+				'attributes' => array(),
 				'variation'  => "Length: $label",
-			];
+			);
 		}
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(
@@ -2755,18 +3195,24 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		// Without this, any "extra" variation axis would silently disqualify
 		// the default-matching variation.
 		$parent     = $this->variable_parent_with_length_axis( '6-months' );
-		$variations = [];
+		$variations = array();
 		$id         = 101;
-		foreach ( [ '1-month', '3-months', '6-months', '1-year' ] as $slug ) {
-			$variations[] = [
+		foreach ( array( '1-month', '3-months', '6-months', '1-year' ) as $slug ) {
+			$variations[] = array(
 				'id'         => $id++,
-				'attributes' => [
-					[ 'name' => 'Length', 'value' => $slug ],
+				'attributes' => array(
+					array(
+						'name'  => 'Length',
+						'value' => $slug,
+					),
 					// Extra axis the parent never declared as a variation
 					// driver. Should be silently ignored during matching.
-					[ 'name' => 'WarehouseSlot', 'value' => 'A-12' ],
-				],
-			];
+					array(
+						'name'  => 'WarehouseSlot',
+						'value' => 'A-12',
+					),
+				),
+			);
 		}
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::resolve_default_variation_id(

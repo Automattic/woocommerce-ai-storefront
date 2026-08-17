@@ -143,10 +143,10 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 	 */
 	function wc_ai_storefront_uninstall_multisite(): void {
 		$ids = get_sites(
-			[
+			array(
 				'fields' => 'ids',
 				'number' => 0,
-			]
+			)
 		);
 		foreach ( $ids as $id ) {
 			switch_to_blog( $id );

@@ -48,13 +48,13 @@ class AdminSearchTaxonomyTest extends \PHPUnit\Framework\TestCase {
 		// returns. The controller treats the result as opaque and only
 		// reads `term_id`, `name`, `slug`, `count` — so we only set
 		// those, not the full WP_Term public surface.
-		$term1        = new stdClass();
+		$term1          = new stdClass();
 		$term1->term_id = 11;
 		$term1->name    = 'Summer';
 		$term1->slug    = 'summer';
 		$term1->count   = 42;
 
-		$term2        = new stdClass();
+		$term2          = new stdClass();
 		$term2->term_id = 22;
 		$term2->name    = 'Sale';
 		$term2->slug    = 'sale';
@@ -71,18 +71,28 @@ class AdminSearchTaxonomyTest extends \PHPUnit\Framework\TestCase {
 					}
 				)
 			)
-			->andReturn( [ $term1, $term2 ] );
+			->andReturn( array( $term1, $term2 ) );
 
 		$response = $this->controller->search_tags();
 		$data     = $response->get_data();
 
 		$this->assertCount( 2, $data );
 		$this->assertSame(
-			[ 'id' => 11, 'name' => 'Summer', 'slug' => 'summer', 'count' => 42 ],
+			array(
+				'id'    => 11,
+				'name'  => 'Summer',
+				'slug'  => 'summer',
+				'count' => 42,
+			),
 			$data[0]
 		);
 		$this->assertSame(
-			[ 'id' => 22, 'name' => 'Sale', 'slug' => 'sale', 'count' => 7 ],
+			array(
+				'id'    => 22,
+				'name'  => 'Sale',
+				'slug'  => 'sale',
+				'count' => 7,
+			),
 			$data[1]
 		);
 	}
@@ -96,7 +106,7 @@ class AdminSearchTaxonomyTest extends \PHPUnit\Framework\TestCase {
 			->andReturn( new WP_Error( 'invalid_taxonomy' ) );
 
 		$response = $this->controller->search_tags();
-		$this->assertSame( [], $response->get_data() );
+		$this->assertSame( array(), $response->get_data() );
 	}
 
 	// ------------------------------------------------------------------
@@ -118,11 +128,11 @@ class AdminSearchTaxonomyTest extends \PHPUnit\Framework\TestCase {
 		Functions\expect( 'get_terms' )->never();
 
 		$response = $this->controller->search_brands();
-		$this->assertSame( [], $response->get_data() );
+		$this->assertSame( array(), $response->get_data() );
 	}
 
 	public function test_search_brands_returns_shape_compatible_data_when_registered(): void {
-		$term        = new stdClass();
+		$term          = new stdClass();
 		$term->term_id = 5;
 		$term->name    = 'Adidas';
 		$term->slug    = 'adidas';
@@ -142,14 +152,19 @@ class AdminSearchTaxonomyTest extends \PHPUnit\Framework\TestCase {
 					}
 				)
 			)
-			->andReturn( [ $term ] );
+			->andReturn( array( $term ) );
 
 		$response = $this->controller->search_brands();
 		$data     = $response->get_data();
 
 		$this->assertCount( 1, $data );
 		$this->assertSame(
-			[ 'id' => 5, 'name' => 'Adidas', 'slug' => 'adidas', 'count' => 18 ],
+			array(
+				'id'    => 5,
+				'name'  => 'Adidas',
+				'slug'  => 'adidas',
+				'count' => 18,
+			),
 			$data[0]
 		);
 	}

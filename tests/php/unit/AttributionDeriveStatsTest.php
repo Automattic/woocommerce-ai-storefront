@@ -44,7 +44,7 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_aov_is_zero_when_no_orders(): void {
-		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 0.0, [] );
+		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 0.0, array() );
 
 		// Strict equality on float zero — `===` distinguishes 0.0
 		// from `null`, which would also be a "no AOV" signal but
@@ -53,9 +53,12 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_aov_divides_revenue_by_orders(): void {
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 2, 'revenue' => 50.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 2,
+				'revenue' => 50.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 2, 50.00, $by_agent );
 
@@ -73,10 +76,16 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// average per-agent AOVs — a tempting "cleaner" rewrite that
 		// produces the wrong answer for any store with uneven agent
 		// distribution (i.e., almost every real store).
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 1, 'revenue' => 1000.00 ],
-			'gemini'  => [ 'orders' => 9, 'revenue' => 90.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 1,
+				'revenue' => 1000.00,
+			),
+			'gemini'  => array(
+				'orders'  => 9,
+				'revenue' => 90.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 1090.00, $by_agent );
 
@@ -85,9 +94,12 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_aov_rounds_to_two_decimals(): void {
 		// $100 / 3 orders = $33.333... → $33.33 (round-half-up)
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 3, 'revenue' => 100.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 3,
+				'revenue' => 100.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 3, 100.00, $by_agent );
 
@@ -99,7 +111,7 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_top_agent_is_null_when_by_agent_empty(): void {
-		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 0.0, [] );
+		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 0.0, array() );
 
 		// `null` (not an empty array) — the React side does
 		// `stats?.top_agent?.name ?? '—'` and an empty array
@@ -113,10 +125,16 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// revenue. "Top agent" is defined as primary-driver-by-volume,
 		// not primary-driver-by-money — pinning that decision here so
 		// a future "switch to revenue-primary" refactor can't sneak in.
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 3, 'revenue' => 90.00 ],
-			'gemini'  => [ 'orders' => 1, 'revenue' => 1000.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 3,
+				'revenue' => 90.00,
+			),
+			'gemini'  => array(
+				'orders'  => 1,
+				'revenue' => 1000.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 4, 1090.00, $by_agent );
 
@@ -132,10 +150,16 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 	public function test_top_agent_revenue_tiebreaks_when_orders_equal(): void {
 		// Both agents at 2 orders. Revenue secondary kicks in:
 		// gemini ($200) > chatgpt ($50), so gemini wins.
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 2, 'revenue' => 50.00 ],
-			'gemini'  => [ 'orders' => 2, 'revenue' => 200.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 2,
+				'revenue' => 50.00,
+			),
+			'gemini'  => array(
+				'orders'  => 2,
+				'revenue' => 200.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 4, 250.00, $by_agent );
 
@@ -156,10 +180,16 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// subtraction-based AND any other comparator that truncates
 		// sub-dollar precision — so the rename reflects what's
 		// actually pinned.)
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 2, 'revenue' => 300.25 ],
-			'gemini'  => [ 'orders' => 2, 'revenue' => 300.50 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 2,
+				'revenue' => 300.25,
+			),
+			'gemini'  => array(
+				'orders'  => 2,
+				'revenue' => 300.50,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 4, 600.75, $by_agent );
 
@@ -180,10 +210,16 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// passes the tied agents in REVERSE alphabetical order to
 		// verify the tertiary actually fires (not just "happens to
 		// match input order").
-		$by_agent = [
-			'gemini'  => [ 'orders' => 1, 'revenue' => 50.00 ],
-			'chatgpt' => [ 'orders' => 1, 'revenue' => 50.00 ],
-		];
+		$by_agent = array(
+			'gemini'  => array(
+				'orders'  => 1,
+				'revenue' => 50.00,
+			),
+			'chatgpt' => array(
+				'orders'  => 1,
+				'revenue' => 50.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 2, 100.00, $by_agent );
 
@@ -207,9 +243,12 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// (both totals come from the same SQL row loop) but
 		// `derive_stats()` is `public static` and may grow other
 		// callers in PR-B.
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 5,
+				'revenue' => 250.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 250.00, $by_agent );
 
@@ -223,7 +262,7 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// test: silently dividing by a negative would yield a
 		// negative AOV that would render as "$-50.00" — silently-
 		// wrong is worse than empty-state.
-		$result = WC_AI_Storefront_Attribution::derive_stats( -1, 100.00, [] );
+		$result = WC_AI_Storefront_Attribution::derive_stats( -1, 100.00, array() );
 
 		$this->assertSame( 0.0, $result['ai_aov'] );
 		$this->assertNull( $result['top_agent'] );
@@ -238,10 +277,16 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// value cell on the React side with a populated subvalue —
 		// looks like a render bug. Better to skip and fall through
 		// to the next-best agent.
-		$by_agent = [
-			''        => [ 'orders' => 10, 'revenue' => 500.00 ],
-			'chatgpt' => [ 'orders' => 3, 'revenue' => 150.00 ],
-		];
+		$by_agent = array(
+			''        => array(
+				'orders'  => 10,
+				'revenue' => 500.00,
+			),
+			'chatgpt' => array(
+				'orders'  => 3,
+				'revenue' => 150.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 13, 650.00, $by_agent );
 
@@ -253,9 +298,12 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 	public function test_returns_null_top_agent_when_only_empty_string_agent_present(): void {
 		// All `by_agent` rows have empty names → after skipping,
 		// `$ranked` is empty → no winner.
-		$by_agent = [
-			'' => [ 'orders' => 5, 'revenue' => 250.00 ],
-		];
+		$by_agent = array(
+			'' => array(
+				'orders'  => 5,
+				'revenue' => 250.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent );
 
@@ -269,9 +317,12 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// width past its layout slot. The helper caps at
 		// TOP_AGENT_NAME_MAX_LENGTH (64 chars).
 		$long_name = str_repeat( 'a', 200 );
-		$by_agent  = [
-			$long_name => [ 'orders' => 1, 'revenue' => 50.00 ],
-		];
+		$by_agent  = array(
+			$long_name => array(
+				'orders'  => 1,
+				'revenue' => 50.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 1, 50.00, $by_agent );
 
@@ -291,9 +342,12 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// More importantly: the happy-path `share_percent` must always
 		// be `float`, not `int`. `round()` returns `float`, so we just
 		// verify that here on a normal case.
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 1, 'revenue' => 50.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 1,
+				'revenue' => 50.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 1, 50.00, $by_agent );
 
@@ -314,11 +368,20 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// drive?" vs "what fraction of TOTAL store orders did
 		// this AI agent drive?" — the latter is a much smaller
 		// number for most stores).
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 4, 'revenue' => 400.00 ],
-			'gemini'  => [ 'orders' => 3, 'revenue' => 300.00 ],
-			'claude'  => [ 'orders' => 3, 'revenue' => 300.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 4,
+				'revenue' => 400.00,
+			),
+			'gemini'  => array(
+				'orders'  => 3,
+				'revenue' => 300.00,
+			),
+			'claude'  => array(
+				'orders'  => 3,
+				'revenue' => 300.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 1000.00, $by_agent );
 
@@ -327,11 +390,20 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_top_agent_share_percent_rounds_to_one_decimal(): void {
 		// Top agent has 1 of 3 → 33.333...% → 33.3% (one decimal).
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 1, 'revenue' => 50.00 ],
-			'gemini'  => [ 'orders' => 1, 'revenue' => 30.00 ],
-			'claude'  => [ 'orders' => 1, 'revenue' => 20.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 1,
+				'revenue' => 50.00,
+			),
+			'gemini'  => array(
+				'orders'  => 1,
+				'revenue' => 30.00,
+			),
+			'claude'  => array(
+				'orders'  => 1,
+				'revenue' => 20.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 3, 100.00, $by_agent );
 
@@ -346,23 +418,26 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// Locks the contract — derive_stats() is the helper, not
 		// the full response shape. Adding fields here without
 		// updating get_stats() would silently expand the contract.
-		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 0.0, [] );
+		$result = WC_AI_Storefront_Attribution::derive_stats( 0, 0.0, array() );
 
 		$this->assertSame(
-			[ 'ai_aov', 'top_agent', 'by_channel', 'top_channel' ],
+			array( 'ai_aov', 'top_agent', 'by_channel', 'top_channel' ),
 			array_keys( $result )
 		);
 	}
 
 	public function test_top_agent_shape_when_present(): void {
-		$by_agent = [
-			'chatgpt' => [ 'orders' => 1, 'revenue' => 50.00 ],
-		];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 1,
+				'revenue' => 50.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 1, 50.00, $by_agent );
 
 		$this->assertSame(
-			[ 'name', 'orders', 'revenue', 'share_percent' ],
+			array( 'name', 'orders', 'revenue', 'share_percent' ),
 			array_keys( $result['top_agent'] )
 		);
 	}
@@ -382,26 +457,36 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 	// hasn't yet been updated.
 
 	public function test_by_channel_returns_empty_when_param_omitted(): void {
-		$by_agent = [ 'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ] ];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 5,
+				'revenue' => 250.00,
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent );
 
-		$this->assertSame( [], $result['by_channel'] );
+		$this->assertSame( array(), $result['by_channel'] );
 		$this->assertNull( $result['top_channel'] );
 	}
 
 	public function test_by_channel_preserves_orders_and_revenue(): void {
-		$by_agent   = [ 'chatgpt' => [ 'orders' => 10, 'revenue' => 500.00 ] ];
-		$by_channel = [
-			'woo_ucp'    => [
+		$by_agent   = array(
+			'chatgpt' => array(
+				'orders'  => 10,
+				'revenue' => 500.00,
+			),
+		);
+		$by_channel = array(
+			'woo_ucp'    => array(
 				'orders'  => 7,
 				'revenue' => 350.00,
-			],
-			'woo_jsonld' => [
+			),
+			'woo_jsonld' => array(
 				'orders'  => 3,
 				'revenue' => 150.00,
-			],
-		];
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 500.00, $by_agent, $by_channel );
 
@@ -423,17 +508,22 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// "Agent 7%" — meaningless to a merchant scanning for "which
 		// channel matters more". Normalizing within the split keeps
 		// the two rows summing to a clean 100%.
-		$by_agent   = [ 'chatgpt' => [ 'orders' => 100, 'revenue' => 5000.00 ] ];
-		$by_channel = [
-			'woo_ucp'    => [
+		$by_agent   = array(
+			'chatgpt' => array(
+				'orders'  => 100,
+				'revenue' => 5000.00,
+			),
+		);
+		$by_channel = array(
+			'woo_ucp'    => array(
 				'orders'  => 7,
 				'revenue' => 350.00,
-			],
-			'woo_jsonld' => [
+			),
+			'woo_jsonld' => array(
 				'orders'  => 3,
 				'revenue' => 150.00,
-			],
-		];
+			),
+		);
 		// 90 legacy/LENIENT orders are NOT in by_channel — they live
 		// only in $total_orders. Channel split is 7/10 = 70/30, not
 		// 7/100 = 7/3.
@@ -448,17 +538,22 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// "Top channel" semantics mirror top_agent: primary-driver-by-
 		// volume, not revenue. Pinning that decision here so a future
 		// "switch to revenue-primary" refactor can't sneak in.
-		$by_agent   = [ 'chatgpt' => [ 'orders' => 10, 'revenue' => 500.00 ] ];
-		$by_channel = [
-			'woo_ucp'    => [
+		$by_agent   = array(
+			'chatgpt' => array(
+				'orders'  => 10,
+				'revenue' => 500.00,
+			),
+		);
+		$by_channel = array(
+			'woo_ucp'    => array(
 				'orders'  => 7,
 				'revenue' => 350.00,
-			],
-			'woo_jsonld' => [
+			),
+			'woo_jsonld' => array(
 				'orders'  => 3,
 				'revenue' => 150.00,
-			],
-		];
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 500.00, $by_agent, $by_channel );
 
@@ -469,9 +564,14 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// Mirrors top_agent's empty-state contract: null lets the React
 		// side render an em-dash placeholder without changing the JSON
 		// key shape.
-		$by_agent = [ 'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ] ];
+		$by_agent = array(
+			'chatgpt' => array(
+				'orders'  => 5,
+				'revenue' => 250.00,
+			),
+		);
 
-		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent, [] );
+		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent, array() );
 
 		$this->assertNull( $result['top_channel'] );
 	}
@@ -487,17 +587,22 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// divide-by-zero guard's defensive posture: skip the row
 		// rather than crash, so a malformed input degrades to a
 		// partial-but-honest dashboard instead of a 500.
-		$by_agent   = [ 'chatgpt' => [ 'orders' => 5, 'revenue' => 250.00 ] ];
-		$by_channel = [
-			'woo_ucp'    => [
+		$by_agent   = array(
+			'chatgpt' => array(
 				'orders'  => 5,
 				'revenue' => 250.00,
-			],
-			'woo_jsonld' => [
+			),
+		);
+		$by_channel = array(
+			'woo_ucp'    => array(
+				'orders'  => 5,
+				'revenue' => 250.00,
+			),
+			'woo_jsonld' => array(
 				'revenue' => 100.00,
 				// 'orders' deliberately missing — caller-bug simulation.
-			],
-		];
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 5, 250.00, $by_agent, $by_channel );
 
@@ -517,17 +622,22 @@ class AttributionDeriveStatsTest extends \PHPUnit\Framework\TestCase {
 		// channel key ASC, so `woo_jsonld` wins over `woo_ucp` on a
 		// true tie (j < u alphabetically). Tie-break choice is
 		// arbitrary but must be DETERMINISTIC.
-		$by_agent   = [ 'chatgpt' => [ 'orders' => 10, 'revenue' => 500.00 ] ];
-		$by_channel = [
-			'woo_ucp'    => [
+		$by_agent   = array(
+			'chatgpt' => array(
+				'orders'  => 10,
+				'revenue' => 500.00,
+			),
+		);
+		$by_channel = array(
+			'woo_ucp'    => array(
 				'orders'  => 5,
 				'revenue' => 250.00,
-			],
-			'woo_jsonld' => [
+			),
+			'woo_jsonld' => array(
 				'orders'  => 5,
 				'revenue' => 250.00,
-			],
-		];
+			),
+		);
 
 		$result = WC_AI_Storefront_Attribution::derive_stats( 10, 500.00, $by_agent, $by_channel );
 

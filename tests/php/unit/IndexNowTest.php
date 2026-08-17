@@ -22,7 +22,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'yes',
+		);
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'home_url' )->alias( static fn( $p = '/' ) => 'https://shop.test' . ( '' === $p ? '/' : $p ) );
 		$this->indexnow = new class() extends WC_AI_Storefront_IndexNow {
@@ -100,11 +103,20 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_is_enabled_requires_both_flags(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'no' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'no',
+		);
 		$this->assertFalse( $this->indexnow->is_enabled() );
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
 		$this->assertFalse( $this->indexnow->is_enabled() );
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'yes',
+		);
 		$this->assertTrue( $this->indexnow->is_enabled() );
 	}
 
@@ -169,13 +181,21 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_status' )->andReturn( 'publish' );
 		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
 		// is_product_syndicated() is a static on WC_AI_Storefront; settings mode 'all' => true.
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'all',
+		);
 		$this->assertTrue( $this->indexnow->is_product_indexable( $product ) );
 	}
 
 	public function test_is_product_indexable_false_for_hidden_or_draft(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
-		$draft = \Mockery::mock( 'WC_Product' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'all',
+		);
+		$draft                           = \Mockery::mock( 'WC_Product' );
 		$draft->shouldReceive( 'get_id' )->andReturn( 42 );
 		$draft->shouldReceive( 'get_status' )->andReturn( 'draft' );
 		$draft->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
@@ -255,14 +275,21 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_product' )->justReturn( $this->indexable_product( 42 ) );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
 		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'all',
+		);
 		$this->indexnow->on_product_change( 42 );
 		$this->assertContains( 'https://shop.test/product/x/', $captured );
 		$this->assertContains( 'https://shop.test/llms.txt', $captured );
 	}
 
 	public function test_on_product_change_skips_when_disabled(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
 		Functions\expect( 'update_option' )->never();
 		Functions\expect( 'wp_schedule_single_event' )->never();
 		$this->indexnow->on_product_change( 42 );
@@ -289,7 +316,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_on_product_removed_noop_when_disabled(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
 		Functions\expect( 'update_option' )->never();
 		Functions\expect( 'wp_schedule_single_event' )->never();
 		$this->indexnow->on_product_removed( 99 );
@@ -316,7 +346,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_on_term_change_noop_when_disabled(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
 		Functions\expect( 'update_option' )->never();
 		Functions\expect( 'wp_schedule_single_event' )->never();
 		$this->indexnow->on_term_change( 7 );
@@ -338,7 +371,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$posted = null;
 		Functions\expect( 'wp_remote_post' )->once()->andReturnUsing(
 			function ( $url, $args ) use ( &$posted ) {
-				$posted = array( 'url' => $url, 'body' => json_decode( $args['body'], true ) );
+				$posted = array(
+					'url'  => $url,
+					'body' => json_decode( $args['body'], true ),
+				);
 				return array( 'response' => array( 'code' => 200 ) );
 			}
 		);
@@ -354,7 +390,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_flush_noop_when_disabled(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
 		Functions\when( 'get_option' )->justReturn( array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) ) );
 		Functions\when( 'delete_option' )->justReturn( true );
 		Functions\expect( 'wp_remote_post' )->never();
@@ -444,8 +483,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_flush_noop_when_disabled_clears_queue(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
-		$store = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
+		$store                           = array( 'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ) );
 		Functions\when( 'get_option' )->alias(
 			static function ( $n, $d = false ) use ( &$store ) {
 				return $store[ $n ] ?? $d;
@@ -536,7 +578,7 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			'product_selection_mode' => 'selected',
 			'selected_products'      => array( 999 ), // different ID — product 42 is not in scope
 		);
-		$product = \Mockery::mock( 'WC_Product' );
+		$product                         = \Mockery::mock( 'WC_Product' );
 		$product->shouldReceive( 'get_id' )->andReturn( 42 );
 		$product->shouldReceive( 'get_status' )->andReturn( 'publish' );
 		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
@@ -583,7 +625,8 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$recorded = null;
 		Functions\when( 'update_option' )->alias(
 			static function ( $n, $v ) use ( &$recorded ) {
-				if ( 'wc_ai_storefront_indexnow_last_result' === $n ) { $recorded = $v; }
+				if ( 'wc_ai_storefront_indexnow_last_result' === $n ) {
+					$recorded = $v; }
 				return true;
 			}
 		);
@@ -612,7 +655,8 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$recorded = null;
 		Functions\when( 'update_option' )->alias(
 			static function ( $n, $v ) use ( &$recorded ) {
-				if ( 'wc_ai_storefront_indexnow_last_result' === $n ) { $recorded = $v; }
+				if ( 'wc_ai_storefront_indexnow_last_result' === $n ) {
+					$recorded = $v; }
 				return true;
 			}
 		);
@@ -632,7 +676,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	// --- Task #540: submit_all() + schedule_submit_all() + SUBMIT_ALL_HOOK ---
 
 	public function test_submit_all_noop_when_disabled(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
 		Functions\expect( 'wp_remote_post' )->never();
 		Functions\expect( 'update_option' )->never();
 		$this->indexnow->submit_all();
@@ -640,7 +687,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_submit_all_noop_when_indexnow_toggle_off(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'no' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'no',
+		);
 		Functions\expect( 'wp_remote_post' )->never();
 		Functions\expect( 'update_option' )->never();
 		$this->indexnow->submit_all();
@@ -648,7 +698,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_submit_all_gathers_product_category_and_surface_urls_and_posts(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'all',
+		);
 
 		// Option store for pending + key.
 		$store = array(
@@ -760,21 +814,29 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		// Still expect enqueue+flush with just the surface URLs.
 		$store  = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
 		$posted = null;
-		Functions\when( 'get_option' )->alias( function ( $n, $d = false ) use ( &$store ) {
-			return $store[ $n ] ?? $d;
-		} );
-		Functions\when( 'update_option' )->alias( function ( $n, $v ) use ( &$store ) {
-			$store[ $n ] = $v;
-			return true;
-		} );
-		Functions\when( 'delete_option' )->alias( function ( $n ) use ( &$store ) {
-			unset( $store[ $n ] );
-			return true;
-		} );
-		Functions\when( 'wp_remote_post' )->alias( function ( $url, $args ) use ( &$posted ) {
-			$posted = json_decode( $args['body'], true );
-			return array( 'response' => array( 'code' => 200 ) );
-		} );
+		Functions\when( 'get_option' )->alias(
+			function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			function ( $n, $v ) use ( &$store ) {
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
+		Functions\when( 'wp_remote_post' )->alias(
+			function ( $url, $args ) use ( &$posted ) {
+				$posted = json_decode( $args['body'], true );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
 		$this->indexnow->submit_all();
 		// POST still fires with at least the home surface URL; no crash.
@@ -789,21 +851,29 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_terms' )->justReturn( new WP_Error( 'invalid_taxonomy', 'Invalid taxonomy.' ) );
 		$store  = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
 		$posted = null;
-		Functions\when( 'get_option' )->alias( function ( $n, $d = false ) use ( &$store ) {
-			return $store[ $n ] ?? $d;
-		} );
-		Functions\when( 'update_option' )->alias( function ( $n, $v ) use ( &$store ) {
-			$store[ $n ] = $v;
-			return true;
-		} );
-		Functions\when( 'delete_option' )->alias( function ( $n ) use ( &$store ) {
-			unset( $store[ $n ] );
-			return true;
-		} );
-		Functions\when( 'wp_remote_post' )->alias( function ( $url, $args ) use ( &$posted ) {
-			$posted = json_decode( $args['body'], true );
-			return array( 'response' => array( 'code' => 200 ) );
-		} );
+		Functions\when( 'get_option' )->alias(
+			function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			function ( $n, $v ) use ( &$store ) {
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
+		Functions\when( 'wp_remote_post' )->alias(
+			function ( $url, $args ) use ( &$posted ) {
+				$posted = json_decode( $args['body'], true );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
 		$this->indexnow->submit_all();
 		// POST fires with surfaces only (WP_Error contributes no category URLs).
@@ -825,7 +895,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_stub_detects_seed_transition_no_to_yes(): void {
 		WC_AI_Storefront::$_seed_transition_detected = false;
-		WC_AI_Storefront::$test_settings             = array( 'enabled' => 'yes', 'indexnow_enabled' => 'no' );
+		WC_AI_Storefront::$test_settings             = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'no',
+		);
 		// Prevent unexpected-call errors for Brain Monkey WP presets not called here.
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
@@ -835,14 +908,20 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_stub_no_transition_when_already_yes(): void {
 		WC_AI_Storefront::$_seed_transition_detected = false;
-		WC_AI_Storefront::$test_settings             = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings             = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'yes',
+		);
 		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'yes' ) );
 		$this->assertFalse( WC_AI_Storefront::$_seed_transition_detected );
 	}
 
 	public function test_stub_no_transition_when_remains_no(): void {
 		WC_AI_Storefront::$_seed_transition_detected = false;
-		WC_AI_Storefront::$test_settings             = array( 'enabled' => 'yes', 'indexnow_enabled' => 'no' );
+		WC_AI_Storefront::$test_settings             = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'no',
+		);
 		WC_AI_Storefront::update_settings( array( 'indexnow_enabled' => 'no' ) );
 		$this->assertFalse( WC_AI_Storefront::$_seed_transition_detected );
 	}
@@ -878,7 +957,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	// and per-term change detection via on_brand_change().
 
 	public function test_submit_all_includes_brand_urls(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'all',
+		);
 
 		$store = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
 		// get_option MUST capture $store by reference (`use ( &$store )`), not
@@ -907,9 +990,9 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 
 		// get_terms() branches on taxonomy so category and brand return
 		// distinct terms — proving both taxonomies are queried.
-		$cat_term           = new stdClass();
-		$cat_term->term_id  = 5;
-		$cat_term->taxonomy = 'product_cat';
+		$cat_term             = new stdClass();
+		$cat_term->term_id    = 5;
+		$cat_term->taxonomy   = 'product_cat';
 		$brand_term           = new stdClass();
 		$brand_term->term_id  = 8;
 		$brand_term->taxonomy = 'product_brand';
@@ -949,7 +1032,11 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	public function test_all_brand_urls_returns_empty_on_wp_error(): void {
 		// A store without the product_brand taxonomy: get_terms() yields a
 		// WP_Error, which the is_wp_error() guard converts to no brand URLs.
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes', 'indexnow_enabled' => 'yes', 'product_selection_mode' => 'all' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'all',
+		);
 
 		$store = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
 		// get_option MUST capture $store by reference (`use ( &$store )`), not
@@ -1016,7 +1103,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_on_brand_change_noop_when_disabled(): void {
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no', 'indexnow_enabled' => 'yes' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
 		Functions\expect( 'update_option' )->never();
 		Functions\expect( 'wp_schedule_single_event' )->never();
 		$this->indexnow->on_brand_change( 8 );

@@ -51,16 +51,16 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 
 		// Default: plugin + feed both enabled. Disabled-store / feed-off
 		// tests override this.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'all',
-		];
+		);
 
 		// $_GET / $_SERVER pass-throughs used by request_limit()/page() and
 		// get_cached_feed_json(). Reset $_GET so request parsers see no
 		// params unless a test sets them.
-		$_GET = [];
+		$_GET = array();
 		Functions\when( 'wp_unslash' )->returnArg();
 		Functions\when( 'absint' )->alias(
 			static fn( $v ) => abs( (int) $v )
@@ -77,8 +77,8 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
-		WC_AI_Storefront::$test_settings = [];
-		$_GET = [];
+		WC_AI_Storefront::$test_settings = array();
+		$_GET                            = array();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -106,10 +106,13 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_rewrite_rules_registered_for_both_paths(): void {
-		$rules = [];
+		$rules = array();
 		Functions\when( 'add_rewrite_rule' )->alias(
 			static function ( $regex, $query, $after ) use ( &$rules ) {
-				$rules[ $regex ] = [ 'query' => $query, 'after' => $after ];
+				$rules[ $regex ] = array(
+					'query' => $query,
+					'after' => $after,
+				);
 			}
 		);
 
@@ -132,7 +135,7 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_query_var_registered(): void {
-		$vars = $this->feed->add_query_vars( [] );
+		$vars = $this->feed->add_query_vars( array() );
 		$this->assertContains( WC_AI_Storefront_Products_Feed::QUERY_VAR, $vars );
 	}
 
@@ -190,7 +193,7 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	 */
 	public function test_serve_returns_404_when_plugin_disabled(): void {
 		Functions\when( 'get_query_var' )->justReturn( 1 );
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$captured_status = null;
 		Functions\when( 'status_header' )->alias(
@@ -218,10 +221,10 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	 */
 	public function test_serve_returns_404_when_feed_disabled(): void {
 		Functions\when( 'get_query_var' )->justReturn( 1 );
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'               => 'yes',
 			'products_json_enabled' => 'no',
-		];
+		);
 
 		$captured_status = null;
 		Functions\when( 'status_header' )->alias(
@@ -341,7 +344,7 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	public function test_get_feed_json_emits_products_envelope(): void {
 		$product = $this->simple_product( 22, 'day-hoodie' );
 
-		Functions\when( 'wc_get_products' )->justReturn( [ $product ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
 		// Default fixture is product_selection_mode='all', so every product
 		// with a positive ID is syndicated (the stub mirrors production).
 
@@ -359,15 +362,15 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		$kept    = $this->simple_product( 1, 'kept' );
 		$skipped = $this->simple_product( 2, 'skipped' );
 
-		Functions\when( 'wc_get_products' )->justReturn( [ $kept, $skipped ] );
+		Functions\when( 'wc_get_products' )->justReturn( array( $kept, $skipped ) );
 		// Drive the real syndication gate: 'selected' mode with only
 		// product 1 chosen, so product 2 is filtered out of the feed.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'enabled'                => 'yes',
 			'products_json_enabled'  => 'yes',
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 1 ],
-		];
+			'selected_products'      => array( 1 ),
+		);
 
 		$json    = $this->invoke_private( 'get_feed_json', 30, 1 );
 		$decoded = json_decode( $json, true );
@@ -377,12 +380,12 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_get_feed_json_empty_when_no_products(): void {
-		Functions\when( 'wc_get_products' )->justReturn( [] );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
 
 		$json    = $this->invoke_private( 'get_feed_json', 30, 1 );
 		$decoded = json_decode( $json, true );
 
-		$this->assertSame( [ 'products' => [] ], $decoded );
+		$this->assertSame( array( 'products' => array() ), $decoded );
 	}
 
 	public function test_get_feed_json_query_restricts_to_catalog_visibility(): void {
@@ -395,7 +398,7 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_products' )->alias(
 			static function ( $query ) use ( &$captured_query ) {
 				$captured_query = $query;
-				return [];
+				return array();
 			}
 		);
 
@@ -417,7 +420,10 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 
 		Functions\when( 'wc_get_products' )->alias(
 			static function ( $query ) use ( $visible, $hidden ) {
-				$all = [ 1 => $visible, 2 => $hidden ];
+				$all = array(
+					1 => $visible,
+					2 => $hidden,
+				);
 				if ( isset( $query['visibility'] ) && 'catalog' === $query['visibility'] ) {
 					// Product 2 is catalog-hidden, so WC drops it.
 					unset( $all[2] );
@@ -497,12 +503,12 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_products' )->alias(
 			static function () use ( &$query_calls, $product ) {
 				++$query_calls;
-				return [ $product ];
+				return array( $product );
 			}
 		);
 
 		// In-memory transient store driving the cache round-trip.
-		$store = [];
+		$store = array();
 		Functions\when( 'get_transient' )->alias(
 			static function ( $key ) use ( &$store ) {
 				return $store[ $key ] ?? false;
@@ -530,16 +536,16 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	public function test_cached_feed_version_bump_orphans_old_page(): void {
 		$_SERVER['HTTP_HOST'] = 'shop.example.com';
 
-		$product = $this->simple_product( 7, 'lucky-seven' );
+		$product     = $this->simple_product( 7, 'lucky-seven' );
 		$query_calls = 0;
 		Functions\when( 'wc_get_products' )->alias(
 			static function () use ( &$query_calls, $product ) {
 				++$query_calls;
-				return [ $product ];
+				return array( $product );
 			}
 		);
 
-		$store = [];
+		$store = array();
 		Functions\when( 'get_transient' )->alias(
 			static function ( $key ) use ( &$store ) {
 				return $store[ $key ] ?? false;
@@ -574,16 +580,16 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 	public function test_cached_feed_keys_separately_per_page(): void {
 		$_SERVER['HTTP_HOST'] = 'shop.example.com';
 
-		$product = $this->simple_product( 7, 'lucky-seven' );
+		$product     = $this->simple_product( 7, 'lucky-seven' );
 		$query_calls = 0;
 		Functions\when( 'wc_get_products' )->alias(
 			static function () use ( &$query_calls, $product ) {
 				++$query_calls;
-				return [ $product ];
+				return array( $product );
 			}
 		);
 
-		$store = [];
+		$store = array();
 		Functions\when( 'get_transient' )->alias(
 			static function ( $key ) use ( &$store ) {
 				return $store[ $key ] ?? false;
@@ -628,10 +634,10 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 		$p->shouldReceive( 'get_name' )->andReturn( 'Product ' . $id );
 		$p->shouldReceive( 'get_slug' )->andReturn( $handle );
 		$p->shouldReceive( 'get_description' )->andReturn( '' );
-		$p->shouldReceive( 'get_category_ids' )->andReturn( [] );
-		$p->shouldReceive( 'get_tag_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_category_ids' )->andReturn( array() );
+		$p->shouldReceive( 'get_tag_ids' )->andReturn( array() );
 		$p->shouldReceive( 'get_image_id' )->andReturn( 0 );
-		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( [] );
+		$p->shouldReceive( 'get_gallery_image_ids' )->andReturn( array() );
 		$p->shouldReceive( 'is_type' )->with( 'variable' )->andReturn( false );
 		$p->shouldReceive( 'get_sku' )->andReturn( '' );
 		$p->shouldReceive( 'get_price' )->andReturn( '10' );
@@ -643,7 +649,7 @@ class ProductsFeedTest extends \PHPUnit\Framework\TestCase {
 
 		// map_product() resolves vendor via wp_get_post_terms + product_type
 		// via get_post_meta/get_term. Stub them to the "absent" path.
-		Functions\when( 'wp_get_post_terms' )->justReturn( [] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array() );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_term' )->justReturn( false );
 		Functions\when( 'wp_get_attachment_image_url' )->justReturn( false );

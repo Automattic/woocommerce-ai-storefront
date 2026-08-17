@@ -27,7 +27,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<string, mixed>
 	 */
-	private array $captured_store_params = [];
+	private array $captured_store_params = array();
 
 	/**
 	 * Canned list response for GET /wc/store/v1/products. Tests set
@@ -36,7 +36,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array<string, mixed>>
 	 */
-	private array $fake_product_list = [];
+	private array $fake_product_list = array();
 
 	/**
 	 * HTTP status to return from the Store API list dispatch. Tests
@@ -53,7 +53,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<string, string>
 	 */
-	private array $fake_list_headers = [];
+	private array $fake_list_headers = array();
 
 	/**
 	 * Per-ID canned responses for individual product fetches (used
@@ -61,7 +61,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<int, array<string, mixed>|null>
 	 */
-	private array $fake_store_api = [];
+	private array $fake_store_api = array();
 
 	/**
 	 * Fake get_terms store. Key = 'field:value' (e.g. 'slug:tops') or
@@ -70,7 +70,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 *
 	 * @var array<string, object>
 	 */
-	private array $fake_terms = [];
+	private array $fake_terms = array();
 
 	protected function setUp(): void {
 		parent::setUp();
@@ -80,14 +80,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// leak into subsequent tests that assume enabled. The stub's
 		// defaults include `enabled => yes`, so an empty array here
 		// means the handler sees enabled syndication.
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 
-		$this->captured_store_params = [];
-		$this->fake_product_list     = [];
+		$this->captured_store_params = array();
+		$this->fake_product_list     = array();
 		$this->fake_list_status      = 200;
-		$this->fake_list_headers     = [];
-		$this->fake_store_api        = [];
-		$this->fake_terms            = [];
+		$this->fake_list_headers     = array();
+		$this->fake_store_api        = array();
+		$this->fake_terms            = array();
 
 		Functions\when( '__' )->returnArg();
 		Functions\when( '_n' )->alias(
@@ -118,7 +118,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 					$url  = (string) $arg3;
 				}
 				$parts    = wp_parse_url( $url );
-				$existing = [];
+				$existing = array();
 				if ( isset( $parts['query'] ) ) {
 					parse_str( $parts['query'], $existing );
 				}
@@ -223,7 +223,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 						// is case-insensitive. Simulate by trying both the
 						// exact name and the lowercase form so a query for
 						// "tops" correctly returns the term stored as "Tops".
-						$names_to_try = array_unique( [ $name, ucfirst( mb_strtolower( $name ) ), mb_strtolower( $name ) ] );
+						$names_to_try = array_unique( array( $name, ucfirst( mb_strtolower( $name ) ), mb_strtolower( $name ) ) );
 						$found        = false;
 						foreach ( $names_to_try as $try ) {
 							// Taxonomy-namespaced key (product_tag, product_brand).
@@ -295,7 +295,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 					// `per_page` to the captured list for pagination
 					// mapping assertions.
 					foreach (
-						[
+						array(
 							'search',
 							'category',
 							'currency',
@@ -312,7 +312,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 							'orderby',
 							'order',
 							'brand',
-						] as $key
+						) as $key
 					) {
 						$val = $request->get_param( $key );
 						if ( null !== $val ) {
@@ -365,7 +365,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * @param array<string, mixed> $body
 	 */
-	private function search_request( array $body = [] ): WP_REST_Request {
+	private function search_request( array $body = array() ): WP_REST_Request {
 		$request = new WP_REST_Request( 'POST', '/wc/ucp/v1/catalog/search' );
 		$request->set_json_params( $body );
 		return $request;
@@ -377,7 +377,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 * @return array<string, mixed>
 	 */
 	private function make_simple_product( int $id, string $name ): array {
-		return [
+		return array(
 			'id'                => $id,
 			'name'              => $name,
 			'slug'              => strtolower( str_replace( ' ', '-', $name ) ),
@@ -385,12 +385,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			'type'              => 'simple',
 			'short_description' => '',
 			'is_in_stock'       => true,
-			'prices'            => [
+			'prices'            => array(
 				'price'               => '2500',
 				'currency_code'       => 'USD',
 				'currency_minor_unit' => 2,
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -399,11 +399,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 * the original pre-1.8 tests.
 	 */
 	private function seed_term( int $term_id, string $slug, string $name ): void {
-		$term                              = (object) [
+		$term                               = (object) array(
 			'term_id' => $term_id,
 			'slug'    => $slug,
 			'name'    => $name,
-		];
+		);
 		$this->fake_terms[ "slug:{$slug}" ] = $term;
 		$this->fake_terms[ "name:{$name}" ] = $term;
 	}
@@ -415,13 +415,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 * same slug is used in both taxonomies (merchants do this).
 	 */
 	private function seed_tag_term( int $term_id, string $slug, string $name ): void {
-		$term                                                 = (object) [
+		$term = (object) array(
 			'term_id' => $term_id,
 			'slug'    => $slug,
 			'name'    => $name,
-		];
-		$this->fake_terms[ "product_tag:slug:{$slug}" ]      = $term;
-		$this->fake_terms[ "product_tag:name:{$name}" ]      = $term;
+		);
+		$this->fake_terms[ "product_tag:slug:{$slug}" ] = $term;
+		$this->fake_terms[ "product_tag:name:{$name}" ] = $term;
 	}
 
 	/**
@@ -443,12 +443,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_empty_body_returns_all_products_with_envelope(): void {
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 1, 'Alpha' ),
 			$this->make_simple_product( 2, 'Beta' ),
-		];
+		);
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
 		$this->assertCount( 2, $body['products'] );
 		$this->assertEquals( 'prod_1', $body['products'][0]['id'] );
@@ -466,12 +466,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// across every product carries the same seller block —
 		// catching a regression where the threading accidentally
 		// drops or diverges across the loop.
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 1, 'Alpha' ),
 			$this->make_simple_product( 2, 'Beta' ),
-		];
+		);
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
 		foreach ( $body['products'] as $product ) {
 			$this->assertArrayNotHasKey( 'seller', $product );
@@ -486,18 +486,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_empty_result_returns_200_with_empty_products_array(): void {
 		// No canned products → Store API returns `[]` → response body
 		// has products = []. Still 200 (no error), still has envelope.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
-		$this->assertEquals( [], $body['products'] );
+		$this->assertEquals( array(), $body['products'] );
 		$this->assertArrayHasKey( 'ucp', $body );
 	}
 
 	public function test_zero_results_response_includes_hints_block(): void {
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
 		$this->assertArrayHasKey( 'hints', $body );
 		$this->assertTrue( $body['hints']['zero_results'] );
@@ -509,11 +509,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_non_empty_results_response_has_no_hints_block(): void {
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 1, 'Alpha' ),
-		];
+		);
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
 		$this->assertArrayNotHasKey( 'hints', $body );
 	}
@@ -523,7 +523,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_query_field_maps_to_store_api_search_param(): void {
-		$this->successful_search( [ 'query' => 'blue shirt' ] );
+		$this->successful_search( array( 'query' => 'blue shirt' ) );
 
 		$this->assertEquals( 'blue shirt', $this->captured_store_params['search'] );
 	}
@@ -532,7 +532,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// An empty query isn't the same as "search for empty string" —
 		// WC would treat "" as a no-op anyway, but keeping it out of
 		// the param list is cleaner.
-		$this->successful_search( [ 'query' => '' ] );
+		$this->successful_search( array( 'query' => '' ) );
 
 		$this->assertArrayNotHasKey( 'search', $this->captured_store_params );
 	}
@@ -540,7 +540,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_non_string_query_is_ignored(): void {
 		// Defensive: agents sending wrong types should not leak into
 		// the Store API params.
-		$this->successful_search( [ 'query' => 123 ] );
+		$this->successful_search( array( 'query' => 123 ) );
 
 		$this->assertArrayNotHasKey( 'search', $this->captured_store_params );
 	}
@@ -553,7 +553,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_term( 42, 'tops', 'Tops' );
 
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'tops' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'tops' ) ) )
 		);
 
 		$this->assertEquals( '42', $this->captured_store_params['category'] );
@@ -568,7 +568,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		unset( $this->fake_terms['slug:clothing-tops'] );
 
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'Tops' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'Tops' ) ) )
 		);
 
 		$this->assertEquals( '99', $this->captured_store_params['category'] );
@@ -585,7 +585,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		// Lowercase input — must still resolve.
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'tops' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'tops' ) ) )
 		);
 		$this->assertEquals( '99', $this->captured_store_params['category'] );
 	}
@@ -600,7 +600,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Agent input with apostrophe — sanitize_title() normalises it to
 		// the canonical slug form used in the DB.
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => [ "Women's Clothing" ] ] ]
+			array( 'filters' => array( 'categories' => array( "Women's Clothing" ) ) )
 		);
 		$this->assertEquals( '77', $this->captured_store_params['category'] );
 	}
@@ -610,7 +610,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_term( 7, 'bottoms', 'Bottoms' );
 
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'tops', 'bottoms' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'tops', 'bottoms' ) ) )
 		);
 
 		$this->assertEquals( '5,7', $this->captured_store_params['category'] );
@@ -622,7 +622,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_term( 5, 'tops', 'Tops' );
 
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'tops', 'nonexistent' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'tops', 'nonexistent' ) ) )
 		);
 
 		$this->assertEquals( '5', $this->captured_store_params['category'] );
@@ -637,7 +637,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_term( 5, 'tops', 'Tops' );
 
 		$body = $this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'tops', 'nonexistent' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'tops', 'nonexistent' ) ) )
 		);
 
 		$this->assertArrayHasKey( 'messages', $body );
@@ -662,7 +662,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// invalid). Response still includes one warning per missing
 		// input so the agent knows their whole filter was dropped.
 		$body = $this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'nope', 'also-nope' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'nope', 'also-nope' ) ) )
 		);
 
 		$this->assertArrayNotHasKey( 'category', $this->captured_store_params );
@@ -683,7 +683,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_term( 42, 'tops', 'Tops' );
 
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => [ 'tops', 'Tops' ] ] ]
+			array( 'filters' => array( 'categories' => array( 'tops', 'Tops' ) ) )
 		);
 
 		$this->assertEquals( '42', $this->captured_store_params['category'] );
@@ -697,7 +697,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_tag_term( 55, 'summer', 'Summer' );
 
 		$this->successful_search(
-			[ 'filters' => [ 'tags' => [ 'summer' ] ] ]
+			array( 'filters' => array( 'tags' => array( 'summer' ) ) )
 		);
 
 		$this->assertEquals( '55', $this->captured_store_params['tag'] );
@@ -708,7 +708,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_tag_term( 12, 'eco', 'Eco' );
 
 		$this->successful_search(
-			[ 'filters' => [ 'tags' => [ 'summer', 'eco' ] ] ]
+			array( 'filters' => array( 'tags' => array( 'summer', 'eco' ) ) )
 		);
 
 		$this->assertEquals( '11,12', $this->captured_store_params['tag'] );
@@ -720,11 +720,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->seed_tag_term( 11, 'summer', 'Summer' );
 
 		$body = $this->successful_search(
-			[ 'filters' => [ 'tags' => [ 'summer', 'winter' ] ] ]
+			array( 'filters' => array( 'tags' => array( 'summer', 'winter' ) ) )
 		);
 
 		$not_found = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $not_found );
@@ -736,7 +736,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_on_sale_filter_forwards_boolean_true(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'on_sale' => true ] ]
+			array( 'filters' => array( 'on_sale' => true ) )
 		);
 
 		$this->assertTrue( $this->captured_store_params['on_sale'] );
@@ -747,7 +747,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// pass booleans as strings; accepting "true" keeps the API
 		// forgiving without losing the opt-in intent.
 		$this->successful_search(
-			[ 'filters' => [ 'on_sale' => 'true' ] ]
+			array( 'filters' => array( 'on_sale' => 'true' ) )
 		);
 
 		$this->assertTrue( $this->captured_store_params['on_sale'] );
@@ -758,7 +758,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Store API treats an absent param as "return everything,"
 		// so we don't forward an explicit false.
 		$this->successful_search(
-			[ 'filters' => [ 'on_sale' => false ] ]
+			array( 'filters' => array( 'on_sale' => false ) )
 		);
 
 		$this->assertArrayNotHasKey( 'on_sale', $this->captured_store_params );
@@ -770,23 +770,23 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_in_stock_filter_forwards_instock_stock_status(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'in_stock' => true ] ]
+			array( 'filters' => array( 'in_stock' => true ) )
 		);
 
-		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertSame( array( 'instock' ), $this->captured_store_params['stock_status'] );
 	}
 
 	public function test_in_stock_filter_accepts_string_true(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'in_stock' => 'true' ] ]
+			array( 'filters' => array( 'in_stock' => 'true' ) )
 		);
 
-		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertSame( array( 'instock' ), $this->captured_store_params['stock_status'] );
 	}
 
 	public function test_in_stock_filter_false_does_not_forward(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'in_stock' => false ] ]
+			array( 'filters' => array( 'in_stock' => false ) )
 		);
 
 		$this->assertArrayNotHasKey( 'stock_status', $this->captured_store_params );
@@ -798,7 +798,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_featured_filter_forwards_boolean_true(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'featured' => true ] ]
+			array( 'filters' => array( 'featured' => true ) )
 		);
 
 		$this->assertTrue( $this->captured_store_params['featured'] );
@@ -806,7 +806,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_featured_filter_false_does_not_forward(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'featured' => false ] ]
+			array( 'filters' => array( 'featured' => false ) )
 		);
 
 		$this->assertArrayNotHasKey( 'featured', $this->captured_store_params );
@@ -817,7 +817,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// JSON-to-PHP round trips should be honored so the contract
 		// is consistent across boolean-flag filters.
 		$this->successful_search(
-			[ 'filters' => [ 'featured' => 'true' ] ]
+			array( 'filters' => array( 'featured' => 'true' ) )
 		);
 
 		$this->assertTrue( $this->captured_store_params['featured'] );
@@ -832,18 +832,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// ratings (set inclusion), not a floor. `min_rating: 4`
 		// must expand to [4, 5] for "4 stars and above."
 		$this->successful_search(
-			[ 'filters' => [ 'min_rating' => 4 ] ]
+			array( 'filters' => array( 'min_rating' => 4 ) )
 		);
 
-		$this->assertSame( [ 4, 5 ], $this->captured_store_params['rating'] );
+		$this->assertSame( array( 4, 5 ), $this->captured_store_params['rating'] );
 	}
 
 	public function test_min_rating_1_expands_to_full_range(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'min_rating' => 1 ] ]
+			array( 'filters' => array( 'min_rating' => 1 ) )
 		);
 
-		$this->assertSame( [ 1, 2, 3, 4, 5 ], $this->captured_store_params['rating'] );
+		$this->assertSame( array( 1, 2, 3, 4, 5 ), $this->captured_store_params['rating'] );
 	}
 
 	public function test_min_rating_out_of_range_is_clamped(): void {
@@ -851,10 +851,10 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// clamp to 1 (full range). Keeps the array non-empty and
 		// the filter semantically coherent.
 		$this->successful_search(
-			[ 'filters' => [ 'min_rating' => 99 ] ]
+			array( 'filters' => array( 'min_rating' => 99 ) )
 		);
 
-		$this->assertSame( [ 5 ], $this->captured_store_params['rating'] );
+		$this->assertSame( array( 5 ), $this->captured_store_params['rating'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -863,24 +863,24 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_attribute_filter_prefixes_bare_labels_with_pa(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'attributes' => [ 'color' => [ 'red' ] ] ] ]
+			array( 'filters' => array( 'attributes' => array( 'color' => array( 'red' ) ) ) )
 		);
 
 		$this->assertSame(
-			[
-				[
+			array(
+				array(
 					'attribute' => 'pa_color',
-					'slug'      => [ 'red' ],
+					'slug'      => array( 'red' ),
 					'operator'  => 'in',
-				],
-			],
+				),
+			),
 			$this->captured_store_params['attributes']
 		);
 	}
 
 	public function test_attribute_filter_preserves_pa_prefix_when_already_present(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'attributes' => [ 'pa_brand' => [ 'nike' ] ] ] ]
+			array( 'filters' => array( 'attributes' => array( 'pa_brand' => array( 'nike' ) ) ) )
 		);
 
 		$this->assertSame( 'pa_brand', $this->captured_store_params['attributes'][0]['attribute'] );
@@ -888,22 +888,22 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_attribute_filter_lowercases_slug_values(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'attributes' => [ 'size' => [ 'M', 'XL' ] ] ] ]
+			array( 'filters' => array( 'attributes' => array( 'size' => array( 'M', 'XL' ) ) ) )
 		);
 
-		$this->assertSame( [ 'm', 'xl' ], $this->captured_store_params['attributes'][0]['slug'] );
+		$this->assertSame( array( 'm', 'xl' ), $this->captured_store_params['attributes'][0]['slug'] );
 	}
 
 	public function test_attribute_filter_emits_multiple_taxonomy_entries(): void {
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'color' => [ 'red' ],
-						'size'  => [ 'M' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'color' => array( 'red' ),
+						'size'  => array( 'M' ),
+					),
+				),
+			)
 		);
 
 		// Assert full shape of both entries (not just count) so a
@@ -912,14 +912,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// would be caught.
 		$this->assertCount( 2, $this->captured_store_params['attributes'] );
 
-		$by_attribute = [];
+		$by_attribute = array();
 		foreach ( $this->captured_store_params['attributes'] as $entry ) {
 			$by_attribute[ $entry['attribute'] ] = $entry;
 		}
 		$this->assertArrayHasKey( 'pa_color', $by_attribute );
 		$this->assertArrayHasKey( 'pa_size', $by_attribute );
-		$this->assertSame( [ 'red' ], $by_attribute['pa_color']['slug'] );
-		$this->assertSame( [ 'm' ], $by_attribute['pa_size']['slug'] );
+		$this->assertSame( array( 'red' ), $by_attribute['pa_color']['slug'] );
+		$this->assertSame( array( 'm' ), $by_attribute['pa_size']['slug'] );
 		$this->assertSame( 'in', $by_attribute['pa_color']['operator'] );
 		$this->assertSame( 'in', $by_attribute['pa_size']['operator'] );
 	}
@@ -932,13 +932,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// sanitize_title() before the prefix check so we compare
 		// against the lowercased form.
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'PA_Color' => [ 'red' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'PA_Color' => array( 'red' ),
+					),
+				),
+			)
 		);
 
 		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
@@ -949,14 +949,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// The empty axis should be dropped rather than poison the
 		// whole filter list.
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'color' => [ 'red' ],
-						'size'  => [],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'color' => array( 'red' ),
+						'size'  => array(),
+					),
+				),
+			)
 		);
 
 		$this->assertCount( 1, $this->captured_store_params['attributes'] );
@@ -965,16 +965,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_attribute_filter_deduplicates_slugs(): void {
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'color' => [ 'red', 'RED', 'Red' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'color' => array( 'red', 'RED', 'Red' ),
+					),
+				),
+			)
 		);
 
-		$this->assertSame( [ 'red' ], $this->captured_store_params['attributes'][0]['slug'] );
+		$this->assertSame( array( 'red' ), $this->captured_store_params['attributes'][0]['slug'] );
 	}
 
 	public function test_attribute_filter_skips_non_scalar_slug_values(): void {
@@ -982,17 +982,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// would coerce to "Array" via (string) cast and silently
 		// forward as a bogus slug. Skip non-scalar entries entirely.
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'color' => [ 'red', [ 'nested' ], null, 'blue' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'color' => array( 'red', array( 'nested' ), null, 'blue' ),
+					),
+				),
+			)
 		);
 
 		$this->assertSame(
-			[ 'red', 'blue' ],
+			array( 'red', 'blue' ),
 			$this->captured_store_params['attributes'][0]['slug']
 		);
 	}
@@ -1003,15 +1003,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// results — leaving the agent with no signal that their input
 		// was malformed. Drop the axis entirely.
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						''    => [ 'red' ],
-						' '   => [ 'blue' ],
-						'size' => [ 'M' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						''     => array( 'red' ),
+						' '    => array( 'blue' ),
+						'size' => array( 'M' ),
+					),
+				),
+			)
 		);
 
 		$this->assertCount( 1, $this->captured_store_params['attributes'] );
@@ -1027,15 +1027,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// numeric keys entirely since attribute axes are always
 		// named strings.
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						0       => [ 'red' ],
-						1       => [ 'M' ],
-						'color' => [ 'blue' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						0       => array( 'red' ),
+						1       => array( 'M' ),
+						'color' => array( 'blue' ),
+					),
+				),
+			)
 		);
 
 		$this->assertCount( 1, $this->captured_store_params['attributes'] );
@@ -1047,13 +1047,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// poison input — either way it's not a real taxonomy and
 		// shouldn't be forwarded.
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'pa_' => [ 'red' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'pa_' => array( 'red' ),
+					),
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'attributes', $this->captured_store_params );
@@ -1065,17 +1065,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// WC stores in the DB), not the naive strtolower "light blue"
 		// which is an invalid slug.
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'color' => [ 'Light Blue', 'Navy Blue' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'color' => array( 'Light Blue', 'Navy Blue' ),
+					),
+				),
+			)
 		);
 
 		$this->assertSame(
-			[ 'light-blue', 'navy-blue' ],
+			array( 'light-blue', 'navy-blue' ),
 			$this->captured_store_params['attributes'][0]['slug']
 		);
 	}
@@ -1086,13 +1086,13 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// `pa_fabric-type`, not `pa_fabric type` (invalid) or
 		// `pa_Fabric Type` (case-sensitive mismatch).
 		$this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'Fabric Type' => [ 'cotton' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'Fabric Type' => array( 'cotton' ),
+					),
+				),
+			)
 		);
 
 		$this->assertSame(
@@ -1113,14 +1113,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$body = $this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'color'       => [ 'red' ],
-						'nonexistent' => [ 'anything' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'color'       => array( 'red' ),
+						'nonexistent' => array( 'anything' ),
+					),
+				),
+			)
 		);
 
 		// Known taxonomy forwarded.
@@ -1129,7 +1129,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		// Unknown taxonomy surfaces as a warning.
 		$warnings = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
@@ -1148,18 +1148,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
 
 		$body = $this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						'Fabric Type' => [ 'cotton' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						'Fabric Type' => array( 'cotton' ),
+					),
+				),
+			)
 		);
 
 		$warnings = array_values(
 			array_filter(
-				$body['messages'] ?? [],
+				$body['messages'] ?? array(),
 				static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND === ( $m['code'] ?? '' )
 			)
 		);
@@ -1175,18 +1175,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
 
 		$body = $this->successful_search(
-			[
-				'filters' => [
-					'attributes' => [
-						"foo's bar" => [ 'value' ],
-					],
-				],
-			]
+			array(
+				'filters' => array(
+					'attributes' => array(
+						"foo's bar" => array( 'value' ),
+					),
+				),
+			)
 		);
 
 		$warnings = array_values(
 			array_filter(
-				$body['messages'] ?? [],
+				$body['messages'] ?? array(),
 				static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND === ( $m['code'] ?? '' )
 			)
 		);
@@ -1203,15 +1203,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_brand_filter_forwards_resolved_term_ids(): void {
 		// Parallel to tags: slug → term ID resolution, comma-joined
 		// when multiple, forwarded as `brand` on the Store API.
-		$term                                      = (object) [
+		$term                                        = (object) array(
 			'term_id' => 88,
 			'slug'    => 'acme',
 			'name'    => 'ACME',
-		];
+		);
 		$this->fake_terms['product_brand:slug:acme'] = $term;
 
 		$this->successful_search(
-			[ 'filters' => [ 'brand' => [ 'acme' ] ] ]
+			array( 'filters' => array( 'brand' => array( 'acme' ) ) )
 		);
 
 		$this->assertSame( '88', $this->captured_store_params['brand'] );
@@ -1220,19 +1220,19 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_brand_filter_unresolvable_produces_brand_not_found_warning(): void {
 		// Symmetric with `category_not_found` / `tag_not_found` —
 		// agents must see a signal that their filter was ignored.
-		$term                                      = (object) [
+		$term                                        = (object) array(
 			'term_id' => 88,
 			'slug'    => 'acme',
 			'name'    => 'ACME',
-		];
+		);
 		$this->fake_terms['product_brand:slug:acme'] = $term;
 
 		$body = $this->successful_search(
-			[ 'filters' => [ 'brand' => [ 'acme', 'unknown-brand' ] ] ]
+			array( 'filters' => array( 'brand' => array( 'acme', 'unknown-brand' ) ) )
 		);
 
 		$not_found = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $not_found );
@@ -1244,7 +1244,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_sort_price_asc_forwards_orderby_and_order(): void {
 		$this->successful_search(
-			[ 'sort' => [ 'field' => 'price', 'direction' => 'asc' ] ]
+			array(
+				'sort' => array(
+					'field'     => 'price',
+					'direction' => 'asc',
+				),
+			)
 		);
 
 		$this->assertSame( 'price', $this->captured_store_params['orderby'] );
@@ -1256,7 +1261,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// caller passes `direction: asc` we normalize to desc — the
 		// concept "newest ascending" is self-contradicting.
 		$this->successful_search(
-			[ 'sort' => [ 'field' => 'newest', 'direction' => 'asc' ] ]
+			array(
+				'sort' => array(
+					'field'     => 'newest',
+					'direction' => 'asc',
+				),
+			)
 		);
 
 		$this->assertSame( 'date', $this->captured_store_params['orderby'] );
@@ -1265,7 +1275,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_sort_popularity_is_supported(): void {
 		$this->successful_search(
-			[ 'sort' => [ 'field' => 'popularity', 'direction' => 'desc' ] ]
+			array(
+				'sort' => array(
+					'field'     => 'popularity',
+					'direction' => 'desc',
+				),
+			)
 		);
 
 		$this->assertSame( 'popularity', $this->captured_store_params['orderby'] );
@@ -1273,12 +1288,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_sort_unknown_field_emits_warning_and_does_not_forward(): void {
 		$body = $this->successful_search(
-			[ 'sort' => [ 'field' => 'bogus', 'direction' => 'asc' ] ]
+			array(
+				'sort' => array(
+					'field'     => 'bogus',
+					'direction' => 'asc',
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
 		$warnings = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
@@ -1286,7 +1306,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_sort_defaults_direction_to_asc_when_unspecified(): void {
 		$this->successful_search(
-			[ 'sort' => [ 'field' => 'title' ] ]
+			array( 'sort' => array( 'field' => 'title' ) )
 		);
 
 		$this->assertSame( 'asc', $this->captured_store_params['order'] );
@@ -1301,11 +1321,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// spam agents. A future refactor that drops the `'' !== $field`
 		// guard would break this contract; this test locks it in.
 		$body = $this->successful_search(
-			[ 'sort' => [ 'field' => '', 'direction' => 'asc' ] ]
+			array(
+				'sort' => array(
+					'field'     => '',
+					'direction' => 'asc',
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
-		$codes = array_column( $body['messages'] ?? [], 'code' );
+		$codes = array_column( $body['messages'] ?? array(), 'code' );
 		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD, $codes );
 		$this->assertNotContains( WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE, $codes );
 	}
@@ -1317,17 +1342,20 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// early return, loop-ordering bug in `map_ucp_search_to_store_api`)
 		// that isolated tests would miss.
 		$this->successful_search(
-			[
-				'filters' => [
+			array(
+				'filters' => array(
 					'in_stock'   => true,
 					'featured'   => true,
-					'attributes' => [ 'color' => [ 'red' ] ],
-				],
-				'sort'    => [ 'field' => 'price', 'direction' => 'asc' ],
-			]
+					'attributes' => array( 'color' => array( 'red' ) ),
+				),
+				'sort'    => array(
+					'field'     => 'price',
+					'direction' => 'asc',
+				),
+			)
 		);
 
-		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertSame( array( 'instock' ), $this->captured_store_params['stock_status'] );
 		$this->assertTrue( $this->captured_store_params['featured'] );
 		$this->assertSame( 'pa_color', $this->captured_store_params['attributes'][0]['attribute'] );
 		$this->assertSame( 'price', $this->captured_store_params['orderby'] );
@@ -1342,12 +1370,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// so agents can distinguish "unknown field" from "malformed
 		// input".
 		$body = $this->successful_search(
-			[ 'sort' => [ 'field' => [ 'price' ], 'direction' => 'asc' ] ]
+			array(
+				'sort' => array(
+					'field'     => array( 'price' ),
+					'direction' => 'asc',
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
 		$warnings = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
@@ -1355,12 +1388,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_sort_non_scalar_direction_emits_invalid_sort_shape_warning(): void {
 		$body = $this->successful_search(
-			[ 'sort' => [ 'field' => 'price', 'direction' => [ 'asc' ] ] ]
+			array(
+				'sort' => array(
+					'field'     => 'price',
+					'direction' => array( 'asc' ),
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'orderby', $this->captured_store_params );
 		$warnings = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
@@ -1374,11 +1412,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Makes the warning easier to correlate with the agent's
 		// source input.
 		$body = $this->successful_search(
-			[ 'sort' => [ 'field' => '  BoGuS  ', 'direction' => 'asc' ] ]
+			array(
+				'sort' => array(
+					'field'     => '  BoGuS  ',
+					'direction' => 'asc',
+				),
+			)
 		);
 
 		$warnings = array_filter(
-			$body['messages'] ?? [],
+			$body['messages'] ?? array(),
 			static fn( array $m ): bool => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD === ( $m['code'] ?? '' )
 		);
 		$this->assertCount( 1, $warnings );
@@ -1397,18 +1440,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// filter is silently dropped. The list form must apply the same store
 		// param as the object form.
 		$this->successful_search(
-			[ 'filters' => [ [ 'in_stock' => true ] ] ]
+			array( 'filters' => array( array( 'in_stock' => true ) ) )
 		);
-		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertSame( array( 'instock' ), $this->captured_store_params['stock_status'] );
 	}
 
 	public function test_multi_element_list_filters_merge_into_one_map(): void {
 		// A list carrying several filter objects merges into one associative
 		// map so every constraint applies.
 		$this->successful_search(
-			[ 'filters' => [ [ 'in_stock' => true ], [ 'on_sale' => true ] ] ]
+			array( 'filters' => array( array( 'in_stock' => true ), array( 'on_sale' => true ) ) )
 		);
-		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertSame( array( 'instock' ), $this->captured_store_params['stock_status'] );
 		$this->assertTrue( $this->captured_store_params['on_sale'] );
 	}
 
@@ -1416,9 +1459,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// A correctly-shaped object (string keys) is not a list, so the
 		// normalization leaves it untouched.
 		$this->successful_search(
-			[ 'filters' => [ 'in_stock' => true ] ]
+			array( 'filters' => array( 'in_stock' => true ) )
 		);
-		$this->assertSame( [ 'instock' ], $this->captured_store_params['stock_status'] );
+		$this->assertSame( array( 'instock' ), $this->captured_store_params['stock_status'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -1430,7 +1473,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// 1000 is forwarded unchanged. Regression: converting to "10.00"
 		// made the Store API read it as 10 cents ($0.10) — a 100x under-filter.
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'min' => 1000 ] ] ]
+			array( 'filters' => array( 'price' => array( 'min' => 1000 ) ) )
 		);
 
 		$this->assertSame( '1000', (string) $this->captured_store_params['min_price'] );
@@ -1438,7 +1481,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_max_price_forwarded_as_minor_units(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'max' => 5000 ] ] ]
+			array( 'filters' => array( 'price' => array( 'max' => 5000 ) ) )
 		);
 
 		$this->assertSame( '5000', (string) $this->captured_store_params['max_price'] );
@@ -1446,7 +1489,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_price_range_with_min_and_max_forwards_both(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ] ]
+			array(
+				'filters' => array(
+					'price' => array(
+						'min' => 1000,
+						'max' => 5000,
+					),
+				),
+			)
 		);
 
 		$this->assertSame( '1000', (string) $this->captured_store_params['min_price'] );
@@ -1461,7 +1511,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 0 );
 
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'min' => 5000 ] ] ]
+			array( 'filters' => array( 'price' => array( 'min' => 5000 ) ) )
 		);
 
 		$this->assertSame( '5000', (string) $this->captured_store_params['min_price'] );
@@ -1472,7 +1522,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// coercing to 0 (which would silently match all products) or
 		// aborting with 400.
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'min' => -100, 'max' => 5000 ] ] ]
+			array(
+				'filters' => array(
+					'price' => array(
+						'min' => -100,
+						'max' => 5000,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayNotHasKey( 'min_price', $this->captured_store_params );
@@ -1481,7 +1538,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_non_numeric_price_is_ignored(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'min' => 'cheap' ] ] ]
+			array( 'filters' => array( 'price' => array( 'min' => 'cheap' ) ) )
 		);
 
 		$this->assertArrayNotHasKey( 'min_price', $this->captured_store_params );
@@ -1494,18 +1551,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// use strict integer-shape validation. Regression guard:
 		// these shapes should NOT produce min_price/max_price
 		// params on the Store API call.
-		$decimal_shaped = [
-			[ 'min' => '25.00' ],       // decimal string — loses cents on (int) cast
-			[ 'min' => 25.5 ],          // native float — same problem
-			[ 'max' => '1e3' ],         // scientific notation
-			[ 'max' => '  100' ],       // whitespace-padded
-			[ 'min' => '-50' ],         // negative string — ctype_digit false
-			[ 'min' => str_repeat( '9', 30 ) ], // overflow — would saturate to PHP_INT_MAX on (int) cast
-		];
+		$decimal_shaped = array(
+			array( 'min' => '25.00' ),       // decimal string — loses cents on (int) cast
+			array( 'min' => 25.5 ),          // native float — same problem
+			array( 'max' => '1e3' ),         // scientific notation
+			array( 'max' => '  100' ),       // whitespace-padded
+			array( 'min' => '-50' ),         // negative string — ctype_digit false
+			array( 'min' => str_repeat( '9', 30 ) ), // overflow — would saturate to PHP_INT_MAX on (int) cast
+		);
 		foreach ( $decimal_shaped as $price ) {
-			$this->captured_store_params = [];
+			$this->captured_store_params = array();
 			$this->successful_search(
-				[ 'filters' => [ 'price' => $price ] ]
+				array( 'filters' => array( 'price' => $price ) )
 			);
 			// Use native json_encode in assertion messages — wp_json_encode
 			// is a WP core function not reliably stubbed in this unit
@@ -1527,9 +1584,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		// Positive control: native int + digit-only string both
 		// accepted — confirms the validator isn't over-strict.
-		$this->captured_store_params = [];
+		$this->captured_store_params = array();
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'min' => 1000, 'max' => '5000' ] ] ]
+			array(
+				'filters' => array(
+					'price' => array(
+						'min' => 1000,
+						'max' => '5000',
+					),
+				),
+			)
 		);
 		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
 		$this->assertArrayHasKey( 'max_price', $this->captured_store_params );
@@ -1544,10 +1608,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// currency, businesses apply the filter directly." Store is
 		// stubbed as USD; agent sends USD → filter applies.
 		$this->successful_search(
-			[
-				'context' => [ 'currency' => 'USD' ],
-				'filters' => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
-			]
+			array(
+				'context' => array( 'currency' => 'USD' ),
+				'filters' => array(
+					'price' => array(
+						'min' => 1000,
+						'max' => 5000,
+					),
+				),
+			)
 		);
 
 		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
@@ -1561,7 +1630,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// our price_range responses always carry the store currency
 		// and agents derive filter bounds from them.
 		$this->successful_search(
-			[ 'filters' => [ 'price' => [ 'min' => 1000 ] ] ]
+			array( 'filters' => array( 'price' => array( 'min' => 1000 ) ) )
 		);
 
 		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
@@ -1573,10 +1642,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// MAY ignore the filter and SHOULD indicate this via a message."
 		// We don't carry FX rates → drop + warn.
 		$body = $this->successful_search(
-			[
-				'context' => [ 'currency' => 'EUR' ],
-				'filters' => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
-			]
+			array(
+				'context' => array( 'currency' => 'EUR' ),
+				'filters' => array(
+					'price' => array(
+						'min' => 1000,
+						'max' => 5000,
+					),
+				),
+			)
 		);
 
 		// Price filter NOT forwarded to Store API.
@@ -1584,7 +1658,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'max_price', $this->captured_store_params );
 
 		// Warning emitted with spec-conformant code + path.
-		$codes = array_column( $body['messages'] ?? [], 'code' );
+		$codes = array_column( $body['messages'] ?? array(), 'code' );
 		$this->assertContains( WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED, $codes );
 	}
 
@@ -1593,10 +1667,10 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// "usd" or "Usd" from loose clients. Store-side we use
 		// `strtoupper` before comparing so either form works.
 		$this->successful_search(
-			[
-				'context' => [ 'currency' => 'usd' ],
-				'filters' => [ 'price' => [ 'min' => 1000 ] ],
-			]
+			array(
+				'context' => array( 'currency' => 'usd' ),
+				'filters' => array( 'price' => array( 'min' => 1000 ) ),
+			)
 		);
 
 		$this->assertArrayHasKey( 'min_price', $this->captured_store_params );
@@ -1611,18 +1685,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// with a giant "currency" value and prevents an empty string
 		// (falsy but string-typed) from silently dropping valid
 		// filters.
-		foreach ( [ '', 'US', 'USDX', '123', str_repeat( 'A', 500 ) ] as $bad ) {
-			$this->captured_store_params = [];
+		foreach ( array( '', 'US', 'USDX', '123', str_repeat( 'A', 500 ) ) as $bad ) {
+			$this->captured_store_params = array();
 			$this->successful_search(
-				[
-					'context' => [ 'currency' => $bad ],
-					'filters' => [ 'price' => [ 'min' => 1000 ] ],
-				]
+				array(
+					'context' => array( 'currency' => $bad ),
+					'filters' => array( 'price' => array( 'min' => 1000 ) ),
+				)
 			);
 			$this->assertArrayHasKey(
 				'min_price',
 				$this->captured_store_params,
-				"Malformed currency (" . var_export( $bad, true ) . ") should be treated as absent and allow the price filter"
+				'Malformed currency (' . var_export( $bad, true ) . ') should be treated as absent and allow the price filter'
 			);
 		}
 	}
@@ -1650,21 +1724,24 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$GLOBALS['_mc_feature_enabled'] = true;
 		WC_AI_Storefront_Multi_Currency::reset_cache();
 
-		$no_op_price_payloads = [
-			[],
-			[ 'min' => 'cheap' ],
-			[ 'max' => null ],
-			[ 'min' => -5, 'max' => 'expensive' ],
-		];
+		$no_op_price_payloads = array(
+			array(),
+			array( 'min' => 'cheap' ),
+			array( 'max' => null ),
+			array(
+				'min' => -5,
+				'max' => 'expensive',
+			),
+		);
 		foreach ( $no_op_price_payloads as $price ) {
 			$body = $this->successful_search(
-				[
-					'context' => [ 'currency' => 'EUR' ],
-					'filters' => [ 'price' => $price ],
-				]
+				array(
+					'context' => array( 'currency' => 'EUR' ),
+					'filters' => array( 'price' => $price ),
+				)
 			);
 
-			$codes = array_column( $body['messages'] ?? [], 'code' );
+			$codes = array_column( $body['messages'] ?? array(), 'code' );
 			$this->assertNotContains(
 				WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
 				$codes,
@@ -1685,7 +1762,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// 1.6.0 `page` + `per_page` are always set (pagination is
 		// unconditional), so we assert on the filter-specific
 		// params being absent rather than the whole map being empty.
-		$body = $this->successful_search( [ 'filters' => 'garbage' ] );
+		$body = $this->successful_search( array( 'filters' => 'garbage' ) );
 
 		$this->assertArrayNotHasKey( 'search', $this->captured_store_params );
 		$this->assertArrayNotHasKey( 'category', $this->captured_store_params );
@@ -1696,7 +1773,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_non_array_categories_is_ignored(): void {
 		$this->successful_search(
-			[ 'filters' => [ 'categories' => 'tops' ] ]
+			array( 'filters' => array( 'categories' => 'tops' ) )
 		);
 
 		$this->assertArrayNotHasKey( 'category', $this->captured_store_params );
@@ -1710,42 +1787,77 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Search returns a variable product. The handler must then
 		// fire extra rest_do_request calls per variation so the
 		// translator emits real variants, not synthesized defaults.
-		$this->fake_product_list = [
-			[
+		$this->fake_product_list = array(
+			array(
 				'id'                => 789,
 				'name'              => 'T-Shirt',
 				'type'              => 'variable',
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'         => '1000',
 					'currency_code' => 'USD',
-					'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2000' ],
-				],
-				'variations'        => [
-					[ 'id' => 101, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Small' ] ] ],
-					[ 'id' => 102, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Large' ] ] ],
-				],
-			],
-		];
+					'price_range'   => array(
+						'min_amount' => '1000',
+						'max_amount' => '2000',
+					),
+				),
+				'variations'        => array(
+					array(
+						'id'         => 101,
+						'attributes' => array(
+							array(
+								'name'  => 'Size',
+								'value' => 'Small',
+							),
+						),
+					),
+					array(
+						'id'         => 102,
+						'attributes' => array(
+							array(
+								'name'  => 'Size',
+								'value' => 'Large',
+							),
+						),
+					),
+				),
+			),
+		);
 
-		$this->fake_store_api[101] = [
+		$this->fake_store_api[101] = array(
 			'id'                => 101,
 			'name'              => 'T-Shirt',
 			'short_description' => '',
 			'is_in_stock'       => true,
-			'prices'            => [ 'price' => '1000', 'currency_code' => 'USD' ],
-			'attributes'        => [ [ 'name' => 'Size', 'value' => 'Small' ] ],
-		];
-		$this->fake_store_api[102] = [
+			'prices'            => array(
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			),
+			'attributes'        => array(
+				array(
+					'name'  => 'Size',
+					'value' => 'Small',
+				),
+			),
+		);
+		$this->fake_store_api[102] = array(
 			'id'                => 102,
 			'name'              => 'T-Shirt',
 			'short_description' => '',
 			'is_in_stock'       => true,
-			'prices'            => [ 'price' => '2000', 'currency_code' => 'USD' ],
-			'attributes'        => [ [ 'name' => 'Size', 'value' => 'Large' ] ],
-		];
+			'prices'            => array(
+				'price'         => '2000',
+				'currency_code' => 'USD',
+			),
+			'attributes'        => array(
+				array(
+					'name'  => 'Size',
+					'value' => 'Large',
+				),
+			),
+		);
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
 		$this->assertCount( 1, $body['products'] );
 		$variants = $body['products'][0]['variants'];
@@ -1764,36 +1876,63 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// a regression in either won't be caught by the other's tests.
 		// This test is the search-side mirror of
 		// UcpCatalogLookupTest::test_variable_product_skips_variations_that_fail_to_fetch.
-		$this->fake_product_list = [
-			[
+		$this->fake_product_list = array(
+			array(
 				'id'                => 789,
 				'name'              => 'T-Shirt',
 				'type'              => 'variable',
 				'short_description' => '',
-				'prices'            => [
+				'prices'            => array(
 					'price'         => '1000',
 					'currency_code' => 'USD',
-					'price_range'   => [ 'min_amount' => '1000', 'max_amount' => '2000' ],
-				],
-				'variations'        => [
-					[ 'id' => 101, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Small' ] ] ],
-					[ 'id' => 102, 'attributes' => [ [ 'name' => 'Size', 'value' => 'Large' ] ] ],
-				],
-			],
-		];
+					'price_range'   => array(
+						'min_amount' => '1000',
+						'max_amount' => '2000',
+					),
+				),
+				'variations'        => array(
+					array(
+						'id'         => 101,
+						'attributes' => array(
+							array(
+								'name'  => 'Size',
+								'value' => 'Small',
+							),
+						),
+					),
+					array(
+						'id'         => 102,
+						'attributes' => array(
+							array(
+								'name'  => 'Size',
+								'value' => 'Large',
+							),
+						),
+					),
+				),
+			),
+		);
 
 		// Seed only the Small variation; Large fetch will 404.
-		$this->fake_store_api[101] = [
+		$this->fake_store_api[101] = array(
 			'id'                => 101,
 			'name'              => 'T-Shirt',
 			'short_description' => '',
 			'is_in_stock'       => true,
-			'prices'            => [ 'price' => '1000', 'currency_code' => 'USD' ],
-			'attributes'        => [ [ 'name' => 'Size', 'value' => 'Small' ] ],
-		];
+			'prices'            => array(
+				'price'         => '1000',
+				'currency_code' => 'USD',
+			),
+			'attributes'        => array(
+				array(
+					'name'  => 'Size',
+					'value' => 'Small',
+				),
+			),
+		);
 		// Leave 102 unseeded → fake returns 404.
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
 		// Product still rendered with the variations that fetched OK.
 		$this->assertCount( 1, $body['products'] );
@@ -1828,7 +1967,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$data = $response->get_data();
 		$this->assertArrayHasKey( 'ucp', $data );
-		$this->assertSame( [], $data['products'] );
+		$this->assertSame( array(), $data['products'] );
 		$this->assertArrayHasKey( 'messages', $data );
 
 		$codes = array_column( $data['messages'], 'code' );
@@ -1843,7 +1982,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// regardless of the underlying failure mode.
 		$this->fake_list_status = 500;
 
-		$this->assert_search_error( [], 500, WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR );
+		$this->assert_search_error( array(), 500, WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR );
 	}
 
 	public function test_store_api_400_returns_ucp_internal_error(): void {
@@ -1854,7 +1993,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// silently returning empty results.
 		$this->fake_list_status = 400;
 
-		$this->assert_search_error( [], 500, WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR );
+		$this->assert_search_error( array(), 500, WC_AI_Storefront_UCP_Error_Codes::UCP_INTERNAL_ERROR );
 	}
 
 	public function test_store_api_404_treated_as_empty_result(): void {
@@ -1862,9 +2001,9 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// match the filter" — agents see 200 with products: [].
 		$this->fake_list_status = 404;
 
-		$body = $this->successful_search( [] );
+		$body = $this->successful_search( array() );
 
-		$this->assertEquals( [], $body['products'] );
+		$this->assertEquals( array(), $body['products'] );
 	}
 
 	// ------------------------------------------------------------------
@@ -1876,10 +2015,10 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// registered (to avoid rewrite-flush churn on every toggle), but
 		// the handler must refuse to serve catalog data — otherwise the
 		// "pause" control silently fails open.
-		WC_AI_Storefront::$test_settings = [ 'enabled' => 'no' ];
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 
 		$this->assert_search_error(
-			[ 'query' => 'anything' ],
+			array( 'query' => 'anything' ),
 			503,
 			WC_AI_Storefront_UCP_Error_Codes::UCP_DISABLED
 		);
@@ -1909,10 +2048,10 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	//     Store API provides X-WP-Total
 
 	public function test_default_page_size_is_ten(): void {
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [] )
+			$this->search_request( array() )
 		);
 
 		// No pagination in request → defaults per UCP spec.
@@ -1921,12 +2060,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_pagination_limit_is_passed_through(): void {
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'limit' => 25 ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'limit' => 25 ),
+				)
+			)
 		);
 
 		$this->assertSame( 25, $this->captured_store_params['per_page'] );
@@ -1937,26 +2078,28 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// 500 get 100 (MAX_SEARCH_LIMIT) silently — they'll just
 		// see slightly fewer products per page than requested and
 		// page through cursors normally.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'limit' => 500 ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'limit' => 500 ),
+				)
+			)
 		);
 
 		$this->assertSame( 100, $this->captured_store_params['per_page'] );
 	}
 
 	public function test_response_pagination_indicates_no_next_page_when_single_page(): void {
-		$this->fake_product_list  = [];
-		$this->fake_list_headers  = [
+		$this->fake_product_list = array();
+		$this->fake_list_headers = array(
 			'X-WP-Total'      => '3',
 			'X-WP-TotalPages' => '1',
-		];
+		);
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [] )
+			$this->search_request( array() )
 		);
 
 		$body = $response->get_data();
@@ -1971,14 +2114,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_response_emits_cursor_when_more_pages_exist(): void {
-		$this->fake_product_list = [];
-		$this->fake_list_headers = [
+		$this->fake_product_list = array();
+		$this->fake_list_headers = array(
 			'X-WP-Total'      => '47',
 			'X-WP-TotalPages' => '5',
-		];
+		);
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [] )
+			$this->search_request( array() )
 		);
 
 		$body = $response->get_data();
@@ -1991,23 +2134,25 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_cursor_round_trip_advances_to_next_page(): void {
 		// Request page 1, capture the cursor, resubmit — the handler
 		// should decode that cursor to page 2 and pass it to Store API.
-		$this->fake_product_list = [];
-		$this->fake_list_headers = [
+		$this->fake_product_list = array();
+		$this->fake_list_headers = array(
 			'X-WP-Total'      => '50',
 			'X-WP-TotalPages' => '5',
-		];
+		);
 
-		$first = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [] )
+		$first  = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request( array() )
 		);
 		$cursor = $first->get_data()['pagination']['cursor'];
 
-		$this->captured_store_params = [];
+		$this->captured_store_params = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'cursor' => $cursor ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'cursor' => $cursor ),
+				)
+			)
 		);
 
 		$this->assertSame( 2, $this->captured_store_params['page'] );
@@ -2018,12 +2163,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// invalidate them; surfacing an error would make pagination
 		// brittle. Silent fallback to page 1 is the intentional
 		// behavior — the agent gets a fresh valid page.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'cursor' => 'not-a-valid-cursor' ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'cursor' => 'not-a-valid-cursor' ),
+				)
+			)
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
@@ -2031,12 +2178,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_empty_string_cursor_falls_back_to_page_one(): void {
 		// Edge case: explicit empty cursor. Treat same as missing.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'cursor' => '' ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'cursor' => '' ),
+				)
+			)
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
@@ -2051,12 +2200,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// version that reordered the arguments could silently pass
 		// `per_page=0` to Store API (zero-result bug). Also locks in
 		// the `pagination_limit_clamped` warning emission.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'limit' => 0 ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'limit' => 0 ),
+				)
+			)
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['per_page'] );
@@ -2070,22 +2221,24 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// silently saturate to PHP_INT_MAX. All invalid shapes
 		// should fall back to the default limit with a warning
 		// pointing at `$.pagination.limit`.
-		$invalid_shapes = [
+		$invalid_shapes = array(
 			'50.5',                        // decimal string
 			25.5,                          // native float
 			'1e3',                         // scientific notation
 			'  50',                        // whitespace-padded
 			str_repeat( '9', 30 ),         // overflow
 			'abc',                         // non-numeric
-		];
+		);
 		foreach ( $invalid_shapes as $bad_limit ) {
-			$this->captured_store_params = [];
-			$this->fake_product_list     = [];
+			$this->captured_store_params = array();
+			$this->fake_product_list     = array();
 
 			$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-				$this->search_request( [
-					'pagination' => [ 'limit' => $bad_limit ],
-				] )
+				$this->search_request(
+					array(
+						'pagination' => array( 'limit' => $bad_limit ),
+					)
+				)
 			);
 
 			$this->assertSame(
@@ -2104,12 +2257,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// The warning still fires so agents with retry logic on
 		// `pagination_limit_clamped` get the "unusable value"
 		// signal they used to get on the clamp path.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'limit' => -5 ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'limit' => -5 ),
+				)
+			)
 		);
 
 		$this->assertSame( 10, $this->captured_store_params['per_page'] );
@@ -2121,12 +2276,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// but that one doesn't check for the warning message. Lock in
 		// the warning emission too — agents pagination-math around
 		// limits and need the signal.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'limit' => 500 ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'limit' => 500 ),
+				)
+			)
 		);
 
 		$this->assertWarning( $response->get_data(), WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED );
@@ -2137,12 +2294,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// bodies, some client libraries). The code uses is_numeric()
 		// which accepts "25". A future tightening to is_int() would
 		// silently break string-sending clients.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'limit' => '25' ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'limit' => '25' ),
+				)
+			)
 		);
 
 		$this->assertSame( 25, $this->captured_store_params['per_page'] );
@@ -2152,16 +2311,18 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Inverse of the clamp tests: if the limit is valid, no warning
 		// should fire. Prevents a regression where we always emit the
 		// warning regardless of whether clamping happened.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'limit' => 50 ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'limit' => 50 ),
+				)
+			)
 		);
 
 		$body     = $response->get_data();
-		$messages = $body['messages'] ?? [];
+		$messages = $body['messages'] ?? array();
 
 		$clamped_codes = array_column( $messages, 'code' );
 		$this->assertNotContains(
@@ -2177,12 +2338,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// The former gets a warning the agent can surface as a
 		// debugging hint; the latter doesn't (it's expected drift
 		// that silent fallback handles gracefully).
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'cursor' => 'not-a-valid-cursor' ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'cursor' => 'not-a-valid-cursor' ),
+				)
+			)
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
@@ -2193,13 +2356,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Cursor encoding page 0 (or negative) is forged input —
 		// the server never emits these. Treat as malformed, not
 		// as a stale-but-well-formed cursor.
-		$cursor = base64_encode( 'p0' );
-		$this->fake_product_list = [];
+		$cursor                  = base64_encode( 'p0' );
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'cursor' => $cursor ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'cursor' => $cursor ),
+				)
+			)
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
@@ -2213,13 +2378,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// overflows on 32-bit MySQL builds, producing negative
 		// OFFSET values and SQL errors. 100,000 is already 10M
 		// products at max limit — beyond any real catalog.
-		$cursor = base64_encode( 'p99999999999999999' );
-		$this->fake_product_list = [];
+		$cursor                  = base64_encode( 'p99999999999999999' );
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => [ 'cursor' => $cursor ],
-			] )
+			$this->search_request(
+				array(
+					'pagination' => array( 'cursor' => $cursor ),
+				)
+			)
 		);
 
 		$this->assertSame( 1, $this->captured_store_params['page'] );
@@ -2229,12 +2396,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	public function test_non_array_pagination_emits_warning_and_uses_defaults(): void {
 		// `pagination: "next"` or `pagination: 42` — garbled but
 		// not a total blocker. Apply defaults and warn.
-		$this->fake_product_list = [];
+		$this->fake_product_list = array();
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'pagination' => 'next',
-			] )
+			$this->search_request(
+				array(
+					'pagination' => 'next',
+				)
+			)
 		);
 
 		$this->assertSame( 10, $this->captured_store_params['per_page'] );
@@ -2247,11 +2416,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// API ever strips it (cache plugins, REST middleware), the
 		// field must be omitted rather than defaulted to 0 — agents
 		// reading `body.pagination.total_count || 0` would misreport.
-		$this->fake_product_list = [];
-		$this->fake_list_headers = []; // No X-WP-* headers at all.
+		$this->fake_product_list = array();
+		$this->fake_list_headers = array(); // No X-WP-* headers at all.
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [] )
+			$this->search_request( array() )
 		);
 
 		$pagination = $response->get_data()['pagination'];
@@ -2268,14 +2437,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// casing. Any middleware normalizing to lowercase (or
 		// uppercase) would silently break the pagination response
 		// without this case-insensitive lookup.
-		$this->fake_product_list = [];
-		$this->fake_list_headers = [
+		$this->fake_product_list = array();
+		$this->fake_list_headers = array(
 			'x-wp-total'      => '47',   // lowercase — not the default casing
 			'x-wp-totalpages' => '5',
-		];
+		);
 
 		$response = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [] )
+			$this->search_request( array() )
 		);
 
 		$pagination = $response->get_data()['pagination'];
@@ -2288,30 +2457,47 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// filter params. A refactor that moves pagination mapping
 		// before or after filter mapping (or uses the same $params
 		// array slot) could silently drop either side.
-		$this->fake_product_list = [];
-		$this->fake_list_headers = [
+		$this->fake_product_list = array();
+		$this->fake_list_headers = array(
 			'X-WP-Total'      => '50',
 			'X-WP-TotalPages' => '5',
-		];
+		);
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 
-		$first = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'query'      => 'shirt',
-				'filters'    => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
-				'pagination' => [ 'limit' => 20 ],
-			] )
+		$first  = ( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request(
+				array(
+					'query'      => 'shirt',
+					'filters'    => array(
+						'price' => array(
+							'min' => 1000,
+							'max' => 5000,
+						),
+					),
+					'pagination' => array( 'limit' => 20 ),
+				)
+			)
 		);
 		$cursor = $first->get_data()['pagination']['cursor'];
 
-		$this->captured_store_params = [];
+		$this->captured_store_params = array();
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
-			$this->search_request( [
-				'query'      => 'shirt',
-				'filters'    => [ 'price' => [ 'min' => 1000, 'max' => 5000 ] ],
-				'pagination' => [ 'limit' => 20, 'cursor' => $cursor ],
-			] )
+			$this->search_request(
+				array(
+					'query'      => 'shirt',
+					'filters'    => array(
+						'price' => array(
+							'min' => 1000,
+							'max' => 5000,
+						),
+					),
+					'pagination' => array(
+						'limit'  => 20,
+						'cursor' => $cursor,
+					),
+				)
+			)
 		);
 
 		// All four must round-trip independently.
@@ -2331,12 +2517,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// Handler should truncate to the first 50 and emit a
 		// `filter_truncated` advisory with `$.filters.categories`
 		// path. Mitigates DoS via unbounded term-query fan-out.
-		$many = [];
+		$many = array();
 		for ( $i = 0; $i < 60; $i++ ) {
 			$many[] = 'cat-' . $i;
 		}
 		$body = $this->successful_search(
-			[ 'filters' => [ 'categories' => $many ] ]
+			array( 'filters' => array( 'categories' => $many ) )
 		);
 
 		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
@@ -2344,7 +2530,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// The tail (entries 50-59) must not appear in `unresolved`
 		// warnings — truncation happens before resolution, so we
 		// don't even attempt to resolve past the cap.
-		$codes        = array_column( $body['messages'] ?? [], 'code' );
+		$codes        = array_column( $body['messages'] ?? array(), 'code' );
 		$not_found_ct = count( array_filter( $codes, static fn( $c ) => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === $c ) );
 		$this->assertLessThanOrEqual(
 			50,
@@ -2355,25 +2541,25 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_oversized_tags_filter_is_capped_with_warning(): void {
 		$many = array_fill( 0, 60, 'tag-x' );
-		$body = $this->successful_search( [ 'filters' => [ 'tags' => $many ] ] );
+		$body = $this->successful_search( array( 'filters' => array( 'tags' => $many ) ) );
 		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
 
 	public function test_oversized_brand_filter_is_capped_with_warning(): void {
 		$many = array_fill( 0, 60, 'brand-x' );
-		$body = $this->successful_search( [ 'filters' => [ 'brand' => $many ] ] );
+		$body = $this->successful_search( array( 'filters' => array( 'brand' => $many ) ) );
 		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
 
 	public function test_oversized_attributes_map_is_capped_with_warning(): void {
 		// 60 distinct attribute keys → truncate to 50 + warn with
 		// `$.filters.attributes` path.
-		$many = [];
+		$many = array();
 		for ( $i = 0; $i < 60; $i++ ) {
-			$many[ 'attr-' . $i ] = [ 'red' ];
+			$many[ 'attr-' . $i ] = array( 'red' );
 		}
 		$body = $this->successful_search(
-			[ 'filters' => [ 'attributes' => $many ] ]
+			array( 'filters' => array( 'attributes' => $many ) )
 		);
 		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
@@ -2386,10 +2572,10 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// renders message content as HTML — stored/reflected XSS.
 		// `sanitize_reflected_value` strips tags before reflection.
 		$body = $this->successful_search(
-			[ 'filters' => [ 'categories' => [ '<script>alert(1)</script>', '<img src=x onerror=alert(1)>' ] ] ]
+			array( 'filters' => array( 'categories' => array( '<script>alert(1)</script>', '<img src=x onerror=alert(1)>' ) ) )
 		);
 
-		$messages = $body['messages'] ?? [];
+		$messages   = $body['messages'] ?? array();
 		$not_founds = array_filter(
 			$messages,
 			static fn( $m ) => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === ( $m['code'] ?? null )
@@ -2406,11 +2592,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		// 10KB agent-supplied string reflected into response would
 		// balloon the payload. Cap at 200 chars (enough for context
 		// in log output, bounded for DoS / cache-key attacks).
-		$huge = str_repeat( 'x', 10000 );
-		$body = $this->successful_search(
-			[ 'filters' => [ 'categories' => [ $huge ] ] ]
+		$huge                     = str_repeat( 'x', 10000 );
+		$body                     = $this->successful_search(
+			array( 'filters' => array( 'categories' => array( $huge ) ) )
 		);
-		$messages               = $body['messages'] ?? [];
+		$messages                 = $body['messages'] ?? array();
 		$found_category_not_found = false;
 		foreach ( $messages as $m ) {
 			if ( WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND === ( $m['code'] ?? null ) ) {
@@ -2434,7 +2620,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	 * @param string               $code Expected `messages[].code`.
 	 */
 	private function assertWarning( array $body, string $code ): void {
-		$messages = $body['messages'] ?? [];
+		$messages = $body['messages'] ?? array();
 		foreach ( $messages as $m ) {
 			if ( ( $m['code'] ?? null ) === $code ) {
 				$this->assertSame( 'warning', $m['type'] );
@@ -2465,7 +2651,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			static function ( WP_REST_Request $request ) use ( &$saw_in_scope ) {
 				if ( '/wc/store/v1/products' === $request->get_route() ) {
 					$saw_in_scope = WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch();
-					return new WP_REST_Response( [], 200 );
+					return new WP_REST_Response( array(), 200 );
 				}
 				return new WP_REST_Response( null, 500 );
 			}
@@ -2478,7 +2664,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
-		$response   = $controller->handle_catalog_search( $this->search_request( [] ) );
+		$response   = $controller->handle_catalog_search( $this->search_request( array() ) );
 
 		$this->assertInstanceOf( WP_REST_Response::class, $response );
 		$this->assertTrue(
@@ -2511,7 +2697,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$threw      = false;
 		try {
-			$controller->handle_catalog_search( $this->search_request( [] ) );
+			$controller->handle_catalog_search( $this->search_request( array() ) );
 		} catch ( RuntimeException $e ) {
 			$threw = true;
 		}
@@ -2565,7 +2751,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$rp_shutdown = $rc->getProperty( 'shutdown_registered' );
 		$rp_pending->setAccessible( true );
 		$rp_shutdown->setAccessible( true );
-		$rp_pending->setValue( null, [] );
+		$rp_pending->setValue( null, array() );
 		$rp_shutdown->setValue( null, false );
 	}
 
@@ -2594,15 +2780,15 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_records_one_request_row_plus_one_impression_per_result(): void {
 		$this->reset_crawl_logger_state();
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 11, 'Hoodie A' ),
 			$this->make_simple_product( 12, 'Hoodie B' ),
 			$this->make_simple_product( 13, 'Hoodie C' ),
-		];
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search(
-			$this->search_request_as_known_agent( [ 'query' => 'hoodie' ] )
+			$this->search_request_as_known_agent( array( 'query' => 'hoodie' ) )
 		);
 
 		$rows = $this->get_pending_crawl_records();
@@ -2627,27 +2813,27 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 		$this->assertCount( 3, $impression_rows, 'One impression row per result product.' );
-		$this->assertSame( [ 11, 12, 13 ], array_column( $impression_rows, 0 ) );
+		$this->assertSame( array( 11, 12, 13 ), array_column( $impression_rows, 0 ) );
 		// Impression rows carry empty query so the Top searches SQL
 		// (WHERE query != '') excludes them naturally.
-		$this->assertSame( [ '', '', '' ], array_column( $impression_rows, 3 ) );
+		$this->assertSame( array( '', '', '' ), array_column( $impression_rows, 3 ) );
 	}
 
 	public function test_catalog_search_skips_impression_recording_when_agent_is_fallback(): void {
 		$this->reset_crawl_logger_state();
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 11, 'Hoodie A' ),
 			$this->make_simple_product( 12, 'Hoodie B' ),
-		];
+		);
 
 		// No UCP-Agent header → resolve_agent_host() returns
 		// FALLBACK_SOURCE → both the request row AND the impression
 		// rows are skipped (single guard in the handler).
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
-		$controller->handle_catalog_search( $this->search_request( [ 'query' => 'hoodie' ] ) );
+		$controller->handle_catalog_search( $this->search_request( array( 'query' => 'hoodie' ) ) );
 
 		$this->assertSame(
-			[],
+			array(),
 			$this->get_pending_crawl_records(),
 			'Fallback agents must not record any crawl rows (request or impression).'
 		);
@@ -2667,17 +2853,17 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 21, 'Belt A' ),
 			$this->make_simple_product( 22, 'Belt B' ),
 			$this->make_simple_product( 23, 'Belt C' ),
 			$this->make_simple_product( 24, 'Belt D' ),
 			$this->make_simple_product( 25, 'Belt E' ),
-		];
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search(
-			$this->search_request_as_known_agent( [ 'query' => 'belt' ] )
+			$this->search_request_as_known_agent( array( 'query' => 'belt' ) )
 		);
 
 		$impression_rows = array_values(
@@ -2688,7 +2874,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertCount( 2, $impression_rows, 'Cap of 2 truncates the impression list.' );
 		// First-N order — array_slice preserves source order.
-		$this->assertSame( [ 21, 22 ], array_column( $impression_rows, 0 ) );
+		$this->assertSame( array( 21, 22 ), array_column( $impression_rows, 0 ) );
 	}
 
 	public function test_catalog_search_impression_cap_filter_returning_zero_disables_impressions(): void {
@@ -2706,14 +2892,14 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 31, 'Hat A' ),
 			$this->make_simple_product( 32, 'Hat B' ),
-		];
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search(
-			$this->search_request_as_known_agent( [ 'query' => 'hat' ] )
+			$this->search_request_as_known_agent( array( 'query' => 'hat' ) )
 		);
 
 		$rows            = $this->get_pending_crawl_records();
@@ -2744,11 +2930,11 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$this->fake_product_list = [ $this->make_simple_product( 41, 'Bag' ) ];
+		$this->fake_product_list = array( $this->make_simple_product( 41, 'Bag' ) );
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search(
-			$this->search_request_as_known_agent( [ 'query' => 'bag' ] )
+			$this->search_request_as_known_agent( array( 'query' => 'bag' ) )
 		);
 
 		$impression_rows = array_filter(
@@ -2762,7 +2948,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->reset_crawl_logger_state();
 		// No filter set → default constant SEARCH_IMPRESSION_CAP applies.
 		// Build a 75-product result set; expect exactly 50 impression rows.
-		$products = [];
+		$products = array();
 		for ( $i = 1; $i <= 75; $i++ ) {
 			$products[] = $this->make_simple_product( 1000 + $i, "Product {$i}" );
 		}
@@ -2770,7 +2956,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search(
-			$this->search_request_as_known_agent( [ 'query' => 'anything' ] )
+			$this->search_request_as_known_agent( array( 'query' => 'anything' ) )
 		);
 
 		$impression_rows = array_filter(
@@ -2786,16 +2972,19 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_catalog_search_skips_impressions_for_zero_or_missing_product_id(): void {
 		$this->reset_crawl_logger_state();
-		$this->fake_product_list = [
+		$this->fake_product_list = array(
 			$this->make_simple_product( 51, 'Real Product' ),
-			[ 'id' => 0, 'name' => 'Bogus' ],     // product_id = 0 → skipped.
-			[ 'name' => 'No ID at all' ],         // missing 'id' → skipped.
+			array(
+				'id'   => 0,
+				'name' => 'Bogus',
+			),     // product_id = 0 → skipped.
+			array( 'name' => 'No ID at all' ),         // missing 'id' → skipped.
 			$this->make_simple_product( 52, 'Another Real Product' ),
-		];
+		);
 
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 		$controller->handle_catalog_search(
-			$this->search_request_as_known_agent( [ 'query' => 'mixed' ] )
+			$this->search_request_as_known_agent( array( 'query' => 'mixed' ) )
 		);
 
 		$impression_rows = array_values(
@@ -2805,7 +2994,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 		$this->assertSame(
-			[ 51, 52 ],
+			array( 51, 52 ),
 			array_column( $impression_rows, 0 ),
 			'Defensive product_id > 0 guard skips zero/missing entries.'
 		);
@@ -2987,37 +3176,68 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 				$captured[ $route ] = $GLOBALS['_mc_selected_currency'] ?? null;
 
 				if ( '/wc/store/v1/products' === $route ) {
-					$response = new \WP_REST_Response( array(
+					$response = new \WP_REST_Response(
 						array(
-							'id'                => 789,
-							'name'              => 'T-Shirt',
-							'type'              => 'variable',
-							'short_description' => '',
-							'prices'            => array(
-								'price'         => '1000',
-								'currency_code' => 'EUR',
-								'price_range'   => array( 'min_amount' => '1000', 'max_amount' => '2000' ),
+							array(
+								'id'                => 789,
+								'name'              => 'T-Shirt',
+								'type'              => 'variable',
+								'short_description' => '',
+								'prices'            => array(
+									'price'         => '1000',
+									'currency_code' => 'EUR',
+									'price_range'   => array(
+										'min_amount' => '1000',
+										'max_amount' => '2000',
+									),
+								),
+								'variations'        => array(
+									array(
+										'id'         => 101,
+										'attributes' => array(
+											array(
+												'name'  => 'Size',
+												'value' => 'Small',
+											),
+										),
+									),
+									array(
+										'id'         => 102,
+										'attributes' => array(
+											array(
+												'name'  => 'Size',
+												'value' => 'Large',
+											),
+										),
+									),
+								),
 							),
-							'variations'        => array(
-								array( 'id' => 101, 'attributes' => array( array( 'name' => 'Size', 'value' => 'Small' ) ) ),
-								array( 'id' => 102, 'attributes' => array( array( 'name' => 'Size', 'value' => 'Large' ) ) ),
-							),
-						),
-					) );
+						)
+					);
 					$response->set_status( 200 );
 					return $response;
 				}
 
 				// Single-item variation dispatches.
 				$product_id = (int) basename( $route );
-				$response   = new \WP_REST_Response( array(
-					'id'                => $product_id,
-					'name'              => 'T-Shirt',
-					'short_description' => '',
-					'is_in_stock'       => true,
-					'prices'            => array( 'price' => '1500', 'currency_code' => 'EUR' ),
-					'attributes'        => array( array( 'name' => 'Size', 'value' => 'Small' ) ),
-				) );
+				$response   = new \WP_REST_Response(
+					array(
+						'id'                => $product_id,
+						'name'              => 'T-Shirt',
+						'short_description' => '',
+						'is_in_stock'       => true,
+						'prices'            => array(
+							'price'         => '1500',
+							'currency_code' => 'EUR',
+						),
+						'attributes'        => array(
+							array(
+								'name'  => 'Size',
+								'value' => 'Small',
+							),
+						),
+					)
+				);
 				$response->set_status( 200 );
 				return $response;
 			}
@@ -3088,7 +3308,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$request->set_body_params(
 			array(
 				'context' => array( 'currency' => 'EUR' ),
-				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+				'filters' => array(
+					'price' => array(
+						'min' => 5000,
+						'max' => 10000,
+					),
+				),
 			)
 		);
 
@@ -3130,7 +3355,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$request->set_body_params(
 			array(
 				'context' => array( 'currency' => 'XYZ' ),
-				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+				'filters' => array(
+					'price' => array(
+						'min' => 5000,
+						'max' => 10000,
+					),
+				),
 			)
 		);
 
@@ -3185,7 +3415,12 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$request->set_body_params(
 			array(
 				'context' => array( 'currency' => 'EUR' ),
-				'filters' => array( 'price' => array( 'min' => 5000, 'max' => 10000 ) ),
+				'filters' => array(
+					'price' => array(
+						'min' => 5000,
+						'max' => 10000,
+					),
+				),
 			)
 		);
 

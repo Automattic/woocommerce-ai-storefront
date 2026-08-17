@@ -24,14 +24,14 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		// Defense in depth: reset the variation-redirect map even
 		// though no test in this file uses it. Static properties
 		// persist across PHPUnit instances within the same process,
 		// so a future variation test elsewhere that forgets its
 		// tearDown could otherwise pollute these tests' product_id
 		// → parent_id resolution.
-		WC_AI_Storefront::$test_variations = [];
+		WC_AI_Storefront::$test_variations = array();
 
 		// Default: brands taxonomy registered. Under 0.1.5's UNION
 		// gate, `taxonomy_exists('product_brand')` is consulted on
@@ -64,14 +64,14 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 	public function test_tags_mode_returns_true_when_product_has_a_matching_tag(): void {
 		// Product carries tags [3, 7]; merchant selected [7, 12].
 		// ANY-match: tag 7 is in both → syndicated.
-		Functions\when( 'wp_get_post_terms' )->justReturn( [ 3, 7 ] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array( 3, 7 ) );
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'tags',
-				'selected_tags'          => [ 7, 12 ],
-			]
+				'selected_tags'          => array( 7, 12 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -80,14 +80,14 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 	public function test_tags_mode_returns_false_when_product_has_no_matching_tag(): void {
 		// Product carries tags [1, 2]; merchant selected [7, 12].
 		// No overlap → not syndicated.
-		Functions\when( 'wp_get_post_terms' )->justReturn( [ 1, 2 ] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array( 1, 2 ) );
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'tags',
-				'selected_tags'          => [ 7, 12 ],
-			]
+				'selected_tags'          => array( 7, 12 ),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -103,10 +103,10 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 		// wp_get_post_terms is NOT called (no stub needed).
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'tags',
-				'selected_tags'          => [],
-			]
+				'selected_tags'          => array(),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -127,10 +127,10 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'brands',
-				'selected_brands'        => [ 5, 9 ],
-			]
+				'selected_brands'        => array( 5, 9 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -152,10 +152,10 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'brands',
-				'selected_brands'        => [],
-			]
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -172,10 +172,10 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'brands',
-				'selected_brands'        => [],
-			]
+				'selected_brands'        => array(),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -187,14 +187,14 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_brands_mode_returns_true_when_product_has_a_matching_brand(): void {
 		Functions\when( 'taxonomy_exists' )->justReturn( true );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [ 5, 11 ] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array( 5, 11 ) );
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'brands',
-				'selected_brands'        => [ 5, 20 ],
-			]
+				'selected_brands'        => array( 5, 20 ),
+			)
 		);
 
 		$this->assertTrue( $result );
@@ -202,14 +202,14 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_brands_mode_returns_false_when_product_has_no_matching_brand(): void {
 		Functions\when( 'taxonomy_exists' )->justReturn( true );
-		Functions\when( 'wp_get_post_terms' )->justReturn( [ 3, 8 ] );
+		Functions\when( 'wp_get_post_terms' )->justReturn( array( 3, 8 ) );
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'brands',
-				'selected_brands'        => [ 5, 20 ],
-			]
+				'selected_brands'        => array( 5, 20 ),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -226,10 +226,10 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'tags',
-				'selected_tags'          => [ 7 ],
-			]
+				'selected_tags'          => array( 7 ),
+			)
 		);
 
 		$this->assertFalse( $result );
@@ -241,10 +241,10 @@ class IsSyndicatedTagsBrandsTest extends \PHPUnit\Framework\TestCase {
 
 		$result = WC_AI_Storefront::is_product_syndicated(
 			$this->make_product( 42 ),
-			[
+			array(
 				'product_selection_mode' => 'brands',
-				'selected_brands'        => [ 5 ],
-			]
+				'selected_brands'        => array( 5 ),
+			)
 		);
 
 		$this->assertFalse( $result );

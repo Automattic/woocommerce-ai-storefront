@@ -31,7 +31,7 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 		parent::setUp();
 		Monkey\setUp();
 		Functions\when( 'taxonomy_exists' )->justReturn( true );
-		WC_AI_Storefront::$test_settings = [];
+		WC_AI_Storefront::$test_settings = array();
 		WP_Query::$test_found_posts      = 0;
 		$this->controller                = new WC_AI_Storefront_Admin_Controller();
 	}
@@ -47,7 +47,7 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_all_mode_returns_published_product_count(): void {
-		WC_AI_Storefront::$test_settings = [ 'product_selection_mode' => 'all' ];
+		WC_AI_Storefront::$test_settings = array( 'product_selection_mode' => 'all' );
 
 		$counts          = new stdClass();
 		$counts->publish = 57;
@@ -55,17 +55,17 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 57 ], $response->data );
+		$this->assertSame( array( 'count' => 57 ), $response->data );
 	}
 
 	public function test_all_mode_returns_zero_when_publish_property_missing(): void {
-		WC_AI_Storefront::$test_settings = [ 'product_selection_mode' => 'all' ];
+		WC_AI_Storefront::$test_settings = array( 'product_selection_mode' => 'all' );
 
 		Functions\when( 'wp_count_posts' )->justReturn( new stdClass() );
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 0 ], $response->data );
+		$this->assertSame( array( 'count' => 0 ), $response->data );
 	}
 
 	// ------------------------------------------------------------------
@@ -73,26 +73,26 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_selected_mode_with_empty_list_returns_zero(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [],
-		];
+			'selected_products'      => array(),
+		);
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 0 ], $response->data );
+		$this->assertSame( array( 'count' => 0 ), $response->data );
 	}
 
 	public function test_selected_mode_returns_wp_query_found_posts(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'selected',
-			'selected_products'      => [ 10, 20, 30 ],
-		];
-		WP_Query::$test_found_posts = 3;
+			'selected_products'      => array( 10, 20, 30 ),
+		);
+		WP_Query::$test_found_posts      = 3;
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 3 ], $response->data );
+		$this->assertSame( array( 'count' => 3 ), $response->data );
 	}
 
 	// ------------------------------------------------------------------
@@ -100,16 +100,16 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_by_taxonomy_with_all_empty_arrays_returns_zero(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [],
-			'selected_tags'          => [],
-			'selected_brands'        => [],
-		];
+			'selected_categories'    => array(),
+			'selected_tags'          => array(),
+			'selected_brands'        => array(),
+		);
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 0 ], $response->data );
+		$this->assertSame( array( 'count' => 0 ), $response->data );
 	}
 
 	// ------------------------------------------------------------------
@@ -117,32 +117,32 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	public function test_by_taxonomy_returns_union_found_posts(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [ 3, 7 ],
-			'selected_tags'          => [ 5 ],
-			'selected_brands'        => [],
-		];
-		WP_Query::$test_found_posts = 12;
+			'selected_categories'    => array( 3, 7 ),
+			'selected_tags'          => array( 5 ),
+			'selected_brands'        => array(),
+		);
+		WP_Query::$test_found_posts      = 12;
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 12 ], $response->data );
+		$this->assertSame( array( 'count' => 12 ), $response->data );
 	}
 
 	public function test_by_taxonomy_with_only_brands_returns_query_count(): void {
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [],
-			'selected_tags'          => [],
-			'selected_brands'        => [ 9 ],
-		];
-		WP_Query::$test_found_posts = 8;
+			'selected_categories'    => array(),
+			'selected_tags'          => array(),
+			'selected_brands'        => array( 9 ),
+		);
+		WP_Query::$test_found_posts      = 8;
 		// taxonomy_exists returns true from setUp — brands are enforced.
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 8 ], $response->data );
+		$this->assertSame( array( 'count' => 8 ), $response->data );
 	}
 
 	// ------------------------------------------------------------------
@@ -153,12 +153,12 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 		// Only brands selected, but product_brand taxonomy is unregistered
 		// (pre-WC-9.5 or custom env). Server enforces show-all; count
 		// must match to avoid a misleading "0 products" on the card.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [],
-			'selected_tags'          => [],
-			'selected_brands'        => [ 12 ],
-		];
+			'selected_categories'    => array(),
+			'selected_tags'          => array(),
+			'selected_brands'        => array( 12 ),
+		);
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
 
 		$counts          = new stdClass();
@@ -167,7 +167,7 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 100 ], $response->data );
+		$this->assertSame( array( 'count' => 100 ), $response->data );
 	}
 
 	// ------------------------------------------------------------------
@@ -179,17 +179,17 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 		// get_product_count() must treat it as by_taxonomy. With
 		// selected_tags non-empty and the taxonomy registered, the
 		// UNION query runs and found_posts is returned.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'tags',
-			'selected_categories'    => [],
-			'selected_tags'          => [ 7, 8 ],
-			'selected_brands'        => [],
-		];
-		WP_Query::$test_found_posts = 5;
+			'selected_categories'    => array(),
+			'selected_tags'          => array( 7, 8 ),
+			'selected_brands'        => array(),
+		);
+		WP_Query::$test_found_posts      = 5;
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 5 ], $response->data );
+		$this->assertSame( array( 'count' => 5 ), $response->data );
 	}
 
 	// ------------------------------------------------------------------
@@ -212,20 +212,20 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 		// override regresses the test will fail loudly with an
 		// undefined-function error rather than silently returning a
 		// stale count.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'all',
-			'selected_categories'    => [ 3 ],
-			'selected_tags'          => [],
-			'selected_brands'        => [],
-		];
-		WP_Query::$test_found_posts = 12;
+			'selected_categories'    => array( 3 ),
+			'selected_tags'          => array(),
+			'selected_brands'        => array(),
+		);
+		WP_Query::$test_found_posts      = 12;
 
 		$request = new WP_REST_Request();
 		$request->set_param( 'mode', 'by_taxonomy' );
 
 		$response = $this->controller->get_product_count( $request );
 
-		$this->assertSame( [ 'count' => 12 ], $response->data );
+		$this->assertSame( array( 'count' => 12 ), $response->data );
 	}
 
 	public function test_request_param_selected_categories_overrides_saved_settings(): void {
@@ -233,22 +233,22 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 		// by_taxonomy with empty selections. The request-time
 		// override `selected_categories=[5,9]` previews a count
 		// against the hypothetical selection without persisting.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'by_taxonomy',
-			'selected_categories'    => [],
-			'selected_tags'          => [],
-			'selected_brands'        => [],
-		];
-		WP_Query::$test_found_posts = 17;
+			'selected_categories'    => array(),
+			'selected_tags'          => array(),
+			'selected_brands'        => array(),
+		);
+		WP_Query::$test_found_posts      = 17;
 
 		$request = new WP_REST_Request();
-		$request->set_param( 'selected_categories', [ 5, 9 ] );
+		$request->set_param( 'selected_categories', array( 5, 9 ) );
 
 		$response = $this->controller->get_product_count( $request );
 
 		// With overridden selection populated, by_taxonomy runs the
 		// UNION query and returns found_posts.
-		$this->assertSame( [ 'count' => 17 ], $response->data );
+		$this->assertSame( array( 'count' => 17 ), $response->data );
 	}
 
 	public function test_no_request_falls_back_to_saved_settings(): void {
@@ -256,15 +256,15 @@ class AdminProductCountTest extends \PHPUnit\Framework\TestCase {
 		// tests that pre-date the param-override branch, or the
 		// Overview tab's own client which deliberately reads saved
 		// state) get the persisted-settings count.
-		WC_AI_Storefront::$test_settings = [
+		WC_AI_Storefront::$test_settings = array(
 			'product_selection_mode' => 'all',
-		];
-		$counts          = new stdClass();
-		$counts->publish = 33;
+		);
+		$counts                          = new stdClass();
+		$counts->publish                 = 33;
 		Functions\when( 'wp_count_posts' )->justReturn( $counts );
 
 		$response = $this->controller->get_product_count();
 
-		$this->assertSame( [ 'count' => 33 ], $response->data );
+		$this->assertSame( array( 'count' => 33 ), $response->data );
 	}
 }
