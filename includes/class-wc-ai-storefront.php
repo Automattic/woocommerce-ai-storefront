@@ -749,17 +749,24 @@ class WC_AI_Storefront {
 	}
 
 	/**
-	 * Get plugin settings.
-	 *
-	 * @return array
-	 */
-	/**
 	 * Memoized settings for the current request.
 	 *
 	 * @var array|null
 	 */
 	private static $settings_cache = null;
 
+	/**
+	 * Get plugin settings, merged over the defaults and memoized.
+	 *
+	 * The merge is `wp_parse_args`, which is SHALLOW: a stored sub-array such
+	 * as `handling_time` is returned verbatim rather than merged key-by-key
+	 * with its default. Readers of a nested key must therefore guard for its
+	 * absence, and anything published from one should be re-sanitized at read
+	 * time — sanitizing happens on write, and a direct `update_option()`
+	 * bypasses that entirely.
+	 *
+	 * @return array
+	 */
 	public static function get_settings() {
 		if ( null !== self::$settings_cache ) {
 			return self::$settings_cache;

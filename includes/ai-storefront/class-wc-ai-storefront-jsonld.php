@@ -17,6 +17,54 @@ defined( 'ABSPATH' ) || exit;
 class WC_AI_Storefront_JsonLd {
 
 	/**
+	 * Appends query args to a URL and decodes any HTML entities in the result.
+	 *
+	 * WordPress's add_query_arg() returns plain '&' separators, but a
+	 * third-party filter on `the_permalink` or similar hooks may have
+	 * HTML-escaped the incoming URL (e.g. via esc_url()). That would
+	 * cause add_query_arg() to inherit '&amp;' separators and embed them
+	 * verbatim in the JSON string — non-browser consumers (curl, LLM tool
+	 * calls) would then receive broken checkout URLs. Decoding before
+	 * storing is the safe default regardless of what filters have done
+	 * upstream. Flags match the existing html_entity_decode() convention
+	 * in this class (ENT_QUOTES | ENT_HTML5, UTF-8).
+	 *
+	 * @param array  $args Query arguments.
+	 * @param string $url  Base URL.
+	 * @return string URL with query args appended, HTML entities decoded.
+	 */
+	private static function decode_query_url( array $args, string $url ): string {
+		return html_entity_decode( add_query_arg( $args, $url ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+	}
+	/**
+	 * Whether WC's cart would actually accept this product right now.
+	 *
+	 * Gates the two buy-link fields (`potentialAction` / BuyAction and
+	 * `offers[].checkoutPageURLTemplate`). `is_purchasable()` alone is
+	 * NOT sufficient: core defines it as `exists && published && has a
+	 * price` and never consults stock, while `WC_Cart::add_to_cart()`
+	 * rejects on `! is_in_stock()`. An out-of-stock-but-priced product
+	 * therefore satisfied the #373 purchasable gate and advertised a
+	 * checkout URL that dumps the agent on an empty cart carrying "You
+	 * cannot add … because the product is out of stock" (#606).
+	 *
+	 * Deliberately `is_in_stock()` and NOT a quantity test: a
+	 * backordered product reports `is_in_stock() === true`, the cart
+	 * accepts it, and its buy link must keep emitting — gating on stock
+	 * quantity would suppress exactly the variants #601 taught to
+	 * advertise themselves as `BackOrder`. This predicate is therefore
+	 * equivalent to "availability is not OutOfStock" on both the parent
+	 * and per-variant paths, since `stock_status_to_schema()` returns
+	 * `OutOfStock` iff `! is_in_stock()` and WC core does the same when
+	 * it builds the parent Offer.
+	 *
+	 * @param WC_Product $product The product or variation.
+	 * @return bool True when a buy link would resolve rather than error.
+	 */
+	private static function is_orderable( $product ): bool {
+		return ! method_exists( $product, 'is_in_stock' ) || (bool) $product->is_in_stock();
+	}
+	/**
 	 * Cached WooCommerce weight unit code for this request.
 	 *
 	 * @var string|null
@@ -2398,34 +2446,6 @@ class WC_AI_Storefront_JsonLd {
 	 * @param WC_Product $product The product or variation.
 	 * @return string Unqualified schema.org term: InStock, OutOfStock or BackOrder.
 	 */
-	/**
-	 * Whether WC's cart would actually accept this product right now.
-	 *
-	 * Gates the two buy-link fields (`potentialAction` / BuyAction and
-	 * `offers[].checkoutPageURLTemplate`). `is_purchasable()` alone is
-	 * NOT sufficient: core defines it as `exists && published && has a
-	 * price` and never consults stock, while `WC_Cart::add_to_cart()`
-	 * rejects on `! is_in_stock()`. An out-of-stock-but-priced product
-	 * therefore satisfied the #373 purchasable gate and advertised a
-	 * checkout URL that dumps the agent on an empty cart carrying "You
-	 * cannot add … because the product is out of stock" (#606).
-	 *
-	 * Deliberately `is_in_stock()` and NOT a quantity test: a
-	 * backordered product reports `is_in_stock() === true`, the cart
-	 * accepts it, and its buy link must keep emitting — gating on stock
-	 * quantity would suppress exactly the variants #601 taught to
-	 * advertise themselves as `BackOrder`. This predicate is therefore
-	 * equivalent to "availability is not OutOfStock" on both the parent
-	 * and per-variant paths, since `stock_status_to_schema()` returns
-	 * `OutOfStock` iff `! is_in_stock()` and WC core does the same when
-	 * it builds the parent Offer.
-	 *
-	 * @param WC_Product $product The product or variation.
-	 * @return bool True when a buy link would resolve rather than error.
-	 */
-	private static function is_orderable( $product ): bool {
-		return ! method_exists( $product, 'is_in_stock' ) || (bool) $product->is_in_stock();
-	}
 
 	private static function stock_status_to_schema( $product ): string {
 		if ( ! $product->is_in_stock() ) {
@@ -2615,26 +2635,6 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * @param array $markup Markup array, modified by reference.
 	 */
-	/**
-	 * Appends query args to a URL and decodes any HTML entities in the result.
-	 *
-	 * WordPress's add_query_arg() returns plain '&' separators, but a
-	 * third-party filter on `the_permalink` or similar hooks may have
-	 * HTML-escaped the incoming URL (e.g. via esc_url()). That would
-	 * cause add_query_arg() to inherit '&amp;' separators and embed them
-	 * verbatim in the JSON string — non-browser consumers (curl, LLM tool
-	 * calls) would then receive broken checkout URLs. Decoding before
-	 * storing is the safe default regardless of what filters have done
-	 * upstream. Flags match the existing html_entity_decode() convention
-	 * in this class (ENT_QUOTES | ENT_HTML5, UTF-8).
-	 *
-	 * @param array  $args Query arguments.
-	 * @param string $url  Base URL.
-	 * @return string URL with query args appended, HTML entities decoded.
-	 */
-	private static function decode_query_url( array $args, string $url ): string {
-		return html_entity_decode( add_query_arg( $args, $url ), ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-	}
 
 	private function decode_seller_name( array &$markup ): void {
 		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
