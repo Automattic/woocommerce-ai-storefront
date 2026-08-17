@@ -431,8 +431,11 @@ export const deriveDeliveryTimePreview = ( handlingTime ) => {
 		};
 	}
 
-	// Only '@type' would remain if neither is configured.
-	return Object.keys( block ).length < 2 ? null : block;
+	// Named rather than counted, matching the two PHP emitters. A positional
+	// `Object.keys( block ).length < 2` is correct today but silently stops
+	// working the day someone adds a third unconditional key — the block then
+	// ships asserting nothing, and no test fails.
+	return ! block.handlingTime && ! block.businessDays ? null : block;
 };
 
 /**
