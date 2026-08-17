@@ -34,7 +34,7 @@ class WC_AI_Storefront_Handling_Time {
 	 * a merchant ticked the boxes — the same configuration must always produce
 	 * byte-identical JSON, or cached pages churn for no reason.
 	 */
-	const DAYS = [ 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday' ];
+	const DAYS = array( 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday' );
 
 	/**
 	 * Sanitize a raw handling-time input.
@@ -56,11 +56,11 @@ class WC_AI_Storefront_Handling_Time {
 	 */
 	public static function sanitize( $input ): array {
 		if ( ! is_array( $input ) ) {
-			return [
+			return array(
 				'min'           => 0,
 				'max'           => 0,
-				'business_days' => [],
-			];
+				'business_days' => array(),
+			);
 		}
 
 		$min = isset( $input['min'] ) ? self::clamp( $input['min'] ) : 0;
@@ -71,11 +71,11 @@ class WC_AI_Storefront_Handling_Time {
 			$max = $min;
 		}
 
-		return [
+		return array(
 			'min'           => $min,
 			'max'           => $max,
-			'business_days' => self::sanitize_days( $input['business_days'] ?? [] ),
-		];
+			'business_days' => self::sanitize_days( $input['business_days'] ?? array() ),
+		);
 	}
 
 	/**
@@ -96,7 +96,7 @@ class WC_AI_Storefront_Handling_Time {
 	 * @return string[]
 	 */
 	public static function business_days( array $settings ): array {
-		return self::sanitize_days( $settings['handling_time']['business_days'] ?? [] );
+		return self::sanitize_days( $settings['handling_time']['business_days'] ?? array() );
 	}
 
 	/**
@@ -113,15 +113,15 @@ class WC_AI_Storefront_Handling_Time {
 	 */
 	private static function sanitize_days( $input ): array {
 		if ( ! is_array( $input ) ) {
-			return [];
+			return array();
 		}
 
-		$lookup = [];
+		$lookup = array();
 		foreach ( self::DAYS as $day ) {
 			$lookup[ strtolower( $day ) ] = $day;
 		}
 
-		$selected = [];
+		$selected = array();
 		foreach ( $input as $value ) {
 			if ( ! is_string( $value ) ) {
 				continue;

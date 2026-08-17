@@ -240,11 +240,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/catalog/search',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'handle_catalog_search' ],
-				'permission_callback' => [ $this, 'check_agent_access' ],
-			]
+				'callback'            => array( $this, 'handle_catalog_search' ),
+				'permission_callback' => array( $this, 'check_agent_access' ),
+			)
 		);
 
 		// Public GET surface for fetch-based agents (Perplexity, Bing, etc.)
@@ -257,21 +257,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/catalog/search',
-			[
+			array(
 				'methods'             => 'GET',
-				'callback'            => [ $this, 'handle_catalog_search_get' ],
-				'permission_callback' => [ $this, 'check_agent_access' ],
-			]
+				'callback'            => array( $this, 'handle_catalog_search_get' ),
+				'permission_callback' => array( $this, 'check_agent_access' ),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/catalog/lookup',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'handle_catalog_lookup' ],
-				'permission_callback' => [ $this, 'check_agent_access' ],
-			]
+				'callback'            => array( $this, 'handle_catalog_lookup' ),
+				'permission_callback' => array( $this, 'check_agent_access' ),
+			)
 		);
 
 		// Public GET surface for catalog/lookup — same neutral core as POST.
@@ -279,21 +279,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/catalog/lookup',
-			[
+			array(
 				'methods'             => 'GET',
-				'callback'            => [ $this, 'handle_catalog_lookup_get' ],
-				'permission_callback' => [ $this, 'check_agent_access' ],
-			]
+				'callback'            => array( $this, 'handle_catalog_lookup_get' ),
+				'permission_callback' => array( $this, 'check_agent_access' ),
+			)
 		);
 
 		register_rest_route(
 			self::NAMESPACE,
 			'/checkout-sessions',
-			[
+			array(
 				'methods'             => 'POST',
-				'callback'            => [ $this, 'handle_checkout_sessions_create' ],
-				'permission_callback' => [ $this, 'check_agent_access' ],
-			]
+				'callback'            => array( $this, 'handle_checkout_sessions_create' ),
+				'permission_callback' => array( $this, 'check_agent_access' ),
+			)
 		);
 
 		// Stub for unsupported methods on /checkout-sessions/{id},
@@ -336,12 +336,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/checkout-sessions/(?P<id>[A-Za-z0-9_-]+)',
-			[
+			array(
 				'methods'             => 'GET, PUT, PATCH, DELETE',
-				'callback'            => [ $this, 'handle_checkout_sessions_unsupported_method' ],
-				'permission_callback' => [ $this, 'check_agent_access' ],
-				'args'                => [
-					'id' => [
+				'callback'            => array( $this, 'handle_checkout_sessions_unsupported_method' ),
+				'permission_callback' => array( $this, 'check_agent_access' ),
+				'args'                => array(
+					'id' => array(
 						'description'       => 'Session correlation token returned by POST /checkout-sessions. Echoed back in the response; not validated against any stored state because no state is stored.',
 						'type'              => 'string',
 						'required'          => true,
@@ -360,9 +360,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						'validate_callback' => static function ( $value, $request = null, $param = null ) {
 							return is_string( $value ) && '' !== $value;
 						},
-					],
-				],
-			]
+					),
+				),
+			)
 		);
 
 		// JSON Schema for our merchant extension capability
@@ -373,11 +373,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		register_rest_route(
 			self::NAMESPACE,
 			'/extension/schema',
-			[
+			array(
 				'methods'             => 'GET',
-				'callback'            => [ $this, 'handle_extension_schema' ],
+				'callback'            => array( $this, 'handle_extension_schema' ),
 				'permission_callback' => '__return_true',
-			]
+			)
 		);
 	}
 
@@ -567,7 +567,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					__( 'Access to this UCP endpoint is not enabled for unknown AI agents on this store. Agent: %1$s', 'woocommerce-ai-storefront' ),
 					$raw_id
 				),
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 
@@ -605,7 +605,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				__( 'Access to this UCP endpoint is not enabled for %1$s on this store.', 'woocommerce-ai-storefront' ),
 				$canonical
 			),
-			[ 'status' => 403 ]
+			array( 'status' => 403 )
 		);
 	}
 
@@ -648,7 +648,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function handle_catalog_search( WP_REST_Request $request ) {
-		$params = [
+		$params = array(
 			'query'            => $request->get_param( 'query' ),
 			'context'          => $request->get_param( 'context' ),
 			'signals'          => $request->get_param( 'signals' ),
@@ -657,7 +657,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'sort'             => $request->get_param( 'sort' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
 			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
-		];
+		);
 
 		$result   = $this->run_catalog_search( $params );
 		$response = new WP_REST_Response( $result['body'], $result['status'] );
@@ -704,11 +704,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function handle_catalog_search_get( WP_REST_Request $request ): WP_REST_Response {
-		$filters = [];
+		$filters = array();
 
 		$category = $request->get_param( 'category' );
 		if ( is_string( $category ) && '' !== $category ) {
-			$filters['categories'] = [ $category ];
+			$filters['categories'] = array( $category );
 		}
 
 		// Forward the raw query-string value UNCHANGED — do not (int)-cast here.
@@ -722,7 +722,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$min_price = $request->get_param( 'min_price' );
 		$max_price = $request->get_param( 'max_price' );
 		if ( null !== $min_price || null !== $max_price ) {
-			$price = [];
+			$price = array();
 			if ( null !== $min_price ) {
 				$price['min'] = $min_price;
 			}
@@ -734,7 +734,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$in_stock_raw = $request->get_param( 'in_stock' );
 		if ( null !== $in_stock_raw ) {
-			$filters['in_stock'] = in_array( $in_stock_raw, [ '1', 'true', true, 1 ], true );
+			$filters['in_stock'] = in_array( $in_stock_raw, array( '1', 'true', true, 1 ), true );
 		}
 
 		// ?attribute[color]=blue&attribute[size]=M → ['color' => ['blue'], 'size' => ['M']].
@@ -748,12 +748,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'UCP catalog/search GET: ?attribute must use bracket notation (e.g. ?attribute[color]=blue); scalar value ignored'
 			);
 		} elseif ( is_array( $attribute_raw ) && ! empty( $attribute_raw ) ) {
-			$attribute_map = [];
+			$attribute_map = array();
 			foreach ( $attribute_raw as $key => $value ) {
 				if ( ! is_string( $key ) ) {
 					continue;
 				}
-				$attribute_map[ $key ] = is_array( $value ) ? $value : [ (string) $value ];
+				$attribute_map[ $key ] = is_array( $value ) ? $value : array( (string) $value );
 			}
 			if ( ! empty( $attribute_map ) ) {
 				$filters['attributes'] = $attribute_map;
@@ -769,12 +769,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// warning for non-numeric input. Pre-casting '?per_page=gibberish' to 0
 		// defeats that branch and yields a misleading "clamped from 0" message
 		// for a value the agent never sent.
-		$pagination = [ 'cursor' => self::encode_cursor( $page ) ];
+		$pagination = array( 'cursor' => self::encode_cursor( $page ) );
 		if ( null !== $per_page ) {
 			$pagination['limit'] = $per_page;
 		}
 
-		$params = [
+		$params = array(
 			'query'            => $request->get_param( 'q' ),
 			'context'          => null,
 			'signals'          => null,
@@ -783,7 +783,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'sort'             => null,
 			'agent_data'       => self::resolve_agent_host( $request ),
 			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
-		];
+		);
 
 		$result = $this->run_catalog_search( $params );
 		return new WP_REST_Response( $result['body'], $result['status'] );
@@ -861,13 +861,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				return new WP_REST_Response( $error->get_data(), $error->get_status() );
 			}
 
-			$params = [
+			$params = array(
 				'ids'              => $ids,
 				'context'          => null,
 				'signals'          => null,
 				'agent_data'       => self::resolve_agent_host( $request ),
 				'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
-			];
+			);
 
 			$result = $this->run_catalog_lookup( $params );
 			return new WP_REST_Response( $result['body'], $result['status'] );
@@ -898,7 +898,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return new WP_REST_Response( $error->get_data(), $error->get_status() );
 		}
 
-		$ids = [];
+		$ids = array();
 		if ( null !== $id_param ) {
 			if ( ! ctype_digit( (string) $id_param ) || '0' === (string) $id_param ) {
 				$error = self::ucp_catalog_error_response(
@@ -931,13 +931,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		$params = [
+		$params = array(
 			'ids'              => $ids,
 			'context'          => null,
 			'signals'          => null,
 			'agent_data'       => self::resolve_agent_host( $request ),
 			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
-		];
+		);
 
 		$result = $this->run_catalog_lookup( $params );
 		return new WP_REST_Response( $result['body'], $result['status'] );
@@ -994,10 +994,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				null,
 				503
 			);
-			return [
+			return array(
 				'body'   => $error->get_data(),
 				'status' => $error->get_status(),
-			];
+			);
 		}
 
 		// Attribution: resolve calling agent. Used for two purposes
@@ -1079,10 +1079,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$currency
 		);
 		if ( null !== $fetched['error'] ) {
-			return [
+			return array(
 				'body'   => $fetched['error']->get_data(),
 				'status' => $fetched['error']->get_status(),
-			];
+			);
 		}
 
 		// Translate each product to UCP shape, fetching variations where needed.
@@ -1196,10 +1196,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		return [
+		return array(
 			'body'   => $body,
 			'status' => 200,
-		];
+		);
 	}
 
 	/**
@@ -1658,9 +1658,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$has_next = $current_page < $total_pages;
 
-		$pagination = [
+		$pagination = array(
 			'has_next_page' => $has_next,
-		];
+		);
 
 		if ( $has_next ) {
 			$pagination['cursor'] = self::encode_cursor( $current_page + 1 );
@@ -1953,7 +1953,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// non-string or empty-after-sanitization keys, producing
 		// misleading "(+N more)" figures that don't match what was
 		// actually truncated.
-		$logged   = [];
+		$logged   = array();
 		$eligible = 0;
 		foreach ( array_keys( $signals ) as $key ) {
 			if ( ! is_string( $key ) ) {
@@ -2095,13 +2095,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function handle_catalog_lookup( WP_REST_Request $request ) {
-		$params = [
+		$params = array(
 			'ids'              => $request->get_param( 'ids' ),
 			'context'          => $request->get_param( 'context' ),
 			'signals'          => $request->get_param( 'signals' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
 			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
-		];
+		);
 
 		$result = $this->run_catalog_lookup( $params );
 		return new WP_REST_Response( $result['body'], $result['status'] );
@@ -2145,10 +2145,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				null,
 				503
 			);
-			return [
+			return array(
 				'body'   => $error->get_data(),
 				'status' => $error->get_status(),
-			];
+			);
 		}
 
 		// Attribution: resolve calling agent. Same role as in
@@ -2190,10 +2190,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		$ids_error = self::validate_lookup_ids_param( $ids, $capability );
 		if ( null !== $ids_error ) {
-			return [
+			return array(
 				'body'   => $ids_error->get_data(),
 				'status' => $ids_error->get_status(),
-			];
+			);
 		}
 
 		// Deduplicate + normalize before fetching. `wc_ids` is the
@@ -2551,7 +2551,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// the first valid (array-shaped, non-empty-id) variant
 					// so the spec's "one featured per product" expectation
 					// still holds.
-					$variant_ids_present = [];
+					$variant_ids_present = array();
 					foreach ( $final_product['variants'] as $v ) {
 						if ( is_array( $v ) ) {
 							$vid = (string) ( $v['id'] ?? '' );
@@ -2585,13 +2585,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							continue;
 						}
 						$variant_id = (string) ( $variant['id'] ?? '' );
-						$entry      = [ 'id' => $input_echo ];
+						$entry      = array( 'id' => $input_echo );
 						if ( $variant_id === $exact_variant_id ) {
 							$entry['match'] = 'exact';
 						} elseif ( $variant_id === $featured_variant_id ) {
 							$entry['match'] = 'featured';
 						}
-						$final_product['variants'][ $variant_idx ]['inputs'] = [ $entry ];
+						$final_product['variants'][ $variant_idx ]['inputs'] = array( $entry );
 					}
 
 					if ( $corrupted_count > 0 ) {
@@ -2660,10 +2660,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$response_body['messages'] = $messages;
 		}
 
-		return [
+		return array(
 			'body'   => $response_body,
 			'status' => 200,
-		];
+		);
 	}
 
 	/**
@@ -2795,12 +2795,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return WP_REST_Response
 	 */
 	public function handle_checkout_sessions_create( WP_REST_Request $request ) {
-		$params = [
+		$params = array(
 			'line_items'       => $request->get_param( 'line_items' ),
 			'context'          => $request->get_param( 'context' ),
 			'agent_data'       => self::resolve_agent_host( $request ),
 			'ucp_agent_header' => is_string( $request->get_header( 'ucp-agent' ) ) ? $request->get_header( 'ucp-agent' ) : '',
-		];
+		);
 
 		$result = $this->run_checkout_create( $params );
 
@@ -2845,10 +2845,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				null,
 				503
 			);
-			return [
+			return array(
 				'body'   => $error->get_data(),
 				'status' => $error->get_status(),
-			];
+			);
 		}
 
 		$line_items_raw = $params['line_items'] ?? null;
@@ -2859,10 +2859,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.line_items'
 			);
-			return [
+			return array(
 				'body'   => $error->get_data(),
 				'status' => $error->get_status(),
-			];
+			);
 		}
 
 		if ( count( $line_items_raw ) > self::MAX_LINE_ITEMS_PER_CHECKOUT ) {
@@ -2875,10 +2875,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				WC_AI_Storefront_UCP_Error_Codes::INVALID_INPUT,
 				'$.line_items'
 			);
-			return [
+			return array(
 				'body'   => $error->get_data(),
 				'status' => $error->get_status(),
-			];
+			);
 		}
 
 		$agent_data        = $params['agent_data'];
@@ -2965,7 +2965,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// due to over-cap" — important for the `merged_duplicate_items`
 		// info-message, which should only fire when the agent will
 		// actually SEE a merged line in the response.
-		$dedup_keyed = [];
+		$dedup_keyed = array();
 		foreach ( $processed as $p ) {
 			$key = $p['wc_id'];
 			if ( isset( $dedup_keyed[ $key ] ) ) {
@@ -2987,7 +2987,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// content carries the agent's `ucp_id` and the summed
 		// quantity so the affected product is still identifiable
 		// without the path.
-		$processed_dedup  = [];
+		$processed_dedup  = array();
 		$surviving_merges = false;
 		foreach ( $dedup_keyed as $entry ) {
 			if ( $entry['quantity'] > self::MAX_QUANTITY_PER_LINE_ITEM ) {
@@ -3026,11 +3026,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// posture: only claim a merge happened when the agent will
 		// actually see the merged line.
 		if ( $surviving_merges ) {
-			$messages[] = [
+			$messages[] = array(
 				'type'    => 'info',
 				'code'    => WC_AI_Storefront_UCP_Error_Codes::MERGED_DUPLICATE_ITEMS,
 				'content' => __( 'Duplicate line items targeting the same product were merged. Quantities have been summed; the response shows one line per product.', 'woocommerce-ai-storefront' ),
-			];
+			);
 		}
 
 		// Legal links + warnings for any gaps.
@@ -3064,24 +3064,24 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// MAX_QUANTITY_PER_LINE_ITEM (see its docblock); the cross-line
 		// accumulation carries the same 64-bit PHP assumption — safe on
 		// any production host running WC 9.9+ / PHP 8.0+.
-		$response_line_items = [];
+		$response_line_items = array();
 		$subtotal_amount     = 0;
 		foreach ( $processed as $p ) {
 			$line_total            = $p['unit_price_minor'] * $p['quantity'];
 			$subtotal_amount      += $line_total;
-			$response_line_items[] = [
-				'item'               => [ 'id' => $p['ucp_id'] ],
+			$response_line_items[] = array(
+				'item'               => array( 'id' => $p['ucp_id'] ),
 				'quantity'           => $p['quantity'],
-				'unit_price'         => [
+				'unit_price'         => array(
 					'amount'   => $p['unit_price_minor'],
 					'currency' => $currency,
-				],
-				'line_total'         => [
+				),
+				'line_total'         => array(
 					'amount'   => $line_total,
 					'currency' => $currency,
-				],
+				),
 				'price_includes_tax' => $prices_include_tax,
-			];
+			);
 		}
 
 		// Redirect eligibility — starts as "has valid items" but the
@@ -3112,15 +3112,15 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$minimum_order_amount = (int) apply_filters(
 			'wc_ai_storefront_minimum_order_amount',
 			0,
-			[
+			array(
 				'subtotal_minor' => $subtotal_amount,
 				'currency'       => $currency,
 				'agent'          => $agent_name,
 				'line_items'     => $processed,
-			]
+			)
 		);
 		if ( $has_valid_items && $minimum_order_amount > 0 && $subtotal_amount < $minimum_order_amount ) {
-			$messages[]      = [
+			$messages[]      = array(
 				'type'     => 'error',
 				'code'     => WC_AI_Storefront_UCP_Error_Codes::MINIMUM_NOT_MET,
 				// `requires_buyer_input`, not `unrecoverable`: the
@@ -3142,7 +3142,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$subtotal_amount,
 					$minimum_order_amount
 				),
-			];
+			);
 			$should_redirect = false;
 		}
 
@@ -3178,8 +3178,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// occupied in the agent's original `line_items[]`). Dedup may
 		// have reordered or collapsed entries, so the `$processed` index
 		// is a different number — paths must address what the agent sent.
-		$bundle_request_indices = [];
-		$bundle_processed_keys  = [];
+		$bundle_request_indices = array();
+		$bundle_processed_keys  = array();
 		foreach ( $processed as $idx => $p ) {
 			if ( 'bundle' === ( $p['wc_type'] ?? '' ) ) {
 				$bundle_request_indices[] = (int) ( $p['request_index'] ?? $idx );
@@ -3191,13 +3191,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		if ( $bundle_must_split ) {
 			foreach ( $bundle_request_indices as $req_idx ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $req_idx . ']',
 					'content'  => __( 'Bundle line items must be sent in their own /checkout-sessions request, separate from other items.', 'woocommerce-ai-storefront' ),
-				];
+				);
 			}
 			$should_redirect = false;
 		} elseif ( $has_bundle ) {
@@ -3208,13 +3208,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$has_permalink        = '' !== (string) ( $bundle['permalink'] ?? '' );
 			if ( ! $is_deterministic && $has_permalink ) {
 				// Continue_url goes to the bundle PDP; tell the agent why.
-				$messages[] = [
+				$messages[] = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
 					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
 					'content'  => __( 'This bundle requires variation choices and/or optional add-on selections that must be made on the merchant site. Open continue_url to configure the bundle and complete the purchase.', 'woocommerce-ai-storefront' ),
-				];
+				);
 			} elseif ( ! $is_deterministic ) {
 				// No deterministic URL AND no permalink. The agent has no
 				// usable URL to send the buyer to — `/checkout-link/?products=`
@@ -3224,13 +3224,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// hand the agent a broken URL). Severity stays
 				// `recoverable` because the merchant can fix it by
 				// republishing the bundle to populate its permalink.
-				$messages[]      = [
+				$messages[]      = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $bundle_request_indices[0] . ']',
 					'content'  => __( 'This bundle cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the bundle configuration.', 'woocommerce-ai-storefront' ),
-				];
+				);
 				$should_redirect = false;
 			}
 		}
@@ -3250,8 +3250,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// path is the only URL form that resolves a grouped parent to its
 		// child cart-adds, but it accepts only one parent per request —
 		// hence the must-split rule for mixed/multi-grouped carts.
-		$grouped_request_indices = [];
-		$grouped_processed_keys  = [];
+		$grouped_request_indices = array();
+		$grouped_processed_keys  = array();
 		foreach ( $processed as $idx => $p ) {
 			if ( 'grouped' === ( $p['wc_type'] ?? '' ) ) {
 				$grouped_request_indices[] = (int) ( $p['request_index'] ?? $idx );
@@ -3263,13 +3263,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		if ( $grouped_must_split ) {
 			foreach ( $grouped_request_indices as $req_idx ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $req_idx . ']',
 					'content'  => __( 'Grouped product line items must be sent in their own /checkout-sessions request, separate from other items.', 'woocommerce-ai-storefront' ),
-				];
+				);
 			}
 			$should_redirect = false;
 		} elseif ( $has_grouped ) {
@@ -3279,21 +3279,21 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				&& ! empty( $grouped['grouped_url_query'] );
 			$has_permalink         = '' !== (string) ( $grouped['permalink'] ?? '' );
 			if ( ! $is_deterministic && $has_permalink ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
 					'path'     => '$.line_items[' . $grouped_request_indices[0] . ']',
 					'content'  => __( 'This grouped product contains items that cannot be added directly via the API — they may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site.', 'woocommerce-ai-storefront' ),
-				];
+				);
 			} elseif ( ! $is_deterministic ) {
-				$messages[]      = [
+				$messages[]      = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $grouped_request_indices[0] . ']',
 					'content'  => __( 'This grouped product cannot be added through the standard checkout flow because its product page URL is unavailable. The merchant should verify the grouped product configuration.', 'woocommerce-ai-storefront' ),
-				];
+				);
 				$should_redirect = false;
 			}
 		}
@@ -3324,8 +3324,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// other line items must be split into separate /checkout-sessions
 		// requests; otherwise the simple item would be silently dropped
 		// from the destination URL. Same rationale as bundle/grouped.
-		$variable_request_indices = [];
-		$variable_processed_keys  = [];
+		$variable_request_indices = array();
+		$variable_processed_keys  = array();
 		foreach ( $processed as $idx => $p ) {
 			$type_check = $p['wc_type'] ?? '';
 			if ( 'variable' === $type_check || 'variable-subscription' === $type_check ) {
@@ -3343,13 +3343,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// split the cart and resend. Same severity choice as bundle
 			// and grouped must-split paths.
 			foreach ( $variable_request_indices as $req_idx ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $req_idx . ']',
 					'content'  => __( 'Variable product line items must be sent in their own /checkout-sessions request, separate from other items — the permalink fallback can only redirect the buyer to a single product page.', 'woocommerce-ai-storefront' ),
-				];
+				);
 			}
 			$should_redirect = false;
 		} elseif ( $has_variable ) {
@@ -3361,13 +3361,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$variable      = $processed[ $vk ];
 			$has_permalink = '' !== (string) ( $variable['permalink'] ?? '' );
 			if ( $has_permalink ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
 					'path'     => '$.line_items[' . $variable_request_indices[0] . '].item.id',
 					'content'  => __( 'This product has variations; the buyer must pick a specific option on the merchant site. Open continue_url to choose and complete the purchase.', 'woocommerce-ai-storefront' ),
-				];
+				);
 			} else {
 				// No permalink — rare, but flag it so merchants can
 				// investigate: the product's `get_permalink()` returned
@@ -3381,13 +3381,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						(int) ( $variable['wc_id'] ?? 0 )
 					)
 				);
-				$messages[]      = [
+				$messages[]      = array(
 					'type'     => 'error',
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $variable_request_indices[0] . '].item.id',
 					'content'  => __( 'This product requires a specific variation selection but its product page URL is unavailable.', 'woocommerce-ai-storefront' ),
-				];
+				);
 				$should_redirect = false;
 			}
 		}
@@ -3412,11 +3412,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$handoff_content = apply_filters(
 				'wc_ai_storefront_checkout_handoff_message',
 				$default_handoff,
-				[
+				array(
 					'line_items' => $processed,
 					'agent'      => $agent_name,
 					'locale'     => $request_locale,
-				]
+				)
 			);
 			// Notice-free coercion. A third-party filter returning an
 			// array/object would trigger an "Array to string conversion"
@@ -3443,11 +3443,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// (release/2026-04-08) info messages have no `severity`
 			// field; the partner `total_is_provisional` message below
 			// uses the same shape.
-			$messages[] = [
+			$messages[] = array(
 				'type'    => 'info',
 				'code'    => WC_AI_Storefront_UCP_Error_Codes::BUYER_HANDOFF_REQUIRED,
 				'content' => $handoff_content,
-			];
+			);
 
 			// `total_is_provisional` — UCP spec requires a `total`
 			// entry in `totals` (see below). With our web-redirect
@@ -3456,11 +3456,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// that only happens at the merchant checkout). Emit an
 			// info-message alongside `total: subtotal` so agents
 			// can disclose the caveat to the user before the redirect.
-			$messages[] = [
+			$messages[] = array(
 				'type'    => 'info',
 				'code'    => WC_AI_Storefront_UCP_Error_Codes::TOTAL_IS_PROVISIONAL,
 				'content' => __( 'Total excludes tax and shipping, which are calculated at the merchant checkout.', 'woocommerce-ai-storefront' ),
-			];
+			);
 		}
 
 		// UCP 2026-04-08 `totals` schema requires exactly one `subtotal`
@@ -3470,16 +3470,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// path and is 0 when no items validated. The accompanying
 		// `total_is_provisional` info-message (emitted above when
 		// should_redirect) explains the elision.
-		$response_totals = [
-			[
+		$response_totals = array(
+			array(
 				'type'   => 'subtotal',
 				'amount' => $subtotal_amount,
-			],
-			[
+			),
+			array(
 				'type'   => 'total',
 				'amount' => $subtotal_amount,
-			],
-		];
+			),
+		);
 
 		// Status: `requires_escalation` when we have something to
 		// escalate to. Otherwise `incomplete` — spec enum value that
@@ -3487,7 +3487,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// pre-spec-check `error` wasn't in the status enum).
 		// `$should_redirect` is false when either (a) no items
 		// validated, or (b) valid items but below the merchant minimum.
-		$response_body = [
+		$response_body = array(
 			'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
 			'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
 			'status'     => $should_redirect ? 'requires_escalation' : 'incomplete',
@@ -3508,7 +3508,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// presence to distinguish stateless from stateful
 			// implementations.
 			'expires_at' => null,
-		];
+		);
 
 		// Fallback signal (issue #517): non-base requested currency the store
 		// doesn't accept → line-item prices stayed base → warn so the agent
@@ -3528,10 +3528,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		// 201 Created when we have something to escalate to; 200 otherwise.
 		// The session ID is a correlation token only — no persistence.
-		return [
+		return array(
 			'body'   => $response_body,
 			'status' => $should_redirect ? 201 : 200,
-		];
+		);
 	}
 
 	/**
@@ -3570,105 +3570,105 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$home     = ( '' !== (string) $raw_home ) ? (string) $raw_home : home_url();
 		$self_id  = trailingslashit( $home ) . rest_get_url_prefix() . '/' . self::NAMESPACE . '/extension/schema';
 
-		$schema = [
+		$schema = array(
 			'$schema'     => 'https://json-schema.org/draft/2020-12/schema',
 			'$id'         => $self_id,
 			'title'       => 'WooCommerce AI Storefront UCP Extension Contract',
 			'description' => 'Schema for the `com.woocommerce.ai_storefront` extension contract. The top-level `config` property describes the merchant-extension configuration advertised in the UCP manifest at `capabilities[com.woocommerce.ai_storefront][0].config`. Starting 2.0.0, no response-level payloads are emitted under this extension — rating data moved to core `product.rating` per the UCP 2026-04-08 product shape.',
 			'type'        => 'object',
-			'properties'  => [
-				'config'                  => [
+			'properties'  => array(
+				'config'                  => array(
 					'type'        => 'object',
 					'description' => 'Merchant-extension configuration advertised at `capabilities[com.woocommerce.ai_storefront][0].config` in the UCP manifest.',
-					'properties'  => [
-						'store_context' => [
+					'properties'  => array(
+						'store_context' => array(
 							'type'        => 'object',
 							'description' => 'Commerce conventions this store operates under — agents pre-filter based on these before calling catalog/checkout.',
-							'properties'  => [
-								'currency'           => [
+							'properties'  => array(
+								'currency'           => array(
 									'type'        => 'string',
 									'description' => 'ISO 4217 currency code. Catalog prices quote in this currency; agents unable to transact here should decline rather than misrepresent the amount.',
-									'examples'    => [ 'USD', 'EUR', 'JPY' ],
-								],
-								'locale'             => [
+									'examples'    => array( 'USD', 'EUR', 'JPY' ),
+								),
+								'locale'             => array(
 									'type'        => 'string',
 									'description' => 'BCP 47 locale tag for default customer-facing content language.',
-									'examples'    => [ 'en-US', 'fr-FR', 'zh-Hant-HK' ],
-								],
-								'country'            => [
-									'type'        => [ 'string', 'null' ],
+									'examples'    => array( 'en-US', 'fr-FR', 'zh-Hant-HK' ),
+								),
+								'country'            => array(
+									'type'        => array( 'string', 'null' ),
 									'description' => 'ISO 3166-1 alpha-2 for the merchant base country. Nullable when the merchant has not configured a base country in WC settings.',
-								],
-								'prices_include_tax' => [
+								),
+								'prices_include_tax' => array(
 									'type'        => 'boolean',
 									'description' => 'When true (EU-typical), catalog prices are tax-inclusive. When false (US-typical), tax is added at checkout. Agents rendering cart previews use this to decide whether to show a tax line.',
-								],
-								'shipping_enabled'   => [
+								),
+								'shipping_enabled'   => array(
 									'type'        => 'boolean',
 									'description' => 'When true, the store collects shipping addresses. When false, it is digital-only — agents should skip address-collection prompts.',
-								],
-							],
-						],
-					],
-				],
-				'accepted_request_inputs' => [
+								),
+							),
+						),
+					),
+				),
+				'accepted_request_inputs' => array(
 					'type'        => 'object',
 					'description' => 'Documents the extension-side request-input surface on `POST /catalog/search` and `POST /catalog/lookup` — not a full enumeration of every accepted field. Covers: (a) UCP-spec-standard objects this implementation explicitly accepts and acts on (`context`, `signals`), and (b) merchant-specific extensions (`custom_filters`). Spec-standard fields like `query`, `filters.price`, `filters.categories`, `pagination`, `sort`, and `ids` are documented by the UCP core spec itself and are not repeated here. The `custom_filters` sub-tree exists per the UCP spec hint that merchants "MAY support additional custom filters via additionalProperties".',
-					'properties'  => [
-						'context'        => [
+					'properties'  => array(
+						'context'        => array(
 							'type'        => 'object',
 							'description' => 'Spec-standard `context` object is accepted. Currently honored field: `context.currency` — when set and matching store currency, `filters.price` is applied; when mismatched, the price filter is dropped and a `currency_conversion_unsupported` warning is emitted (we don\'t carry FX rates). Other `context` fields (`address_country`, `address_region`, `postal_code`) are accepted but not yet acted upon; agents MAY send them today for forward compatibility.',
-						],
-						'signals'        => [
+						),
+						'signals'        => array(
 							'type'        => 'object',
 							'description' => 'Spec-standard `signals` object is accepted and logged for observability. No values are used for decisions at this time; the plugin complies with the spec\'s "MUST NOT treat buyer claims as signals" rule by not acting on any signal. Known-valuable future wiring: `dev.ucp.buyer_ip` for per-end-buyer rate limiting (currently we rate-limit by request IP, which conflates agent-platform traffic).',
-						],
-						'custom_filters' => [
+						),
+						'custom_filters' => array(
 							'type'        => 'object',
 							'description' => 'Custom filters via `additionalProperties` — accepted on `filters{}` in `/catalog/search` only. (`/catalog/lookup` reads only `ids` + `signals`; filters are ignored there because lookup resolves by explicit ID.) Unresolvable values on search emit `*_not_found` advisory warnings with JSONPath.',
-							'properties'  => [
-								'brand'      => [
+							'properties'  => array(
+								'brand'      => array(
 									'type'        => 'array',
 									'description' => 'Array of brand names or slugs. Resolves against the native WC 9.5+ `product_brand` taxonomy. Multiple values OR together.',
-									'items'       => [ 'type' => 'string' ],
-								],
-								'tags'       => [
+									'items'       => array( 'type' => 'string' ),
+								),
+								'tags'       => array(
 									'type'        => 'array',
 									'description' => 'Array of tag names or slugs. Resolves against `product_tag`. Multiple values OR together.',
-									'items'       => [ 'type' => 'string' ],
-								],
-								'in_stock'   => [
+									'items'       => array( 'type' => 'string' ),
+								),
+								'in_stock'   => array(
 									'type'        => 'boolean',
 									'description' => 'When true, restrict results to products currently in stock.',
-								],
-								'featured'   => [
+								),
+								'featured'   => array(
 									'type'        => 'boolean',
 									'description' => 'When true, restrict to merchant-flagged featured products.',
-								],
-								'min_rating' => [
+								),
+								'min_rating' => array(
 									'type'        => 'integer',
 									'description' => 'Integer 1-5; restrict to products with average rating ≥ this value.',
 									'minimum'     => 1,
 									'maximum'     => 5,
-								],
-								'on_sale'    => [
+								),
+								'on_sale'    => array(
 									'type'        => 'boolean',
 									'description' => 'When true, restrict to products with an active sale price.',
-								],
-								'attributes' => [
+								),
+								'attributes' => array(
 									'type'                 => 'object',
 									'description'          => 'Keyed map of attribute slug → array of values (e.g. `{"color": ["red", "blue"]}`). Resolves against WC `pa_*` taxonomies; `pa_` prefix is auto-added if missing. Unresolvable attribute taxonomies emit `attribute_not_found` warnings with JSONPath.',
-									'additionalProperties' => [
+									'additionalProperties' => array(
 										'type'  => 'array',
-										'items' => [ 'type' => 'string' ],
-									],
-								],
-							],
-						],
-					],
-				],
-			],
-		];
+										'items' => array( 'type' => 'string' ),
+									),
+								),
+							),
+						),
+					),
+				),
+			),
+		);
 
 		// Note: the `ratings` property previously documented here was
 		// removed in 2.0.0. Rating + review count now emit under core
@@ -3745,22 +3745,22 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		?string $path = null,
 		int $status = 400
 	): WP_REST_Response {
-		$message = [
+		$message = array(
 			'type'     => 'error',
 			'code'     => $code,
 			'severity' => 'unrecoverable',
 			'content'  => $content,
-		];
+		);
 		if ( null !== $path ) {
 			$message['path'] = $path;
 		}
 
 		return new WP_REST_Response(
-			[
+			array(
 				'ucp'      => WC_AI_Storefront_UCP_Envelope::catalog_envelope( $capability_key ),
-				'products' => [],
-				'messages' => [ $message ],
-			],
+				'products' => array(),
+				'messages' => array( $message ),
+			),
 			$status
 		);
 	}
@@ -3792,12 +3792,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		?string $path = null,
 		int $status = 400
 	): WP_REST_Response {
-		$message = [
+		$message = array(
 			'type'     => 'error',
 			'code'     => $code,
 			'severity' => 'unrecoverable',
 			'content'  => $content,
-		];
+		);
 		if ( null !== $path ) {
 			$message['path'] = $path;
 		}
@@ -3816,25 +3816,25 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		//     canceled`. `incomplete` is the closest match for
 		//     "validation failed, no session to escalate to."
 		return new WP_REST_Response(
-			[
+			array(
 				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
 				'id'         => 'chk_' . bin2hex( random_bytes( 8 ) ),
 				'status'     => 'incomplete',
 				'currency'   => $currency,
-				'line_items' => [],
-				'totals'     => [
-					[
+				'line_items' => array(),
+				'totals'     => array(
+					array(
 						'type'   => 'subtotal',
 						'amount' => 0,
-					],
-					[
+					),
+					array(
 						'type'   => 'total',
 						'amount' => 0,
-					],
-				],
-				'links'      => [],
-				'messages'   => [ $message ],
-			],
+					),
+				),
+				'links'      => array(),
+				'messages'   => array( $message ),
+			),
 			$status
 		);
 	}
@@ -3913,7 +3913,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			? (string) get_woocommerce_currency()
 			: 'USD';
 
-		$message = [
+		$message = array(
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::UNSUPPORTED_OPERATION,
 			'severity' => 'unrecoverable',
@@ -3921,28 +3921,28 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'This /checkout-sessions/{id} URL is stateless and supports no operations: there is no persistent session to read, replace, modify, or cancel. To start or continue a checkout, POST /checkout-sessions with the desired line_items array. The continue_url returned by that POST redirects the buyer to the merchant\'s native checkout, replacing any prior session.',
 				'woocommerce-ai-storefront'
 			),
-		];
+		);
 
 		$response = new WP_REST_Response(
-			[
+			array(
 				'ucp'        => WC_AI_Storefront_UCP_Envelope::checkout_envelope(),
 				'id'         => $session_id,
 				'status'     => 'incomplete',
 				'currency'   => $currency,
-				'line_items' => [],
-				'totals'     => [
-					[
+				'line_items' => array(),
+				'totals'     => array(
+					array(
 						'type'   => 'subtotal',
 						'amount' => 0,
-					],
-					[
+					),
+					array(
 						'type'   => 'total',
 						'amount' => 0,
-					],
-				],
-				'links'      => [],
-				'messages'   => [ $message ],
-			],
+					),
+				),
+				'links'      => array(),
+				'messages'   => array( $message ),
+			),
 			405
 		);
 
@@ -4389,13 +4389,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			)
 			: __( 'An input did not resolve to a known product or variant.', 'woocommerce-ai-storefront' );
 
-		return [
+		return array(
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
 			'content'  => $content,
 			'path'     => '$.ids[' . $raw_index . ']',
 			'severity' => 'unrecoverable',
-		];
+		);
 	}
 
 	/**
@@ -4443,10 +4443,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * }
 	 */
 	private static function normalize_and_dedupe_lookup_ids( array $raw_ids ): array {
-		$inputs    = [];
-		$wc_ids    = [];
-		$positions = [];
-		$seen      = [];
+		$inputs    = array();
+		$wc_ids    = array();
+		$positions = array();
+		$seen      = array();
 
 		foreach ( $raw_ids as $raw_index => $raw ) {
 			// Non-scalar inputs (arrays/objects/null) can't resolve
@@ -4517,11 +4517,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$positions[]  = (int) $raw_index;
 		}
 
-		return [
+		return array(
 			'inputs'    => $inputs,
 			'wc_ids'    => $wc_ids,
 			'positions' => $positions,
-		];
+		);
 	}
 
 	/**
@@ -4544,7 +4544,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * @return array<string, string>
 	 */
 	private static function partial_variants_message( int $product_id, int $skipped ): array {
-		return [
+		return array(
 			'type'    => 'warning',
 			'code'    => WC_AI_Storefront_UCP_Error_Codes::PARTIAL_VARIANTS,
 			// `message_warning.json` (UCP 2026-04-08) does NOT define a
@@ -4564,7 +4564,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$skipped,
 				$product_id
 			),
-		];
+		);
 	}
 
 	/**
@@ -4597,8 +4597,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *         objects for structured filters such as attributes.
 	 */
 	private static function map_ucp_search_to_store_api( array $params ): array {
-		$store_params = [];
-		$messages     = [];
+		$store_params = array();
+		$messages     = array();
 
 		$query = $params['query'] ?? null;
 		if ( is_string( $query ) && '' !== $query ) {
@@ -4622,12 +4622,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$page       = 1;
 
 		if ( null !== $pagination && ! is_array( $pagination ) ) {
-			$messages[] = [
+			$messages[] = array(
 				'type'    => 'warning',
 				'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_PAGINATION_SHAPE,
 				'path'    => '$.pagination',
 				'content' => __( 'pagination must be an object; using defaults.', 'woocommerce-ai-storefront' ),
-			];
+			);
 		}
 
 		if ( is_array( $pagination ) ) {
@@ -4650,7 +4650,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					$requested = (int) $pagination['limit'];
 					$limit     = max( 1, min( self::MAX_SEARCH_LIMIT, $requested ) );
 					if ( $limit !== $requested ) {
-						$messages[] = [
+						$messages[] = array(
 							'type'    => 'warning',
 							'code'    => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
 							'path'    => '$.pagination.limit',
@@ -4661,7 +4661,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 								$limit,
 								self::MAX_SEARCH_LIMIT
 							),
-						];
+						);
 					}
 				} else {
 					// Invalid shape — clamp to the applied default +
@@ -4669,7 +4669,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// keyed on `pagination_limit_clamped` still catch
 					// it; the content tells them the value was
 					// unusable, not clamped-from-a-number.
-					$messages[] = [
+					$messages[] = array(
 						'type'    => 'warning',
 						'code'    => WC_AI_Storefront_UCP_Error_Codes::PAGINATION_LIMIT_CLAMPED,
 						'path'    => '$.pagination.limit',
@@ -4678,7 +4678,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							__( 'pagination.limit must be a non-negative integer; using default %d.', 'woocommerce-ai-storefront' ),
 							$limit
 						),
-					];
+					);
 				}
 			}
 			if ( isset( $pagination['cursor'] ) && is_string( $pagination['cursor'] ) && '' !== $pagination['cursor'] ) {
@@ -4695,12 +4695,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					// decodes cleanly but exceeds total_pages are
 					// handled downstream by Store API returning an
 					// empty result set — no warning needed there.
-					$messages[] = [
+					$messages[] = array(
 						'type'    => 'warning',
 						'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_CURSOR,
 						'path'    => '$.pagination.cursor',
 						'content' => __( 'Pagination cursor could not be decoded; returning first page. If you copied this cursor from a prior response the catalog may have changed, but a malformed cursor most often indicates a client bug.', 'woocommerce-ai-storefront' ),
-					];
+					);
 				}
 			}
 		}
@@ -4727,12 +4727,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$raw_direction = $sort['direction'] ?? 'asc';
 
 			if ( ! is_string( $raw_field ) || ! is_string( $raw_direction ) ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'    => 'warning',
 					'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_SHAPE,
 					'path'    => '$.sort',
 					'content' => __( 'sort.field and sort.direction must be strings; using default ordering.', 'woocommerce-ai-storefront' ),
-				];
+				);
 			} else {
 				$field     = strtolower( trim( $raw_field ) );
 				$direction = strtolower( trim( $raw_direction ) );
@@ -4741,7 +4741,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// is an alias for date-desc — more human-intuitive than
 				// Store API's `date` + `order=desc` but we still
 				// translate here so agents have one sort vocabulary.
-				$orderby_map = [
+				$orderby_map = array(
 					'price'      => 'price',
 					'title'      => 'title',
 					'date'       => 'date',
@@ -4749,7 +4749,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'popularity' => 'popularity',
 					'rating'     => 'rating',
 					'menu_order' => 'menu_order',
-				];
+				);
 				if ( isset( $orderby_map[ $field ] ) ) {
 					$store_params['orderby'] = $orderby_map[ $field ];
 					$store_params['order']   = ( 'desc' === $direction ) ? 'desc' : 'asc';
@@ -4760,7 +4760,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						$store_params['order'] = 'desc';
 					}
 				} elseif ( '' !== $field ) {
-					$messages[] = [
+					$messages[] = array(
 						'type'    => 'warning',
 						'code'    => WC_AI_Storefront_UCP_Error_Codes::INVALID_SORT_FIELD,
 						'path'    => '$.sort.field',
@@ -4769,14 +4769,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							__( 'Sort field "%s" is not supported; using default ordering.', 'woocommerce-ai-storefront' ),
 							$raw_field
 						),
-					];
+					);
 				}
 			}
 		}
 
 		$filters = $params['filters'] ?? null;
 		if ( ! is_array( $filters ) ) {
-			return [ $store_params, $messages ];
+			return array( $store_params, $messages );
 		}
 
 		// Some agent clients (observed across Gemini, Grok, and GPT through the
@@ -4787,8 +4787,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// elements into one associative map so the agent's filters take effect.
 		// A correctly-shaped object has string keys (not a list) and passes
 		// through untouched; an empty array is left alone (it's a no-op anyway).
-		if ( [] !== $filters && array_is_list( $filters ) ) {
-			$merged = [];
+		if ( array() !== $filters && array_is_list( $filters ) ) {
+			$merged = array();
 			foreach ( $filters as $entry ) {
 				if ( is_array( $entry ) ) {
 					$merged = array_merge( $merged, $entry );
@@ -4808,7 +4808,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$store_params['category'] = implode( ',', $category_result['ids'] );
 			}
 			foreach ( $category_result['unresolved'] as $index => $bad ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'    => 'warning',
 					'code'    => WC_AI_Storefront_UCP_Error_Codes::CATEGORY_NOT_FOUND,
 					'path'    => '$.filters.categories[' . $index . ']',
@@ -4817,7 +4817,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						__( 'Category "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
 					),
-				];
+				);
 			}
 		}
 
@@ -4916,7 +4916,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 								$e->getMessage()
 							);
 							$apply_price_filter = false;
-							$messages[]         = [
+							$messages[]         = array(
 								'type'    => 'warning',
 								'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
 								'path'    => '$.filters.price',
@@ -4926,13 +4926,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 									$ctx_currency,
 									$store_currency
 								),
-							];
+							);
 						}
 					} else {
 						// Requested currency is not in accepted set — drop +
 						// warn per Phase 1 semantics.
 						$apply_price_filter = false;
-						$messages[]         = [
+						$messages[]         = array(
 							'type'    => 'warning',
 							'code'    => WC_AI_Storefront_UCP_Error_Codes::CURRENCY_CONVERSION_UNSUPPORTED,
 							'path'    => '$.filters.price',
@@ -4942,7 +4942,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 								$ctx_currency,
 								$store_currency
 							),
-						];
+						);
 					}
 				}
 
@@ -4992,7 +4992,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$store_params['tag'] = implode( ',', $tag_result['ids'] );
 			}
 			foreach ( $tag_result['unresolved'] as $index => $bad ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'    => 'warning',
 					'code'    => WC_AI_Storefront_UCP_Error_Codes::TAG_NOT_FOUND,
 					'path'    => '$.filters.tags[' . $index . ']',
@@ -5001,7 +5001,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						__( 'Tag "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
 					),
-				];
+				);
 			}
 		}
 
@@ -5021,7 +5021,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$store_params['brand'] = implode( ',', $brand_result['ids'] );
 			}
 			foreach ( $brand_result['unresolved'] as $index => $bad ) {
-				$messages[] = [
+				$messages[] = array(
 					'type'    => 'warning',
 					'code'    => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
 					'path'    => '$.filters.brand[' . $index . ']',
@@ -5030,7 +5030,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad )
 					),
-				];
+				);
 			}
 		}
 
@@ -5042,7 +5042,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// passes false or omits the filter, so the default remains
 		// "whatever the merchant configured for frontend visibility".
 		if ( isset( $filters['in_stock'] ) && ( true === $filters['in_stock'] || 'true' === $filters['in_stock'] ) ) {
-			$store_params['stock_status'] = [ 'instock' ];
+			$store_params['stock_status'] = array( 'instock' );
 		}
 
 		// Featured filter — merchandising signal. Merchants flag hero
@@ -5067,7 +5067,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// into future unclamped fields.
 		if ( isset( $filters['min_rating'] ) && self::is_integer_like_non_negative( $filters['min_rating'] ) ) {
 			$min     = max( 1, min( 5, (int) $filters['min_rating'] ) );
-			$ratings = [];
+			$ratings = array();
 			for ( $r = $min; $r <= 5; $r++ ) {
 				$ratings[] = $r;
 			}
@@ -5106,11 +5106,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// markup from either axis.
 				$sanitized_key = self::sanitize_reflected_value( $bad['key'] );
 				$escaped_key   = str_replace(
-					[ '\\', "'" ],
-					[ '\\\\', "\\'" ],
+					array( '\\', "'" ),
+					array( '\\\\', "\\'" ),
 					$sanitized_key
 				);
-				$messages[]    = [
+				$messages[]    = array(
 					'type'    => 'warning',
 					'code'    => WC_AI_Storefront_UCP_Error_Codes::ATTRIBUTE_NOT_FOUND,
 					'path'    => sprintf( "\$.filters.attributes['%s']", $escaped_key ),
@@ -5119,11 +5119,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 						__( 'Attribute taxonomy "%s" was not found on the store; filter ignored for this axis.', 'woocommerce-ai-storefront' ),
 						self::sanitize_reflected_value( $bad['taxonomy'] )
 					),
-				];
+				);
 			}
 		}
 
-		return [ $store_params, $messages ];
+		return array( $store_params, $messages );
 	}
 
 	/**
@@ -5160,8 +5160,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * }
 	 */
 	private static function build_attribute_filter_params( array $attribute_map ): array {
-		$filters    = [];
-		$unresolved = [];
+		$filters    = array();
+		$unresolved = array();
 		foreach ( $attribute_map as $key => $values ) {
 			// Skip numeric keys — a malformed list-shaped input like
 			// `filters.attributes: [["red"]]` produces integer keys
@@ -5221,10 +5221,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// JSON-path precision, symmetric with `category_not_found`
 			// / `tag_not_found` for the parallel filters.
 			if ( function_exists( 'taxonomy_exists' ) && ! taxonomy_exists( $taxonomy ) ) {
-				$unresolved[] = [
+				$unresolved[] = array(
 					'key'      => $raw_key,
 					'taxonomy' => $taxonomy,
-				];
+				);
 				continue;
 			}
 
@@ -5233,7 +5233,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// cast, which would silently forward as a bogus slug.
 			// sanitize_title keeps the WP-canonical slug form and
 			// matches how WC stores attribute term slugs in the DB.
-			$slugs = [];
+			$slugs = array();
 			foreach ( $values as $v ) {
 				if ( ! is_string( $v ) && ! is_numeric( $v ) ) {
 					continue;
@@ -5247,16 +5247,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
-			$filters[] = [
+			$filters[] = array(
 				'attribute' => $taxonomy,
 				'slug'      => array_values( array_unique( $slugs ) ),
 				'operator'  => 'in',
-			];
+			);
 		}
-		return [
+		return array(
 			'filters'    => $filters,
 			'unresolved' => $unresolved,
-		];
+		);
 	}
 
 	/**
@@ -5348,7 +5348,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 		$original_count = count( $values );
 		$capped         = array_slice( $values, 0, self::MAX_FILTER_VALUES );
-		$messages[]     = [
+		$messages[]     = array(
 			'type'    => 'warning',
 			'code'    => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
 			'path'    => $path,
@@ -5359,7 +5359,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$original_count,
 				self::MAX_FILTER_VALUES
 			),
-		];
+		);
 		return $capped;
 	}
 
@@ -5382,7 +5382,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 		$original_count = count( $map );
 		$capped         = array_slice( $map, 0, self::MAX_FILTER_VALUES, true );
-		$messages[]     = [
+		$messages[]     = array(
 			'type'    => 'warning',
 			'code'    => WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED,
 			'path'    => $path,
@@ -5393,7 +5393,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$original_count,
 				self::MAX_FILTER_VALUES
 			),
-		];
+		);
 		return $capped;
 	}
 
@@ -5603,7 +5603,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return false !== filter_var(
 			$value,
 			FILTER_VALIDATE_INT,
-			[ 'options' => [ 'min_range' => 0 ] ]
+			array( 'options' => array( 'min_range' => 0 ) )
 		);
 	}
 
@@ -5703,11 +5703,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			// possible from a profile URL), etc. Normalization
 			// collapses all of those to the same `utm_source` shape
 			// merchants will see in WC Origin column.
-			return [
+			return array(
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_host( $raw_host ),
 				'raw_host'    => $raw_host,
 				'source_host' => WC_AI_Storefront_UCP_Agent_Header::normalize_host_string( $raw_host ),
-			];
+			);
 		}
 
 		// Path 2: Product/Version product-name token.
@@ -5715,7 +5715,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			? WC_AI_Storefront_UCP_Agent_Header::extract_agent_product( $header_str )
 			: '';
 		if ( '' !== $product ) {
-			return [
+			return array(
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $product ),
 				'raw_host'    => $product,
 				// Resolve product token → canonical hostname so
@@ -5727,7 +5727,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				// than empty utm_source, accepts that unknowns
 				// fragment until a hostname is mapped in.
 				'source_host' => WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME[ $product ] ?? $product,
-			];
+			);
 		}
 
 		// Path 3: body `meta.source` field.
@@ -5738,10 +5738,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// the body wasn't parseable. We never throw for a missing
 		// body field — this is a fallback path; the calling endpoint
 		// validates required body fields separately.
-		$body        = (array) ( $request->get_json_params() ?? [] );
+		$body        = (array) ( $request->get_json_params() ?? array() );
 		$meta        = isset( $body['meta'] ) && is_array( $body['meta'] )
 			? $body['meta']
-			: [];
+			: array();
 		$meta_source = isset( $meta['source'] ) && is_string( $meta['source'] )
 			? trim( $meta['source'] )
 			: '';
@@ -5758,12 +5758,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			&& (bool) preg_match( '/^[A-Za-z0-9._\-]+$/', $meta_source )
 		) {
 			$normalized = strtolower( $meta_source );
-			return [
+			return array(
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized ),
 				'raw_host'    => $meta_source,
 				// Same product → hostname resolution as Path 2.
 				'source_host' => WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME[ $normalized ] ?? $normalized,
-			];
+			);
 		}
 
 		// Path 3.5: User-Agent fallback. No explicit UCP-Agent / meta.source
@@ -5779,11 +5779,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Path 4: nothing identified the agent. Empty source_host —
 		// `build_continue_url()` substitutes the FALLBACK_SOURCE
 		// sentinel so the cohort stays observable in stats.
-		return [
+		return array(
 			'name'        => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
 			'raw_host'    => '',
 			'source_host' => '',
-		];
+		);
 	}
 
 	/**
@@ -5803,11 +5803,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( null !== $ua_data ) {
 				return $ua_data;
 			}
-			return [
+			return array(
 				'name'        => WC_AI_Storefront_UCP_Agent_Header::FALLBACK_SOURCE,
 				'raw_host'    => '',
 				'source_host' => '',
-			];
+			);
 		}
 		$canonical = WC_AI_Storefront_UCP_Agent_Header::canonicalize_product( $normalized );
 		if ( WC_AI_Storefront_UCP_Agent_Header::OTHER_AI_BUCKET === $canonical ) {
@@ -5817,11 +5817,11 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 		$source = WC_AI_Storefront_UCP_Agent_Header::PRODUCT_TO_HOSTNAME[ $normalized ] ?? $normalized;
-		return [
+		return array(
 			'name'        => $canonical,
 			'raw_host'    => substr( $name, 0, 253 ),
 			'source_host' => substr( $source, 0, 253 ),
-		];
+		);
 	}
 
 	/**
@@ -6533,10 +6533,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$bundle_quantity   = max( 1, (int) ( $first_bundle['quantity'] ?? 1 ) );
 				$url_with_products = add_query_arg(
 					array_merge(
-						[
+						array(
 							'add-to-cart' => (string) $first_bundle['wc_id'],
 							'quantity'    => (string) $bundle_quantity,
-						],
+						),
 						$bundle_query
 					),
 					$base
@@ -6599,9 +6599,9 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					}
 					$url_with_products = add_query_arg(
 						array_merge(
-							[
+							array(
 								'add-to-cart' => (string) $first_grouped['wc_id'],
-							],
+							),
 							$grouped_query
 						),
 						$base
@@ -6778,45 +6778,45 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 *         [links, warnings]
 	 */
 	private static function collect_legal_links(): array {
-		$links    = [];
-		$warnings = [];
+		$links    = array();
+		$warnings = array();
 
 		$privacy_url = function_exists( 'get_privacy_policy_url' )
 			? (string) get_privacy_policy_url()
 			: '';
 		if ( '' !== $privacy_url ) {
-			$links[] = [
+			$links[] = array(
 				'type' => 'privacy_policy',
 				'url'  => $privacy_url,
-			];
+			);
 		} else {
 			// `message_warning.json` (UCP 2026-04-08) requires `content`.
 			// Pre-fix we emitted only `type` + `code`; strict validators
 			// would reject the message.
-			$warnings[] = [
+			$warnings[] = array(
 				'type'    => 'warning',
 				'code'    => WC_AI_Storefront_UCP_Error_Codes::PRIVACY_POLICY_UNCONFIGURED,
 				'content' => __( 'Merchant has no privacy policy configured; agents may want to surface this caveat to buyers before proceeding.', 'woocommerce-ai-storefront' ),
-			];
+			);
 		}
 
 		$terms_url = function_exists( 'wc_get_page_permalink' )
 			? (string) wc_get_page_permalink( 'terms' )
 			: '';
 		if ( '' !== $terms_url ) {
-			$links[] = [
+			$links[] = array(
 				'type' => 'terms_of_service',
 				'url'  => $terms_url,
-			];
+			);
 		} else {
-			$warnings[] = [
+			$warnings[] = array(
 				'type'    => 'warning',
 				'code'    => WC_AI_Storefront_UCP_Error_Codes::TERMS_UNCONFIGURED,
 				'content' => __( 'Merchant has no terms of service configured; agents may want to surface this caveat to buyers before proceeding.', 'woocommerce-ai-storefront' ),
-			];
+			);
 		}
 
-		return [ $links, $warnings ];
+		return array( $links, $warnings );
 	}
 
 	/**
@@ -6838,13 +6838,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$content = self::default_error_content( $code );
 		}
 
-		return [
+		return array(
 			'type'     => 'error',
 			'code'     => $code,
 			'path'     => $path,
 			'severity' => 'unrecoverable',
 			'content'  => $content,
-		];
+		);
 	}
 
 	/**

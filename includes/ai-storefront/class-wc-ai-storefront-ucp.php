@@ -70,11 +70,11 @@ class WC_AI_Storefront_Ucp {
 	 *
 	 * @var string[]
 	 */
-	const CANONICAL_CAPABILITIES = [
+	const CANONICAL_CAPABILITIES = array(
 		'catalog.search',
 		'catalog.lookup',
 		'checkout',
-	];
+	);
 
 	/**
 	 * WordPress query var name for the OpenSearch descriptor endpoint.
@@ -360,15 +360,15 @@ class WC_AI_Storefront_Ucp {
 		// the UCP specification overview and `schema` at the canonical OpenAPI
 		// 3.1 contract (consumers substitute the merchant endpoint, our
 		// `$ucp_endpoint`, for the schema's `{endpoint}` placeholder).
-		$shopping_bindings = [
-			[
+		$shopping_bindings = array(
+			array(
 				'version'   => self::PROTOCOL_VERSION,
 				'spec'      => $spec_base . '/specification/overview',
 				'schema'    => $spec_base . '/services/shopping/rest.openapi.json',
 				'transport' => 'rest',
 				'endpoint'  => $ucp_endpoint,
-			],
-		];
+			),
+		);
 
 		// Advertise the MCP transport ONLY when it is actually live. The
 		// manifest is already gated on `enabled` in serve_manifest(); this
@@ -384,24 +384,24 @@ class WC_AI_Storefront_Ucp {
 		// 'no', so both gates agree — we never advertise a binding the server
 		// would 404.
 		if ( 'yes' === ( $settings['mcp_enabled'] ?? 'no' ) ) {
-			$shopping_bindings[] = [
+			$shopping_bindings[] = array(
 				'version'   => self::PROTOCOL_VERSION,
 				'transport' => 'mcp',
 				'endpoint'  => rest_url( 'wc/ucp/v1/mcp' ),
-			];
+			);
 		}
 
-		$manifest = [
-			'ucp' => [
+		$manifest = array(
+			'ucp' => array(
 				'version'          => self::PROTOCOL_VERSION,
 
 				// Services — REST (always) plus MCP (when `mcp_enabled`)
 				// bindings for the shopping service, assembled above as
 				// `$shopping_bindings`. Under business_schema a binding
 				// requires `endpoint`.
-				'services'         => [
+				'services'         => array(
 					self::SERVICE_NAME => $shopping_bindings,
-				],
+				),
 
 				// UCP shopping capabilities we implement. Per the
 				// business_profile schema linked above, each capability
@@ -441,7 +441,7 @@ class WC_AI_Storefront_Ucp {
 				// SHOULD directive on business-provided continue_url.
 				'capabilities'     => array_merge(
 					self::build_canonical_capabilities( $spec_base ),
-					[
+					array(
 						// Merchant-specific extension capability. Carries
 						// commerce context (currency, locale, tax/shipping
 						// posture) that UCP doesn't define but agents
@@ -481,8 +481,8 @@ class WC_AI_Storefront_Ucp {
 						// in, whether prices include tax, whether
 						// shipping applies) find them without an extra
 						// API call.
-						'com.woocommerce.ai_storefront' => [
-							[
+						'com.woocommerce.ai_storefront' => array(
+							array(
 								'version' => self::PROTOCOL_VERSION,
 								'extends' => array_map(
 									static fn( string $suffix ): string => self::SERVICE_NAME . '.' . $suffix,
@@ -512,21 +512,21 @@ class WC_AI_Storefront_Ucp {
 								'schema'  => function_exists( 'rest_url' )
 									? rest_url( 'wc/ucp/v1/extension/schema' )
 									: '/wp-json/wc/ucp/v1/extension/schema',
-								'config'  => [
+								'config'  => array(
 									'store_context' => $this->build_store_context(),
 									'agent_guide'   => $this->build_agent_guide(),
-								],
-							],
-						],
-					]
+								),
+							),
+						),
+					)
 				),
 
 				// Required by business_schema. Empty object is the
 				// valid "zero handlers" declaration — merchant's WC
 				// checkout handles payment via their configured gateway.
-				'payment_handlers' => (object) [],
-			],
-		];
+				'payment_handlers' => (object) array(),
+			),
+		);
 
 		/**
 		 * Filter the UCP manifest data.
@@ -569,19 +569,19 @@ class WC_AI_Storefront_Ucp {
 	 * @return array<string, array<int, array{version: string, spec: string, schema: string}>>
 	 */
 	private static function build_canonical_capabilities( string $spec_base ): array {
-		$capabilities = [];
+		$capabilities = array();
 		foreach ( self::CANONICAL_CAPABILITIES as $suffix ) {
 			$key             = self::SERVICE_NAME . '.' . $suffix;
 			$spec_path       = str_replace( '.', '/', $suffix );
 			$schema_filename = str_replace( '.', '_', $suffix );
 
-			$capabilities[ $key ] = [
-				[
+			$capabilities[ $key ] = array(
+				array(
 					'version' => self::PROTOCOL_VERSION,
 					'spec'    => $spec_base . '/specification/' . $spec_path,
 					'schema'  => $spec_base . '/schemas/shopping/' . $schema_filename . '.json',
-				],
-			];
+				),
+			);
 		}
 		return $capabilities;
 	}
@@ -658,13 +658,13 @@ class WC_AI_Storefront_Ucp {
 		// `currency` and falsely signals multi-currency support to
 		// agents. Omitting the key is the honest signal.
 		$accepted_currencies = WC_AI_Storefront_Multi_Currency::get_accepted_currencies();
-		$context             = [
+		$context             = array(
 			'currency'           => get_woocommerce_currency(),
 			'locale'             => $locale,
 			'country'            => $country ? $country : null,
 			'prices_include_tax' => (bool) wc_prices_include_tax(),
 			'shipping_enabled'   => (bool) wc_shipping_enabled(),
-		];
+		);
 		if ( count( $accepted_currencies ) > 1 ) {
 			$context['accepted_currencies'] = $accepted_currencies;
 		}

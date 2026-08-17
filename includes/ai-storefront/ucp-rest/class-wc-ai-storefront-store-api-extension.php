@@ -82,7 +82,7 @@ class WC_AI_Storefront_Store_Api_Extension {
 	 * is silent.
 	 */
 	public function init(): void {
-		add_action( 'woocommerce_blocks_loaded', [ $this, 'register_endpoint_data' ] );
+		add_action( 'woocommerce_blocks_loaded', array( $this, 'register_endpoint_data' ) );
 	}
 
 	/**
@@ -101,13 +101,13 @@ class WC_AI_Storefront_Store_Api_Extension {
 		// so this code doesn't trigger a fatal on PHP autoload if WC
 		// Blocks aren't initialized yet at this point in the lifecycle.
 		woocommerce_store_api_register_endpoint_data(
-			[
+			array(
 				'endpoint'        => 'product',
 				'namespace'       => self::NAMESPACE,
-				'data_callback'   => [ $this, 'get_product_data' ],
-				'schema_callback' => [ $this, 'get_schema' ],
+				'data_callback'   => array( $this, 'get_product_data' ),
+				'schema_callback' => array( $this, 'get_schema' ),
 				'schema_type'     => ARRAY_A,
-			]
+			)
 		);
 	}
 
@@ -129,14 +129,14 @@ class WC_AI_Storefront_Store_Api_Extension {
 	 */
 	public function get_product_data( $product ): array {
 		if ( ! $product instanceof \WC_Product ) {
-			return [
-				'barcodes'      => [],
+			return array(
+				'barcodes'      => array(),
 				'date_created'  => null,
 				'date_modified' => null,
-			];
+			);
 		}
 
-		$barcodes = [];
+		$barcodes = array();
 
 		// Native WC 9.4+ field. Older WC versions don't implement
 		// the method — guard with method_exists so the extension
@@ -151,10 +151,10 @@ class WC_AI_Storefront_Store_Api_Extension {
 		if ( method_exists( $product, 'get_global_unique_id' ) ) {
 			$gtin = trim( (string) $product->get_global_unique_id() );
 			if ( '' !== $gtin ) {
-				$barcodes[] = [
+				$barcodes[] = array(
 					'type'  => self::detect_gtin_type( $gtin ),
 					'value' => $gtin,
-				];
+				);
 			}
 		}
 
@@ -209,11 +209,11 @@ class WC_AI_Storefront_Store_Api_Extension {
 			}
 		}
 
-		return [
+		return array(
 			'barcodes'      => $barcodes,
 			'date_created'  => $date_created,
 			'date_modified' => $date_modified,
-		];
+		);
 	}
 
 	/**
@@ -224,54 +224,54 @@ class WC_AI_Storefront_Store_Api_Extension {
 	 * @return array<string, mixed>
 	 */
 	public function get_schema(): array {
-		return [
-			'barcodes'      => [
+		return array(
+			'barcodes'      => array(
 				'description' => __(
 					'Product identifiers (GTIN, UPC, EAN, MPN, ISBN). Each entry is a typed barcode.',
 					'woocommerce-ai-storefront'
 				),
 				'type'        => 'array',
-				'context'     => [ 'view' ],
+				'context'     => array( 'view' ),
 				'readonly'    => true,
-				'items'       => [
+				'items'       => array(
 					'type'       => 'object',
-					'properties' => [
-						'type'  => [
+					'properties' => array(
+						'type'  => array(
 							'type'        => 'string',
 							'description' => __(
 								'Barcode type (gtin8, gtin12, gtin13, gtin14, other).',
 								'woocommerce-ai-storefront'
 							),
-						],
-						'value' => [
+						),
+						'value' => array(
 							'type'        => 'string',
 							'description' => __(
 								'The barcode value as stored by the merchant.',
 								'woocommerce-ai-storefront'
 							),
-						],
-					],
-				],
-			],
-			'date_created'  => [
+						),
+					),
+				),
+			),
+			'date_created'  => array(
 				'description' => __(
 					'RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) when the product was created. Null when not available. Exposed here because Store API strips product date fields from responses by default; our UCP translator consumes this to populate `product.published_at` per the UCP core shape.',
 					'woocommerce-ai-storefront'
 				),
-				'type'        => [ 'string', 'null' ],
-				'context'     => [ 'view' ],
+				'type'        => array( 'string', 'null' ),
+				'context'     => array( 'view' ),
 				'readonly'    => true,
-			],
-			'date_modified' => [
+			),
+			'date_modified' => array(
 				'description' => __(
 					'RFC 3339 / ISO 8601 timestamp (UTC, `Z`-suffixed) of the product\'s last modification. Null when not available. Consumed by the UCP translator for `product.updated_at`.',
 					'woocommerce-ai-storefront'
 				),
-				'type'        => [ 'string', 'null' ],
-				'context'     => [ 'view' ],
+				'type'        => array( 'string', 'null' ),
+				'context'     => array( 'view' ),
 				'readonly'    => true,
-			],
-		];
+			),
+		);
 	}
 
 	/**

@@ -151,15 +151,15 @@ class WC_AI_Storefront {
 
 		$this->init_components();
 
-		add_action( 'rest_api_init', [ $this, 'register_rest_routes' ] );
+		add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
 
 		if ( is_admin() ) {
-			add_action( 'admin_menu', [ $this, 'add_admin_menu' ] );
-			add_action( 'admin_enqueue_scripts', [ $this, 'admin_scripts' ] );
+			add_action( 'admin_menu', array( $this, 'add_admin_menu' ) );
+			add_action( 'admin_enqueue_scripts', array( $this, 'admin_scripts' ) );
 			// "Settings" link on the plugin's Plugins-screen row.
 			add_filter(
 				'plugin_action_links_' . plugin_basename( WC_AI_STOREFRONT_PLUGIN_FILE ),
-				[ self::class, 'add_settings_action_link' ]
+				array( self::class, 'add_settings_action_link' )
 			);
 		}
 	}
@@ -385,41 +385,41 @@ class WC_AI_Storefront {
 		$indexnow      = new WC_AI_Storefront_IndexNow();
 
 		// Register rewrite rules on init (plugins_loaded fires before init).
-		add_action( 'init', [ $llms_txt, 'add_rewrite_rules' ] );
-		add_action( 'init', [ $ucp, 'add_rewrite_rules' ] );
-		add_action( 'init', [ $products_feed, 'add_rewrite_rules' ] );
-		add_action( 'init', [ $indexnow, 'add_rewrite_rules' ] );
+		add_action( 'init', array( $llms_txt, 'add_rewrite_rules' ) );
+		add_action( 'init', array( $ucp, 'add_rewrite_rules' ) );
+		add_action( 'init', array( $products_feed, 'add_rewrite_rules' ) );
+		add_action( 'init', array( $indexnow, 'add_rewrite_rules' ) );
 
-		add_filter( 'query_vars', [ $llms_txt, 'add_query_vars' ] );
-		add_filter( 'query_vars', [ $ucp, 'add_query_vars' ] );
-		add_filter( 'query_vars', [ $products_feed, 'add_query_vars' ] );
-		add_filter( 'query_vars', [ $indexnow, 'add_query_vars' ] );
-		add_action( 'template_redirect', [ $llms_txt, 'serve_llms_txt' ] );
+		add_filter( 'query_vars', array( $llms_txt, 'add_query_vars' ) );
+		add_filter( 'query_vars', array( $ucp, 'add_query_vars' ) );
+		add_filter( 'query_vars', array( $products_feed, 'add_query_vars' ) );
+		add_filter( 'query_vars', array( $indexnow, 'add_query_vars' ) );
+		add_action( 'template_redirect', array( $llms_txt, 'serve_llms_txt' ) );
 		// /agents.md is a byte-identical mirror of /llms.txt (same
 		// generator, same cache) — registered on the same hook.
-		add_action( 'template_redirect', [ $llms_txt, 'serve_agents_md' ] );
-		add_action( 'template_redirect', [ $indexnow, 'serve_key_file' ] );
-		add_action( 'template_redirect', [ $ucp, 'serve_manifest' ] );
-		add_action( 'template_redirect', [ $ucp, 'serve_opensearch_xml' ] );
+		add_action( 'template_redirect', array( $llms_txt, 'serve_agents_md' ) );
+		add_action( 'template_redirect', array( $indexnow, 'serve_key_file' ) );
+		add_action( 'template_redirect', array( $ucp, 'serve_manifest' ) );
+		add_action( 'template_redirect', array( $ucp, 'serve_opensearch_xml' ) );
 		// Shopify-compatible /products.json + /collections/all/products.json
 		// alias (non-UCP catalog feed for agents trained on that endpoint).
-		add_action( 'template_redirect', [ $products_feed, 'serve_products_feed' ] );
+		add_action( 'template_redirect', array( $products_feed, 'serve_products_feed' ) );
 		// v2 scoped JSON endpoints — same feed class, same toggle/cache. Each
 		// no-ops unless its own query var is set, so stacking them on the one
 		// hook is safe. The new rewrite rules + query vars + canonical
 		// suppression are already covered by the add_rewrite_rules /
 		// add_query_vars / suppress_canonical_redirect registrations above.
-		add_action( 'template_redirect', [ $products_feed, 'serve_single_product' ] );
-		add_action( 'template_redirect', [ $products_feed, 'serve_collection_products' ] );
-		add_action( 'template_redirect', [ $products_feed, 'serve_collections' ] );
-		add_action( 'wp_head', [ $ucp, 'inject_head_link' ] );
+		add_action( 'template_redirect', array( $products_feed, 'serve_single_product' ) );
+		add_action( 'template_redirect', array( $products_feed, 'serve_collection_products' ) );
+		add_action( 'template_redirect', array( $products_feed, 'serve_collections' ) );
+		add_action( 'wp_head', array( $ucp, 'inject_head_link' ) );
 		// Machine-only /llms.txt advertisement: an RFC 8288 `Link` HTTP header
 		// on front-end responses (the head <link rel> from inject_head_link is
 		// the HTML-layer companion). Replaces the former visible body anchor,
 		// which was intrusive to shoppers — the casual fetchers a visible anchor
 		// reached read products from the visible page and don't call the API the
 		// doc enumerates, so it added little. Self-gates on the enabled setting.
-		add_action( 'send_headers', [ $llms_txt, 'send_discovery_link_header' ] );
+		add_action( 'send_headers', array( $llms_txt, 'send_discovery_link_header' ) );
 
 		// Suppress WordPress's trailing-slash canonical redirect for
 		// the discovery endpoints. On sites with trailing-slash
@@ -431,10 +431,10 @@ class WC_AI_Storefront {
 		// returns false only when the corresponding query var is
 		// set, so canonical behavior elsewhere on the site is
 		// untouched.
-		add_filter( 'redirect_canonical', [ $llms_txt, 'suppress_canonical_redirect' ], 10, 1 );
-		add_filter( 'redirect_canonical', [ $ucp, 'suppress_canonical_redirect' ], 10, 1 );
-		add_filter( 'redirect_canonical', [ $products_feed, 'suppress_canonical_redirect' ], 10, 1 );
-		add_filter( 'redirect_canonical', [ $indexnow, 'suppress_canonical_redirect' ], 10, 1 );
+		add_filter( 'redirect_canonical', array( $llms_txt, 'suppress_canonical_redirect' ), 10, 1 );
+		add_filter( 'redirect_canonical', array( $ucp, 'suppress_canonical_redirect' ), 10, 1 );
+		add_filter( 'redirect_canonical', array( $products_feed, 'suppress_canonical_redirect' ), 10, 1 );
+		add_filter( 'redirect_canonical', array( $indexnow, 'suppress_canonical_redirect' ), 10, 1 );
 
 		// Flush rewrite rules and bust content caches when needed:
 		//
@@ -572,7 +572,7 @@ class WC_AI_Storefront {
 			__( 'AI Storefront', 'woocommerce-ai-storefront' ),
 			'manage_woocommerce',
 			self::ADMIN_PAGE_SLUG,
-			[ $this, 'render_admin_page' ]
+			array( $this, 'render_admin_page' )
 		);
 	}
 
@@ -625,10 +625,10 @@ class WC_AI_Storefront {
 		$asset_file = WC_AI_STOREFRONT_PLUGIN_PATH . '/build/ai-storefront-settings.asset.php';
 		$asset      = file_exists( $asset_file )
 			? require $asset_file
-			: [
-				'dependencies' => [ 'wp-element', 'wp-components', 'wp-api-fetch', 'wp-data', 'wp-i18n' ],
+			: array(
+				'dependencies' => array( 'wp-element', 'wp-components', 'wp-api-fetch', 'wp-data', 'wp-i18n' ),
 				'version'      => WC_AI_STOREFRONT_VERSION,
-			];
+			);
 
 		wp_register_script(
 			'wc-ai-storefront-settings',
@@ -684,7 +684,7 @@ class WC_AI_Storefront {
 			wp_register_style(
 				'wc-ai-storefront-settings',
 				WC_AI_STOREFRONT_PLUGIN_URL . '/build/ai-storefront-settings.css',
-				[ 'wp-components' ],
+				array( 'wp-components' ),
 				$css_version
 			);
 		}
@@ -692,7 +692,7 @@ class WC_AI_Storefront {
 		wp_localize_script(
 			'wc-ai-storefront-settings',
 			'wcAiSyndicationParams',
-			[
+			array(
 				'restUrl'        => rest_url( 'wc/v3/ai-syndication' ),
 				'adminUrl'       => rest_url( 'wc/v3/ai-storefront/admin' ),
 				'nonce'          => wp_create_nonce( 'wp_rest' ),
@@ -717,7 +717,7 @@ class WC_AI_Storefront {
 				// `is_product_syndicated()` + the Store API filter +
 				// the `/search/brands` admin route.
 				'supportsBrands' => taxonomy_exists( 'product_brand' ),
-			]
+			)
 		);
 
 		wp_enqueue_script( 'wc-ai-storefront-settings' );
@@ -787,14 +787,14 @@ class WC_AI_Storefront {
 			&& isset( $settings['product_selection_mode'] )
 			&& in_array(
 				$settings['product_selection_mode'],
-				[ 'categories', 'tags', 'brands' ],
+				array( 'categories', 'tags', 'brands' ),
 				true
 			);
 		if ( $needs_migration ) {
 			$settings['product_selection_mode'] = 'by_taxonomy';
 		}
 
-		$merged = wp_parse_args( is_array( $settings ) ? $settings : [], $defaults );
+		$merged = wp_parse_args( is_array( $settings ) ? $settings : array(), $defaults );
 
 		// Allowed crawlers: delegates to the Robots class's helper so
 		// the three-branch resolution (fresh install vs. stored-empty
@@ -803,7 +803,7 @@ class WC_AI_Storefront {
 		// `WC_AI_Storefront_Robots::resolve_allowed_crawlers()` for
 		// the decision table.
 		$merged['allowed_crawlers'] = WC_AI_Storefront_Robots::resolve_allowed_crawlers(
-			is_array( $settings ) ? $settings : []
+			is_array( $settings ) ? $settings : array()
 		);
 
 		// Populate the cache BEFORE the migration write so any hook
@@ -917,7 +917,7 @@ class WC_AI_Storefront {
 		// `$allow_unknown` resolved up front, validation and storage
 		// see the same value.
 		$allow_unknown = $merged['allow_unknown_ucp_agents'] ?? 'no';
-		if ( ! in_array( $allow_unknown, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $allow_unknown, array( 'yes', 'no' ), true ) ) {
 			$allow_unknown = 'no';
 		}
 
@@ -926,7 +926,7 @@ class WC_AI_Storefront {
 		// opt-in) — the MCP server's own gate still requires
 		// `enabled === 'yes'`, so this only matters once syndication is on.
 		$mcp_enabled = $merged['mcp_enabled'] ?? 'yes';
-		if ( ! in_array( $mcp_enabled, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $mcp_enabled, array( 'yes', 'no' ), true ) ) {
 			$mcp_enabled = 'yes';
 		}
 
@@ -936,7 +936,7 @@ class WC_AI_Storefront {
 		// requires `enabled === 'yes'`, so this only matters once
 		// syndication is on.
 		$products_json_enabled = $merged['products_json_enabled'] ?? 'yes';
-		if ( ! in_array( $products_json_enabled, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $products_json_enabled, array( 'yes', 'no' ), true ) ) {
 			$products_json_enabled = 'yes';
 		}
 
@@ -946,7 +946,7 @@ class WC_AI_Storefront {
 		// (gated by `init_components()`), so this only matters once
 		// syndication is on.
 		$indexnow_enabled = $merged['indexnow_enabled'] ?? 'no';
-		if ( ! in_array( $indexnow_enabled, [ 'yes', 'no' ], true ) ) {
+		if ( ! in_array( $indexnow_enabled, array( 'yes', 'no' ), true ) ) {
 			$indexnow_enabled = 'no';
 		}
 
@@ -954,22 +954,22 @@ class WC_AI_Storefront {
 		// have 'categories', 'tags', or 'brands' saved before the unified
 		// by_taxonomy mode was introduced; this normalizes them at write
 		// time so the DB stays clean.
-		$legacy_mode_map = [
+		$legacy_mode_map = array(
 			'categories' => 'by_taxonomy',
 			'tags'       => 'by_taxonomy',
 			'brands'     => 'by_taxonomy',
-		];
+		);
 		$raw_mode        = $merged['product_selection_mode'] ?? 'all';
 		$normalized_mode = isset( $legacy_mode_map[ $raw_mode ] ) ? $legacy_mode_map[ $raw_mode ] : $raw_mode;
 
 		// Sanitize — only store known keys to keep the option clean.
-		$clean = [
-			'enabled'                  => in_array( $merged['enabled'], [ 'yes', 'no' ], true ) ? $merged['enabled'] : 'no',
-			'product_selection_mode'   => in_array( $normalized_mode, [ 'all', 'by_taxonomy', 'selected' ], true ) ? $normalized_mode : 'all',
-			'selected_categories'      => array_map( 'absint', (array) ( $merged['selected_categories'] ?? [] ) ),
-			'selected_tags'            => array_map( 'absint', (array) ( $merged['selected_tags'] ?? [] ) ),
-			'selected_brands'          => array_map( 'absint', (array) ( $merged['selected_brands'] ?? [] ) ),
-			'selected_products'        => array_map( 'absint', (array) ( $merged['selected_products'] ?? [] ) ),
+		$clean = array(
+			'enabled'                  => in_array( $merged['enabled'], array( 'yes', 'no' ), true ) ? $merged['enabled'] : 'no',
+			'product_selection_mode'   => in_array( $normalized_mode, array( 'all', 'by_taxonomy', 'selected' ), true ) ? $normalized_mode : 'all',
+			'selected_categories'      => array_map( 'absint', (array) ( $merged['selected_categories'] ?? array() ) ),
+			'selected_tags'            => array_map( 'absint', (array) ( $merged['selected_tags'] ?? array() ) ),
+			'selected_brands'          => array_map( 'absint', (array) ( $merged['selected_brands'] ?? array() ) ),
+			'selected_products'        => array_map( 'absint', (array) ( $merged['selected_products'] ?? array() ) ),
 			'rate_limit_rpm'           => max( 1, absint( $merged['rate_limit_rpm'] ?? 25 ) ),
 			'allowed_crawlers'         => WC_AI_Storefront_Robots::sanitize_allowed_crawlers(
 				// Fallback to live-browsing only (matching the
@@ -984,10 +984,10 @@ class WC_AI_Storefront {
 				$merged['allowed_crawlers'] ?? WC_AI_Storefront_Robots::LIVE_BROWSING_AGENTS
 			),
 			'return_policy'            => self::sanitize_return_policy(
-				$merged['return_policy'] ?? []
+				$merged['return_policy'] ?? array()
 			),
 			'handling_time'            => WC_AI_Storefront_Handling_Time::sanitize(
-				$merged['handling_time'] ?? []
+				$merged['handling_time'] ?? array()
 			),
 			// See `$allow_unknown` resolution above the array literal
 			// for why we don't inline this with `??` + ternary.
@@ -998,7 +998,7 @@ class WC_AI_Storefront {
 			'products_json_enabled'    => $products_json_enabled,
 			// See `$indexnow_enabled` resolution above the array literal.
 			'indexnow_enabled'         => $indexnow_enabled,
-		];
+		);
 
 		// Use autoload=true so the option is always in the alloptions cache.
 		self::$settings_cache = null;

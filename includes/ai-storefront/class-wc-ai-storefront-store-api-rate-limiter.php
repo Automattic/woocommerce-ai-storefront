@@ -35,8 +35,8 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 	 * Initialize filters.
 	 */
 	public function init() {
-		add_filter( 'woocommerce_store_api_rate_limit_options', [ $this, 'configure_rate_limits' ] );
-		add_filter( 'woocommerce_store_api_rate_limit_id', [ $this, 'fingerprint_ai_bots' ] );
+		add_filter( 'woocommerce_store_api_rate_limit_options', array( $this, 'configure_rate_limits' ) );
+		add_filter( 'woocommerce_store_api_rate_limit_id', array( $this, 'fingerprint_ai_bots' ) );
 	}
 
 	/**
@@ -69,15 +69,15 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 		// built-in per-call counter. The outer UCP request already
 		// consumed one slot via `check_outer_rate_limit()`.
 		if ( WC_AI_Storefront_UCP_Store_API_Filter::is_in_ucp_dispatch() ) {
-			return [ 'enabled' => false ];
+			return array( 'enabled' => false );
 		}
 
-		return [
+		return array(
 			'enabled'       => true,
 			'proxy_support' => true,
 			'limit'         => absint( $settings['rate_limit_rpm'] ?? 25 ),
 			'seconds'       => 60,
-		];
+		);
 	}
 
 	/**
@@ -200,10 +200,10 @@ class WC_AI_Storefront_Store_Api_Rate_Limiter {
 			return new WP_Error(
 				WC_AI_Storefront_UCP_Error_Codes::UCP_RATE_LIMIT_EXCEEDED,
 				__( 'Too many requests. Please try again later.', 'woocommerce-ai-storefront' ),
-				[
+				array(
 					'status'      => 429,
 					'retry_after' => 60,
-				]
+				)
 			);
 		}
 

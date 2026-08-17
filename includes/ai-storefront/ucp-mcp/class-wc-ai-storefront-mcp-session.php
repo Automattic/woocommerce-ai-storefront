@@ -67,7 +67,7 @@ class WC_AI_Storefront_MCP_Session {
 				return new WP_Error(
 					'mcp_agent_unknown_blocked',
 					__( 'Unknown agent blocked.', 'woocommerce-ai-storefront' ),
-					[ 'status' => 403 ]
+					array( 'status' => 403 )
 				);
 			}
 		}
@@ -77,7 +77,7 @@ class WC_AI_Storefront_MCP_Session {
 			return new WP_Error(
 				'mcp_agent_blocked',
 				__( 'This agent is not allowed.', 'woocommerce-ai-storefront' ),
-				[ 'status' => 403 ]
+				array( 'status' => 403 )
 			);
 		}
 

@@ -121,7 +121,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			);
 		}
 
-		$variant = [
+		$variant = array(
 			'id'          => self::VARIANT_ID_PREFIX . $id,
 			'title'       => self::extract_title( $wc_variation, $pre_parsed_pairs ),
 			'description' => self::extract_description( $wc_variation ),
@@ -132,7 +132,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			// `list_price` field per `variant.json` (see Commit 2 of
 			// the 0.12.0 compliance pass for that rename).
 			'price'       => self::extract_price( $wc_variation ),
-		];
+		);
 
 		// Structured options — the {name, label} pairs that
 		// distinguish this variant from siblings (e.g. "Color: Blue,
@@ -211,9 +211,9 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			// a straight assignment is safe. If a future field also
 			// writes under `metadata`, switch to merge-style to preserve
 			// sibling keys.
-			$variant['metadata'] = [
+			$variant['metadata'] = array(
 				'shipping' => $shipping,
-			];
+			);
 		}
 
 		// Seller — UCP `variant.json` defines `seller` inline on
@@ -275,7 +275,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	): array {
 		$id = (int) ( $wc_product['id'] ?? 0 );
 
-		$variant = [
+		$variant = array(
 			'id'          => self::VARIANT_ID_PREFIX . $id . self::DEFAULT_VARIANT_SUFFIX,
 			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
 			// Carry the parent's short_description through to the
@@ -290,7 +290,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			'description' => self::extract_description( $wc_product ),
 			// `price` — UCP-required active price. See translate() above.
 			'price'       => self::extract_price( $wc_product ),
-		];
+		);
 
 		// Sale pricing carries through the simple-product path too
 		// (a discounted simple product has on_sale + regular_price
@@ -327,9 +327,9 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			// Straight assignment — no other metadata siblings yet.
 			// Same invariant as the translate() path above; keep them
 			// in sync if future fields add to `metadata`.
-			$variant['metadata'] = [
+			$variant['metadata'] = array(
 				'shipping' => $shipping,
-			];
+			);
 		}
 
 		// Seller — same routing as translate() above. Per-variant
@@ -379,8 +379,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		array $wc_variation,
 		?array $pre_parsed_pairs = null
 	): string {
-		$attributes = $wc_variation['attributes'] ?? [];
-		$values     = [];
+		$attributes = $wc_variation['attributes'] ?? array();
+		$values     = array();
 
 		if ( is_array( $attributes ) ) {
 			foreach ( $attributes as $attribute ) {
@@ -434,19 +434,19 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array<int, array{type: string, url: string, alt_text?: string}>
 	 */
 	private static function extract_media( array $wc_variation ): array {
-		$images = $wc_variation['images'] ?? [];
+		$images = $wc_variation['images'] ?? array();
 		if ( ! is_array( $images ) ) {
-			return [];
+			return array();
 		}
-		$result = [];
+		$result = array();
 		foreach ( $images as $image ) {
 			if ( ! is_array( $image ) || empty( $image['src'] ) ) {
 				continue;
 			}
-			$media = [
+			$media = array(
 				'type' => 'image',
 				'url'  => (string) $image['src'],
-			];
+			);
 			if ( ! empty( $image['alt'] ) ) {
 				$media['alt_text'] = (string) $image['alt'];
 			}
@@ -478,17 +478,17 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array<string, mixed>
 	 */
 	private static function extract_shipping_attributes( array $wc_variation ): array {
-		$result = [];
+		$result = array();
 
 		$weight = $wc_variation['weight'] ?? '';
 		if ( is_string( $weight ) && '' !== trim( $weight ) ) {
 			$result['weight'] = $weight;
 		}
 
-		$dimensions = $wc_variation['dimensions'] ?? [];
-		$dim_result = [];
+		$dimensions = $wc_variation['dimensions'] ?? array();
+		$dim_result = array();
 		if ( is_array( $dimensions ) ) {
-			foreach ( [ 'length', 'width', 'height' ] as $key ) {
+			foreach ( array( 'length', 'width', 'height' ) as $key ) {
 				$value = $dimensions[ $key ] ?? '';
 				if ( is_string( $value ) && '' !== trim( $value ) ) {
 					$dim_result[ $key ] = $value;
@@ -521,7 +521,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			ENT_QUOTES,
 			'UTF-8'
 		);
-		return [ 'plain' => $plain ];
+		return array( 'plain' => $plain );
 	}
 
 	/**
@@ -537,11 +537,11 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array{amount: int, currency: string}
 	 */
 	private static function extract_price( array $wc ): array {
-		$prices = $wc['prices'] ?? [];
-		return [
+		$prices = $wc['prices'] ?? array();
+		return array(
 			'amount'   => (int) ( $prices['price'] ?? 0 ),
 			'currency' => $prices['currency_code'] ?? 'USD',
-		];
+		);
 	}
 
 	/**
@@ -564,7 +564,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array{amount: int, currency: string}|null
 	 */
 	private static function extract_list_price( array $wc ): ?array {
-		$prices  = $wc['prices'] ?? [];
+		$prices  = $wc['prices'] ?? array();
 		$regular = isset( $prices['regular_price'] ) ? (int) $prices['regular_price'] : 0;
 		$current = (int) ( $prices['price'] ?? 0 );
 
@@ -572,10 +572,10 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			return null;
 		}
 
-		return [
+		return array(
 			'amount'   => $regular,
 			'currency' => $prices['currency_code'] ?? 'USD',
-		];
+		);
 	}
 
 	/**
@@ -623,8 +623,8 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		?array $pre_parsed_pairs = null,
 		?array $term_slug_map = null
 	): array {
-		$attributes = $wc_variation['attributes'] ?? [];
-		$options    = [];
+		$attributes = $wc_variation['attributes'] ?? array();
+		$options    = array();
 
 		if ( is_array( $attributes ) ) {
 			foreach ( $attributes as $attribute ) {
@@ -656,10 +656,10 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 				// own `taxonomy` field first (when the WC Store API
 				// populates it), then fall back to the threaded
 				// $term_slug_map for the parsed-string path.
-				$option = [
+				$option = array(
 					'name'  => $label,
 					'label' => $value,
-				];
+				);
 				$id     = self::lookup_option_value_id(
 					$label,
 					$value,
@@ -678,16 +678,16 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		}
 
 		if ( ! is_array( $pre_parsed_pairs ) ) {
-			return [];
+			return array();
 		}
 
 		foreach ( $pre_parsed_pairs as $pair ) {
 			$name   = self::decode( $pair['attribute'] );
 			$label  = self::decode( $pair['value'] );
-			$option = [
+			$option = array(
 				'name'  => $name,
 				'label' => $label,
-			];
+			);
 			// String path: the parsed pair carries no taxonomy info —
 			// rely entirely on the threaded $term_slug_map to lookup
 			// both the taxonomy slug and the term slug.
@@ -742,7 +742,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		if ( ! is_array( $axis_entry ) ) {
 			return null;
 		}
-		$slugs = $axis_entry['slugs'] ?? [];
+		$slugs = $axis_entry['slugs'] ?? array();
 		if ( ! is_array( $slugs ) ) {
 			return null;
 		}
@@ -801,7 +801,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	): array {
 		$variation_string = trim( $variation_string );
 		if ( '' === $variation_string ) {
-			return [];
+			return array();
 		}
 
 		// Anchor-aware split: walk the string, treating `, ` as a pair
@@ -811,7 +811,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// handy).
 		$segments = self::split_variation_segments( $variation_string, $known_attribute_names );
 
-		$pairs = [];
+		$pairs = array();
 		foreach ( $segments as $segment ) {
 			$segment = trim( $segment );
 			if ( '' === $segment ) {
@@ -828,10 +828,10 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			if ( '' === $name || '' === $value ) {
 				continue;
 			}
-			$pairs[] = [
+			$pairs[] = array(
 				'attribute' => $name,
 				'value'     => $value,
-			];
+			);
 		}
 
 		return $pairs;
@@ -852,7 +852,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// Filter the anchor list to non-empty strings — handles `null`
 		// entries from a malformed parent payload without aborting the
 		// whole parse.
-		$anchors = [];
+		$anchors = array();
 		if ( is_array( $known_attribute_names ) ) {
 			foreach ( $known_attribute_names as $name ) {
 				if ( is_string( $name ) && '' !== trim( $name ) ) {
@@ -902,9 +902,9 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array{available: bool, quantity?: int}
 	 */
 	private static function extract_availability( array $wc ): array {
-		$availability = [
+		$availability = array(
 			'available' => (bool) ( $wc['is_in_stock'] ?? true ),
-		];
+		);
 
 		if ( isset( $wc['low_stock_remaining'] ) && is_numeric( $wc['low_stock_remaining'] ) ) {
 			$quantity = (int) $wc['low_stock_remaining'];
@@ -936,23 +936,23 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array<int, array{type: string, value: string}>
 	 */
 	private static function extract_barcodes( array $wc ): array {
-		$extensions = $wc['extensions'] ?? [];
+		$extensions = $wc['extensions'] ?? array();
 		if ( ! is_array( $extensions ) ) {
-			return [];
+			return array();
 		}
 
 		$namespace = WC_AI_Storefront_Store_Api_Extension::NAMESPACE;
-		$entry     = $extensions[ $namespace ] ?? [];
+		$entry     = $extensions[ $namespace ] ?? array();
 		if ( ! is_array( $entry ) ) {
-			return [];
+			return array();
 		}
 
-		$barcodes = $entry['barcodes'] ?? [];
+		$barcodes = $entry['barcodes'] ?? array();
 		if ( ! is_array( $barcodes ) ) {
-			return [];
+			return array();
 		}
 
-		$result = [];
+		$result = array();
 		foreach ( $barcodes as $barcode ) {
 			if ( ! is_array( $barcode ) ) {
 				continue;
@@ -962,10 +962,10 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			if ( '' === $type || '' === $value ) {
 				continue;
 			}
-			$result[] = [
+			$result[] = array(
 				'type'  => $type,
 				'value' => $value,
-			];
+			);
 		}
 		return $result;
 	}

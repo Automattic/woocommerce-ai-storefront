@@ -51,16 +51,16 @@ class WC_AI_Storefront_Return_Policy {
 	 */
 	public static function sanitize( $policy ): array {
 		if ( ! is_array( $policy ) ) {
-			$policy = [];
+			$policy = array();
 		}
 
-		$allowed_modes = [ 'unconfigured', 'link', 'details' ];
+		$allowed_modes = array( 'unconfigured', 'link', 'details' );
 		$mode          = isset( $policy['mode'] ) && in_array( $policy['mode'], $allowed_modes, true )
 			? $policy['mode']
 			: 'unconfigured';
 
 		if ( 'unconfigured' === $mode ) {
-			return [ 'mode' => 'unconfigured' ];
+			return array( 'mode' => 'unconfigured' );
 		}
 
 		if ( 'link' === $mode ) {
@@ -72,29 +72,29 @@ class WC_AI_Storefront_Return_Policy {
 					$page_id = 0;
 				}
 			}
-			return [
+			return array(
 				'mode'    => 'link',
 				'page_id' => $page_id,
-			];
+			);
 		}
 
 		// mode === 'details': requires a valid category.
-		$allowed_categories = [ 'returns_accepted', 'final_sale' ];
+		$allowed_categories = array( 'returns_accepted', 'final_sale' );
 		$category           = isset( $policy['category'] ) && in_array( $policy['category'], $allowed_categories, true )
 			? $policy['category']
 			: null;
 
 		if ( null === $category ) {
 			// Unknown/missing category: fail closed.
-			return [ 'mode' => 'unconfigured' ];
+			return array( 'mode' => 'unconfigured' );
 		}
 
 		if ( 'final_sale' === $category ) {
 			// Only mode + category are meaningful for final_sale.
-			return [
+			return array(
 				'mode'     => 'details',
 				'category' => 'final_sale',
-			];
+			);
 		}
 
 		// details + returns_accepted: full 5-field shape (no page_id).
@@ -114,21 +114,21 @@ class WC_AI_Storefront_Return_Policy {
 			}
 		}
 
-		$allowed_fees = [
+		$allowed_fees = array(
 			'FreeReturn',
 			'ReturnFeesCustomerResponsibility',
 			'OriginalShippingFees',
 			'RestockingFees',
-		];
+		);
 		$fees         = isset( $policy['fees'] ) && in_array( $policy['fees'], $allowed_fees, true )
 			? $policy['fees']
 			: 'FreeReturn';
 
-		$allowed_methods = [ 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' ];
+		$allowed_methods = array( 'ReturnByMail', 'ReturnInStore', 'ReturnAtKiosk' );
 		$methods_input   = isset( $policy['methods'] ) && is_array( $policy['methods'] )
 			? $policy['methods']
-			: [];
-		$methods         = [];
+			: array();
+		$methods         = array();
 		foreach ( $methods_input as $method ) {
 			if ( is_string( $method ) && in_array( $method, $allowed_methods, true ) ) {
 				$methods[] = $method;
@@ -136,13 +136,13 @@ class WC_AI_Storefront_Return_Policy {
 		}
 		$methods = array_values( array_unique( $methods ) );
 
-		return [
+		return array(
 			'mode'     => 'details',
 			'category' => 'returns_accepted',
 			'days'     => $days,
 			'fees'     => $fees,
 			'methods'  => $methods,
-		];
+		);
 	}
 
 	/**

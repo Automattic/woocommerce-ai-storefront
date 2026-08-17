@@ -432,7 +432,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$postal_address  = $jsonld->build_postal_address();
 		$catalog_summary = $jsonld->get_catalog_summary();
 
-		$lines   = [];
+		$lines   = array();
 		$lines[] = "# {$site_name}";
 		$lines[] = '';
 
@@ -464,8 +464,8 @@ class WC_AI_Storefront_Llms_Txt {
 		}
 
 		if ( ! empty( $postal_address ) ) {
-			$location_parts = [];
-			foreach ( [ 'addressLocality', 'addressRegion', 'addressCountry' ] as $key ) {
+			$location_parts = array();
+			foreach ( array( 'addressLocality', 'addressRegion', 'addressCountry' ) as $key ) {
 				if ( empty( $postal_address[ $key ] ) ) {
 					continue;
 				}
@@ -541,7 +541,7 @@ class WC_AI_Storefront_Llms_Txt {
 			$lines[]        = '';
 			$lines[]        = 'Top categories by product count. This is a sample, not exhaustive: full enumeration via the sitemaps under Browse, or `POST /wp-json/wc/ucp/v1/catalog/search`.';
 			$lines[]        = '';
-			$specializes_in = [];
+			$specializes_in = array();
 			foreach ( $catalog_summary as $category ) {
 				if ( ! is_array( $category ) || empty( $category['name'] ) || empty( $category['url'] ) ) {
 					continue;
@@ -570,7 +570,7 @@ class WC_AI_Storefront_Llms_Txt {
 		// `MerchantReturnPolicy` (return window / fees / country).
 		// Omit each subline when the merchant hasn't configured the
 		// corresponding setting — no "Returns: not set" placeholders.
-		$shipping_lines = [];
+		$shipping_lines = array();
 
 		$base_location = wc_get_base_location();
 		$ship_country  = isset( $base_location['country'] ) ? (string) $base_location['country'] : '';
@@ -580,7 +580,7 @@ class WC_AI_Storefront_Llms_Txt {
 
 		$handling     = isset( $settings['handling_time'] ) && is_array( $settings['handling_time'] )
 			? $settings['handling_time']
-			: [];
+			: array();
 		$handling_min = isset( $handling['min'] ) ? (int) $handling['min'] : 0;
 		$handling_max = isset( $handling['max'] ) ? (int) $handling['max'] : 0;
 		if ( $handling_min > 0 && $handling_max > 0 ) {
@@ -600,7 +600,7 @@ class WC_AI_Storefront_Llms_Txt {
 		// in lockstep with the JSON-LD emitter.
 		$return_policy = isset( $settings['return_policy'] ) && is_array( $settings['return_policy'] )
 			? $settings['return_policy']
-			: [];
+			: array();
 		$return_mode   = isset( $return_policy['mode'] ) ? (string) $return_policy['mode'] : 'unconfigured';
 
 		if ( 'link' === $return_mode ) {
@@ -634,17 +634,17 @@ class WC_AI_Storefront_Llms_Txt {
 				// without a target region is not useful to validators or agents).
 				// When country is empty the condition above is false, so no
 				// Returns line is emitted — matching the JSON-LD null return.
-				$return_parts = [];
+				$return_parts = array();
 				$days         = isset( $return_policy['days'] ) ? (int) $return_policy['days'] : 0;
 				if ( $days > 0 ) {
 					$return_parts[] = sprintf( '%d days', $days );
 				}
-				$fees_map = [
+				$fees_map = array(
 					'FreeReturn'                       => 'free return shipping',
 					'ReturnFeesCustomerResponsibility' => 'buyer pays return shipping',
 					'OriginalShippingFees'             => 'original shipping non-refundable',
 					'RestockingFees'                   => 'restocking fee applies',
-				];
+				);
 				$fees     = isset( $return_policy['fees'] ) ? (string) $return_policy['fees'] : '';
 				if ( isset( $fees_map[ $fees ] ) ) {
 					$return_parts[] = $fees_map[ $fees ];
@@ -918,23 +918,23 @@ class WC_AI_Storefront_Llms_Txt {
 	 *               first product's slug; empty when no syndicated product exists.
 	 */
 	private function get_example_catalog_refs( array $settings ): array {
-		$result = [
-			'ids'  => [],
+		$result = array(
+			'ids'  => array(),
 			'slug' => '',
-		];
+		);
 		if ( ! function_exists( 'wc_get_products' ) ) {
 			return $result;
 		}
 
 		$products = wc_get_products(
-			[
+			array(
 				'status'     => 'publish',
 				'visibility' => 'catalog',
 				'limit'      => 10,
 				'orderby'    => 'date',
 				'order'      => 'DESC',
 				'return'     => 'objects',
-			]
+			)
 		);
 
 		foreach ( $products as $product ) {
@@ -1145,9 +1145,9 @@ class WC_AI_Storefront_Llms_Txt {
 	protected function get_country_map(): array {
 		$wc = function_exists( 'WC' ) ? WC() : null;
 		if ( ! $wc || ! isset( $wc->countries ) || ! is_object( $wc->countries ) ) {
-			return [];
+			return array();
 		}
-		return isset( $wc->countries->countries ) ? (array) $wc->countries->countries : [];
+		return isset( $wc->countries->countries ) ? (array) $wc->countries->countries : array();
 	}
 
 

@@ -74,7 +74,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 *
 	 * @var array<string, string>
 	 */
-	const KNOWN_AGENT_HOSTS = [
+	const KNOWN_AGENT_HOSTS = array(
 		// OpenAI.
 		'chatgpt.com'           => 'ChatGPT',
 		'openai.com'            => 'ChatGPT',
@@ -127,7 +127,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// canonical name so merchants who flip on the test crawler in
 		// settings can recognize their own validation hits in stats.
 		'ucpplayground.com'     => 'UCPPlayground',
-	];
+	);
 
 	/**
 	 * Map: User-Agent crawler token (as returned by
@@ -146,7 +146,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 *
 	 * @var array<string, string>
 	 */
-	const UA_AGENT_HOSTS = [
+	const UA_AGENT_HOSTS = array(
 		// OpenAI.
 		'ChatGPT-User'     => 'chatgpt.com',
 		'GPTBot'           => 'chatgpt.com',
@@ -160,7 +160,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// Perplexity.
 		'Perplexity-User'  => 'perplexity.ai',
 		'PerplexityBot'    => 'perplexity.ai',
-	];
+	);
 
 	/**
 	 * Map: UCP-Agent product-name token → canonical brand name.
@@ -192,7 +192,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 * `canonicalize_product()`; the cohort hint is `_wc_ai_storefront_agent_host_raw`
 	 * meta which preserves the raw token for graduation review.
 	 */
-	const KNOWN_AGENT_PRODUCT_NAMES = [
+	const KNOWN_AGENT_PRODUCT_NAMES = array(
 		// UCP Playground — sends `UCP-Playground/1.0` on every REST
 		// request (both User-Agent and UCP-Agent headers). Mirrors the
 		// `ucpplayground.com` host entry so attribution converges on
@@ -233,7 +233,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		'claude-searchbot' => 'Claude',
 		'perplexitybot'    => 'Perplexity',
 		'perplexity-user'  => 'Perplexity',
-	];
+	);
 
 	/**
 	 * Map: UCP-Agent product-name token → canonical hostname.
@@ -268,7 +268,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 * `utm_source=ucp-playground`), which fragments stats against the
 	 * profile-URL path (`utm_source=ucpplayground.com`).
 	 */
-	const PRODUCT_TO_HOSTNAME = [
+	const PRODUCT_TO_HOSTNAME = array(
 		'ucp-playground'   => 'ucpplayground.com',
 
 		// Answer-agent product tokens → their canonical hostname, so
@@ -296,7 +296,7 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		'claude-searchbot' => 'claude.ai',
 		'perplexitybot'    => 'perplexity.ai',
 		'perplexity-user'  => 'perplexity.ai',
-	];
+	);
 
 	/**
 	 * Display label for unknown AI agents — agents whose UCP-Agent profile
@@ -366,21 +366,21 @@ class WC_AI_Storefront_UCP_Agent_Header {
 	 *
 	 * @var array<string, string[]>
 	 */
-	const UCP_AGENT_CRAWLER_MAP = [
-		'ChatGPT'       => [ 'ChatGPT-User', 'OAI-SearchBot' ],
-		'Claude'        => [ 'Claude-User', 'Claude-SearchBot' ],
-		'Gemini'        => [ 'Storebot-Google' ],
-		'Copilot'       => [ 'AdIdxBot' ],
-		'Perplexity'    => [ 'PerplexityBot', 'Perplexity-User' ],
-		'Siri'          => [ 'Applebot' ],
-		'Rufus'         => [ 'Amazonbot' ],
+	const UCP_AGENT_CRAWLER_MAP = array(
+		'ChatGPT'       => array( 'ChatGPT-User', 'OAI-SearchBot' ),
+		'Claude'        => array( 'Claude-User', 'Claude-SearchBot' ),
+		'Gemini'        => array( 'Storebot-Google' ),
+		'Copilot'       => array( 'AdIdxBot' ),
+		'Perplexity'    => array( 'PerplexityBot', 'Perplexity-User' ),
+		'Siri'          => array( 'Applebot' ),
+		'Rufus'         => array( 'Amazonbot' ),
 		// Klarna intentionally omitted: no robots.txt user-agent token
 		// exists for Klarna. Its in-app browser sends `Klarna/YY.WW.BUILD`
 		// appended to a mobile WebKit UA — a human session, not a crawler.
 		// Brand "Klarna" not being in this map means is_agent_allowed()
 		// falls through to the default ALLOW path for unmapped brands.
-		'UCPPlayground' => [ 'UCPPlayground' ],
-	];
+		'UCPPlayground' => array( 'UCPPlayground' ),
+	);
 
 	/**
 	 * Whether an agent (identified by canonical brand name) is allowed
@@ -486,11 +486,11 @@ class WC_AI_Storefront_UCP_Agent_Header {
 			return null;
 		}
 
-		return [
+		return array(
 			'name'        => self::canonicalize_host( $host ),
 			'source_host' => self::normalize_host_string( $host ),
 			'raw_host'    => $token,
-		];
+		);
 	}
 
 	/**

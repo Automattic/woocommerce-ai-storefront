@@ -81,7 +81,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 		// keeps us out of the way of WC's own ordering (1-20).
 		add_action(
 			'woocommerce_product_options_inventory_product_data',
-			[ $this, 'render_checkbox' ],
+			array( $this, 'render_checkbox' ),
 			30
 		);
 
@@ -93,7 +93,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 		// comment at the read site.)
 		add_action(
 			'woocommerce_process_product_meta',
-			[ $this, 'save_meta' ],
+			array( $this, 'save_meta' ),
 			10,
 			1
 		);
@@ -135,7 +135,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 		}
 
 		woocommerce_wp_checkbox(
-			[
+			array(
 				'id'          => self::META_KEY,
 				'label'       => __( 'Final sale', 'woocommerce-ai-storefront' ),
 				'description' => __(
@@ -143,7 +143,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 					'woocommerce-ai-storefront'
 				),
 				'desc_tip'    => true,
-			]
+			)
 		);
 	}
 

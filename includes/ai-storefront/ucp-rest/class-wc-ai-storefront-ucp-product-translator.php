@@ -112,14 +112,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// See #359.
 		$grouped_children = self::extract_grouped_data( $wc_product );
 
-		$product = [
+		$product = array(
 			'id'          => self::PRODUCT_ID_PREFIX . $id,
 			'title'       => self::decode( (string) ( $wc_product['name'] ?? '' ) ),
 			'description' => self::extract_description( $wc_product ),
 			'price_range' => null !== $bundle_data
 				? self::extract_bundle_price_range( $bundle_data, $wc_product )
 				: self::extract_price_range( $wc_product ),
-		];
+		);
 
 		// `list_price_range` — UCP core optional field carrying the
 		// pre-discount price range for strikethrough rendering.
@@ -230,7 +230,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// products (Fabric Weight applying across all variants) and ALL
 		// attributes on non-variable products (simple/bundle/grouped),
 		// since those have no buyer-selectable axes by definition.
-		$metadata = [];
+		$metadata = array();
 
 		// Lifecycle + timestamps under metadata (#374). `lifecycle.status`
 		// is always "published" — catalog handlers upstream only translate
@@ -241,8 +241,8 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// Store API extension is the primary source (`extract_timestamps`
 		// above), and downgrading gracefully to omission when the source
 		// lacks them is correct — never synthesize fake dates.
-		$lifecycle = [ 'status' => 'published' ];
-		$ts_subset = [];
+		$lifecycle = array( 'status' => 'published' );
+		$ts_subset = array();
 		if ( isset( $timestamps['published_at'] ) ) {
 			$ts_subset['published_at'] = $timestamps['published_at'];
 		}
@@ -412,19 +412,19 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<string, array{taxonomy: string, slugs: array<string, string>}>
 	 */
 	private static function build_term_slug_map( array $wc_product ): array {
-		$attributes = $wc_product['attributes'] ?? [];
+		$attributes = $wc_product['attributes'] ?? array();
 		if ( ! is_array( $attributes ) ) {
-			return [];
+			return array();
 		}
 
-		$map = [];
+		$map = array();
 		foreach ( $attributes as $attribute ) {
 			if ( ! is_array( $attribute ) ) {
 				continue;
 			}
 			$axis_label = self::decode( (string) ( $attribute['name'] ?? '' ) );
 			$taxonomy   = (string) ( $attribute['taxonomy'] ?? '' );
-			$terms      = $attribute['terms'] ?? [];
+			$terms      = $attribute['terms'] ?? array();
 			// Excludes custom inline attributes (no `taxonomy`) AND
 			// third-party non-`pa_` product-attribute taxonomies.
 			// See docblock above for the rationale.
@@ -435,7 +435,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
-			$slugs = [];
+			$slugs = array();
 			foreach ( $terms as $term ) {
 				if ( ! is_array( $term ) ) {
 					continue;
@@ -450,10 +450,10 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 			// Skip axes whose terms all lacked usable name/slug pairs.
 			if ( ! empty( $slugs ) ) {
-				$map[ $axis_label ] = [
+				$map[ $axis_label ] = array(
 					'taxonomy' => $taxonomy,
 					'slugs'    => $slugs,
-				];
+				);
 			}
 		}
 		return $map;
@@ -479,12 +479,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<int, string>
 	 */
 	private static function extract_parent_attribute_names( array $wc_product ): array {
-		$attributes = $wc_product['attributes'] ?? [];
+		$attributes = $wc_product['attributes'] ?? array();
 		if ( ! is_array( $attributes ) ) {
-			return [];
+			return array();
 		}
 
-		$names = [];
+		$names = array();
 		foreach ( $attributes as $attribute ) {
 			if ( ! is_array( $attribute ) ) {
 				continue;
@@ -550,22 +550,22 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// the same pattern in `UCP_Variant_Translator::extract_barcodes`
 		// so both translators degrade identically on filter-poisoned
 		// Store API responses.
-		$extensions = $wc_product['extensions'] ?? [];
-		$ext        = [];
+		$extensions = $wc_product['extensions'] ?? array();
+		$ext        = array();
 		if ( is_array( $extensions ) ) {
 			$namespace = WC_AI_Storefront_Store_Api_Extension::NAMESPACE;
-			$candidate = $extensions[ $namespace ] ?? [];
+			$candidate = $extensions[ $namespace ] ?? array();
 			if ( is_array( $candidate ) ) {
 				$ext = $candidate;
 			}
 		}
 
-		$map = [
+		$map = array(
 			'date_created'  => 'published_at',
 			'date_modified' => 'updated_at',
-		];
+		);
 
-		$out = [];
+		$out = array();
 		foreach ( $map as $wc_key => $ucp_key ) {
 			// Prefer the extension-sourced value (our Store API
 			// extension formats these as RFC 3339 / ISO 8601 UTC
@@ -598,34 +598,34 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @param array<string, mixed> $wc_product
 	 */
 	private static function extract_price_range( array $wc_product ): array {
-		$prices   = $wc_product['prices'] ?? [];
+		$prices   = $wc_product['prices'] ?? array();
 		$currency = $prices['currency_code'] ?? 'USD';
 
 		$range = $prices['price_range'] ?? null;
 		if ( is_array( $range ) && ! empty( $range['min_amount'] ) ) {
-			return [
-				'min' => [
+			return array(
+				'min' => array(
 					'amount'   => (int) $range['min_amount'],
 					'currency' => $currency,
-				],
-				'max' => [
+				),
+				'max' => array(
 					'amount'   => (int) ( $range['max_amount'] ?? $range['min_amount'] ),
 					'currency' => $currency,
-				],
-			];
+				),
+			);
 		}
 
 		$amount = (int) ( $prices['price'] ?? 0 );
-		return [
-			'min' => [
+		return array(
+			'min' => array(
 				'amount'   => $amount,
 				'currency' => $currency,
-			],
-			'max' => [
+			),
+			'max' => array(
 				'amount'   => $amount,
 				'currency' => $currency,
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -694,14 +694,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
-		$prices   = $wc_product['prices'] ?? [];
+		$prices   = $wc_product['prices'] ?? array();
 		$currency = $prices['currency_code'] ?? 'USD';
 
 		// Walk observed variants, collecting regular prices and
 		// tracking whether any one of them is on sale
 		// (regular > price). The on-sale boolean drives emission;
 		// the regular-price array drives the range.
-		$regular_prices = [];
+		$regular_prices = array();
 		$any_on_sale    = false;
 
 		if ( ! empty( $wc_variations ) ) {
@@ -709,7 +709,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				if ( ! is_array( $variation ) ) {
 					continue;
 				}
-				$vp      = $variation['prices'] ?? [];
+				$vp      = $variation['prices'] ?? array();
 				$regular = isset( $vp['regular_price'] ) && '' !== $vp['regular_price']
 					? (int) $vp['regular_price']
 					: null;
@@ -742,16 +742,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
-		return [
-			'min' => [
+		return array(
+			'min' => array(
 				'amount'   => min( $regular_prices ),
 				'currency' => $currency,
-			],
-			'max' => [
+			),
+			'max' => array(
 				'amount'   => max( $regular_prices ),
 				'currency' => $currency,
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -765,15 +765,15 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<int, array<string, string>>
 	 */
 	private static function extract_media( array $wc_images ): array {
-		$result = [];
+		$result = array();
 		foreach ( $wc_images as $image ) {
 			if ( empty( $image['src'] ) ) {
 				continue;
 			}
-			$media = [
+			$media = array(
 				'type' => 'image',
 				'url'  => $image['src'],
-			];
+			);
 			if ( ! empty( $image['alt'] ) ) {
 				$media['alt_text'] = $image['alt'];
 			}
@@ -805,7 +805,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		$stripped = wp_strip_all_tags( $raw );
 		$plain    = html_entity_decode( $stripped, ENT_QUOTES, 'UTF-8' );
 
-		$description = [ 'plain' => $plain ];
+		$description = array( 'plain' => $plain );
 
 		// Only include HTML if the source actually contains markup.
 		// Compare `$stripped` to `trim( $raw )` (both before entity
@@ -875,8 +875,8 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		array $wc_product,
 		?array $category_paths = null
 	): array {
-		$categories = [];
-		$tags       = [];
+		$categories = array();
+		$tags       = array();
 
 		if ( ! empty( $wc_product['categories'] ) && is_array( $wc_product['categories'] ) ) {
 			foreach ( $wc_product['categories'] as $cat ) {
@@ -891,10 +891,10 @@ class WC_AI_Storefront_UCP_Product_Translator {
 						$value = $path;
 					}
 				}
-				$categories[] = [
+				$categories[] = array(
 					'value'    => $value,
 					'taxonomy' => 'merchant',
-				];
+				);
 			}
 		}
 
@@ -912,18 +912,18 @@ class WC_AI_Storefront_UCP_Product_Translator {
 					// Brands stay flat — no `$category_paths` lookup
 					// (WC `product_brand` taxonomy has no native
 					// hierarchy in the data model).
-					$categories[] = [
+					$categories[] = array(
 						'value'    => self::decode( (string) $brand['name'] ),
 						'taxonomy' => 'brand',
-					];
+					);
 				}
 			}
 		}
 
-		return [
+		return array(
 			'categories' => $categories,
 			'tags'       => $tags,
-		];
+		);
 	}
 
 	/**
@@ -955,16 +955,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array{options: array<int, array{name: string, values: array<int, array{label: string, id?: string}>}>, metadata_attributes: array<int, array{name: string, values: array<int, array{label: string, id?: string}>}>}
 	 */
 	private static function extract_classified_attributes( array $wc_product ): array {
-		$attributes = $wc_product['attributes'] ?? [];
+		$attributes = $wc_product['attributes'] ?? array();
 		if ( ! is_array( $attributes ) ) {
-			return [
-				'options'             => [],
-				'metadata_attributes' => [],
-			];
+			return array(
+				'options'             => array(),
+				'metadata_attributes' => array(),
+			);
 		}
 
-		$options  = [];
-		$metadata = [];
+		$options  = array();
+		$metadata = array();
 
 		foreach ( $attributes as $attribute ) {
 			if ( ! is_array( $attribute ) ) {
@@ -973,7 +973,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 			$name     = self::decode( (string) ( $attribute['name'] ?? '' ) );
 			$taxonomy = (string) ( $attribute['taxonomy'] ?? '' );
-			$terms    = $attribute['terms'] ?? [];
+			$terms    = $attribute['terms'] ?? array();
 			if ( '' === $name || ! is_array( $terms ) || empty( $terms ) ) {
 				continue;
 			}
@@ -1001,12 +1001,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			// matching; name and label remain required for display").
 			$is_taxonomy = '' !== $taxonomy && str_starts_with( $taxonomy, 'pa_' );
 
-			$values = [];
+			$values = array();
 			foreach ( $terms as $term ) {
 				if ( ! is_array( $term ) || empty( $term['name'] ) ) {
 					continue;
 				}
-				$value = [ 'label' => self::decode( (string) $term['name'] ) ];
+				$value = array( 'label' => self::decode( (string) $term['name'] ) );
 				if ( $is_taxonomy ) {
 					$slug = $term['slug'] ?? '';
 					if ( is_string( $slug ) && '' !== $slug ) {
@@ -1019,10 +1019,10 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				continue;
 			}
 
-			$entry = [
+			$entry = array(
 				'name'   => $name,
 				'values' => $values,
-			];
+			);
 
 			// Strict `=== true` rather than `! empty()` because
 			// `empty()` treats string `"false"` (a real PHP footgun:
@@ -1041,10 +1041,10 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			}
 		}
 
-		return [
+		return array(
 			'options'             => $options,
 			'metadata_attributes' => $metadata,
-		];
+		);
 	}
 
 	/**
@@ -1077,14 +1077,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
-		return [
+		return array(
 			'value'     => isset( $wc_product['average_rating'] )
 				? (float) $wc_product['average_rating']
 				: 0.0,
 			'scale_min' => 1,
 			'scale_max' => 5,
 			'count'     => $count,
-		];
+		);
 	}
 
 	/**
@@ -1176,8 +1176,8 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<string, mixed>              UCP price_range shape.
 	 */
 	private static function extract_bundle_price_range( array $bundle_data, array $wc_product ): array {
-		$bundle_price = $bundle_data['bundle_price'] ?? [];
-		$price        = $bundle_price['price'] ?? [];
+		$bundle_price = $bundle_data['bundle_price'] ?? array();
+		$price        = $bundle_price['price'] ?? array();
 		$currency     = (string) ( $bundle_price['currency_code'] ?? $wc_product['prices']['currency_code'] ?? 'USD' );
 
 		$min = isset( $price['min']['excl_tax'] ) ? (int) $price['min']['excl_tax'] : null;
@@ -1187,16 +1187,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return self::extract_price_range( $wc_product );
 		}
 
-		return [
-			'min' => [
+		return array(
+			'min' => array(
 				'amount'   => $min,
 				'currency' => $currency,
-			],
-			'max' => [
+			),
+			'max' => array(
 				'amount'   => null !== $max ? $max : $min,
 				'currency' => $currency,
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -1219,9 +1219,9 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<string, mixed>|null              UCP price_range shape, or null.
 	 */
 	private static function extract_bundle_list_price_range( array $bundle_data, array $wc_product ): ?array {
-		$bundle_price = $bundle_data['bundle_price'] ?? [];
-		$regular      = $bundle_price['regular_price'] ?? [];
-		$live         = $bundle_price['price'] ?? [];
+		$bundle_price = $bundle_data['bundle_price'] ?? array();
+		$regular      = $bundle_price['regular_price'] ?? array();
+		$live         = $bundle_price['price'] ?? array();
 		$currency     = (string) ( $bundle_price['currency_code'] ?? $wc_product['prices']['currency_code'] ?? 'USD' );
 
 		$reg_min  = isset( $regular['min']['excl_tax'] ) ? (int) $regular['min']['excl_tax'] : null;
@@ -1267,16 +1267,16 @@ class WC_AI_Storefront_UCP_Product_Translator {
 
 		// `$reg_max` was normalized to `$reg_min` above when null, so
 		// it's guaranteed int here.
-		return [
-			'min' => [
+		return array(
+			'min' => array(
 				'amount'   => $reg_min,
 				'currency' => $currency,
-			],
-			'max' => [
+			),
+			'max' => array(
 				'amount'   => $reg_max,
 				'currency' => $currency,
-			],
-		];
+			),
+		);
 	}
 
 	/**
@@ -1315,12 +1315,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<string, mixed>|null              metadata.bundle shape, or null.
 	 */
 	private static function extract_bundle_metadata( array $bundle_data ): ?array {
-		$items = $bundle_data['bundled_items'] ?? [];
+		$items = $bundle_data['bundled_items'] ?? array();
 		if ( ! is_array( $items ) || empty( $items ) ) {
 			return null;
 		}
 
-		$out_items = [];
+		$out_items = array();
 		foreach ( $items as $item ) {
 			if ( ! is_array( $item ) ) {
 				continue;
@@ -1337,14 +1337,14 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			if ( $bundled_item_id <= 0 || $product_id <= 0 ) {
 				continue;
 			}
-			$out_items[] = [
+			$out_items[] = array(
 				'bundled_item_id'       => $bundled_item_id,
 				'product_id'            => $product_id,
 				'quantity_default'      => (int) ( $item['quantity_default'] ?? 1 ),
 				'optional'              => (bool) ( $item['optional'] ?? false ),
 				'discount'              => '' === (string) ( $item['discount'] ?? '' ) ? null : (string) $item['discount'],
 				'has_default_variation' => (bool) ( $item['override_default_variation_attributes'] ?? false ),
-			];
+			);
 		}
 
 		// `bundled_items` was non-empty but every entry was malformed
@@ -1357,7 +1357,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
-		return [
+		return array(
 			'min_size' => isset( $bundle_data['bundle_min_size'] ) && '' !== (string) $bundle_data['bundle_min_size']
 				? (int) $bundle_data['bundle_min_size']
 				: null,
@@ -1365,7 +1365,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				? (int) $bundle_data['bundle_max_size']
 				: null,
 			'items'    => $out_items,
-		];
+		);
 	}
 
 	/**
@@ -1422,13 +1422,13 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 *                                                                   or null when the bundle is configurable.
 	 */
 	public static function build_bundle_url_query( array $bundle_data, callable $child_fetcher ): ?array {
-		$items = $bundle_data['bundled_items'] ?? [];
+		$items = $bundle_data['bundled_items'] ?? array();
 		if ( ! is_array( $items ) || empty( $items ) ) {
 			return null;
 		}
 
-		$params      = [];
-		$child_cache = [];
+		$params      = array();
+		$child_cache = array();
 
 		foreach ( $items as $item ) {
 			if ( ! is_array( $item ) ) {
@@ -1489,7 +1489,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 				if ( empty( $item['override_default_variation_attributes'] ) ) {
 					return null;
 				}
-				$defaults = $item['default_variation_attributes'] ?? [];
+				$defaults = $item['default_variation_attributes'] ?? array();
 				if ( ! is_array( $defaults ) || empty( $defaults ) ) {
 					return null;
 				}
@@ -1500,7 +1500,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 					return null;
 				}
 
-				$default_by_slug = [];
+				$default_by_slug = array();
 				foreach ( $defaults as $entry ) {
 					if ( ! is_array( $entry ) ) {
 						continue;
@@ -1548,12 +1548,12 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<int, string>             Lowercased axis slug list.
 	 */
 	private static function axis_slugs_for_variable_child( array $wc_child ): array {
-		$attributes = $wc_child['attributes'] ?? [];
+		$attributes = $wc_child['attributes'] ?? array();
 		if ( ! is_array( $attributes ) ) {
-			return [];
+			return array();
 		}
 
-		$slugs = [];
+		$slugs = array();
 		foreach ( $attributes as $attr ) {
 			if ( ! is_array( $attr ) ) {
 				continue;
@@ -1623,7 +1623,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		// Coerce to ints + filter out invalid IDs. A `grouped_products`
 		// entry that's not a positive int is merchant misconfiguration;
 		// drop it rather than carrying it through.
-		$out = [];
+		$out = array();
 		foreach ( $children as $cid ) {
 			$cid_int = (int) $cid;
 			if ( $cid_int > 0 ) {
@@ -1700,8 +1700,8 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			return null;
 		}
 
-		$quantity_map = [];
-		$child_cache  = [];
+		$quantity_map = array();
+		$child_cache  = array();
 
 		foreach ( $children as $cid ) {
 			$cid = (int) $cid;
@@ -1764,7 +1764,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$quantity_map[ $cid ] = (string) $min_qty;
 		}
 
-		return [ 'quantity' => $quantity_map ];
+		return array( 'quantity' => $quantity_map );
 	}
 
 	/**
@@ -1852,10 +1852,10 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		//     lives in `variation['variation']` as `"Length: 6 months"`).
 		//
 		// Per-axis tables ensure the helper accepts either shape per axis.
-		$defaults_by_slug  = [];
-		$defaults_by_label = [];
-		$attribute_names   = [];
-		foreach ( $wc_product['attributes'] ?? [] as $axis ) {
+		$defaults_by_slug  = array();
+		$defaults_by_label = array();
+		$attribute_names   = array();
+		foreach ( $wc_product['attributes'] ?? array() as $axis ) {
 			if ( ! is_array( $axis ) || empty( $axis['has_variations'] ) ) {
 				continue;
 			}
@@ -1866,7 +1866,7 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			$attribute_names[] = $axis_label;
 			$default_slug      = null;
 			$default_label     = null;
-			foreach ( $axis['terms'] ?? [] as $term ) {
+			foreach ( $axis['terms'] ?? array() as $term ) {
 				if ( ! is_array( $term ) || empty( $term['default'] ) ) {
 					continue;
 				}
@@ -2000,9 +2000,9 @@ class WC_AI_Storefront_UCP_Product_Translator {
 	 * @return array<string, string> Map of axis_label -> value (slug or label).
 	 */
 	private static function variation_axis_pairs( array $variation, array $attribute_names ): array {
-		$pairs = [];
+		$pairs = array();
 
-		$attributes = $variation['attributes'] ?? [];
+		$attributes = $variation['attributes'] ?? array();
 		if ( is_array( $attributes ) && ! empty( $attributes ) ) {
 			foreach ( $attributes as $attr ) {
 				if ( ! is_array( $attr ) ) {
@@ -2063,6 +2063,6 @@ class WC_AI_Storefront_UCP_Product_Translator {
 		if ( empty( $children ) ) {
 			return null;
 		}
-		return [ 'children' => array_values( array_map( 'intval', $children ) ) ];
+		return array( 'children' => array_values( array_map( 'intval', $children ) ) );
 	}
 }

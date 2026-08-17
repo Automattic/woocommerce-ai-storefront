@@ -122,7 +122,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		// hook's signature via core changes.
 		add_action(
 			'pre_get_posts',
-			[ $this, 'on_pre_get_posts' ],
+			array( $this, 'on_pre_get_posts' ),
 			PHP_INT_MAX,
 			1
 		);
@@ -132,7 +132,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		// per-word AND LIKE clauses in their place.
 		add_filter(
 			'posts_clauses',
-			[ $this, 'on_posts_clauses_search' ],
+			array( $this, 'on_posts_clauses_search' ),
 			9,
 			2
 		);
@@ -199,7 +199,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		$incoming_tax_query = $query->get( 'tax_query' );
 		$incoming_post_in   = $query->get( 'post__in' );
 
-		$args = [];
+		$args = array();
 		if ( ! empty( $incoming_tax_query ) ) {
 			$args['tax_query'] = $incoming_tax_query;
 		}
@@ -323,7 +323,7 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		}
 
 		if ( 'selected' === $mode ) {
-			$allowed = array_map( 'absint', $settings['selected_products'] ?? [] );
+			$allowed = array_map( 'absint', $settings['selected_products'] ?? array() );
 
 			// Empty allow-list under `selected` mode: force zero
 			// matches via the `post__in = [0]` sentinel. Mirrors
@@ -335,14 +335,14 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 			// the merchant's "hand-picked, none picked yet"
 			// configuration.
 			if ( empty( $allowed ) ) {
-				$args['post__in'] = [ 0 ];
+				$args['post__in'] = array( 0 );
 				return $args;
 			}
 
 			if ( isset( $args['post__in'] ) && is_array( $args['post__in'] ) && ! empty( $args['post__in'] ) ) {
 				$incoming         = array_map( 'absint', $args['post__in'] );
 				$intersection     = array_values( array_intersect( $incoming, $allowed ) );
-				$args['post__in'] = empty( $intersection ) ? [ 0 ] : $intersection;
+				$args['post__in'] = empty( $intersection ) ? array( 0 ) : $intersection;
 			} else {
 				$args['post__in'] = $allowed;
 			}
@@ -1042,9 +1042,9 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * @return array<string, mixed>          Modified args.
 	 */
 	public function apply_union_restriction( array $args, array $settings ): array {
-		$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? [] );
-		$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? [] );
-		$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? [] );
+		$selected_categories = array_map( 'absint', $settings['selected_categories'] ?? array() );
+		$selected_tags       = array_map( 'absint', $settings['selected_tags'] ?? array() );
+		$selected_brands     = array_map( 'absint', $settings['selected_brands'] ?? array() );
 
 		$brands_supported = taxonomy_exists( 'product_brand' );
 
@@ -1061,34 +1061,34 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 
 		// Empty-selection policy: nothing enforceable → zero matches.
 		if ( ! $has_cats && ! $has_tags && ! $has_brands ) {
-			$args['post__in'] = [ 0 ];
+			$args['post__in'] = array( 0 );
 			return $args;
 		}
 
-		$clauses = [ 'relation' => 'OR' ];
+		$clauses = array( 'relation' => 'OR' );
 
 		if ( $has_cats ) {
-			$clauses[] = [
+			$clauses[] = array(
 				'taxonomy' => 'product_cat',
 				'field'    => 'term_id',
 				'terms'    => $selected_categories,
-			];
+			);
 		}
 
 		if ( $has_tags ) {
-			$clauses[] = [
+			$clauses[] = array(
 				'taxonomy' => 'product_tag',
 				'field'    => 'term_id',
 				'terms'    => $selected_tags,
-			];
+			);
 		}
 
 		if ( $has_brands ) {
-			$clauses[] = [
+			$clauses[] = array(
 				'taxonomy' => 'product_brand',
 				'field'    => 'term_id',
 				'terms'    => $selected_brands,
-			];
+			);
 		}
 
 		// Merge with any incoming tax_query via AND, so the caller's
@@ -1096,11 +1096,11 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 		if ( empty( $args['tax_query'] ) ) {
 			$args['tax_query'] = $clauses;
 		} else {
-			$args['tax_query'] = [
+			$args['tax_query'] = array(
 				'relation' => 'AND',
 				$args['tax_query'],
 				$clauses,
-			];
+			);
 		}
 
 		return $args;

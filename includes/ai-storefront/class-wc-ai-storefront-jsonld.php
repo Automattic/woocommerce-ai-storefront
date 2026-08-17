@@ -259,11 +259,11 @@ class WC_AI_Storefront_JsonLd {
 	 * Initialize hooks.
 	 */
 	public function init() {
-		add_filter( 'woocommerce_structured_data_product', [ $this, 'enhance_product_data' ], 20, 2 );
-		add_filter( 'woocommerce_structured_data_type_for_page', [ $this, 'allow_product_group_type' ] );
-		add_action( 'wp_head', [ $this, 'output_website_jsonld' ], 4 );
-		add_action( 'wp_head', [ $this, 'output_store_jsonld' ], 5 );
-		add_action( 'wp_head', [ $this, 'output_archive_itemlist_jsonld' ], 6 );
+		add_filter( 'woocommerce_structured_data_product', array( $this, 'enhance_product_data' ), 20, 2 );
+		add_filter( 'woocommerce_structured_data_type_for_page', array( $this, 'allow_product_group_type' ) );
+		add_action( 'wp_head', array( $this, 'output_website_jsonld' ), 4 );
+		add_action( 'wp_head', array( $this, 'output_store_jsonld' ), 5 );
+		add_action( 'wp_head', array( $this, 'output_archive_itemlist_jsonld' ), 6 );
 
 		// Replace WC's structured-data serializer with our own so we can
 		// use JSON_HEX_AMP. WC's wc_esc_json() converts every literal '&'
@@ -276,7 +276,7 @@ class WC_AI_Storefront_JsonLd {
 		// (fired at the end of WC::init()) to access WC()->structured_data.
 		// Note: output_email_structured_data() calls output_structured_data()
 		// directly (not via wp_footer), so email order details are unaffected.
-		add_action( 'woocommerce_init', [ $this, 'replace_wc_structured_data_output' ] );
+		add_action( 'woocommerce_init', array( $this, 'replace_wc_structured_data_output' ) );
 	}
 
 	/**
@@ -291,8 +291,8 @@ class WC_AI_Storefront_JsonLd {
 		if ( ! $wc || ! isset( $wc->structured_data ) ) {
 			return;
 		}
-		remove_action( 'wp_footer', [ $wc->structured_data, 'output_structured_data' ], 10 );
-		add_action( 'wp_footer', [ $this, 'output_wc_structured_data' ], 10 );
+		remove_action( 'wp_footer', array( $wc->structured_data, 'output_structured_data' ), 10 );
+		add_action( 'wp_footer', array( $this, 'output_wc_structured_data' ), 10 );
 	}
 
 	/**
@@ -2823,7 +2823,7 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		$ht  = $settings['handling_time'] ?? [];
+		$ht  = $settings['handling_time'] ?? array();
 		$min = isset( $ht['min'] ) ? (int) $ht['min'] : 0;
 		$max = isset( $ht['max'] ) ? (int) $ht['max'] : 0;
 

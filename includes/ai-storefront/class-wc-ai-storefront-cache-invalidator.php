@@ -103,21 +103,21 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// reason to bust the llms.txt cache on every order completion.
 
 		// Product lifecycle.
-		add_action( 'woocommerce_update_product', [ $this, 'invalidate' ] );
-		add_action( 'woocommerce_new_product', [ $this, 'invalidate' ] );
-		add_action( 'woocommerce_trash_product', [ $this, 'invalidate' ] );
-		add_action( 'woocommerce_delete_product', [ $this, 'invalidate' ] );
+		add_action( 'woocommerce_update_product', array( $this, 'invalidate' ) );
+		add_action( 'woocommerce_new_product', array( $this, 'invalidate' ) );
+		add_action( 'woocommerce_trash_product', array( $this, 'invalidate' ) );
+		add_action( 'woocommerce_delete_product', array( $this, 'invalidate' ) );
 
 		// Stock status changes (covers programmatic updates that skip product save).
-		add_action( 'woocommerce_product_set_stock_status', [ $this, 'invalidate' ] );
+		add_action( 'woocommerce_product_set_stock_status', array( $this, 'invalidate' ) );
 
 		// Product category taxonomy changes.
-		add_action( 'created_product_cat', [ $this, 'invalidate' ] );
-		add_action( 'edited_product_cat', [ $this, 'invalidate' ] );
-		add_action( 'delete_product_cat', [ $this, 'invalidate' ] );
+		add_action( 'created_product_cat', array( $this, 'invalidate' ) );
+		add_action( 'edited_product_cat', array( $this, 'invalidate' ) );
+		add_action( 'delete_product_cat', array( $this, 'invalidate' ) );
 
 		// Syndication settings changed (catches any code path that writes the option).
-		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'invalidate' ] );
+		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, array( $this, 'invalidate' ) );
 
 		// Sitemap discovery cache: only bust on settings changes that could
 		// affect sitemap *location* (e.g. WooCommerce Sitemaps toggled on/off,
@@ -126,7 +126,7 @@ class WC_AI_Storefront_Cache_Invalidator {
 		// lifecycle above — busting on every product save would collapse the
 		// 24h TTL and force a synchronous HTTP HEAD probe on every llms.txt
 		// regeneration.
-		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'invalidate_sitemap_cache' ] );
+		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, array( $this, 'invalidate_sitemap_cache' ) );
 
 		// Shopify-compatible /products.json feed cache busting. Its cache is a
 		// versioned key prefix (not a registered transient), so it rides its
@@ -142,16 +142,16 @@ class WC_AI_Storefront_Cache_Invalidator {
 		//     product_type is derived from category names — none of which fire
 		//     a product-save hook on a term rename/add/delete, so the term
 		//     events must bump the version themselves.
-		add_action( 'save_post_product', [ $this, 'bump_products_feed_version' ] );
-		add_action( 'woocommerce_update_product', [ $this, 'bump_products_feed_version' ] );
-		add_action( 'woocommerce_delete_product', [ $this, 'bump_products_feed_version' ] );
-		add_action( 'created_product_cat', [ $this, 'bump_products_feed_version' ] );
-		add_action( 'edited_product_cat', [ $this, 'bump_products_feed_version' ] );
-		add_action( 'delete_product_cat', [ $this, 'bump_products_feed_version' ] );
-		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, [ $this, 'bump_products_feed_version' ] );
+		add_action( 'save_post_product', array( $this, 'bump_products_feed_version' ) );
+		add_action( 'woocommerce_update_product', array( $this, 'bump_products_feed_version' ) );
+		add_action( 'woocommerce_delete_product', array( $this, 'bump_products_feed_version' ) );
+		add_action( 'created_product_cat', array( $this, 'bump_products_feed_version' ) );
+		add_action( 'edited_product_cat', array( $this, 'bump_products_feed_version' ) );
+		add_action( 'delete_product_cat', array( $this, 'bump_products_feed_version' ) );
+		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, array( $this, 'bump_products_feed_version' ) );
 
 		// Cron handler for background warm-up.
-		add_action( self::WARMUP_CRON_HOOK, [ $this, 'warm_cache' ] );
+		add_action( self::WARMUP_CRON_HOOK, array( $this, 'warm_cache' ) );
 	}
 
 	/**

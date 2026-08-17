@@ -121,7 +121,7 @@ class WC_AI_Storefront_Products_Feed {
 	 *                                   original value otherwise.
 	 */
 	public function suppress_canonical_redirect( $redirect_url ) {
-		foreach ( [ self::QUERY_VAR, self::QUERY_VAR_PRODUCT, self::QUERY_VAR_COLLECTION, self::QUERY_VAR_COLLECTIONS ] as $var ) {
+		foreach ( array( self::QUERY_VAR, self::QUERY_VAR_PRODUCT, self::QUERY_VAR_COLLECTION, self::QUERY_VAR_COLLECTIONS ) as $var ) {
 			if ( get_query_var( $var ) ) {
 				return false;
 			}
@@ -385,13 +385,13 @@ class WC_AI_Storefront_Products_Feed {
 		// express). Only products that appear in catalog listings qualify:
 		// 'visible' (shop + search) and 'catalog' (shop only). 'search'
 		// (search-only) and 'hidden' must 404, never leak.
-		if ( ! in_array( $product->get_catalog_visibility(), [ 'visible', 'catalog' ], true ) ) {
+		if ( ! in_array( $product->get_catalog_visibility(), array( 'visible', 'catalog' ), true ) ) {
 			return null;
 		}
 		if ( ! WC_AI_Storefront::is_product_syndicated( $product, WC_AI_Storefront::get_settings() ) ) {
 			return null;
 		}
-		return (string) wp_json_encode( [ 'product' => self::map_product( $product ) ] );
+		return (string) wp_json_encode( array( 'product' => self::map_product( $product ) ) );
 	}
 
 	/**
@@ -437,7 +437,7 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return string JSON.
 	 */
 	private function build_collection_products_json( string $handle, int $limit, int $page ): string {
-		$empty = (string) wp_json_encode( [ 'products' => [] ] );
+		$empty = (string) wp_json_encode( array( 'products' => array() ) );
 
 		$term = get_term_by( 'slug', $handle, 'product_cat' );
 		if ( ! $term instanceof WP_Term ) {
@@ -449,19 +449,19 @@ class WC_AI_Storefront_Products_Feed {
 
 		$settings = WC_AI_Storefront::get_settings();
 		$products = wc_get_products(
-			[
+			array(
 				'status'     => 'publish',
 				'visibility' => 'catalog',
-				'category'   => [ $term->slug ],
+				'category'   => array( $term->slug ),
 				'limit'      => $limit,
 				'page'       => $page,
 				'paginate'   => false,
 				'return'     => 'objects',
-			]
+			)
 		);
 
-		$mapped   = [];
-		$products = is_array( $products ) ? $products : [];
+		$mapped   = array();
+		$products = is_array( $products ) ? $products : array();
 		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
@@ -469,7 +469,7 @@ class WC_AI_Storefront_Products_Feed {
 			$mapped[] = self::map_product( $product, true );
 		}
 
-		return (string) wp_json_encode( [ 'products' => $mapped ] );
+		return (string) wp_json_encode( array( 'products' => $mapped ) );
 	}
 
 	/**
@@ -508,17 +508,17 @@ class WC_AI_Storefront_Products_Feed {
 	 */
 	private function build_collections_json(): string {
 		$terms = get_terms(
-			[
+			array(
 				'taxonomy'   => 'product_cat',
 				'hide_empty' => true,
-			]
+			)
 		);
 		if ( ! is_array( $terms ) ) {
-			return (string) wp_json_encode( [ 'collections' => [] ] );
+			return (string) wp_json_encode( array( 'collections' => array() ) );
 		}
 
 		$settings    = WC_AI_Storefront::get_settings();
-		$collections = [];
+		$collections = array();
 		foreach ( $terms as $term ) {
 			if ( ! $term instanceof WP_Term ) {
 				continue;
@@ -530,7 +530,7 @@ class WC_AI_Storefront_Products_Feed {
 			$collections[] = self::map_collection( $term, $count );
 		}
 
-		return (string) wp_json_encode( [ 'collections' => $collections ] );
+		return (string) wp_json_encode( array( 'collections' => $collections ) );
 	}
 
 	/**
@@ -548,14 +548,14 @@ class WC_AI_Storefront_Products_Feed {
 			return 0;
 		}
 		$ids = wc_get_products(
-			[
+			array(
 				'status'     => 'publish',
 				'visibility' => 'catalog',
-				'category'   => [ $slug ],
+				'category'   => array( $slug ),
 				'limit'      => -1,
 				'paginate'   => false,
 				'return'     => 'ids',
-			]
+			)
 		);
 		if ( ! is_array( $ids ) || empty( $ids ) ) {
 			return 0;
@@ -586,7 +586,7 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return array
 	 */
 	private static function map_collection( WP_Term $term, int $products_count ): array {
-		$data = [
+		$data = array(
 			'id'             => (int) $term->term_id,
 			'handle'         => (string) $term->slug,
 			'title'          => self::decode( (string) $term->name ),
@@ -594,7 +594,7 @@ class WC_AI_Storefront_Products_Feed {
 			'published_at'   => null,
 			'updated_at'     => null,
 			'products_count' => $products_count,
-		];
+		);
 
 		/**
 		 * Filter a single mapped collection before it enters /collections.json.
@@ -619,7 +619,7 @@ class WC_AI_Storefront_Products_Feed {
 	private function get_feed_json( int $limit, int $page ): string {
 		$settings = WC_AI_Storefront::get_settings();
 
-		$query    = [
+		$query    = array(
 			'status'     => 'publish',
 			// Only products that appear in catalog listings. Excludes the WC
 			// "Hidden" and "Search results only" catalog-visibility states
@@ -632,11 +632,11 @@ class WC_AI_Storefront_Products_Feed {
 			'page'       => $page,
 			'paginate'   => false,
 			'return'     => 'objects',
-		];
-		$products = function_exists( 'wc_get_products' ) ? wc_get_products( $query ) : [];
+		);
+		$products = function_exists( 'wc_get_products' ) ? wc_get_products( $query ) : array();
 
-		$mapped   = [];
-		$products = is_array( $products ) ? $products : [];
+		$mapped   = array();
+		$products = is_array( $products ) ? $products : array();
 		foreach ( $products as $product ) {
 			if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 				continue;
@@ -644,7 +644,7 @@ class WC_AI_Storefront_Products_Feed {
 			$mapped[] = self::map_product( $product, true );
 		}
 
-		return (string) wp_json_encode( [ 'products' => $mapped ] );
+		return (string) wp_json_encode( array( 'products' => $mapped ) );
 	}
 
 	/**
@@ -696,7 +696,7 @@ class WC_AI_Storefront_Products_Feed {
 		// Order matters here: the variations produce the ownership map, the map
 		// completes the image list's variant_ids, and the finished image list
 		// is what a variant's featured_image points into.
-		$variations = $is_variable ? self::collect_variations( $product ) : [];
+		$variations = $is_variable ? self::collect_variations( $product ) : array();
 		$owner_map  = self::build_image_owner_map( $variations );
 
 		// Build the full image list first, then slice for output. Compact mode
@@ -705,7 +705,7 @@ class WC_AI_Storefront_Products_Feed {
 		// the complete gallery.
 		$all_images = self::build_images( $product, $owner_map );
 
-		$data = [
+		$data = array(
 			'id'           => (int) $product->get_id(),
 			'title'        => self::decode( (string) $product->get_name() ),
 			'handle'       => (string) $product->get_slug(),
@@ -718,9 +718,9 @@ class WC_AI_Storefront_Products_Feed {
 			'tags'         => self::resolve_tags( $product ),
 			'variants'     => $is_variable
 				? self::build_variants( $product, $variations, $all_images )
-				: [ self::build_simple_variant( $product ) ],
+				: array( self::build_simple_variant( $product ) ),
 			'images'       => $compact ? array_slice( $all_images, 0, 1 ) : $all_images,
-		];
+		);
 
 		// Shopify emits options[] on EVERY product. One with nothing to choose
 		// gets a placeholder naming the single implicit option — the
@@ -734,13 +734,13 @@ class WC_AI_Storefront_Products_Feed {
 		// products a single-SKU store sells most of.
 		$data['options'] = $is_variable
 			? self::build_options( $product )
-			: [
-				[
+			: array(
+				array(
 					'name'     => 'Title',
 					'position' => 1,
-					'values'   => [ 'Default Title' ],
-				],
-			];
+					'values'   => array( 'Default Title' ),
+				),
+			);
 
 		/**
 		 * Filter a single mapped Shopify-shaped product before it enters the
@@ -784,7 +784,7 @@ class WC_AI_Storefront_Products_Feed {
 		if ( ! function_exists( 'wp_get_post_terms' ) ) {
 			return null;
 		}
-		$brands = wp_get_post_terms( (int) $product->get_id(), 'product_brand', [ 'fields' => 'names' ] );
+		$brands = wp_get_post_terms( (int) $product->get_id(), 'product_brand', array( 'fields' => 'names' ) );
 		if ( is_array( $brands ) && ! empty( $brands ) && is_string( $brands[0] ) ) {
 			return self::decode( $brands[0] );
 		}
@@ -823,7 +823,7 @@ class WC_AI_Storefront_Products_Feed {
 	private static function build_simple_variant( $product ): array {
 		// Key order mirrors Shopify's so a field-by-field diff against a live
 		// feed reads cleanly.
-		return [
+		return array(
 			'id'                => (int) $product->get_id(),
 			'title'             => 'Default Title',
 			'option1'           => 'Default Title',
@@ -846,7 +846,7 @@ class WC_AI_Storefront_Products_Feed {
 			'product_id'        => (int) $product->get_id(),
 			'created_at'        => self::variant_created_at( $product ),
 			'updated_at'        => self::variant_updated_at( $product ),
-		];
+		);
 	}
 
 	/**
@@ -988,12 +988,12 @@ class WC_AI_Storefront_Products_Feed {
 	 * @param array      $owner_map attachment id => list of owning variation ids.
 	 * @return array
 	 */
-	private static function build_images( $product, array $owner_map = [] ): array {
+	private static function build_images( $product, array $owner_map = array() ): array {
 		$ids = array_values(
 			array_unique(
 				array_filter(
 					array_merge(
-						[ (int) $product->get_image_id() ],
+						array( (int) $product->get_image_id() ),
 						array_map( 'intval', (array) $product->get_gallery_image_ids() ),
 						array_map( 'intval', array_keys( $owner_map ) )
 					)
@@ -1001,7 +1001,7 @@ class WC_AI_Storefront_Products_Feed {
 			)
 		);
 
-		$images   = [];
+		$images   = array();
 		$position = 1;
 		foreach ( $ids as $id ) {
 			$src = wp_get_attachment_image_url( $id, 'full' );
@@ -1043,7 +1043,7 @@ class WC_AI_Storefront_Products_Feed {
 		$post = get_post( $id );
 		$alt  = get_post_meta( $id, '_wp_attachment_image_alt', true );
 
-		return [
+		return array(
 			'id'          => $id,
 			'product_id'  => (int) $product->get_id(),
 			'position'    => $position,
@@ -1053,8 +1053,8 @@ class WC_AI_Storefront_Products_Feed {
 			'width'       => ( is_array( $meta ) && isset( $meta['width'] ) ) ? (int) $meta['width'] : null,
 			'height'      => ( is_array( $meta ) && isset( $meta['height'] ) ) ? (int) $meta['height'] : null,
 			'src'         => $src,
-			'variant_ids' => array_values( $owner_map[ $id ] ?? [] ),
-		];
+			'variant_ids' => array_values( $owner_map[ $id ] ?? array() ),
+		);
 	}
 
 	/**
@@ -1091,7 +1091,7 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return WC_Product[]
 	 */
 	private static function collect_variations( $product ): array {
-		$variations = [];
+		$variations = array();
 		foreach ( $product->get_children() as $child_id ) {
 			$variation = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $child_id ) : null;
 			if ( $variation ) {
@@ -1129,7 +1129,7 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return array attachment id => list of owning variation ids.
 	 */
 	private static function build_image_owner_map( array $variations ): array {
-		$map = [];
+		$map = array();
 		foreach ( $variations as $variation ) {
 			if ( ! method_exists( $variation, 'get_image_id' ) ) {
 				continue;
@@ -1183,10 +1183,10 @@ class WC_AI_Storefront_Products_Feed {
 	 *                               variant's featured_image points into.
 	 * @return array
 	 */
-	private static function build_variants( $product, array $variations, array $images = [] ): array {
+	private static function build_variants( $product, array $variations, array $images = array() ): array {
 		// Attribute names in declared order, e.g. pa_size then pa_color.
 		$attr_keys = array_keys( $product->get_variation_attributes() );
-		$variants  = [];
+		$variants  = array();
 
 		$index = 0;
 		foreach ( $variations as $variation ) {
@@ -1194,7 +1194,7 @@ class WC_AI_Storefront_Products_Feed {
 			// Selected values keyed by attribute_<slug>, e.g. attribute_pa_size => m.
 			$attributes = $variation->get_variation_attributes();
 
-			$options = [ null, null, null ];
+			$options = array( null, null, null );
 			$i       = 0;
 			foreach ( $attr_keys as $key ) {
 				if ( $i > 2 ) {
@@ -1211,7 +1211,7 @@ class WC_AI_Storefront_Products_Feed {
 				++$i;
 			}
 
-			$variants[] = [
+			$variants[] = array(
 				'id'                => (int) $variation->get_id(),
 				'title'             => implode(
 					' / ',
@@ -1248,7 +1248,7 @@ class WC_AI_Storefront_Products_Feed {
 					: (int) $product->get_id(),
 				'created_at'        => self::variant_created_at( $variation ),
 				'updated_at'        => self::variant_updated_at( $variation ),
-			];
+			);
 		}
 
 		return $variants;
@@ -1261,18 +1261,18 @@ class WC_AI_Storefront_Products_Feed {
 	 * @return array
 	 */
 	private static function build_options( $product ): array {
-		$options  = [];
+		$options  = array();
 		$position = 1;
 		foreach ( $product->get_variation_attributes() as $name => $values ) {
 			if ( $position > 3 ) {
 				break;
 			}
 			$label     = wc_attribute_label( $name, $product );
-			$options[] = [
+			$options[] = array(
 				'name'     => self::decode( (string) $label ),
 				'position' => $position,
-				'values'   => array_values( array_map( [ self::class, 'decode' ], array_map( 'strval', (array) $values ) ) ),
-			];
+				'values'   => array_values( array_map( array( self::class, 'decode' ), array_map( 'strval', (array) $values ) ) ),
+			);
 			++$position;
 		}
 		return $options;
@@ -1306,7 +1306,7 @@ class WC_AI_Storefront_Products_Feed {
 		// category is unassigned, so a stale id would otherwise emit a
 		// product_type the product no longer belongs to.
 		$assigned = array_map( 'intval', (array) $term_ids );
-		foreach ( [ '_yoast_wpseo_primary_product_cat', 'rank_math_primary_product_cat' ] as $meta_key ) {
+		foreach ( array( '_yoast_wpseo_primary_product_cat', 'rank_math_primary_product_cat' ) as $meta_key ) {
 			$primary_id = (int) get_post_meta( $product_id, $meta_key, true );
 			if ( $primary_id > 0 && in_array( $primary_id, $assigned, true ) ) {
 				$term = get_term( $primary_id, 'product_cat' );

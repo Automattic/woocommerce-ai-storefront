@@ -56,11 +56,17 @@
         -->
 
         <!--
-            These sniffs are fine in principle but produce a lot of noise
-            on a small plugin. Re-enable later as the codebase grows.
+            Fine in principle, but noisy for the file layout this plugin
+            already ships. Renaming every class file is a bigger change
+            than the consistency is worth today.
+
+            `Universal.Arrays.DisallowShortArraySyntax` used to sit here for
+            the same "noisy on a small plugin, re-enable as it grows" reason.
+            It is now enabled: the plugin grew, and the exclusion had left
+            AGENTS.md asserting a rule that nothing enforced, which is worse
+            than either enforcing it or dropping it.
         -->
         <exclude name="WordPress.Files.FileName.InvalidClassFileName"/>
-        <exclude name="Universal.Arrays.DisallowShortArraySyntax"/>
     </rule>
 
     <!-- Function/class prefixes for the WPCS prefix sniff. -->

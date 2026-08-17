@@ -32,7 +32,7 @@ Core principle: AI agents discover and recommend. The merchant owns the transact
 
 ### PHP
 
-- WordPress + Automattic standards. Tabs, Yoda conditions, strict comparisons (`===` / `!==`), `array()` not `[]`. PHPCS enforces.
+- WordPress + Automattic standards. Tabs, Yoda conditions, strict comparisons (`===` / `!==`), `array()` not `[]`. PHPCS enforces all four, across `includes/` and the root PHP files. `tests/` is outside the PHPCS scope entirely, so test files are not held to this and do use `[]`.
 - HPOS-compatible: order access goes through `WC_Order` methods exclusively, never raw post-meta queries on `shop_order` posts.
 - Pure translators, caller-orchestrated dispatch — translators (`WC_AI_Storefront_UCP_Product_Translator`, etc.) are pure functions; controllers orchestrate fetching.
 - Defensive guards over assumptions about WP/WC state. Functions like `function_exists`, `class_exists`, and `is_array` checks before reading optional structures.
