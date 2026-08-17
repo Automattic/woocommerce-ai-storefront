@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.37.0] – 2026-08-17
+
 ### Added
 - **You can now say which days you dispatch orders (#637).**
   - Handling time on its own is ambiguous: "ships in 1 day" on a Friday order reads as Saturday dispatch to anything working out a delivery date. Ticking your working days removes the guesswork.

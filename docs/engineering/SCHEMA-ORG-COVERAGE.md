@@ -226,7 +226,7 @@ These nested types are emitted under `Offer.shippingDetails`. The Offer table ab
 | `deliveryTime` (`ShippingDeliveryTime`) | ✓ §shipping | ✓ when handling time configured | Plugin (see `ShippingDeliveryTime` table below) |
 | `depth` / `height` / `width` / `weight` | ✓ §shipping | ✓ (#614) | Plugin — same `QuantitativeValue` values as `Product`-level (both drawn from WooCommerce's single set of dimension fields, which its own shipping methods already use to compute rates; the two properties answer different questions — item size vs. parcel size — the same split Google's `product_*`/`shipping_*` attributes make) |
 | `doesNotShip` | — | — | — *(regional exclusions; merchant data exists in WC's restricted-shipping zones, but we don't reflect it here)* |
-| `hasShippingService` (`ShippingService`) | — | — | — *(newer Schema.org property for service-tier shipping info)* |
+| `hasShippingService` (`ShippingService`) | ✓ §org-shipping | ✓ on the homepage `OnlineBusiness` block (#635) | Plugin (`WC_AI_Storefront_Shipping_Policy`) — WooCommerce shipping zones become `ShippingConditions`, one per destination and order-value band. This is the Organization-level surface, not `OfferShippingDetails`; it exists because a product can carry only one `MonetaryAmount` and so cannot express "free over $20, otherwise $20". |
 | `shippingDestination` (`DefinedRegion`) | ✓ §shipping | ✓ (`addressCountry` from store base location) | Plugin |
 | `shippingOrigin` (`DefinedRegion`) | — | — | — *(where the shipment ships from — useful for international agents to estimate transit time)* |
 | `shippingRate` (`MonetaryAmount`) | ✓ §shipping | ✓ when unconditional free shipping configured (`value: 0`) | Plugin |
@@ -238,14 +238,16 @@ These nested types are emitted under `Offer.shippingDetails`. The Offer table ab
 
 | Property | In doc? | Emitted? | Source |
 |---|---|---|---|
-| `businessDays` | — | — | — *(operating days; merchant data exists in WC settings, not currently propagated)* |
-| `cutoffTime` | — | — | — *(order deadline for same-day shipping; high-value for AI agents calculating delivery dates)* |
+| `businessDays` | ✓ §shipping | ✓ when dispatch days are selected (#637) | Plugin — Policies → Shipping. Bare `DayOfWeek` names, week-ordered. **Google does not document this on `ShippingDeliveryTime`** (only inside `ServicePeriod` at Organization level), so it is emitted here deliberately: the adjacent `handlingTime` that Google *does* read cannot become a delivery date without the working week. |
+| `cutoffTime` | — | — | — *(no setting stores one. Note it is NOT limited to same-day dispatch — Google adds a day to the estimate for orders placed after the cutoff, so it is a real claim at any handling duration.)* |
 | `handlingTime` (`QuantitativeValue`) | ✓ §shipping | ✓ when handling-time setting populated (`min`/`max`/`unitCode: DAY`) | Plugin |
 | `transitTime` (`QuantitativeValue`) | — | — | — *(delivery duration AFTER dispatch; complements handlingTime for full delivery-estimate signal)* |
 
 ### Coverage gap summary for Shipping
 
-We emit the structural skeleton (OfferShippingDetails wrapper, free-shipping `shippingRate`, handling time, destination country, weight/dimensions) but miss several high-value signals AI agents use for delivery-estimate computation: `transitTime`, `cutoffTime`, `businessDays`, `shippingOrigin`. Filed as a follow-up below.
+Since 0.37.0 the shipping picture is largely complete. Product level carries the `OfferShippingDetails` wrapper, handling time, dispatch days, destination country and weight/dimensions; Organization level carries the full rate table as `hasShippingService` → `ShippingConditions`, including free-over-threshold bands and unreachable destinations.
+
+Two signals remain unemitted, both deliberately. `transitTime` varies by carrier, service level and destination, and WooCommerce stores none of it — a single store-wide value would be inaccurate for anyone shipping to more than one place. `cutoffTime` has no setting behind it. `shippingOrigin` is the remaining easy win.
 
 ---
 
@@ -373,7 +375,8 @@ The plugin emits `@type: OnlineBusiness` — one level above the deepest type in
 | `hasCertification` / `hasCredential` / `hasGS1DigitalLink` | — | — | — |
 | `hasMemberProgram` | — | — | — |
 | `hasMerchantReturnPolicy` | ✓ §org-return | ✓ when policy configured | Plugin (`output_store_jsonld()` → `build_return_policy_block()` shared with per-Offer emission). Phase 1 of #337 — Org-level is purely additive alongside existing per-Offer emission. Phase 2 (making per-Offer conditional on the per-product final-sale override) is deferred. |
-| `hasPOS` / `hasShippingService` | — | — | — |
+| `hasPOS` | — | — | — |
+| `hasShippingService` | ✓ §org-shipping | ✓ (#635) | Plugin (`WC_AI_Storefront_Shipping_Policy`) — see the Shipping section above. |
 | `interactionStatistic` | — | — | — |
 | `keywords` | — | — | — |
 | `knowsAbout` | ✓ §knowsAbout | ✓ when catalog non-empty | Plugin (`output_store_jsonld()`) — Text[] of top product category names sourced from cached `get_catalog_summary()`, no new query |

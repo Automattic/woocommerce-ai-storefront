@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 10.9
-Stable tag: 0.36.0
+Stable tag: 0.37.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,16 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.37.0 - 2026-08-17 =
+**New**
+* Your shipping rates are now published for AI assistants and Google. Assistants could previously see where you ship and how fast you pack, but nothing about cost. A product can carry only one shipping price, so a store offering "free over $20, otherwise $20" had no honest number to publish. Your zones now appear on your homepage as a store-level policy, where each destination and order-value band carries its own price. Read entirely from the shipping zones you already have; no new settings.
+* You can now say which days you dispatch orders, under Policies then Shipping. "Ships in 1 day" on a Friday order otherwise reads as Saturday dispatch to anything working out a delivery date. Leaving every day unticked publishes nothing.
+* Choosing "Final sale" under Return and refund policy now explains what it does, instead of showing an empty panel.
+
+**Fixed**
+* Stores on WooCommerce 9.9 to 10.2 could hit a blank page. The plugin read your shipping zones using a function that only exists in WooCommerce 10.3 and later, so on older versions the homepage and product pages could fail to load. Zones are now read in a way that works on every supported version, and shipping information is published there too rather than going quietly missing.
+* Rates that depend on the basket are left out rather than guessed. A per-item cost, or a flat fee combined with a percentage, cannot be stated without knowing the whole order, and a published price that disagrees with your checkout is worse than no price.
 
 = 0.36.0 - 2026-08-15 =
 **New**
