@@ -2,13 +2,13 @@
 /**
  * Builds Google's Organization-level shipping policy from WooCommerce zones.
  *
- * WooCommerce prices shipping by zone AND order value. Google's
- * `ShippingConditions` encodes exactly that pair, which product-level
- * `OfferShippingDetails.shippingRate` — a single `MonetaryAmount` — cannot.
- * On a store offering "free over $20, otherwise $20" there is no honest
- * product-level number: 0 lies to a $10 basket and 20 lies to a $30 one.
- * That is why this surface exists alongside the per-product one rather than
+ * WooCommerce prices shipping by zone AND order value, which product-level
+ * `OfferShippingDetails.shippingRate` — a single `MonetaryAmount` — cannot
+ * express. This surface exists alongside the per-product one rather than
  * replacing it.
+ *
+ * Full rationale, field mapping and the list of deliberate omissions:
+ * docs/engineering/JSON-LD-SCHEMA.md, "hasShippingService (Organization-level)".
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -99,7 +99,15 @@ class WC_AI_Storefront_Shipping_Policy {
 			}
 		}
 
-		if ( ! preg_match( '/(?:^|\s)percent=(["\']?)([0-9.]+)\1(?:\s|$)/', $attributes, $percent ) ) {
+		if ( ! preg_match( '/(?:^|\s)percent=(["\']?)([^\s\]"\']+)\1(?:\s|$)/', $attributes, $percent ) ) {
+			return null;
+		}
+
+		// The captured token is validated rather than cast straight to float.
+		// A character-class match on `[0-9.]+` accepts '.' and '10..5', and
+		// casting those yields 0.0 and 10.0 — so a malformed cost would
+		// publish "shipping is free" or a number the merchant never wrote.
+		if ( ! is_numeric( $percent[2] ) || (float) $percent[2] < 0 ) {
 			return null;
 		}
 
@@ -120,7 +128,9 @@ class WC_AI_Storefront_Shipping_Policy {
 	 * Note `handlingTime` is a `ServicePeriod` here, while the product-level
 	 * block emits a bare `QuantitativeValue`. That is not an inconsistency to
 	 * tidy up — Google's own examples differ per surface, and each side
-	 * matches the one it appears on.
+	 * matches the one it appears on. Compare:
+	 *   org:     https://developers.google.com/search/docs/appearance/structured-data/shipping-policy
+	 *   product: https://developers.google.com/search/docs/appearance/structured-data/merchant-listing
 	 *
 	 * @param array|null $settings Plugin settings; read when omitted.
 	 * @return array|null
@@ -208,7 +218,8 @@ class WC_AI_Storefront_Shipping_Policy {
 	 *     orderValue { maxValue: 19.99 } -> shippingRate { value: 20 }
 	 *
 	 * Google applies the lowest matching rate, so only the cheapest paid
-	 * method in a zone is published — a dearer one for the same destination
+	 * method in a zone is published
+	 * (https://developers.google.com/search/docs/appearance/structured-data/shipping-policy) — a dearer one for the same destination
 	 * and band adds noise and never information.
 	 *
 	 * @return array

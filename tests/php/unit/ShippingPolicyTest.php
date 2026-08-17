@@ -90,6 +90,16 @@ class ShippingPolicyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 0.10, WC_AI_Storefront_Shipping_Policy::parse_cost( '[fee percent="10" max_fee=""]' )['value'] );
 	}
 
+	public function test_malformed_percent_values_are_rejected(): void {
+		// A character-class match on `[0-9.]+` accepts these, and casting them
+		// to float yields 0.0 and 10.0 — so `[fee percent=.]` would publish
+		// orderPercentage 0, which reads as free shipping, and `10..5` would
+		// publish a rate the merchant never wrote.
+		foreach ( array( '[fee percent=.]', '[fee percent=..]', '[fee percent="10..5"]', '[fee percent=-5]' ) as $cost ) {
+			$this->assertNull( WC_AI_Storefront_Shipping_Policy::parse_cost( $cost ), $cost );
+		}
+	}
+
 	public function test_cart_dependent_costs_are_unusable(): void {
 		// These depend on what else is in the basket, so there is no honest
 		// store-wide number and the condition must be skipped entirely.

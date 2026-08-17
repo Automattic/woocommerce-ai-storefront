@@ -3179,13 +3179,6 @@ class WC_AI_Storefront_JsonLd {
 			// both omit `accepted_currencies` on single-currency stores to avoid
 			// falsely advertising multi-currency support to agent consumers.
 			'currenciesAccepted' => implode( ' ', WC_AI_Storefront_Multi_Currency::get_accepted_currencies() ),
-			// Shipping rates belong on the Organization, not the product.
-			// WooCommerce prices shipping by zone AND order value, and a
-			// product-level shippingRate is one MonetaryAmount — it cannot say
-			// "free over $20, otherwise $20". ShippingConditions can, one band
-			// at a time. Google wants this on a single page rather than every
-			// page, and this block is already emitted exactly once.
-			// Assigned below so an underivable policy omits the key entirely.
 			'potentialAction'    => array(
 				'@type'       => 'SearchAction',
 				'target'      => array(

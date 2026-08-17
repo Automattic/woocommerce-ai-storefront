@@ -730,7 +730,7 @@ The store's real shipping zones as Google's `ShippingService` → `ShippingCondi
 { "orderValue": { "maxValue": 19.99 }, "shippingRate": { "value": 20 } }
 ```
 
-`19.99` is `min_amount - 0.01`, because Google's ranges are inclusive.
+The paid band stops one smallest currency unit below the threshold, because Google's ranges are inclusive. The step follows the store's configured decimals via `wc_get_price_decimals()`, so a three-decimal currency yields `19.999` rather than `19.99` — a hardcoded cent would leave a 19.995 order matching neither band.
 
 **What is deliberately not emitted:**
 
