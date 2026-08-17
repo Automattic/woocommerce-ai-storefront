@@ -979,10 +979,33 @@ const ReturnRefundPolicySection = ( {
 							) }
 
 							{ /*
-									Final sale reveals no additional fields:
-									the category alone drives the
-									MerchantReturnNotPermitted emission.
+									Final sale reveals no input fields — the
+									category alone drives the emission — but it
+									still needs to say what it does. A branch
+									that renders nothing reads as a broken
+									screen, and this one silently applies to the
+									whole catalogue.
 								*/ }
+							{ policy.category ===
+								CATEGORY_OPTIONS.FINAL_SALE && (
+								<p
+									style={ {
+										margin: `${ spacing.s3 } 0 0`,
+										color: colors.textSecondary,
+										fontSize: '13px',
+									} }
+								>
+									{ __(
+										'AI agents will be told that returns are not accepted. This applies to every product in your store.',
+										'woocommerce-ai-storefront'
+									) }
+									<br />
+									{ __(
+										'To mark only some products final sale, leave this set to "Returns accepted" and use the Final sale checkbox on the individual products instead.',
+										'woocommerce-ai-storefront'
+									) }
+								</p>
+							) }
 						</>
 					) }
 				</div>
