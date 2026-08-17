@@ -54,27 +54,6 @@ class WC_AI_Storefront_Handling_Time {
 	 * @param mixed $input Raw handling-time input.
 	 * @return array{min: int, max: int, business_days: string[]}
 	 */
-	/**
-	 * The store's dispatch days, sanitized at READ time.
-	 *
-	 * `WC_AI_Storefront::get_settings()` merges defaults with `wp_parse_args`,
-	 * which is shallow — a stored `handling_time` sub-array is returned
-	 * verbatim, and sanitizing happens only on write. Every write inside the
-	 * plugin routes through `update_settings()`, but a direct
-	 * `update_option()` does not: `wp option update`, a migration script, or a
-	 * staging database copy can all seed arbitrary strings.
-	 *
-	 * This array is published verbatim, so it is re-sanitized here rather than
-	 * trusted. That also makes the week-order guarantee unconditional instead
-	 * of a property of the save path.
-	 *
-	 * @param array $settings Full plugin settings.
-	 * @return string[]
-	 */
-	public static function business_days( array $settings ): array {
-		return self::sanitize_days( $settings['handling_time']['business_days'] ?? [] );
-	}
-
 	public static function sanitize( $input ): array {
 		if ( ! is_array( $input ) ) {
 			return [
@@ -97,6 +76,27 @@ class WC_AI_Storefront_Handling_Time {
 			'max'           => $max,
 			'business_days' => self::sanitize_days( $input['business_days'] ?? [] ),
 		];
+	}
+
+	/**
+	 * The store's dispatch days, sanitized at READ time.
+	 *
+	 * `WC_AI_Storefront::get_settings()` merges defaults with `wp_parse_args`,
+	 * which is shallow — a stored `handling_time` sub-array is returned
+	 * verbatim, and sanitizing happens only on write. Every write inside the
+	 * plugin routes through `update_settings()`, but a direct
+	 * `update_option()` does not: `wp option update`, a migration script, or a
+	 * staging database copy can all seed arbitrary strings.
+	 *
+	 * This array is published verbatim, so it is re-sanitized here rather than
+	 * trusted. That also makes the week-order guarantee unconditional instead
+	 * of a property of the save path.
+	 *
+	 * @param array $settings Full plugin settings.
+	 * @return string[]
+	 */
+	public static function business_days( array $settings ): array {
+		return self::sanitize_days( $settings['handling_time']['business_days'] ?? [] );
 	}
 
 	/**
