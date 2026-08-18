@@ -4856,11 +4856,35 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// hasAdultConsideration (#644)
 	// ------------------------------------------------------------------
 
+	/**
+	 * Answer 'yes' for one id + key pair only.
+	 *
+	 * A blanket `justReturn( 'yes' )` cannot tell which id or which key
+	 * the code read, so it hides both a write/read key mismatch and the
+	 * parent/variation mixup that #644 already shipped once and fixed in
+	 * c535bc6. Every adult test pins the pair.
+	 *
+	 * @param int $flagged_id Product id that is flagged adult.
+	 */
+	private function only_this_product_is_adult( int $flagged_id ): void {
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( $product_id, $key, $single = false ) use ( $flagged_id ) {
+				if (
+					$flagged_id === $product_id
+					&& WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY === $key
+				) {
+					return 'yes';
+				}
+				return '';
+			}
+		);
+	}
+
 	public function test_adult_product_emits_the_single_supported_value(): void {
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
-		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+		$this->only_this_product_is_adult( 42 );
 
 		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
 
@@ -4872,13 +4896,32 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_the_adult_flag_is_read_from_its_own_meta_key(): void {
+		// Guards a write/read key mismatch. is_adult() reading META_KEY
+		// (the final-sale flag) instead of ADULT_META_KEY would be a
+		// silent no-op that a blanket get_post_meta mock cannot see.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( $product_id, $key, $single = false ) {
+				// Final sale is set; adult is NOT.
+				return WC_AI_Storefront_Product_Meta_Box::META_KEY === $key ? 'yes' : '';
+			}
+		);
+
+		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+
+		$this->assertArrayNotHasKey( 'hasAdultConsideration', $out );
+	}
+
 	public function test_unflagged_product_emits_no_adult_key_at_all(): void {
 		// Absent, not false and not an empty string. This is a legal claim
 		// about the catalogue, so silence is the correct default.
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
-		Functions\when( 'get_post_meta' )->justReturn( 'no' );
+		$this->only_this_product_is_adult( 999 );
 
 		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
 
@@ -4886,17 +4929,33 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'hasAdultConsideration', $out['offers'][0] );
 	}
 
-	public function test_variation_inherits_the_parent_adult_flag(): void {
-		// A product is adult-oriented or it is not; a colourway cannot
-		// change that. Resolution matches add_return_policy().
-		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+	public function test_flagged_product_outside_syndication_scope_is_still_labelled(): void {
+		// The label sits ABOVE the syndication gate on purpose. Scoping a
+		// product out does not unpublish it — we have already replaced
+		// WC's serializer, so its Product node still ships with a full
+		// offer. Verified against a real store before the fix: price and
+		// availability published, hasAdultConsideration absent.
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => array( 777 ),
+		);
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		Functions\when( 'wp_get_post_parent_id' )->justReturn( 42 );
-		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
+		$this->only_this_product_is_adult( 42 );
 
 		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
 
-		$this->assertSame( 'https://schema.org/SexualContentConsideration', $out['hasAdultConsideration'] );
+		$this->assertSame(
+			'https://schema.org/SexualContentConsideration',
+			$out['hasAdultConsideration'],
+			'A product scoped out of syndication still publishes an offer, so it still needs the label.'
+		);
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$out['offers'][0],
+			'Everything else must stay below the gate — only the compliance label is hoisted.'
+		);
 	}
 
 	public function test_flagged_variable_product_marks_every_variant(): void {
@@ -4904,9 +4963,14 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		// as a standalone Product with its own offers. Google reads those
 		// variant offers as the merchant listings, so a flag that only
 		// reaches the group node labels nothing that gets submitted.
+		//
+		// Only the PARENT id is flagged here. A variation carries no meta
+		// of its own, so passing $variation instead of $parent_product in
+		// build_variant_entry() fails this test — that mixup is the bug
+		// c535bc6 fixed, and a blanket meta mock let it pass.
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
-		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+		$this->only_this_product_is_adult( 100 );
 		// Pinned, not inherited: Brain Monkey defines the function when any
 		// test mocks it, so the production function_exists() guard stops
 		// short-circuiting once an earlier test in the process has run.
@@ -4950,22 +5014,62 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_variable_product_that_stays_a_simple_product_keeps_the_label(): void {
+		// maybe_convert_to_product_group() bails when no attribute is
+		// flagged "used for variations", keeping simple-Product shape with
+		// the parent's offers intact. That fallback only works because the
+		// label is applied before the conversion runs.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
+		$this->only_this_product_is_adult( 100 );
+		Functions\when( 'get_term_by' )->justReturn( false );
+
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'tee-parent',
+				'children'             => array(),
+				'variation_attributes' => array(),
+			)
+		);
+
+		$result = $this->jsonld->enhance_product_data( $this->base_markup(), $parent );
+
+		$this->assertArrayNotHasKey( 'hasVariant', $result );
+		$this->assertSame( 'https://schema.org/SexualContentConsideration', $result['hasAdultConsideration'] );
+		$this->assertSame( 'https://schema.org/SexualContentConsideration', $result['offers'][0]['hasAdultConsideration'] );
+	}
+
 	public function test_only_the_google_supported_consideration_is_reachable(): void {
 		// AdultOrientedEnumeration has ten members and Google Search reads
 		// exactly one. Pin it so nobody "completes" the set later and starts
 		// emitting values that silently do nothing — alcohol especially,
 		// which Google says the adult signal is the wrong tool for.
+		//
+		// Scanned over string LITERALS only, via token_get_all. Grepping raw
+		// source would also match prose, so documenting an excluded value as
+		// a full URL in a comment — the natural way to explain why it is
+		// excluded — would fail a test about emission with no behaviour
+		// change. Only what the code can actually emit counts.
 		$source = file_get_contents(
 			dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-jsonld.php'
 		);
 		$this->assertNotFalse( $source );
 
-		preg_match_all( '#https://schema\.org/\w+Consideration#', $source, $found );
+		$found = array();
+		foreach ( token_get_all( $source ) as $token ) {
+			if ( is_array( $token ) && T_CONSTANT_ENCAPSED_STRING === $token[0] ) {
+				if ( preg_match( '#https://schema\.org/\w+Consideration#', $token[1], $m ) ) {
+					$found[] = $m[0];
+				}
+			}
+		}
 
-		$this->assertNotEmpty( $found[0], 'Constant not found — did it move to another file?' );
+		$this->assertNotEmpty( $found, 'Constant not found — did it move to another file?' );
 		$this->assertSame(
 			array( 'https://schema.org/SexualContentConsideration' ),
-			array_values( array_unique( $found[0] ) )
+			array_values( array_unique( $found ) )
 		);
 	}
 

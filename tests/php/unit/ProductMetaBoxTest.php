@@ -235,6 +235,68 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 		$this->meta_box->save_meta( 100 );
 	}
 
+	public function test_save_rejects_non_yes_adult_post_value_as_no(): void {
+		// Same forgery gate as the final-sale flag, and it matters more
+		// here. Writing a false adult designation onto a clean product is
+		// worse than the disapproval the flag exists to prevent: the
+		// merchant did not ask for it and has no reason to look for it.
+		$_POST[ WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY ] = 'no';
+
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 100, WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY, 'no' );
+
+		$this->meta_box->save_meta( 100 );
+	}
+
+	public function test_save_reaches_adult_failure_branch_without_throwing(): void {
+		// Companion to the final-sale failure-branch test, same smoke-test
+		// contract and the same logger-spying caveat. A lost write here
+		// re-renders the checkbox unticked while WC reports "Product
+		// updated", so the merchant's only signal is a box they believe
+		// they already set.
+		$_POST[ WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY ] = 'yes';
+
+		Functions\when( 'get_post_meta' )->justReturn( 'no' );
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 100, WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY, 'yes' )
+			->andReturn( false );
+
+		$this->meta_box->save_meta( 100 );
+	}
+
+	public function test_render_wires_both_checkboxes_to_their_meta_keys(): void {
+		// render_checkboxes() cannot be called directly — woocommerce_wp_checkbox()
+		// needs the WC editor — so this inspects the source, the same way
+		// ProductsFeedTest and LlmsTxtTest handle their un-callable paths.
+		//
+		// It is worth the awkwardness: the 'id' passed to each checkbox
+		// becomes the input's name, which save_meta() reads back out of
+		// $_POST. Typo one, or drop a block, and the merchant can never
+		// set that flag while every behavioural test still passes.
+		$source = file_get_contents(
+			dirname( __DIR__, 3 ) . '/includes/admin/class-wc-ai-storefront-product-meta-box.php'
+		);
+		$this->assertNotFalse( $source );
+
+		$start = strpos( $source, 'function render_checkboxes' );
+		$this->assertNotFalse( $start, 'render_checkboxes() not found — did it get renamed again?' );
+		$end  = strpos( $source, "\n\tpublic function ", $start );
+		$body = substr( $source, $start, false === $end ? null : $end - $start );
+
+		$this->assertStringContainsString(
+			"'id'          => self::META_KEY",
+			$body,
+			'Final-sale checkbox is not wired to META_KEY'
+		);
+		$this->assertStringContainsString(
+			"'id'          => self::ADULT_META_KEY",
+			$body,
+			'Adult checkbox is not wired to ADULT_META_KEY — save_meta() would never see it'
+		);
+	}
+
 	public function test_save_aborts_when_nonce_missing(): void {
 		// FIND-S03 regression: save_meta() must NOT write meta when the
 		// WC nonce field is absent — guards against a plugin calling
