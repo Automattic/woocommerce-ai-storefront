@@ -1727,6 +1727,21 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Read a variation's own Condition attribute from postmeta.
+	 *
+	 * The condition counterpart to {@see read_variation_core_attributes()}.
+	 * Only populated when the merchant flagged Condition "used for
+	 * variations" — a resale store listing the same item as New and Used
+	 * variations. Otherwise the parent's value applies to every variant.
+	 *
+	 * @param int $variation_id The variation post ID.
+	 * @return array<string,string> Slug → trimmed value, empty when unset.
+	 */
+	private static function read_variation_condition( int $variation_id ): array {
+		return self::read_variation_attributes_from_map( $variation_id, self::CONDITION_ATTRIBUTE_MAP );
+	}
+
+	/**
 	 * Read a variation's Gender / Age group attribute values directly from
 	 * postmeta — the audience counterpart to
 	 * {@see read_variation_core_attributes()}.
@@ -1944,6 +1959,7 @@ class WC_AI_Storefront_JsonLd {
 			// `$markup` still holds the parent `offers` block — the
 			// `unset()` below drops it. (#variant-completeness)
 			$this->add_inherited_variant_fields( $entry, $variation, $markup );
+			$this->add_variant_condition( $entry, $variation, $markup );
 			$has_variant[] = $entry;
 		}
 		if ( empty( $has_variant ) ) {
@@ -2070,6 +2086,62 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		return $entry;
+	}
+
+	/**
+	 * Set a variant's `itemCondition`, preferring its own attribute.
+	 *
+	 * Two cases, and both need this method. When Condition is NOT a
+	 * variation attribute the parent holds it, but
+	 * {@see maybe_convert_to_product_group()} unsets the parent's `offers`
+	 * after the variant loop, so each variant needs its own copy. When
+	 * Condition IS a variation attribute — a resale store listing the same
+	 * item as New and Used — {@see emit_attributes()} skipped it on the
+	 * parent entirely, so this is the only emission point.
+	 *
+	 * Must therefore run inside that loop, while the parent's `offers` are
+	 * still present. Offer-level only, per {@see CONDITION_VALUE_MAP}.
+	 *
+	 * @param array      $entry         Variant markup, modified by reference.
+	 * @param WC_Product $variation     The variation (source of its own condition).
+	 * @param array      $parent_markup The parent markup (still carrying `offers`).
+	 */
+	private function add_variant_condition( array &$entry, $variation, array $parent_markup ): void {
+		if ( ! method_exists( $variation, 'get_id' ) ) {
+			return;
+		}
+		if ( ! isset( $entry['offers'][0] ) || ! is_array( $entry['offers'][0] ) ) {
+			return;
+		}
+
+		$condition_url = '';
+		$own           = self::read_variation_condition( $variation->get_id() );
+		foreach ( array_keys( self::CONDITION_ATTRIBUTE_MAP ) as $slug ) {
+			if ( ! isset( $own[ $slug ] ) ) {
+				continue;
+			}
+			$key = strtolower( trim( $own[ $slug ] ) );
+			if ( isset( self::CONDITION_VALUE_MAP[ $key ] ) ) {
+				$condition_url = self::CONDITION_VALUE_MAP[ $key ];
+				break;
+			}
+		}
+
+		// Fall back to the parent's OFFER, not a re-derivation.
+		// emit_attributes() already resolved pa_-vs-bare precedence and
+		// typability; re-running that logic here would be a second
+		// implementation to keep in sync.
+		if ( '' === $condition_url
+			&& isset( $parent_markup['offers'][0]['itemCondition'] )
+			&& is_string( $parent_markup['offers'][0]['itemCondition'] ) ) {
+			$condition_url = $parent_markup['offers'][0]['itemCondition'];
+		}
+
+		if ( '' === $condition_url ) {
+			return;
+		}
+
+		$entry['offers'][0]['itemCondition'] = $condition_url;
 	}
 
 	/**

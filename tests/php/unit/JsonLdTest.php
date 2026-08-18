@@ -5073,6 +5073,104 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	// ------------------------------------------------------------------
+	// itemCondition on ProductGroup variants (#646)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Builds a variable parent carrying a visible pa_condition attribute.
+	 *
+	 * @param string $condition Parent's condition value.
+	 * @return Mockery\MockInterface
+	 */
+	private function make_variable_parent_with_condition( string $condition ) {
+		$attr = Mockery::mock();
+		$attr->shouldReceive( 'get_visible' )->andReturn( true );
+		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'w-parent',
+				'children'             => array( 101 ),
+				'attributes'           => array( 'pa_condition' => $attr ),
+				'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
+			)
+		);
+		$parent->shouldReceive( 'get_attribute' )->with( 'pa_condition' )->andReturn( $condition );
+
+		return $parent;
+	}
+
+	public function test_variants_inherit_the_parents_condition(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		// The variation carries no condition of its own.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'w-navy',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
+
+		$result = $this->jsonld->enhance_product_data(
+			$this->base_markup(),
+			$this->make_variable_parent_with_condition( 'used' )
+		);
+
+		$this->assertSame( 'ProductGroup', $result['@type'] );
+		$this->assertArrayNotHasKey(
+			'itemCondition',
+			$result,
+			'itemCondition belongs on the Offer; the ProductGroup node carrying none is correct.'
+		);
+		foreach ( $result['hasVariant'] as $i => $variant ) {
+			$this->assertSame(
+				'https://schema.org/UsedCondition',
+				$variant['offers'][0]['itemCondition'],
+				"hasVariant[$i] offer is the node Google submits and it carries no condition"
+			);
+		}
+	}
+
+	public function test_per_variation_condition_beats_the_parent(): void {
+		// "Widget: New / Used" as two variations is a real resale pattern.
+		// A variation stating its own condition must not be overwritten by
+		// the parent's — the same parent-vs-variation confusion that
+		// shipped in #644.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->alias(
+			static fn( $id, $key, $single = false ) =>
+				( 101 === $id && 'attribute_pa_condition' === $key ) ? 'refurbished' : ''
+		);
+
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'w-refurb',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
+
+		$result = $this->jsonld->enhance_product_data(
+			$this->base_markup(),
+			$this->make_variable_parent_with_condition( 'used' )
+		);
+
+		$this->assertSame(
+			'https://schema.org/RefurbishedCondition',
+			$result['hasVariant'][0]['offers'][0]['itemCondition']
+		);
+	}
+
 	public function test_business_days_emit_alongside_handling_time(): void {
 		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
