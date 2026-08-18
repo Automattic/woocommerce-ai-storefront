@@ -455,6 +455,13 @@ class WC_AI_Storefront_JsonLd {
 		// still ships with a full offer. Below this gate, that node goes
 		// out unlabelled, which is exactly what Google disapproves.
 		$this->add_adult_consideration( $markup, $product );
+		// Same reasoning, same gate. Google requires a condition on used
+		// and refurbished products, so an out-of-scope used product that
+		// still ships a priced offer ships a listing Google disapproves.
+		// The rest of emit_attributes() stays BELOW the gate — audience
+		// and additionalProperty are discovery enhancements, not
+		// compliance.
+		$this->add_item_condition( $markup, $product );
 
 		if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 			return $markup;
@@ -1270,35 +1277,22 @@ class WC_AI_Storefront_JsonLd {
 			}
 		}
 
-		// Lowest priority number wins, and a pa_ value that cannot be typed
-		// falls through to the next candidate rather than blocking typed
-		// emission for the field — same resolution rule as the audience
-		// fields use.
-		usort(
-			$condition_candidates,
-			static fn( $a, $b ) => $a['priority'] <=> $b['priority']
-		);
-		foreach ( $condition_candidates as $candidate ) {
-			$condition_key = strtolower( trim( $candidate['value'] ) );
-			if ( ! isset( self::CONDITION_VALUE_MAP[ $condition_key ] ) ) {
-				// Unrecognised, or multi-value: WC joins multiple terms
-				// with a comma and Google forbids more than one value, so
-				// there is no honest single claim to publish. Leaving it
-				// untyped drops it into additionalProperty below rather
-				// than discarding what the merchant entered.
-				continue;
-			}
-
-			// Offer only — see CONDITION_VALUE_MAP's docblock. Variants get
-			// their own copy in add_variant_condition(), because
-			// maybe_convert_to_product_group() unsets this array.
-			if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] )
-				&& ! isset( $markup['offers'][0]['itemCondition'] ) ) {
-				$markup['offers'][0]['itemCondition'] = self::CONDITION_VALUE_MAP[ $condition_key ];
-			}
-
-			$typed_winner_slugs[] = $candidate['slug'];
-			break;
+		// The condition value itself was already written by
+		// add_item_condition(), above the syndication gate. All that is
+		// left here is deciding whether the attribute ALSO belongs in
+		// additionalProperty.
+		//
+		// Marked a winner only when the typed claim actually landed and
+		// holds our value. If there was no offer to write to, or an
+		// upstream filter already owned the key, nothing typed was
+		// published and the merchant's value has to survive as an
+		// additionalProperty entry — otherwise choosing a correct seeded
+		// value would lose data that an invalid value keeps.
+		$resolved_condition = self::resolve_condition( $condition_candidates );
+		if ( '' !== $resolved_condition['slug']
+			&& isset( $markup['offers'][0]['itemCondition'] )
+			&& $markup['offers'][0]['itemCondition'] === $resolved_condition['url'] ) {
+			$typed_winner_slugs[] = $resolved_condition['slug'];
 		}
 
 		foreach ( $audience_pending as $slug => $property ) {
@@ -2089,6 +2083,142 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
+	 * Collect Condition candidates from a product's visible attributes.
+	 *
+	 * Applies the same three filters {@see emit_attributes()} applies —
+	 * visible, not a variation axis, non-empty — so the hoisted emitter
+	 * and the additionalProperty bookkeeping see the same candidate set.
+	 * Variation axes are excluded because the parent has no single value
+	 * for them; {@see add_variant_condition()} handles that case per
+	 * variation.
+	 *
+	 * @param WC_Product $product The product.
+	 * @return array<int, array{slug: string, value: string, priority: int}>
+	 */
+	private static function collect_condition_candidates( $product ): array {
+		$attributes = $product->get_attributes();
+		if ( empty( $attributes ) ) {
+			// Bail before touching get_variation_attributes(), matching
+			// emit_attributes(). Most products have no attributes at all,
+			// and this method now runs for every one of them.
+			return array();
+		}
+
+		// Resolved lazily, only once a Condition attribute is actually
+		// present — the lookup is only needed to exclude variation axes.
+		$variation_attrs = null;
+		$candidates      = array();
+
+		foreach ( $attributes as $attribute ) {
+			if ( ! $attribute->get_visible() ) {
+				continue;
+			}
+			$slug = strtolower( $attribute->get_name() );
+			if ( ! isset( self::CONDITION_ATTRIBUTE_MAP[ $slug ] ) ) {
+				continue;
+			}
+			if ( null === $variation_attrs ) {
+				$variation_attrs = self::get_variation_attribute_slugs( $product );
+			}
+			if ( in_array( $slug, $variation_attrs, true ) ) {
+				continue;
+			}
+			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
+			if ( '' === $value ) {
+				continue;
+			}
+			$candidates[] = array(
+				'slug'     => $slug,
+				'value'    => $value,
+				'priority' => self::CONDITION_ATTRIBUTE_MAP[ $slug ]['priority'],
+			);
+		}
+
+		return $candidates;
+	}
+
+	/**
+	 * Pick the winning Condition candidate.
+	 *
+	 * Lowest priority number wins, and a `pa_` value that cannot be typed
+	 * falls through to the next candidate rather than blocking emission
+	 * for the field — the same resolution rule the audience fields use.
+	 *
+	 * Shared by {@see add_item_condition()}, which runs above the
+	 * syndication gate and does the writing, and {@see emit_attributes()},
+	 * which runs below it and needs the winning slug to decide whether the
+	 * attribute also belongs in `additionalProperty`. One implementation
+	 * so the two cannot disagree.
+	 *
+	 * @param array<int, array{slug: string, value: string, priority: int}> $candidates Collected candidates.
+	 * @return array{slug: string, url: string} Empty strings when nothing types.
+	 */
+	private static function resolve_condition( array $candidates ): array {
+		usort(
+			$candidates,
+			static fn( $a, $b ) => $a['priority'] <=> $b['priority']
+		);
+		foreach ( $candidates as $candidate ) {
+			$key = strtolower( trim( $candidate['value'] ) );
+			if ( isset( self::CONDITION_VALUE_MAP[ $key ] ) ) {
+				return array(
+					'slug' => $candidate['slug'],
+					'url'  => self::CONDITION_VALUE_MAP[ $key ],
+				);
+			}
+			// Unrecognised, or multi-value — WooCommerce joins taxonomy
+			// terms with ', ' and custom-attribute values with ' | ', and
+			// Google forbids more than one value either way, so there is
+			// no honest single claim. Falls through to the next candidate;
+			// emit_attributes() routes it to additionalProperty instead of
+			// discarding what the merchant entered.
+		}
+		return array(
+			'slug' => '',
+			'url'  => '',
+		);
+	}
+
+	/**
+	 * Emit `offers[0].itemCondition` from the product's Condition attribute.
+	 *
+	 * Called ABOVE the syndication gate, unlike the rest of the attribute
+	 * handling. Google requires a condition on used and refurbished
+	 * products, and scoping a product out of syndication does not
+	 * unpublish it — this plugin has already replaced WooCommerce's
+	 * serializer, so the product still ships a priced offer. Below the
+	 * gate that offer goes out unlabelled, which is the listing Google
+	 * disapproves.
+	 *
+	 * Offer only, never the Product — see {@see CONDITION_VALUE_MAP}.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product.
+	 */
+	private function add_item_condition( array &$markup, $product ): void {
+		if ( ! method_exists( $product, 'get_attributes' ) ) {
+			return;
+		}
+		if ( ! isset( $markup['offers'][0] ) || ! is_array( $markup['offers'][0] ) ) {
+			// No offer to label. The value still reaches additionalProperty
+			// via emit_attributes(); see its resolve_condition() call.
+			return;
+		}
+		if ( isset( $markup['offers'][0]['itemCondition'] ) ) {
+			return;
+		}
+
+		$resolved = self::resolve_condition(
+			self::collect_condition_candidates( $product )
+		);
+		if ( '' === $resolved['url'] ) {
+			return;
+		}
+
+		$markup['offers'][0]['itemCondition'] = $resolved['url'];
+	}
+
+	/**
 	 * Set a variant's `itemCondition`, preferring its own attribute.
 	 *
 	 * Two cases, and both need this method. When Condition is NOT a
@@ -2114,17 +2244,28 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
-		$condition_url = '';
-		$own           = self::read_variation_condition( $variation->get_id() );
+		$condition_url  = '';
+		$own            = self::read_variation_condition( $variation->get_id() );
+		$stated_its_own = false;
 		foreach ( array_keys( self::CONDITION_ATTRIBUTE_MAP ) as $slug ) {
 			if ( ! isset( $own[ $slug ] ) ) {
 				continue;
 			}
-			$key = strtolower( trim( $own[ $slug ] ) );
+			$stated_its_own = true;
+			$key            = strtolower( trim( $own[ $slug ] ) );
 			if ( isset( self::CONDITION_VALUE_MAP[ $key ] ) ) {
 				$condition_url = self::CONDITION_VALUE_MAP[ $key ];
 				break;
 			}
+		}
+
+		// Stated something we cannot type — "Mint", say, on a resale
+		// store's own grading scale. Inheriting the parent here would
+		// publish a DIFFERENT claim than the merchant made, which is worse
+		// than publishing none. Absence and an unrecognised value are
+		// different cases; only absence inherits.
+		if ( '' === $condition_url && $stated_its_own ) {
+			return;
 		}
 
 		// Fall back to the parent's OFFER, not a re-derivation.

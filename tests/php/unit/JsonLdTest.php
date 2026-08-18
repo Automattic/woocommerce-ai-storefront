@@ -5171,6 +5171,81 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_condition_survives_the_syndication_gate(): void {
+		// Same reasoning as hasAdultConsideration in #644, and the same
+		// defect until this test existed. Scoping a product out does not
+		// unpublish it — we have replaced WC's serializer, so its Product
+		// node still ships with a priced offer. An unlabelled used offer
+		// is exactly what Google disapproves.
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => array( 777 ),
+		);
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$attr = Mockery::mock();
+		$attr->shouldReceive( 'get_visible' )->andReturn( true );
+		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$product = $this->make_product(
+			array(
+				'id'         => 42,
+				'attributes' => array( 'pa_condition' => $attr ),
+			)
+		);
+		$product->shouldReceive( 'get_attribute' )->with( 'pa_condition' )->andReturn( 'used' );
+
+		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $product );
+
+		$this->assertSame(
+			'https://schema.org/UsedCondition',
+			$out['offers'][0]['itemCondition'],
+			'A product scoped out of syndication still publishes an offer, so it still needs the condition.'
+		);
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$out['offers'][0],
+			'Everything else stays below the gate — only compliance properties are hoisted.'
+		);
+	}
+
+	public function test_variant_with_an_unrecognised_condition_does_not_inherit_the_parents(): void {
+		// The variation stated something. It is not recognised, so no
+		// typed claim can be made — but falling back to the parent would
+		// publish a DIFFERENT claim than the merchant made. "Mint"
+		// becoming NewCondition is worse than silence.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->alias(
+			static fn( $id, $key, $single = false ) =>
+				( 101 === $id && 'attribute_pa_condition' === $key ) ? 'Mint' : ''
+		);
+
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'w-mint',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
+
+		$result = $this->jsonld->enhance_product_data(
+			$this->base_markup(),
+			$this->make_variable_parent_with_condition( 'new' )
+		);
+
+		$this->assertArrayNotHasKey(
+			'itemCondition',
+			$result['hasVariant'][0]['offers'][0],
+			'Publishing the parent\'s NewCondition here would state something the merchant did not.'
+		);
+	}
+
 	public function test_business_days_emit_alongside_handling_time(): void {
 		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',

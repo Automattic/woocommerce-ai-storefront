@@ -55,25 +55,39 @@ class JsonLdConditionTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * Runs emit_attributes() against a product and returns the markup.
 	 *
-	 * Seeds an empty Offer, because itemCondition is written there rather
-	 * than onto the Product.
+	 * Seeds an empty Offer by default, because itemCondition is written
+	 * there rather than onto the Product. Pass $initial_markup to model a
+	 * product WooCommerce gave no offers (no price) or one where an
+	 * upstream filter already claimed the key.
 	 *
-	 * @param array<string, string> $attributes Slug => value.
+	 * @param array<string, string> $attributes     Slug => value.
+	 * @param array|null            $initial_markup Markup to start from.
 	 * @return array
 	 */
-	private function emit( array $attributes ): array {
+	private function emit( array $attributes, ?array $initial_markup = null ): array {
 		Functions\when( 'wc_attribute_label' )->returnArg();
 
-		$jsonld = new WC_AI_Storefront_JsonLd();
-		$markup = array(
+		$jsonld  = new WC_AI_Storefront_JsonLd();
+		$markup  = $initial_markup ?? array(
 			'@type'  => 'Product',
 			'offers' => array( array( '@type' => 'Offer' ) ),
 		);
-		// No setAccessible() call: it is a no-op since PHP 8.1, which is
-		// this plugin's floor, and deprecated from 8.5 — which local runs
-		// use even though CI's matrix tops out at 8.4.
-		$method = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'emit_attributes' );
-		$method->invokeArgs( $jsonld, array( &$markup, $this->make_product_with_attributes( $attributes ) ) );
+		$product = $this->make_product_with_attributes( $attributes );
+
+		// Drives BOTH halves, in production order. add_item_condition()
+		// runs above the syndication gate and does the writing;
+		// emit_attributes() runs below it and decides additionalProperty.
+		// A harness that called only the second would pass while the
+		// property was never published at all.
+		//
+		// No setAccessible() calls: a no-op since PHP 8.1, which is this
+		// plugin's floor, and deprecated from 8.5 — which local runs use
+		// even though CI's matrix tops out at 8.4.
+		$write = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'add_item_condition' );
+		$write->invokeArgs( $jsonld, array( &$markup, $product ) );
+
+		$pending = new \ReflectionMethod( WC_AI_Storefront_JsonLd::class, 'emit_attributes' );
+		$pending->invokeArgs( $jsonld, array( &$markup, $product ) );
 
 		return $markup;
 	}
@@ -209,6 +223,47 @@ class JsonLdConditionTest extends \PHPUnit\Framework\TestCase {
 
 		$values = array_column( $markup['additionalProperty'] ?? array(), 'value' );
 		$this->assertContains( 'B-grade', $values );
+	}
+
+	public function test_price_less_product_keeps_the_value_in_additional_property(): void {
+		// WooCommerce builds `offers` only inside `if ( '' !== get_price() )`,
+		// so a resale listing awaiting appraisal has no offer to label.
+		// The typed claim is correctly withheld, but the merchant's value
+		// must still reach an agent — otherwise picking the CORRECT seeded
+		// value loses data that an invalid one keeps.
+		$markup = $this->emit(
+			array( 'pa_condition' => 'used' ),
+			array( '@type' => 'Product' )
+		);
+
+		$this->assertArrayNotHasKey( 'itemCondition', $markup );
+		$values = array_column( $markup['additionalProperty'] ?? array(), 'value' );
+		$this->assertContains( 'used', $values );
+	}
+
+	public function test_upstream_owned_key_leaves_our_value_in_additional_property(): void {
+		// Another filter got there first. We do not overwrite it, and the
+		// merchant's own value must not vanish in the process.
+		$markup = $this->emit(
+			array( 'pa_condition' => 'used' ),
+			array(
+				'@type'  => 'Product',
+				'offers' => array(
+					array(
+						'@type'         => 'Offer',
+						'itemCondition' => 'https://schema.org/NewCondition',
+					),
+				),
+			)
+		);
+
+		$this->assertSame(
+			'https://schema.org/NewCondition',
+			$markup['offers'][0]['itemCondition'],
+			'An upstream owner is not overwritten.'
+		);
+		$values = array_column( $markup['additionalProperty'] ?? array(), 'value' );
+		$this->assertContains( 'used', $values );
 	}
 
 	public function test_only_googles_three_conditions_are_reachable(): void {
