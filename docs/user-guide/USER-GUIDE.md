@@ -489,6 +489,19 @@ To set them up:
 3. On each product, open the *Attributes* tab and set a value for each.
 4. Tick **Visible on the product page**. AI Storefront publishes the attributes marked visible.
 
+#### Condition, for resale and refurbished stock
+
+Google requires a condition on used and refurbished products and disapproves listings that leave it out. New products don't need it.
+
+A **Condition** attribute is created for you, with the three values Google accepts: `new`, `refurbished`, `used`. It isn't applied to any product, so if you only sell new goods there is nothing to do.
+
+Set it on the products that need it, the same way you set Color or Size. To list the same item as both new and used, tick **Used for variations** on the Condition attribute and give each variation its own value. A variation left on "Any" publishes no condition at all, so set every one.
+
+Use one value per product. Google reads a single condition, so "new, used" publishes nothing rather than a guess. Your own wording publishes nothing either. "Refurb", "Open box" and "B-grade" are not values Google accepts, so stick to the three you're given.
+
+If you already had a Condition attribute before installing AI Storefront, it is left exactly as it was, terms included, because its terms may already be variation axes. That also means your existing values won't publish unless they match Google's three. Add `new`, `refurbished` and `used` to it yourself if you want them published.
+
+
 These same four attributes are what an AI agent reads to decide whether your product matches a shopper asking for "a black hoodie, mens, large".
 
 ### Optional: let an AI assistant help you with the reshape

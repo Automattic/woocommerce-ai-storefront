@@ -12,9 +12,9 @@
  * taxonomy names exactly, so JSON-LD emission is an exact lookup rather
  * than guesswork against whatever the merchant typed.
  *
- * The six split into two groups:
+ * The seven split into two groups:
  *
- *   Closed lists (gender, age_group) — Google defines these
+ *   Closed lists (gender, age_group, condition) — Google defines these
  *   exhaustively. Our terms are the complete correct set.
  *
  *   Open vocabularies (color, size, material, pattern) — free text in
@@ -57,9 +57,17 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * available anywhere in the fleet to serialise them. Treat a bump as
 	 * a deliberate, occasional act, not a routine one.
 	 *
+	 * Bumped to '2' in #646, adding Condition. Safe because
+	 * create_attribute() returns early when taxonomy_exists() or
+	 * wc_attribute_taxonomy_id_by_name() already resolves, so a re-seed
+	 * skips the six existing attributes and creates only the new one —
+	 * the guard #630 added after the duplicate-Gender incident in #628.
+	 * AttributeSeederTest::test_reseed_creates_only_the_new_attribute()
+	 * asserts exactly that; verify it still holds before bumping again.
+	 *
 	 * @var string
 	 */
-	const SEED_VERSION = '1';
+	const SEED_VERSION = '2';
 
 	/**
 	 * Option recording the SEED_VERSION last successfully applied.
@@ -95,8 +103,8 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 *
 	 * Terms are deliberately NOT translated, for two different reasons:
 	 *
-	 *   Closed lists (gender, age_group) must be Google's exact English
-	 *   values. Google requires them "submitted in English" regardless of
+	 *   Closed lists (gender, age_group, condition) must be Google's exact
+	 *   English values. Google requires them "submitted in English" regardless of
 	 *   store language, and a localised value is simply rejected.
 	 *
 	 *   Open vocabularies (color, size, material, pattern) are a starting
@@ -117,6 +125,15 @@ class WC_AI_Storefront_Attribute_Seeder {
 			'age_group' => array(
 				'label' => __( 'Age group', 'woocommerce-ai-storefront' ),
 				'terms' => array( 'newborn', 'infant', 'toddler', 'kids', 'adult' ),
+			),
+			// Closed list. Google's complete accepted set — and complete
+			// is the operative word. schema.org's OfferItemCondition also
+			// has DamagedCondition, which Google does not accept; a
+			// merchant who picked it would believe they had declared a
+			// condition and would have declared nothing.
+			'condition' => array(
+				'label' => __( 'Condition', 'woocommerce-ai-storefront' ),
+				'terms' => array( 'new', 'refurbished', 'used' ),
 			),
 			// Open vocabulary. Google's "standard names" plus obvious gaps.
 			'color'     => array(
@@ -313,7 +330,7 @@ class WC_AI_Storefront_Attribute_Seeder {
 		 * Filters whether the plugin seeds its recommended product attributes.
 		 *
 		 * Return false to skip entirely — useful for a store that will
-		 * never sell apparel and does not want six unused taxonomies.
+		 * never sell apparel and does not want seven unused taxonomies.
 		 *
 		 * @since 0.35.0
 		 *

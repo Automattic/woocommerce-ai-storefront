@@ -613,6 +613,28 @@ Schema.org `AdultOrientedEnumeration`, marking a product as adult-oriented. Goog
 
 **Source**: `add_adult_consideration()`, invoked from `enhance_product_data()` immediately above the syndication gate, and again from `build_variant_entry()` for the ProductGroup path. The reader is `WC_AI_Storefront_Product_Meta_Box::is_adult()`.
 
+### `offers[0].itemCondition`
+
+Schema.org `OfferItemCondition`, stating whether the item is new, refurbished or used. Google's `[condition]` attribute is **required for used and refurbished products** and optional for new, so omitting it on a resale catalogue means an incomplete listing for every affected product.
+
+- **Emitted when** the product carries a visible `pa_condition` (or bare `condition`) attribute whose value is one of Google's three. `pa_condition` outranks the bare form, matching the `pa_gender` precedence in [`AUDIENCE_ATTRIBUTE_MAP`](#audience-gender-and-age-group--peopleaudience) — the `pa_` one is seeded by this plugin with accepted values, so it is authoritative by construction, while a bare attribute is the compatibility fallback for a merchant's own.
+- **Offer only, never the Product.** Google documents `itemCondition` under **"Offer details"**, its examples nest it inside `offers`, and its general Product structured-data page never mentions the property. schema.org's `domainIncludes` permits either node, so only Google's placement breaks the tie.
+- **Not the same shape as `hasAdultConsideration`.** That property is documented under **"Product information"** and appears in no Offer table, yet this plugin emits it on the Product *and* the Offer — belt-and-braces on a legal label, where a duplicated claim is harmless and a missed one is not. `itemCondition` is a commercial attribute with a documented home, so it goes in that one place only. The two differ deliberately; do not "align" them without re-reading both Google tables.
+- **Each `hasVariant` offer that resolves a condition carries its own copy.** `maybe_convert_to_product_group()` unsets the parent's `offers`, so `add_variant_condition()` re-applies the value per variant from inside the variant loop — which is also why it must run before that `unset()`.
+- **Two variant shapes, and they do not overlap.** If `pa_condition` is a *variation attribute*, `emit_attributes()` skips it on the parent entirely, so `add_variant_condition()` is the only emission point and there is nothing to inherit — a variation left on "Any" publishes no condition. If it is a *plain* attribute, the parent resolves one value and every variation inherits it. A variation that states a value we cannot type inherits nothing either: falling back would publish a different claim than the merchant made.
+
+**Three of four enumeration members are reachable.** `DamagedCondition` exists in schema.org and Google does not accept it. `JsonLdConditionTest::test_only_googles_three_conditions_are_reachable()` scans the emitter's string literals with `token_get_all()` to keep it that way.
+
+**Unrecognised and multi-value input emits nothing.** Google's merchant-listing page says *"Don't specify more than one value"*, and WooCommerce joins multiple values into one string — `', '` for taxonomy attributes, `' | '` for custom ones — so neither `new, used` nor `new | used` has an honest single claim to publish. Seeding also skips a merchant's pre-existing `pa_condition`, so values like `B-grade` occur in the wild. In both cases the value still reaches `additionalProperty` rather than vanishing — only the typed claim is withheld.
+
+**An explicit `new` is published; absence is silent.** Google treats new as its default, but the two are different statements. Emitting `NewCondition` for a product whose attribute is absent would be a claim the merchant never made, on every offer in every store. Discarding a `new` the merchant deliberately set loses real information in a resale catalogue, where an item assessed as new differs from one nobody assessed.
+
+**Emitted above the syndication gate**, unlike every other attribute here. Scoping a product out of syndication does not unpublish it — the plugin has already replaced WooCommerce's serializer, so the product still ships a priced offer, and Google requires a condition on used and refurbished goods. `add_item_condition()` therefore sits beside `add_adult_consideration()`, above `is_product_syndicated()`. The rest of the attribute handling stays below it, because `audience` and `additionalProperty` are discovery enhancements rather than compliance.
+
+**When there is no offer, the value still reaches `additionalProperty`.** WooCommerce omits `offers` entirely when `get_price()` is `''`, which a resale listing awaiting appraisal will hit. The typed claim is withheld because there is nothing to attach it to, but the merchant's value is not discarded — otherwise choosing a correct seeded value would lose data that an invalid value keeps. The same applies when an upstream filter already owns `itemCondition`.
+
+**Source**: `add_item_condition()` writes `offers[0]`; `emit_attributes()` decides `additionalProperty`; both share `resolve_condition()` so they cannot disagree about which candidate won. `add_variant_condition()` handles the ProductGroup path. Values come from `CONDITION_VALUE_MAP`, slugs from `CONDITION_ATTRIBUTE_MAP`.
+
 ## Store homepage: OnlineBusiness schema
 
 A separate JSON-LD block emitted on the front page or shop page (`is_front_page() || is_shop()`) when the plugin is enabled.

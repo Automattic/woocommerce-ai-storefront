@@ -671,6 +671,12 @@
 <li>On each product, open the <em>Attributes</em> tab and set a value for each.</li>
 <li>Tick <strong>Visible on the product page</strong>. AI Storefront publishes the attributes marked visible.</li>
 </ol>
+<h4>Condition, for resale and refurbished stock</h4>
+<p>Google requires a condition on used and refurbished products and disapproves listings that leave it out. New products don&#39;t need it.</p>
+<p>A <strong>Condition</strong> attribute is created for you, with the three values Google accepts: <code>new</code>, <code>refurbished</code>, <code>used</code>. It isn&#39;t applied to any product, so if you only sell new goods there is nothing to do.</p>
+<p>Set it on the products that need it, the same way you set Color or Size. To list the same item as both new and used, tick <strong>Used for variations</strong> on the Condition attribute and give each variation its own value. A variation left on &quot;Any&quot; publishes no condition at all, so set every one.</p>
+<p>Use one value per product. Google reads a single condition, so &quot;new, used&quot; publishes nothing rather than a guess. Your own wording publishes nothing either. &quot;Refurb&quot;, &quot;Open box&quot; and &quot;B-grade&quot; are not values Google accepts, so stick to the three you&#39;re given.</p>
+<p>If you already had a Condition attribute before installing AI Storefront, it is left exactly as it was, terms included, because its terms may already be variation axes. That also means your existing values won&#39;t publish unless they match Google&#39;s three. Add <code>new</code>, <code>refurbished</code> and <code>used</code> to it yourself if you want them published.</p>
 <p>These same four attributes are what an AI agent reads to decide whether your product matches a shopper asking for &quot;a black hoodie, mens, large&quot;.</p>
 <h3>Optional: let an AI assistant help you with the reshape</h3>
 <p>WooCommerce <strong>core</strong> ships a built-in MCP (Model Context Protocol) integration starting in WC 10.3.0, designed for <strong>admin-side</strong> AI: it lets AI assistants like Claude or ChatGPT, running under your own credentials, read and modify your store on your behalf from inside the admin. There is no extension to install: the integration is already on your store after you update WooCommerce, gated behind a feature flag you toggle on.</p>

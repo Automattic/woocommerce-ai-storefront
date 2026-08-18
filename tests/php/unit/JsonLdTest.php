@@ -5004,12 +5004,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$this->assertSame(
 				'https://schema.org/SexualContentConsideration',
 				$variant['hasAdultConsideration'],
-				"hasVariant[$i] Product node is unlabelled"
+				"hasVariant[$i] Product node must carry the adult designation"
 			);
 			$this->assertSame(
 				'https://schema.org/SexualContentConsideration',
 				$variant['offers'][0]['hasAdultConsideration'],
-				"hasVariant[$i] Offer is unlabelled — this is the node Google submits"
+				"hasVariant[$i] Offer must carry the adult designation — this is the node Google submits"
 			);
 		}
 	}
@@ -5071,6 +5071,291 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			array( 'https://schema.org/SexualContentConsideration' ),
 			array_values( array_unique( $found ) )
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// itemCondition on ProductGroup variants (#646)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Builds a variable parent carrying a visible pa_condition attribute.
+	 *
+	 * @param string $condition Parent's condition value.
+	 * @return Mockery\MockInterface
+	 */
+	private function make_variable_parent_with_condition( string $condition ) {
+		$attr = Mockery::mock();
+		$attr->shouldReceive( 'get_visible' )->andReturn( true );
+		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'w-parent',
+				'children'             => array( 101 ),
+				'attributes'           => array( 'pa_condition' => $attr ),
+				'variation_attributes' => array( 'pa_color' => array( 'navy', 'white' ) ),
+			)
+		);
+		$parent->shouldReceive( 'get_attribute' )->with( 'pa_condition' )->andReturn( $condition );
+
+		return $parent;
+	}
+
+	public function test_variants_inherit_the_parents_condition(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		// The variation carries no condition of its own.
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'w-navy',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
+
+		$result = $this->jsonld->enhance_product_data(
+			$this->base_markup(),
+			$this->make_variable_parent_with_condition( 'used' )
+		);
+
+		$this->assertSame( 'ProductGroup', $result['@type'] );
+		$this->assertArrayNotHasKey(
+			'itemCondition',
+			$result,
+			'itemCondition belongs on the Offer; the ProductGroup node carrying none is correct.'
+		);
+		foreach ( $result['hasVariant'] as $i => $variant ) {
+			$this->assertSame(
+				'https://schema.org/UsedCondition',
+				$variant['offers'][0]['itemCondition'],
+				"hasVariant[$i] offer must carry the inherited condition — this is the node Google submits"
+			);
+		}
+	}
+
+	public function test_per_variation_condition_beats_the_parent(): void {
+		// A variation stating its own condition must not be overwritten by
+		// the parent's — the same parent-vs-variation confusion that
+		// shipped in #644.
+		//
+		// NOTE: this pins precedence inside add_variant_condition() only.
+		// The state itself is not one WooCommerce produces, because it
+		// writes attribute_<taxonomy> postmeta only for attributes flagged
+		// "used for variations", and such an attribute is excluded from
+		// the parent. test_condition_as_a_variation_axis_labels_each_variant()
+		// below covers the configuration that actually occurs.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->alias(
+			static fn( $id, $key, $single = false ) =>
+				( 101 === $id && 'attribute_pa_condition' === $key ) ? 'refurbished' : ''
+		);
+
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'w-refurb',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
+
+		$result = $this->jsonld->enhance_product_data(
+			$this->base_markup(),
+			$this->make_variable_parent_with_condition( 'used' )
+		);
+
+		$this->assertSame(
+			'https://schema.org/RefurbishedCondition',
+			$result['hasVariant'][0]['offers'][0]['itemCondition']
+		);
+	}
+
+	public function test_condition_survives_the_syndication_gate(): void {
+		// Same reasoning as hasAdultConsideration in #644, and the same
+		// defect until this test existed. Scoping a product out does not
+		// unpublish it — we have replaced WC's serializer, so its Product
+		// node still ships with a priced offer. An unlabelled used offer
+		// is exactly what Google disapproves.
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'selected',
+			'selected_products'      => array( 777 ),
+		);
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$attr = Mockery::mock();
+		$attr->shouldReceive( 'get_visible' )->andReturn( true );
+		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$product = $this->make_product(
+			array(
+				'id'         => 42,
+				'attributes' => array( 'pa_condition' => $attr ),
+			)
+		);
+		$product->shouldReceive( 'get_attribute' )->with( 'pa_condition' )->andReturn( 'used' );
+
+		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $product );
+
+		$this->assertSame(
+			'https://schema.org/UsedCondition',
+			$out['offers'][0]['itemCondition'],
+			'A product scoped out of syndication still publishes an offer, so it still needs the condition.'
+		);
+		$this->assertArrayNotHasKey(
+			'hasMerchantReturnPolicy',
+			$out['offers'][0],
+			'Everything else stays below the gate — only compliance properties are hoisted.'
+		);
+	}
+
+	public function test_variant_with_an_unrecognised_condition_does_not_inherit_the_parents(): void {
+		// The variation stated something. It is not recognised, so no
+		// typed claim can be made — but falling back to the parent would
+		// publish a DIFFERENT claim than the merchant made. "Mint"
+		// becoming NewCondition is worse than silence.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->alias(
+			static fn( $id, $key, $single = false ) =>
+				( 101 === $id && 'attribute_pa_condition' === $key ) ? 'Mint' : ''
+		);
+
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'w-mint',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
+
+		$result = $this->jsonld->enhance_product_data(
+			$this->base_markup(),
+			$this->make_variable_parent_with_condition( 'new' )
+		);
+
+		$this->assertArrayNotHasKey(
+			'itemCondition',
+			$result['hasVariant'][0]['offers'][0],
+			'Publishing the parent\'s NewCondition here would state something the merchant did not.'
+		);
+	}
+
+	public function test_condition_as_a_variation_axis_labels_each_variant(): void {
+		// The real resale configuration: Condition flagged "used for
+		// variations", so the same item lists as New and Used. The parent
+		// holds no single value and emit_attributes() skips the axis
+		// entirely, which makes add_variant_condition() the ONLY emission
+		// point — there is no parent value to inherit.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->alias(
+			static function ( $id, $key, $single = false ) {
+				if ( 'attribute_pa_condition' !== $key ) {
+					return '';
+				}
+				return 101 === $id ? 'new' : 'used';
+			}
+		);
+
+		$this->setup_wc_get_product_for_variations(
+			array(
+				101 => $this->make_variation(
+					array(
+						'id'  => 101,
+						'sku' => 'w-new',
+					)
+				),
+				102 => $this->make_variation(
+					array(
+						'id'  => 102,
+						'sku' => 'w-used',
+					)
+				),
+			)
+		);
+
+		$attr = Mockery::mock();
+		$attr->shouldReceive( 'get_visible' )->andReturn( true );
+		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'w-parent',
+				'children'             => array( 101, 102 ),
+				'attributes'           => array( 'pa_condition' => $attr ),
+				'variation_attributes' => array( 'pa_condition' => array( 'new', 'used' ) ),
+			)
+		);
+		$parent->shouldReceive( 'get_attribute' )->with( 'pa_condition' )->andReturn( 'new, used' );
+
+		$result = $this->jsonld->enhance_product_data( $this->base_markup(), $parent );
+
+		$this->assertSame( 'ProductGroup', $result['@type'] );
+		$this->assertSame(
+			'https://schema.org/NewCondition',
+			$result['hasVariant'][0]['offers'][0]['itemCondition']
+		);
+		$this->assertSame(
+			'https://schema.org/UsedCondition',
+			$result['hasVariant'][1]['offers'][0]['itemCondition']
+		);
+	}
+
+	public function test_variation_left_on_any_condition_emits_nothing(): void {
+		// WooCommerce's default for a newly added variation is "Any" on
+		// every axis, which stores ''. Silence is correct — there is no
+		// parent value to inherit and guessing would be a claim the
+		// merchant never made — but it means the merchant can ship an
+		// unlabelled priced offer without noticing. Pinned so the
+		// behaviour is deliberate rather than incidental.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_term_by' )->justReturn( false );
+		Functions\when( 'wc_attribute_label' )->returnArg();
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+
+		$this->setup_wc_get_product_for_variations(
+			array(
+				101 => $this->make_variation(
+					array(
+						'id'  => 101,
+						'sku' => 'w-any',
+					)
+				),
+			)
+		);
+
+		$attr = Mockery::mock();
+		$attr->shouldReceive( 'get_visible' )->andReturn( true );
+		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'w-parent',
+				'children'             => array( 101 ),
+				'attributes'           => array( 'pa_condition' => $attr ),
+				'variation_attributes' => array( 'pa_condition' => array( 'new', 'used' ) ),
+			)
+		);
+		$parent->shouldReceive( 'get_attribute' )->with( 'pa_condition' )->andReturn( 'new, used' );
+
+		$result = $this->jsonld->enhance_product_data( $this->base_markup(), $parent );
+
+		$this->assertArrayNotHasKey( 'itemCondition', $result['hasVariant'][0]['offers'][0] );
 	}
 
 	public function test_business_days_emit_alongside_handling_time(): void {
