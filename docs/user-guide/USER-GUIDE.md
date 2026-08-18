@@ -629,6 +629,16 @@ Some merchants have a generally returnable catalog with specific final-sale item
 
 ![Product editor Inventory tab with AI Final sale checkbox](screenshots/08-product-final-sale.png)
 
+#### Adult content
+
+Google disapproves adult products that aren't labelled as such. The **AI: Adult content** checkbox in the product editor's Inventory tab adds that label.
+
+Tick it for individual adult products in an otherwise general store: nudity, sexually suggestive content, or products intended to enhance sexual activity. Variations follow the parent, so you only set it once.
+
+If your entire store is adult oriented, don't tick this on every product. Designate the whole store as adult in Google Merchant Center instead, under Settings then Business info.
+
+This is for adult content specifically. Alcohol, tobacco and other age-restricted goods are handled by their product category, not by this checkbox.
+
 ### Shipping: handling time
 
 AI agents often tell shoppers "Ships in 1–2 business days" when recommending your products. This section lets you specify your actual handling time.

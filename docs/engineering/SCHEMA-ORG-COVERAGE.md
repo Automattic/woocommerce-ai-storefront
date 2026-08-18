@@ -87,7 +87,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `funding` | — | — | — |
 | `gtin` | ✓ ([§deliberately-not-emitted](./JSON-LD-SCHEMA.md), as a "plugin doesn't enrich" note) | ✓ when WC's GTIN field is set | WC core |
 | `gtin8` / `gtin12` / `gtin13` / `gtin14` | — | — | — *(WC core emits a generic `gtin` only — see follow-up)* |
-| `hasAdultConsideration` | — | — | — |
+| `hasAdultConsideration` | ✓ §adult | ✓ when the product is flagged adult | Plugin (`add_adult_consideration()`, #644) — only `SexualContentConsideration` is reachable; the other nine enumeration members are ignored by Google. Also on every `hasVariant` entry. |
 | `hasCertification` | — | — | — |
 | `hasEnergyConsumptionDetails` | — | — | — |
 | `hasGS1DigitalLink` | — | — | — |
@@ -178,7 +178,8 @@ Each `hasVariant` entry is a standalone `Product` built by `build_variant_entry(
 | `eligibleDuration` | — | ✓ for WC Subscriptions products with a finite `get_length() > 0` | Plugin (#368) — emitted as `QuantitativeValue` with UN/CEFACT `unitCode` (DAY/WEE/MON/ANN); indefinite subscriptions omit the field |
 | `eligibleCustomerType` / `eligibleQuantity` / `eligibleRegion` / `eligibleTransactionVolume` | — | — | — |
 | `gtin` / `gtin8/12/13/14` / `mpn` | — | — | — *(emitted at Product level when set)* |
-| `hasAdultConsideration` / `hasGS1DigitalLink` / `hasMeasurement` | — | — | — |
+| `hasAdultConsideration` | ✓ §adult | ✓ when the product is flagged adult | Plugin (#644) — emitted on the Offer as well as the Product; Google documents it under merchant listings |
+| `hasGS1DigitalLink` / `hasMeasurement` | — | — | — |
 | `hasMerchantReturnPolicy` | ✓ §return | ✓ | Plugin |
 | `includesObject` / `ineligibleRegion` | — | — | — |
 | `inventoryLevel` | ✓ | ✓ when stock managed | Plugin |

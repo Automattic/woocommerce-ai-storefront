@@ -595,6 +595,23 @@ Schema.org `MerchantReturnPolicy` describing return rules. The block takes one o
   - `refundType` is **not** emitted: it is a Schema.org *recommended* (not required) field, and omitting it avoids Rich Results "missing field" noise without affecting validity. Do not add it back without revisiting that trade-off.
 - **Source**: `add_return_policy()` and `build_return_policy_block()` (the shared builder that resolves the page link and applies the precedence above).
 
+### `hasAdultConsideration`
+
+Schema.org `AdultOrientedEnumeration`, marking a product as adult-oriented. Google requires the label and disapproves an unmarked adult product, so this is one of the few structured-data omissions with a direct commercial cost.
+
+- **Emitted when** the product has the "AI: Adult content" checkbox enabled in its Inventory tab (`_wc_ai_storefront_adult_consideration` meta, strict `'yes'`). Unflagged products emit **no key at all** — not `false`, not an empty string. This is a legal claim about the catalogue, and silence is the correct default.
+- **Emitted on both the Product and the Offer.** Schema.org allows either; Google documents the property under merchant listings, which is the Offer-bearing context. Emitting both costs one line and removes any question about which node a consumer reads.
+- **Variable products**: the flag reaches the `ProductGroup` node *and* every `hasVariant` entry, on both the variant `Product` and its `offers[0]`. `maybe_convert_to_product_group()` drops the parent's `offers`, so the variant offers are the only merchant listings Google reads — a flag that stopped at the group node would label nothing that gets submitted.
+- **Variations resolve to the parent.** A variation carries no meta of its own. Per-variation control would let a merchant mark one size and leave another unmarked, which is incoherent and would get the unmarked one disapproved.
+
+**One value is reachable, deliberately.** `AdultOrientedEnumeration` has ten members; Google Search reads exactly one, `SexualContentConsideration`. The other nine are valid Schema.org that Google ignores, so the value is a private constant rather than a merchant choice, and `JsonLdTest::test_only_the_google_supported_consideration_is_reachable()` greps the source to keep it that way.
+
+**Alcohol, tobacco, weapons and other restricted goods are not covered by this.** `AlcoholConsideration` exists in the vocabulary, but Google's adult signal is not the mechanism for age-restricted goods — those are handled through the product category and Merchant Center policy, not this property. Emitting them here would look like compliance while achieving nothing.
+
+**Wholly adult stores should not use this.** Google offers an account-level adult designation in Merchant Center (Settings → Business info). Ticking a per-product checkbox across an entire catalogue is the wrong tool, and the checkbox help text says so.
+
+**Source**: `add_adult_consideration()`, invoked from `enhance_product_data()` after `add_return_policy()` and again from `build_variant_entry()` for the ProductGroup path. The reader is `WC_AI_Storefront_Product_Meta_Box::is_adult()`.
+
 ## Store homepage: OnlineBusiness schema
 
 A separate JSON-LD block emitted on the front page or shop page (`is_front_page() || is_shop()`) when the plugin is enabled.
