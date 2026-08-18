@@ -128,7 +128,7 @@ The version check runs in the rewrite path (not the activation hook) because Wor
 
 Records the attribute-set version last applied to this store.
 
-- **Type:** string, e.g. `'1'`
+- **Type:** string; currently `'2'` (`'1'` was the original six-attribute set)
 - **Autoload:** `auto` — no explicit `$autoload` argument passed to `update_option()`; WordPress's per-option heuristic autoloads a value this small
 - **Defined in:** `WC_AI_Storefront_Attribute_Seeder::SEEDED_OPTION` ([`includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php`](../../includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php))
 - **Written by:** `WC_AI_Storefront_Attribute_Seeder::seed()`, at the end of a run — including a run that creates nothing, but not when the `wc_ai_storefront_seed_attributes` filter (see Taxonomies and terms, below) blocks the run before it starts
@@ -138,6 +138,10 @@ Records the attribute-set version last applied to this store.
 This tracks `SEED_VERSION`, the version of the **attribute set**, not the plugin version. A release that does not change `get_definitions()` leaves this matching, and no store attempts seeding on upgrade.
 
 That distinction is the point. Seeding used to be keyed to the plugin version, so every release re-opened the question on every request until one of them answered it — and several concurrent requests could each decide to seed, which is how a duplicate attribute reached production (#628). Bump `SEED_VERSION` only when the attribute set genuinely changes.
+
+`SEED_VERSION` moved to `'2'` in #646, adding the `Condition` attribute. A store that already holds the original six gains only the new one: `create_attribute()` returns early when `taxonomy_exists()` or `wc_attribute_taxonomy_id_by_name()` resolves, which is the guard #630 added after #628. `AttributeSeederTest::test_reseed_creates_only_the_new_attribute()` asserts it.
+
+One trap for the next bump: **`SEED_VERSION` alone changes nothing.** `schedule_attribute_seeding()` is called only when the *plugin* version changes, so the two have to move together. That happens automatically when the change ships in a release, but bumping `SEED_VERSION` in isolation is a silent no-op that looks like a broken seeder.
 
 ### `wc_ai_storefront_products_feed_version`
 

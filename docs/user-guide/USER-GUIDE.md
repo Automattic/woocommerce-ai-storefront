@@ -472,6 +472,16 @@ Four rules worth knowing as you fill them in:
 
 **Use one value per attribute per product,** so it can be published as a single Color or Size.
 
+#### Condition, for resale and refurbished stock
+
+Google requires a condition on used and refurbished products and rejects listings that leave it out. New products don't need it.
+
+A **Condition** attribute is created for you, with the three values Google accepts: `new`, `refurbished`, `used`. It isn't applied to any product, so if you only sell new goods there is nothing to do.
+
+Set it on the products that need it, the same way you set Color or Size. Variations follow the parent, so listing the same item as new and used means setting Condition as a variation attribute and giving each variation its own value.
+
+Use one value per product. Google reads a single condition, so "new, used" publishes nothing rather than a guess. Your own wording publishes nothing too. "Refurb", "Open box" and "B-grade" are not values Google accepts, so stick to the three you're given.
+
 Age group values cover these ranges:
 
 | Value | Ages |

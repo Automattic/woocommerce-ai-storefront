@@ -98,7 +98,7 @@ Nested types in either block: `Offer`, `BuyAction`, `EntryPoint`, `QuantitativeV
 | `isAccessoryOrSparePartFor` / `isConsumableFor` | — | — | — |
 | `isRelatedTo` / `isSimilarTo` | ✓ §isRelatedTo-isSimilarTo | ✓ when product has cross-sells / upsells | Plugin (`add_related_products()`) — cross-sells → `isRelatedTo`, upsells → `isSimilarTo`, capped at 10 entries each, syndication-filtered |
 | `isVariantOf` | — | — | Not emitted — variants emit as standalone `Product` entries under the parent's `hasVariant`; no back-pointer is emitted |
-| `itemCondition` | — | — | — *(see "Recommended follow-ups")* |
+| `itemCondition` | — | — | Not emitted at Product level — Google documents `itemCondition` under "Offer details" and omits it from the Product structured-data page, so it is emitted on the Offer instead. See the Offer table below. |
 | `keywords` | — | — | — |
 | `logo` | — | — | — |
 | `manufacturer` | — | — | — |
@@ -184,7 +184,7 @@ Each `hasVariant` entry is a standalone `Product` built by `build_variant_entry(
 | `includesObject` / `ineligibleRegion` | — | — | — |
 | `inventoryLevel` | ✓ | ✓ when stock managed | Plugin |
 | `isFamilyFriendly` | — | — | — |
-| `itemCondition` | — | — | — |
+| `itemCondition` | ✓ §condition | ✓ at `offers[0]` when the Condition attribute holds a Google-accepted value | Plugin (`emit_attributes()` + `add_variant_condition()`, #646) — Offer-level only, per Google's "Offer details" placement; three of schema.org's four `OfferItemCondition` members are reachable, `DamagedCondition` excluded because Google ignores it. Also on every `hasVariant` offer. |
 | `itemOffered` | — | — | — |
 | `leaseLength` | — | — | — |
 | `mobileUrl` | — | — | — |
@@ -518,7 +518,7 @@ For now, conservatism wins: the broader `OnlineBusiness` type accurately covers 
 In rough priority order:
 
 1. ~~**`Organization.sameAs`** — array of merchant social-profile URLs (Twitter, Facebook, Instagram).~~ **Implemented in #445.** Auto-sourced from common providers (Jetpack Publicize connections, Yoast `wpseo_social`, RankMath social settings) by [`collect_same_as()`](../../includes/ai-storefront/class-wc-ai-storefront-jsonld.php), each provider independently guarded; URLs are sanitized, restricted to `http`/`https`, and de-duplicated. The `wc_ai_storefront_jsonld_store` filter remains the per-merchant override/augment seam.
-2. **`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.
+2. ~~**`Product.itemCondition`** — new vs refurbished. Useful for resale stores; merchant-config required.~~ **Implemented in #646**, on the **Offer** rather than the Product — Google documents the property under "Offer details" and never mentions it on the Product page. Driven by a seeded `pa_condition` attribute. See [JSON-LD-SCHEMA.md §condition](./JSON-LD-SCHEMA.md#offers0itemcondition).
 3. **`Product.gtin8` / `gtin12` / `gtin13` / `gtin14`** — more specific GTIN forms when WC's GTIN field has a value with the right length.
 4. **`Organization.telephone`** — currently suppressed by default. Worth a per-merchant opt-in toggle.
 5. ~~**`Product.audience`** — target demographic (`PeopleAudience` with `audienceType`). Merchant-config; useful for kids/adult/professional/etc. categorization.~~ **Implemented in #618**, via `suggestedGender` / `suggestedAge` rather than `audienceType` — Google's Apparel & Accessories requirements read those two specific sub-properties, not the generic `audienceType` this line originally proposed. See [JSON-LD-SCHEMA.md §audience](./JSON-LD-SCHEMA.md#audience-gender-and-age-group--peopleaudience).

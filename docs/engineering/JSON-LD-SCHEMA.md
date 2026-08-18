@@ -613,6 +613,23 @@ Schema.org `AdultOrientedEnumeration`, marking a product as adult-oriented. Goog
 
 **Source**: `add_adult_consideration()`, invoked from `enhance_product_data()` immediately above the syndication gate, and again from `build_variant_entry()` for the ProductGroup path. The reader is `WC_AI_Storefront_Product_Meta_Box::is_adult()`.
 
+### `offers[0].itemCondition`
+
+Schema.org `OfferItemCondition`, stating whether the item is new, refurbished or used. Google's `[condition]` attribute is **required for used and refurbished products** and optional for new, so omitting it on a resale catalogue means an incomplete listing for every affected product.
+
+- **Emitted when** the product carries a visible `pa_condition` (or bare `condition`) attribute whose value is one of Google's three. `pa_condition` outranks the bare form, matching the `pa_gender` precedence in [`AUDIENCE_ATTRIBUTE_MAP`](#audience-gender-and-age-group--peopleaudience) — the `pa_` one is seeded by this plugin with accepted values, so it is authoritative by construction, while a bare attribute is the compatibility fallback for a merchant's own.
+- **Offer only, never the Product.** Google documents `itemCondition` under **"Offer details"**, its examples nest it inside `offers`, and its general Product structured-data page never mentions the property. This is deliberately unlike [`hasAdultConsideration`](#hasadultconsideration), which Google documents under **"Product information"** and which this plugin therefore emits on the Product. Following each property's documented placement is the consistent choice; schema.org's `domainIncludes` permits either node for both, so it cannot break the tie.
+- **Every `hasVariant` offer carries its own copy.** `maybe_convert_to_product_group()` unsets the parent's `offers`, so `add_variant_condition()` re-applies the value per variant from inside the variant loop — which is also why it must run before that `unset()`.
+- **A variation can override its parent.** A resale store listing the same item as New and Used variations sets `pa_condition` as a variation attribute; each variation's own value wins, and the parent's applies to any variation that does not set one.
+
+**Three of four enumeration members are reachable.** `DamagedCondition` exists in schema.org and Google does not accept it. `JsonLdConditionTest::test_only_googles_three_conditions_are_reachable()` scans the emitter's string literals with `token_get_all()` to keep it that way.
+
+**Unrecognised and multi-value input emits nothing.** Google says *"Don't specify more than one value"*, and WooCommerce joins multiple terms with a comma, so `new, used` has no honest single claim to publish. Seeding also skips a merchant's pre-existing `pa_condition`, so values like `B-grade` occur in the wild. In both cases the value still reaches `additionalProperty` rather than vanishing — only the typed claim is withheld.
+
+**An explicit `new` is published; absence is silent.** Google treats new as its default, but the two are different statements. Emitting `NewCondition` for a product whose attribute is absent would be a claim the merchant never made, on every offer in every store. Discarding a `new` the merchant deliberately set loses real information in a resale catalogue, where an item assessed as new differs from one nobody assessed.
+
+**Source**: `emit_attributes()` resolves the winner and writes `offers[0]`; `add_variant_condition()` handles the ProductGroup path. Values come from `CONDITION_VALUE_MAP`, slugs from `CONDITION_ATTRIBUTE_MAP`.
+
 ## Store homepage: OnlineBusiness schema
 
 A separate JSON-LD block emitted on the front page or shop page (`is_front_page() || is_shop()`) when the plugin is enabled.

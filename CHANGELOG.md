@@ -1,6 +1,13 @@
 ## [Unreleased]
 
 ### Added
+- **You can now record whether a product is new, refurbished or used (#646).**
+  - Google requires a condition on used and refurbished products and rejects listings without one.
+  - A **Condition** attribute is created for you with the three values Google accepts. It isn't applied to any product, so set it on the ones that need it.
+  - Variations can carry their own condition, so you can list the same item as new and used.
+  - Selling only new products? Nothing to do.
+
+### Added
 - **You can now mark a product as adult content (#644).**
   - Google requires adult-oriented products to be labelled and will disapprove them if they are not. There was previously no way to say so.
   - Tick **Adult content** on the product's Inventory tab. Variations follow the parent.
