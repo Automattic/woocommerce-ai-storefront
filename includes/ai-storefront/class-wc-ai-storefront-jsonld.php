@@ -404,6 +404,14 @@ class WC_AI_Storefront_JsonLd {
 			return $markup;
 		}
 
+		// Above the syndication gate deliberately. This is a compliance
+		// label, not a discovery enhancement. A product the merchant
+		// scoped OUT of syndication is still publicly purchasable, and
+		// we have already replaced WC's serializer — so its Product node
+		// still ships with a full offer. Below this gate, that node goes
+		// out unlabelled, which is exactly what Google disapproves.
+		$this->add_adult_consideration( $markup, $product );
+
 		if ( ! WC_AI_Storefront::is_product_syndicated( $product, $settings ) ) {
 			return $markup;
 		}
@@ -441,7 +449,6 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_shipping_details( $markup, $country, $product );
 		$this->add_handling_time( $markup, $settings );
 		$this->add_return_policy( $markup, $product, $settings, $country );
-		$this->add_adult_consideration( $markup, $product );
 
 		$this->add_related_products( $markup, $product, $settings );
 
@@ -2944,9 +2951,20 @@ class WC_AI_Storefront_JsonLd {
 			return;
 		}
 
+		// Defence in depth. Every production caller already passes a
+		// top-level product: the filter fires with the queried product,
+		// and build_variant_entry() passes the parent explicitly. So this
+		// resolves to get_id() in practice and the parent branch guards
+		// against a future caller, not a live path.
+		//
 		// wp_get_post_parent_id() rather than WC_Product::get_parent_id()
-		// to avoid a PHPStan stubs gap in the pinned woocommerce-stubs
-		// version — same reason add_return_policy() uses it.
+		// because it is a plain function the test suite stubs globally.
+		// Switching to the method breaks 228 tests whose product mocks
+		// have no such expectation. (An earlier comment here blamed a
+		// PHPStan stubs gap; that was wrong — there is no woocommerce-stubs
+		// package in this project and tests/php/stubs.php declares
+		// get_parent_id(): int. add_return_policy() carries the same
+		// false claim and should be corrected separately.)
 		$parent_id  = wp_get_post_parent_id( $product->get_id() );
 		$product_id = $parent_id > 0 ? $parent_id : $product->get_id();
 

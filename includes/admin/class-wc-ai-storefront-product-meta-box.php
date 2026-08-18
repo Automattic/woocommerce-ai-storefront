@@ -1,10 +1,14 @@
 <?php
 /**
- * Per-product final-sale meta box.
+ * Per-product override meta box.
  *
- * Adds a single checkbox to the WC product editor's Inventory tab that
- * lets merchants flag individual products as "no returns accepted",
- * overriding the store-wide return policy in JSON-LD.
+ * Adds two checkboxes to the WC product editor's Inventory tab. "Final
+ * sale" flags a product as "no returns accepted", overriding the
+ * store-wide return policy in JSON-LD. "Adult content" flags a product
+ * as adult-oriented, which Google requires before it will approve one.
+ *
+ * The two are unrelated in meaning and share only a save handler, so
+ * they also share one nonce check — one submit, one auth gate.
  *
  * Design (Pattern A — single boolean override):
  *
@@ -46,7 +50,8 @@
 defined( 'ABSPATH' ) || exit;
 
 /**
- * Renders + persists the per-product "Final sale (no returns)" checkbox.
+ * Renders + persists the per-product "Final sale" and "Adult content"
+ * checkboxes.
  */
 class WC_AI_Storefront_Product_Meta_Box {
 
@@ -122,21 +127,25 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 * individually, etc.) — important for visual consistency in the
 	 * editor where mixing styling looks like a UI bug.
 	 *
-	 * The label is policy-first ("Final sale"), not channel-first
-	 * ("AI: Final sale"). The flag captures merchant intent — this
-	 * specific product is final sale and cannot be returned, regardless
-	 * of the store's standard return policy.
+	 * Labels are policy-first ("Final sale", "Adult content"), not
+	 * channel-first ("AI: Final sale"). Both capture merchant intent
+	 * about the product itself — this one cannot be returned, this one
+	 * is adult-oriented — independent of which consumer reads it. Docs
+	 * that name these controls must use the same wording; a guide
+	 * telling a merchant to look for an "AI:" prefix sends them hunting
+	 * for a control that is not on screen.
 	 *
-	 * Plugin scope today: the flag is consumed only by the structured-
-	 * data emitter (META_KEY is read in
-	 * `WC_AI_Storefront_JsonLd::build_return_policy_block()`), so AI
-	 * agents and search crawlers see "no returns" while the customer-
-	 * facing product page is unchanged. Customer-visible notices
-	 * (badges, description text, theme banners) are the merchant's
-	 * responsibility. If the plugin ever surfaces a frontend notice
-	 * for final-sale products, this same flag would be the right
-	 * input — the field captures intent that the plugin could route
-	 * to multiple consumers, even if today it routes to just one.
+	 * Plugin scope today: both flags are consumed only by the
+	 * structured-data emitter — META_KEY in
+	 * `WC_AI_Storefront_JsonLd::build_return_policy_block()`,
+	 * ADULT_META_KEY in `WC_AI_Storefront_JsonLd::add_adult_consideration()`
+	 * via {@see self::is_adult()}. AI agents and search crawlers see the
+	 * signal while the customer-facing product page is unchanged.
+	 * Customer-visible treatment (badges, description text, theme
+	 * banners, age gates) is the merchant's responsibility. If the
+	 * plugin ever surfaces a frontend notice, these same flags would be
+	 * the right input — the fields capture intent the plugin could route
+	 * to multiple consumers, even if today each routes to just one.
 	 */
 	public function render_checkboxes(): void {
 		// Bail early if WC's helper isn't loaded — defensive against
@@ -174,7 +183,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 	}
 
 	/**
-	 * Persist the checkbox state on product save.
+	 * Persist both checkbox states on product save.
 	 *
 	 * WC's product save handler calls this with the product post ID
 	 * after running its own nonce + capability checks. We sanitize the
@@ -191,12 +200,17 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 *     would be true) is correctly rejected by the value check
 	 *     and written as `'no'` rather than smuggled in as `'yes'`.
 	 *
+	 * Both flags get the same treatment, including the strict `'yes'`
+	 * check — a forged `value="no"` on either one must not be smuggled
+	 * in as a `'yes'`, and a false adult designation on a clean product
+	 * is worse than the disapproval the flag exists to prevent.
+	 *
 	 * `update_post_meta` returns false on DB failure OR when the
 	 * value is unchanged. We disambiguate by reading the current
 	 * value first: a `false` return when the value DID change is a
 	 * real write failure and gets logged so the merchant has a
 	 * trail (the WC admin UI renders "Update successful" no matter
-	 * what we return here).
+	 * what we return here). Both writes are logged this way.
 	 *
 	 * @param int $product_id Product post ID being saved.
 	 */
@@ -228,8 +242,10 @@ class WC_AI_Storefront_Product_Meta_Box {
 		// above rather than repeating it — one save handler, one auth
 		// gate, which is why both checkboxes live in one meta box.
 		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified above.
-		$posted_adult = isset( $_POST[ self::ADULT_META_KEY ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::ADULT_META_KEY ] ) ) : '';
-		update_post_meta( $product_id, self::ADULT_META_KEY, 'yes' === $posted_adult ? 'yes' : 'no' );
+		$posted_adult   = isset( $_POST[ self::ADULT_META_KEY ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::ADULT_META_KEY ] ) ) : '';
+		$adult_value    = 'yes' === $posted_adult ? 'yes' : 'no';
+		$adult_existing = get_post_meta( $product_id, self::ADULT_META_KEY, true );
+		$adult_result   = update_post_meta( $product_id, self::ADULT_META_KEY, $adult_value );
 
 		// `update_post_meta` returns truthy on success and `false`
 		// either when the write failed OR when the value was
@@ -243,6 +259,21 @@ class WC_AI_Storefront_Product_Meta_Box {
 				$product_id,
 				self::META_KEY,
 				$value
+			);
+		}
+
+		// Same disambiguation for the adult flag. The stakes are higher
+		// here: a lost final-sale write publishes the wrong returns term,
+		// a lost adult write publishes an unlabelled adult product and
+		// Google disapproves it. The checkbox also re-renders unticked
+		// after a failed save, so the merchant's only signal that their
+		// tick did not stick is the box they already believe they set.
+		if ( false === $adult_result && $adult_existing !== $adult_value ) {
+			WC_AI_Storefront_Logger::debug(
+				'failed to persist adult-content flag — product=%d key=%s value=%s',
+				$product_id,
+				self::ADULT_META_KEY,
+				$adult_value
 			);
 		}
 	}
