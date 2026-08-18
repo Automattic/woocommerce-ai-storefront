@@ -317,4 +317,88 @@ class ProductMetaBoxTest extends \PHPUnit\Framework\TestCase {
 			'META_KEY must be underscore-prefixed (WP hidden-meta convention).'
 		);
 	}
+
+	// ------------------------------------------------------------------
+	// Adult-content flag (#644)
+	// ------------------------------------------------------------------
+
+	public function test_is_adult_returns_true_when_meta_is_yes(): void {
+		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+
+		$this->assertTrue( WC_AI_Storefront_Product_Meta_Box::is_adult( 100 ) );
+	}
+
+	public function test_is_adult_strict_match_rejects_non_yes_values(): void {
+		// Lenient matching here would publish an adult designation on a
+		// product that is not one, which is worse than the disapproval
+		// the flag exists to prevent.
+		foreach ( array( '', 'no', '1', 'true', 'YES', 'gibberish' ) as $stored ) {
+			Functions\when( 'get_post_meta' )->justReturn( $stored );
+			$this->assertFalse(
+				WC_AI_Storefront_Product_Meta_Box::is_adult( 100 ),
+				var_export( $stored, true ) . ' must not read as flagged.'
+			);
+		}
+	}
+
+	public function test_is_adult_returns_false_for_invalid_product_id(): void {
+		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+
+		$this->assertFalse( WC_AI_Storefront_Product_Meta_Box::is_adult( 0 ) );
+		$this->assertFalse( WC_AI_Storefront_Product_Meta_Box::is_adult( -1 ) );
+	}
+
+	public function test_save_persists_adult_yes_when_checkbox_present(): void {
+		$_POST[ WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY ] = 'yes';
+
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 100, WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY, 'yes' );
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 100, WC_AI_Storefront_Product_Meta_Box::META_KEY, 'no' );
+
+		$this->meta_box->save_meta( 100 );
+	}
+
+	public function test_save_persists_adult_no_when_checkbox_absent(): void {
+		// Unchecked boxes send no key at all, so absence must clear a
+		// previously-set flag rather than leave it standing.
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 200, WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY, 'no' );
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 200, WC_AI_Storefront_Product_Meta_Box::META_KEY, 'no' );
+
+		$this->meta_box->save_meta( 200 );
+	}
+
+	public function test_the_two_flags_are_independent(): void {
+		// One meta box, one save handler, two unrelated claims. Setting
+		// the adult flag must not disturb the final-sale one.
+		$_POST[ WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY ] = 'yes';
+
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 300, WC_AI_Storefront_Product_Meta_Box::META_KEY, 'no' );
+		Functions\expect( 'update_post_meta' )
+			->once()
+			->with( 300, WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY, 'yes' );
+
+		$this->meta_box->save_meta( 300 );
+	}
+
+	public function test_adult_flag_is_not_saved_without_a_valid_nonce(): void {
+		// woocommerce_process_product_meta is a public action any plugin
+		// or WP-CLI call can fire directly, bypassing WC's auth gate. The
+		// second flag shares the one nonce check, so it must share the
+		// abort too (FIND-S03).
+		$_POST[ WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY ] = 'yes';
+		Functions\when( 'wp_verify_nonce' )->justReturn( false );
+
+		Functions\expect( 'update_post_meta' )->never();
+
+		$this->meta_box->save_meta( 100 );
+	}
 }

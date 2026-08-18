@@ -67,6 +67,20 @@ class WC_AI_Storefront_Product_Meta_Box {
 	const META_KEY = '_wc_ai_storefront_final_sale';
 
 	/**
+	 * Per-product adult-content flag.
+	 *
+	 * Separate from META_KEY because the two make unrelated claims: one
+	 * is a returns term, the other a content designation. A merchant can
+	 * set either, both, or neither.
+	 *
+	 * Value semantics match META_KEY exactly:
+	 *   'yes' → JSON-LD emits hasAdultConsideration.
+	 *   'no'  → nothing emitted (the default for new products).
+	 *   ''    → never set; treated identically to 'no' by the reader.
+	 */
+	const ADULT_META_KEY = '_wc_ai_storefront_adult_consideration';
+
+	/**
 	 * Initialize hooks.
 	 *
 	 * Called from `WC_AI_Storefront::init_components()` only when in
@@ -81,7 +95,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 		// keeps us out of the way of WC's own ordering (1-20).
 		add_action(
 			'woocommerce_product_options_inventory_product_data',
-			array( $this, 'render_checkbox' ),
+			array( $this, 'render_checkboxes' ),
 			30
 		);
 
@@ -100,7 +114,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 	}
 
 	/**
-	 * Render the "Final sale" checkbox inside the Inventory tab.
+	 * Render the per-product override checkboxes inside the Inventory tab.
 	 *
 	 * Uses WC core's `woocommerce_wp_checkbox()` helper so the visual
 	 * treatment, label width, and description-tooltip behavior match
@@ -124,7 +138,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 	 * input — the field captures intent that the plugin could route
 	 * to multiple consumers, even if today it routes to just one.
 	 */
-	public function render_checkbox(): void {
+	public function render_checkboxes(): void {
 		// Bail early if WC's helper isn't loaded — defensive against
 		// edge cases where this class somehow gets instantiated outside
 		// the WC product-edit context (custom post-type plugins doing
@@ -140,6 +154,18 @@ class WC_AI_Storefront_Product_Meta_Box {
 				'label'       => __( 'Final sale', 'woocommerce-ai-storefront' ),
 				'description' => __(
 					'Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged — add a notice in your theme or product description if you want shoppers to see it before purchase.',
+					'woocommerce-ai-storefront'
+				),
+				'desc_tip'    => true,
+			)
+		);
+
+		woocommerce_wp_checkbox(
+			array(
+				'id'          => self::ADULT_META_KEY,
+				'label'       => __( 'Adult content', 'woocommerce-ai-storefront' ),
+				'description' => __(
+					'Use this for individual adult products in an otherwise general store: nudity, sexually suggestive content, or products intended to enhance sexual activity. Google requires the label and will disapprove the product without it. If your entire store is adult oriented, do not tick this on every product. Designate the whole store as adult in Google Merchant Center instead, under Settings then Business info.',
 					'woocommerce-ai-storefront'
 				),
 				'desc_tip'    => true,
@@ -198,6 +224,13 @@ class WC_AI_Storefront_Product_Meta_Box {
 		$existing = get_post_meta( $product_id, self::META_KEY, true );
 		$result   = update_post_meta( $product_id, self::META_KEY, $value );
 
+		// Second flag, same submit. Deliberately shares the nonce check
+		// above rather than repeating it — one save handler, one auth
+		// gate, which is why both checkboxes live in one meta box.
+		// phpcs:ignore WordPress.Security.NonceVerification.Missing -- Nonce verified above.
+		$posted_adult = isset( $_POST[ self::ADULT_META_KEY ] ) ? sanitize_text_field( wp_unslash( $_POST[ self::ADULT_META_KEY ] ) ) : '';
+		update_post_meta( $product_id, self::ADULT_META_KEY, 'yes' === $posted_adult ? 'yes' : 'no' );
+
 		// `update_post_meta` returns truthy on success and `false`
 		// either when the write failed OR when the value was
 		// unchanged. Disambiguate using the pre-read: if the value
@@ -212,6 +245,27 @@ class WC_AI_Storefront_Product_Meta_Box {
 				$value
 			);
 		}
+	}
+
+	/**
+	 * Whether this product is flagged as adult-oriented.
+	 *
+	 * Strict `'yes'` comparison for the same reason as is_final_sale():
+	 * anything else is "not flagged". Getting this wrong in the lenient
+	 * direction would publish an adult designation on a product that is
+	 * not one, which is worse than the disapproval it exists to prevent.
+	 *
+	 * @param int $product_id Product ID. Variations resolve to their
+	 *                        parent at the call site, matching how the
+	 *                        return-policy override does it.
+	 * @return bool
+	 */
+	public static function is_adult( int $product_id ): bool {
+		if ( $product_id <= 0 ) {
+			return false;
+		}
+
+		return 'yes' === get_post_meta( $product_id, self::ADULT_META_KEY, true );
 	}
 
 	/**
