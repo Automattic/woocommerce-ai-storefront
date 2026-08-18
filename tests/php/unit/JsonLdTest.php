@@ -4899,6 +4899,57 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://schema.org/SexualContentConsideration', $out['hasAdultConsideration'] );
 	}
 
+	public function test_flagged_variable_product_marks_every_variant(): void {
+		// A ProductGroup drops the parent offers and rebuilds each variant
+		// as a standalone Product with its own offers. Google reads those
+		// variant offers as the merchant listings, so a flag that only
+		// reaches the group node labels nothing that gets submitted.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+		// Pinned, not inherited: Brain Monkey defines the function when any
+		// test mocks it, so the production function_exists() guard stops
+		// short-circuiting once an earlier test in the process has run.
+		Functions\when( 'get_term_by' )->justReturn( false );
+
+		$variation = $this->make_variation(
+			array(
+				'id'  => 101,
+				'sku' => 'tee-w',
+			)
+		);
+		$this->setup_wc_get_product_for_variations( array( 101 => $variation ) );
+
+		$parent = $this->make_product(
+			array(
+				'id'                   => 100,
+				'sku'                  => 'tee-parent',
+				'children'             => array( 101 ),
+				'variation_attributes' => array(
+					'pa_color' => array( 'navy', 'white' ),
+				),
+			)
+		);
+
+		$result = $this->jsonld->enhance_product_data( $this->base_markup(), $parent );
+
+		$this->assertSame( 'ProductGroup', $result['@type'] );
+		$this->assertSame( 'https://schema.org/SexualContentConsideration', $result['hasAdultConsideration'] );
+
+		foreach ( $result['hasVariant'] as $i => $variant ) {
+			$this->assertSame(
+				'https://schema.org/SexualContentConsideration',
+				$variant['hasAdultConsideration'],
+				"hasVariant[$i] Product node is unlabelled"
+			);
+			$this->assertSame(
+				'https://schema.org/SexualContentConsideration',
+				$variant['offers'][0]['hasAdultConsideration'],
+				"hasVariant[$i] Offer is unlabelled — this is the node Google submits"
+			);
+		}
+	}
+
 	public function test_only_the_google_supported_consideration_is_reachable(): void {
 		// AdultOrientedEnumeration has ten members and Google Search reads
 		// exactly one. Pin it so nobody "completes" the set later and starts

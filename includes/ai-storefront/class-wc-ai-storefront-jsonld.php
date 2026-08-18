@@ -1940,6 +1940,12 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_handling_time( $entry, $settings );
 		$this->add_return_policy( $entry, $parent_product, $settings, $country );
 
+		// Pass the parent: the flag lives on the parent and a variation
+		// has no meta of its own. maybe_convert_to_product_group() drops
+		// the parent's offers, so without this the labelled node is the
+		// only one Google does not read as a merchant listing.
+		$this->add_adult_consideration( $entry, $parent_product );
+
 		// BuyAction + checkoutPageURLTemplate both use the VARIATION ID
 		// (not the parent product ID) so the URL drops the buyer on
 		// checkout with the specific SKU.
