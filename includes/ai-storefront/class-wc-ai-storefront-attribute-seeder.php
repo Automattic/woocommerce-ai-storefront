@@ -57,9 +57,17 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * available anywhere in the fleet to serialise them. Treat a bump as
 	 * a deliberate, occasional act, not a routine one.
 	 *
+	 * Bumped to '2' in #646, adding Condition. Safe because
+	 * create_attribute() returns early when taxonomy_exists() or
+	 * wc_attribute_taxonomy_id_by_name() already resolves, so a re-seed
+	 * skips the six existing attributes and creates only the new one —
+	 * the guard #630 added after the duplicate-Gender incident in #628.
+	 * AttributeSeederTest::test_reseed_creates_only_the_new_attribute()
+	 * asserts exactly that; verify it still holds before bumping again.
+	 *
 	 * @var string
 	 */
-	const SEED_VERSION = '1';
+	const SEED_VERSION = '2';
 
 	/**
 	 * Option recording the SEED_VERSION last successfully applied.
@@ -117,6 +125,15 @@ class WC_AI_Storefront_Attribute_Seeder {
 			'age_group' => array(
 				'label' => __( 'Age group', 'woocommerce-ai-storefront' ),
 				'terms' => array( 'newborn', 'infant', 'toddler', 'kids', 'adult' ),
+			),
+			// Closed list. Google's complete accepted set — and complete
+			// is the operative word. schema.org's OfferItemCondition also
+			// has DamagedCondition, which Google does not accept; a
+			// merchant who picked it would believe they had declared a
+			// condition and would have declared nothing.
+			'condition' => array(
+				'label' => __( 'Condition', 'woocommerce-ai-storefront' ),
+				'terms' => array( 'new', 'refurbished', 'used' ),
 			),
 			// Open vocabulary. Google's "standard names" plus obvious gaps.
 			'color'     => array(

@@ -25,11 +25,11 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		parent::tearDown();
 	}
 
-	public function test_definitions_cover_all_six_attributes(): void {
+	public function test_definitions_cover_all_seven_attributes(): void {
 		$defs = WC_AI_Storefront_Attribute_Seeder::get_definitions();
 
 		$this->assertSame(
-			array( 'gender', 'age_group', 'color', 'size', 'material', 'pattern' ),
+			array( 'gender', 'age_group', 'condition', 'color', 'size', 'material', 'pattern' ),
 			array_keys( $defs ),
 			'Definition order is the creation order; keep it stable.'
 		);
@@ -48,6 +48,32 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 			array( 'newborn', 'infant', 'toddler', 'kids', 'adult' ),
 			$defs['age_group']['terms']
 		);
+	}
+
+	public function test_condition_is_seeded_with_googles_three_accepted_values(): void {
+		$defs = WC_AI_Storefront_Attribute_Seeder::get_definitions();
+
+		$this->assertArrayHasKey( 'condition', $defs );
+		$this->assertSame(
+			array( 'new', 'refurbished', 'used' ),
+			$defs['condition']['terms']
+		);
+	}
+
+	public function test_condition_omits_the_schema_org_value_google_rejects(): void {
+		// OfferItemCondition has four members; Google accepts three.
+		// DamagedCondition is valid schema.org that Google ignores, so a
+		// merchant who picked it would believe they had declared a
+		// condition and would have declared nothing.
+		$terms = WC_AI_Storefront_Attribute_Seeder::get_definitions()['condition']['terms'];
+
+		$this->assertNotContains( 'damaged', $terms );
+	}
+
+	public function test_seed_version_advanced_past_the_original_set(): void {
+		// The attribute set changed, so the version keyed to it must move
+		// or no existing store ever creates pa_condition.
+		$this->assertNotSame( '1', WC_AI_Storefront_Attribute_Seeder::SEED_VERSION );
 	}
 
 	public function test_size_terms_use_abbreviations_not_words(): void {
@@ -298,32 +324,50 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
-	public function test_seed_creates_all_six_on_a_fresh_store(): void {
+	public function test_seed_creates_all_seven_on_a_fresh_store(): void {
 		$created = array();
 		$this->stub_creation_environment( array(), $created );
 		Functions\when( 'apply_filters' )->justReturn( true );
 
 		$count = WC_AI_Storefront_Attribute_Seeder::seed();
 
-		$this->assertSame( 6, $count );
+		$this->assertSame( 7, $count );
 		$this->assertSame(
-			array( 'gender', 'age_group', 'color', 'size', 'material', 'pattern' ),
+			array( 'gender', 'age_group', 'condition', 'color', 'size', 'material', 'pattern' ),
 			$created
 		);
 	}
 
+	public function test_reseed_creates_only_the_new_attribute(): void {
+		// The whole safety argument for bumping SEED_VERSION: a store that
+		// seeded version 1 must gain Condition and nothing else. Asserted
+		// rather than assumed, because a regression here re-runs the
+		// duplicate-attribute failure from #628.
+		$created = array();
+		$this->stub_creation_environment(
+			array( 'pa_gender', 'pa_age_group', 'pa_color', 'pa_size', 'pa_material', 'pa_pattern' ),
+			$created
+		);
+		Functions\when( 'apply_filters' )->justReturn( true );
+
+		$count = WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertSame( 1, $count );
+		$this->assertSame( array( 'condition' ), $created );
+	}
+
 	public function test_seed_leaves_existing_attributes_untouched_per_attribute(): void {
 		$created = array();
-		// Merchant already has Color and Size; the other four are absent.
+		// Merchant already has Color and Size; the other five are absent.
 		$this->stub_creation_environment( array( 'pa_color', 'pa_size' ), $created );
 		Functions\when( 'apply_filters' )->justReturn( true );
 
 		$count = WC_AI_Storefront_Attribute_Seeder::seed();
 
 		// Per-attribute decision, not all-or-nothing.
-		$this->assertSame( 4, $count );
+		$this->assertSame( 5, $count );
 		$this->assertSame(
-			array( 'gender', 'age_group', 'material', 'pattern' ),
+			array( 'gender', 'age_group', 'condition', 'material', 'pattern' ),
 			$created
 		);
 		$this->assertNotContains( 'color', $created );
@@ -334,7 +378,15 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		$created  = array();
 		$recorded = array();
 		$this->stub_creation_environment(
-			array( 'pa_gender', 'pa_age_group', 'pa_color', 'pa_size', 'pa_material', 'pa_pattern' ),
+			array(
+				'pa_gender',
+				'pa_age_group',
+				'pa_condition',
+				'pa_color',
+				'pa_size',
+				'pa_material',
+				'pa_pattern',
+			),
 			$created
 		);
 		Functions\when( 'apply_filters' )->justReturn( true );
