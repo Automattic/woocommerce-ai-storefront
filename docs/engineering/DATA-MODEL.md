@@ -390,11 +390,23 @@ Per-product override for the store-wide return policy. When `'yes'`, the product
 
 - **Type:** string (`'yes'` or empty)
 - **Defined in:** `WC_AI_Storefront_Product_Meta_Box::META_KEY`
-- **Written by:** the `AI: Final sale` checkbox in the product editor's Inventory tab
+- **Written by:** the `Final sale` checkbox in the product editor's Inventory tab
 - **Read by:** `WC_AI_Storefront_JsonLd::build_return_policy_block()`
 - **Uninstall:** NOT deleted (per-product editorial data — same rationale as order meta)
 
 The underscore prefix marks the key as protected (not editable from the default Custom Fields meta box). This matches WooCommerce's convention for keys we control programmatically.
+
+### `_wc_ai_storefront_adult_consideration`
+
+Marks a product as adult-oriented. When `'yes'`, the product's JSON-LD emits `hasAdultConsideration` on both the Product and the Offer. Google requires adult products to be labelled and disapproves them otherwise.
+
+- **Type:** string (`'yes'` or `'no'`; absent on products never saved since the feature shipped, which reads the same as `'no'`)
+- **Defined in:** `WC_AI_Storefront_Product_Meta_Box::ADULT_META_KEY`
+- **Written by:** the `Adult content` checkbox in the product editor's Inventory tab
+- **Read by:** `WC_AI_Storefront_Product_Meta_Box::is_adult()`, called from `WC_AI_Storefront_JsonLd::add_adult_consideration()`
+- **Uninstall:** NOT deleted (same rationale as the final-sale flag)
+
+Read from the **parent** for variations — a variation carries no flag of its own, and per-variation control would let one size go unmarked and get disapproved.
 
 ---
 
