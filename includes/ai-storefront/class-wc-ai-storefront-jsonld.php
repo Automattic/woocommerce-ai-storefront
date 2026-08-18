@@ -248,6 +248,50 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
+	 * Attribute slugs that supply the Offer's `itemCondition`.
+	 *
+	 * Same `pa_`-outranks-bare precedence as {@see AUDIENCE_ATTRIBUTE_MAP}:
+	 * `pa_condition` is the attribute this plugin seeds with Google's
+	 * accepted values, so it is authoritative by construction, while a
+	 * bare `condition` is the compatibility fallback for a merchant's own
+	 * pre-existing custom attribute.
+	 *
+	 * @var array<string, array{priority: int}>
+	 */
+	private const CONDITION_ATTRIBUTE_MAP = array(
+		'pa_condition' => array( 'priority' => 0 ),
+		'condition'    => array( 'priority' => 1 ),
+	);
+
+	/**
+	 * Attribute value to `OfferItemCondition` URL.
+	 *
+	 * Google documents exactly three accepted values and says "Don't
+	 * specify more than one value". schema.org's enumeration also has
+	 * DamagedCondition, which Google ignores — deliberately absent, since
+	 * a merchant who picked it would believe they had declared a condition
+	 * and would have declared nothing.
+	 *
+	 * Full URLs rather than the short names Google also accepts, matching
+	 * how `hasAdultConsideration` is emitted.
+	 *
+	 * Emitted on the Offer, NOT the Product. Google documents
+	 * `itemCondition` under "Offer details" and never mentions it on the
+	 * Product structured-data page — deliberately unlike
+	 * `hasAdultConsideration`, which Google documents under "Product
+	 * information". Following each property's own placement is the
+	 * consistent choice; schema.org permits either node for both and so
+	 * cannot break the tie.
+	 *
+	 * @var array<string, string>
+	 */
+	private const CONDITION_VALUE_MAP = array(
+		'new'         => 'https://schema.org/NewCondition',
+		'refurbished' => 'https://schema.org/RefurbishedCondition',
+		'used'        => 'https://schema.org/UsedCondition',
+	);
+
+	/**
 	 * Hard cap on per-property entries emitted under
 	 * {@see add_related_products()} — `isRelatedTo` and `isSimilarTo`
 	 * are each capped independently. A merchant who has 100 cross-sell
@@ -1094,6 +1138,9 @@ class WC_AI_Storefront_JsonLd {
 		// let one attribute's pending entry overwrite the other's — each
 		// is judged for additionalProperty on its own, after the loop.
 		$audience_pending = array();
+		// Condition resolves the same way but lands on the Offer, so it
+		// is collected separately from the audience fields.
+		$condition_candidates = array();
 		foreach ( $attributes as $attribute ) {
 			if ( ! $attribute->get_visible() ) {
 				continue;
@@ -1120,6 +1167,25 @@ class WC_AI_Storefront_JsonLd {
 					'slug'     => $slug,
 					'value'    => $value,
 					'priority' => $priority,
+				);
+
+				$audience_pending[ $slug ] = array(
+					'@type' => 'PropertyValue',
+					'name'  => wc_attribute_label( $attribute->get_name(), $product ),
+					'value' => $value,
+				);
+				continue;
+			}
+
+			// Condition routes to the Offer's itemCondition, so it is
+			// neither a CORE_ATTRIBUTE_MAP entry (Text on Product) nor an
+			// audience sub-property. Reusing $audience_pending is what
+			// gives it the same additionalProperty fallback for free.
+			if ( isset( self::CONDITION_ATTRIBUTE_MAP[ $slug ] ) ) {
+				$condition_candidates[] = array(
+					'slug'     => $slug,
+					'value'    => $value,
+					'priority' => self::CONDITION_ATTRIBUTE_MAP[ $slug ]['priority'],
 				);
 
 				$audience_pending[ $slug ] = array(
@@ -1202,6 +1268,37 @@ class WC_AI_Storefront_JsonLd {
 				// `$merged` already carries its own `@type`.
 				$markup['audience'] = array_merge( array( '@type' => 'PeopleAudience' ), $merged );
 			}
+		}
+
+		// Lowest priority number wins, and a pa_ value that cannot be typed
+		// falls through to the next candidate rather than blocking typed
+		// emission for the field — same resolution rule as the audience
+		// fields use.
+		usort(
+			$condition_candidates,
+			static fn( $a, $b ) => $a['priority'] <=> $b['priority']
+		);
+		foreach ( $condition_candidates as $candidate ) {
+			$condition_key = strtolower( trim( $candidate['value'] ) );
+			if ( ! isset( self::CONDITION_VALUE_MAP[ $condition_key ] ) ) {
+				// Unrecognised, or multi-value: WC joins multiple terms
+				// with a comma and Google forbids more than one value, so
+				// there is no honest single claim to publish. Leaving it
+				// untyped drops it into additionalProperty below rather
+				// than discarding what the merchant entered.
+				continue;
+			}
+
+			// Offer only — see CONDITION_VALUE_MAP's docblock. Variants get
+			// their own copy in add_variant_condition(), because
+			// maybe_convert_to_product_group() unsets this array.
+			if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] )
+				&& ! isset( $markup['offers'][0]['itemCondition'] ) ) {
+				$markup['offers'][0]['itemCondition'] = self::CONDITION_VALUE_MAP[ $condition_key ];
+			}
+
+			$typed_winner_slugs[] = $candidate['slug'];
+			break;
 		}
 
 		foreach ( $audience_pending as $slug => $property ) {
