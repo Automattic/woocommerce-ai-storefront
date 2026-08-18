@@ -5004,12 +5004,12 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$this->assertSame(
 				'https://schema.org/SexualContentConsideration',
 				$variant['hasAdultConsideration'],
-				"hasVariant[$i] Product node is unlabelled"
+				"hasVariant[$i] Product node must carry the adult designation"
 			);
 			$this->assertSame(
 				'https://schema.org/SexualContentConsideration',
 				$variant['offers'][0]['hasAdultConsideration'],
-				"hasVariant[$i] Offer is unlabelled — this is the node Google submits"
+				"hasVariant[$i] Offer must carry the adult designation — this is the node Google submits"
 			);
 		}
 	}
@@ -5133,7 +5133,7 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 			$this->assertSame(
 				'https://schema.org/UsedCondition',
 				$variant['offers'][0]['itemCondition'],
-				"hasVariant[$i] offer is the node Google submits and it carries no condition"
+				"hasVariant[$i] offer must carry the inherited condition — this is the node Google submits"
 			);
 		}
 	}

@@ -184,7 +184,7 @@ Each `hasVariant` entry is a standalone `Product` built by `build_variant_entry(
 | `includesObject` / `ineligibleRegion` | — | — | — |
 | `inventoryLevel` | ✓ | ✓ when stock managed | Plugin |
 | `isFamilyFriendly` | — | — | — |
-| `itemCondition` | ✓ §condition | ✓ at `offers[0]` when the Condition attribute holds a Google-accepted value | Plugin (`emit_attributes()` + `add_variant_condition()`, #646) — Offer-level only, per Google's "Offer details" placement; three of schema.org's four `OfferItemCondition` members are reachable, `DamagedCondition` excluded because Google does not accept it. Also on each `hasVariant` offer that resolves one. |
+| `itemCondition` | ✓ §condition | ✓ at `offers[0]` when the Condition attribute holds a Google-accepted value | Plugin (`add_item_condition()` + `add_variant_condition()`, #646) — Offer-level only, per Google's "Offer details" placement; three of schema.org's four `OfferItemCondition` members are reachable, `DamagedCondition` excluded because Google does not accept it. Also on each `hasVariant` offer that resolves one. |
 | `itemOffered` | — | — | — |
 | `leaseLength` | — | — | — |
 | `mobileUrl` | — | — | — |
