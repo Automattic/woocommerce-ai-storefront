@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 10.9
-Stable tag: 0.37.0
+Stable tag: 0.38.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,11 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.38.0 - 2026-08-18 =
+**New**
+* You can now record whether a product is new, refurbished or used. Google requires a condition on used and refurbished products and disapproves listings without one. A Condition attribute is created for you with the three values Google accepts, applied to nothing, so set it on the products that need it. Variations can carry their own condition, so the same item can list as new and used. Selling only new products? Nothing to do.
+* You can now mark a product as adult content. Google requires adult products to be labelled and disapproves them otherwise, and there was no way to say so. Tick Adult content on the product's Inventory tab; variations follow the parent. If your whole store is adult oriented, use the account-level setting in Google Merchant Center instead.
 
 = 0.37.0 - 2026-08-17 =
 **New**

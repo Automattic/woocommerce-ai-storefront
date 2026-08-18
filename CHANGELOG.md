@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.38.0] – 2026-08-18
+
 ### Added
 - **You can now record whether a product is new, refurbished or used (#646).**
   - Google requires a condition on used and refurbished products and disapproves listings without one.
