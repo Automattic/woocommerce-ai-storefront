@@ -156,7 +156,7 @@ Agent name is surfaced in WC core's "Origin" column (fed by `_wc_order_attributi
 | File | Purpose |
 |------|---------|
 | `class-wc-ai-storefront-admin-controller.php` | REST API for the admin settings UI: settings CRUD, stats, recent orders, product count, category/tag/brand/product search, policy pages, endpoint URLs, and crawler-visibility stats (`/crawl-stats`). |
-| `class-wc-ai-storefront-product-meta-box.php` | Adds the `AI: Final sale` checkbox to the product editor's Inventory tab. Read by `WC_AI_Storefront_JsonLd` to override the store-wide return policy on a per-product basis. |
+| `class-wc-ai-storefront-product-meta-box.php` | Adds the `Final sale` and `Adult content` checkboxes to the product editor's Inventory tab. Both are read by `WC_AI_Storefront_JsonLd` — `Final sale` overrides the store-wide return policy per product, `Adult content` emits `hasAdultConsideration`. |
 | `class-wc-ai-storefront.php` | Main orchestrator (singleton): dependency loading, rewrite rules, settings with memoization + cache busting, version-based flush. |
 
 ## Frontend (React admin UI)

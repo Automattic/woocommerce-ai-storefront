@@ -587,13 +587,31 @@ Schema.org `MerchantReturnPolicy` describing return rules. The block takes one o
 - **Option A — inline detail**: when no usable policy page is configured, the block carries the inline fields below instead. `returns_accepted` mode additionally requires the WC base country (a return-window declaration without a target region is useless to validators); `final_sale` mode emits with or without `applicableCountry` ("no returns" is globally meaningful).
 
 - **Emitted when** Policies tab → Returns mode is "Returns accepted" or "Final sale". (`mode: unconfigured` emits nothing, even if a page is set — the opt-out wins over link-precedence.)
-- **Per-product override**: if the product has the "AI: Final sale" checkbox enabled in its Inventory tab, the block reflects final-sale terms regardless of the store-wide setting — but a configured policy page still wins (Option B link).
+- **Per-product override**: if the product has the "Final sale" checkbox enabled in its Inventory tab, the block reflects final-sale terms regardless of the store-wide setting — but a configured policy page still wins (Option B link).
 - **Inline (Option A) values**, all Schema-validated:
   - `returnPolicyCategory`: `MerchantReturnFiniteReturnWindow` (returns accepted) or `MerchantReturnNotPermitted` (final sale).
   - `returnFees`: from a Schema.org allow-list (`FreeReturn`, `ReturnFeesCustomerResponsibility`, etc.). Invalid values are dropped at emit time.
   - `returnMethod`: same allow-list defense (`ReturnByMail`, `ReturnInStore`, `ReturnAtKiosk`).
   - `refundType` is **not** emitted: it is a Schema.org *recommended* (not required) field, and omitting it avoids Rich Results "missing field" noise without affecting validity. Do not add it back without revisiting that trade-off.
 - **Source**: `add_return_policy()` and `build_return_policy_block()` (the shared builder that resolves the page link and applies the precedence above).
+
+### `hasAdultConsideration`
+
+Schema.org `AdultOrientedEnumeration`, marking a product as adult-oriented. Google requires the label and disapproves an unmarked adult product, so this is one of the few structured-data omissions with a direct commercial cost.
+
+- **Emitted when** the plugin is enabled and the product has the "Adult content" checkbox ticked in its Inventory tab (`_wc_ai_storefront_adult_consideration` meta, strict `'yes'`). Unflagged products emit **no key at all** — not `false`, not an empty string. This is a legal claim about the catalogue, and silence is the correct default.
+- **Not gated on syndication scope**, unlike every other enrichment here. Scoping a product out of syndication does not unpublish it: the plugin has already replaced WC's serializer, so the product's `Product` node still ships with a full offer (price, availability, seller). Below the scope gate that node goes out unlabelled, which is the exact condition Google disapproves. The call therefore sits above `is_product_syndicated()` and below the plugin-enabled check — a disabled plugin still emits nothing at all.
+- **Emitted on both the Product and the Offer.** Schema.org allows either; Google documents the property under merchant listings, which is the Offer-bearing context. Emitting both costs one line and removes any question about which node a consumer reads.
+- **Variable products**: the flag reaches the `ProductGroup` node *and* every `hasVariant` entry, on both the variant `Product` and its `offers[0]`. `maybe_convert_to_product_group()` drops the parent's `offers`, so the variant offers are the only merchant listings Google reads — a flag that stopped at the group node would label nothing that gets submitted.
+- **Variations resolve to the parent.** A variation carries no meta of its own. Per-variation control would let a merchant mark one size and leave another unmarked, which is incoherent and would get the unmarked one disapproved.
+
+**One value is reachable, deliberately.** `AdultOrientedEnumeration` has ten members; Google Search reads exactly one, `SexualContentConsideration`. The other nine are valid Schema.org that Google ignores, so the value is a private constant rather than a merchant choice, and `JsonLdTest::test_only_the_google_supported_consideration_is_reachable()` keeps it that way by scanning the emitter's string literals with `token_get_all()`. Literals rather than raw source, so documenting an excluded value as a full URL in a comment does not fail a test about emission.
+
+**Alcohol is not covered by this, and neither are other restricted goods.** `AlcoholConsideration` exists in the vocabulary, but Google states plainly: "Don't use the adult attribute for alcohol" — label those with the `google_product_category` attribute instead ([adult attribute](https://support.google.com/merchants/answer/6324508)). Alcohol is the only category Google documents a redirect for. Other restricted goods each have their own Merchant Center policy, and some (tobacco, weapons) are prohibited in Shopping outright rather than routed anywhere — do not assume a category assignment makes them eligible. Emitting `AlcoholConsideration` here would look like compliance while achieving nothing.
+
+**Wholly adult stores should not use this.** Google offers an account-level adult designation in Merchant Center (Settings → Business info). Ticking a per-product checkbox across an entire catalogue is the wrong tool, and the checkbox help text says so.
+
+**Source**: `add_adult_consideration()`, invoked from `enhance_product_data()` immediately above the syndication gate, and again from `build_variant_entry()` for the ProductGroup path. The reader is `WC_AI_Storefront_Product_Meta_Box::is_adult()`.
 
 ## Store homepage: OnlineBusiness schema
 

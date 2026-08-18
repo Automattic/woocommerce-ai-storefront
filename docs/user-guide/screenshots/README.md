@@ -15,7 +15,7 @@ The PNG files in this folder are referenced from [`USER-GUIDE.md`](../USER-GUIDE
 | `06d-mcp.png` | **AI Storefront → Discovery** | The "Allowed AI agents" card's transport toggles: "Allow agents not on the list", "Enable MCP transport for agents", and "Serve a catalog feed at /products.json". |
 | `07-policies-tab.png` | **AI Storefront → Policies** | Return & refund policy section: the mode picker (Not configured / Link to a returns page / Specify the details here), returns-page dropdown, and the Shipping handling-time steppers. |
 | `07b-handling-time.png` | Same screen (scrolled) | Shipping section: min/max handling time steppers. |
-| `08-product-final-sale.png` | **Products → Edit a product → Inventory tab** | The Product Data box with the "AI: Final sale" checkbox visible at the bottom. |
+| `08-product-final-sale.png` | **Products → Edit a product → Inventory tab** | The Product Data box with the "Final sale" checkbox visible at the bottom. |
 | `09-endpoints-info.png` | **AI Storefront → Discovery** | The "Discovery Endpoints" card listing `/llms.txt`, `/.well-known/ucp`, the UCP API base, and `/robots.txt`. |
 | `10-orders-origin.png` | **WooCommerce → Orders** | Orders list with the Origin column showing AI-agent sources alongside Direct/Unknown rows. |
 | `11-per-agent-stats.png` | **AI Storefront → Overview** | The same stat-card row as `03`, kept as a separate file so the user guide can reference per-agent context independently. |

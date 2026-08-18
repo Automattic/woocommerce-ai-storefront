@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Added
+- **You can now mark a product as adult content (#644).**
+  - Google requires adult-oriented products to be labelled and will disapprove them if they are not. There was previously no way to say so.
+  - Tick **Adult content** on the product's Inventory tab. Variations follow the parent.
+  - If your whole store is adult oriented, use the account-level setting in Google Merchant Center instead, under Settings then Business info.
+  - This is for adult content specifically. Google tells you not to use it for alcohol. Set the product's Google category instead.
+
 ---
 
 ## [0.37.0] – 2026-08-17
