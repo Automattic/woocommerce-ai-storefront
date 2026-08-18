@@ -566,13 +566,13 @@ apply_filters( 'wc_ai_storefront_seed_attributes', bool $should_seed );
 
 **Returns:** `false` to skip seeding entirely.
 
-**When to use:** a store that will never sell apparel and does not want six unused attribute taxonomies in its admin. Note this only prevents creation; it does not remove attributes already created by an earlier version.
+**When to use:** a store that will never sell apparel and does not want seven unused attribute taxonomies in its admin. Note this only prevents creation; it does not remove attributes already created by an earlier version.
 
 ```php
 add_filter( 'wc_ai_storefront_seed_attributes', '__return_false' );
 ```
 
-**What gets created.** Gender and Age group carry Google's complete accepted value sets, since Google defines those exhaustively. Color, Size, Material and Pattern carry a small starting set that merchants are expected to extend, because Google treats those as free text and asks that values match the merchant's own product page. An attribute whose taxonomy already exists is skipped entirely, terms included, because its terms may be variation axes.
+**What gets created.** Gender, Age group and Condition carry Google's complete accepted value sets, since Google defines those exhaustively. Color, Size, Material and Pattern carry a small starting set that merchants are expected to extend, because Google treats those as free text and asks that values match the merchant's own product page. An attribute whose taxonomy already exists is skipped entirely, terms included, because its terms may be variation axes.
 
 ---
 

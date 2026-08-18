@@ -139,7 +139,7 @@ This tracks `SEED_VERSION`, the version of the **attribute set**, not the plugin
 
 That distinction is the point. Seeding used to be keyed to the plugin version, so every release re-opened the question on every request until one of them answered it — and several concurrent requests could each decide to seed, which is how a duplicate attribute reached production (#628). Bump `SEED_VERSION` only when the attribute set genuinely changes.
 
-`SEED_VERSION` moved to `'2'` in #646, adding the `Condition` attribute. A store that already holds the original six gains only the new one: `create_attribute()` returns early when `taxonomy_exists()` or `wc_attribute_taxonomy_id_by_name()` resolves, which is the guard #630 added after #628. `AttributeSeederTest::test_reseed_creates_only_the_new_attribute()` asserts it.
+`SEED_VERSION` moved to `'2'` in #646, adding the `Condition` attribute. A store that already holds the original six gains only the new one: `WC_AI_Storefront_Attribute_Seeder::create_attribute()` (the plugin's own method, not core's `wc_create_attribute()`, which returns a `WP_Error` instead) returns early when `taxonomy_exists()` or `wc_attribute_taxonomy_id_by_name()` resolves, which is the guard #630 added after #628. `AttributeSeederTest::test_reseed_creates_only_the_new_attribute()` asserts it.
 
 One trap for the next bump: **`SEED_VERSION` alone changes nothing.** `schedule_attribute_seeding()` is called only when the *plugin* version changes, so the two have to move together. That happens automatically when the change ships in a release, but bumping `SEED_VERSION` in isolation is a silent no-op that looks like a broken seeder.
 
@@ -416,7 +416,7 @@ Read from the **parent** for variations — a variation carries no flag of its o
 
 ## Taxonomies and terms
 
-The plugin creates six WooCommerce global product attributes if they are missing. A fresh WooCommerce store ships with no product attributes at all, and WooCommerce takes no position on which ones matter — but Google requires several of them on apparel, so the plugin supplies them.
+The plugin creates seven WooCommerce global product attributes if they are missing. A fresh WooCommerce store ships with no product attributes at all, and WooCommerce takes no position on which ones matter — but Google requires several of them on apparel, so the plugin supplies them.
 
 Each is a standard WooCommerce attribute taxonomy: a row in `{prefix}woocommerce_attribute_taxonomies` plus a `pa_`-prefixed taxonomy whose terms live in `wp_terms` / `wp_term_taxonomy`. Nothing here is plugin-private — they behave exactly as merchant-created attributes do, which is the point: they work as variation axes, flow through CSV import/export and the REST API, and are read by whatever product-feed plugin the merchant runs.
 
@@ -424,16 +424,17 @@ Each is a standard WooCommerce attribute taxonomy: a row in `{prefix}woocommerce
 |---|---|---|
 | `pa_gender` | Gender | `male`, `female`, `unisex` |
 | `pa_age_group` | Age group | `newborn`, `infant`, `toddler`, `kids`, `adult` |
+| `pa_condition` | Condition | `new`, `refurbished`, `used` |
 | `pa_color` | Color | Black, White, Gray, Beige, Brown, Red, Orange, Yellow, Green, Blue, Purple, Pink |
 | `pa_size` | Size | XS, S, M, L, XL, 2XL, 3XL, One size |
 | `pa_material` | Material | Cotton, Polyester, Wool, Leather, Silk, Linen, Denim, Nylon, Rayon, Cashmere |
 | `pa_pattern` | Pattern | Solid, Striped, Plaid, Floral, Polka dot, Herringbone, Camouflage, Animal print |
 
-Gender and Age group carry Google's exhaustive accepted values — a merchant should not need to add to them, and a value outside the list is one Google rejects. The other four are open vocabularies: Google treats them as free text and asks that the submitted value match the merchant's own product page, so these are a deliberately small starting point rather than a canonical list. Size uses abbreviations per Google's consistency guidance, which is the opposite of the `Small`/`Medium`/`Large` form WooCommerce's own sample data creates.
+Gender, Age group and Condition carry Google's exhaustive accepted values — a merchant should not need to add to them, and a value outside the list is one Google does not accept. The other four are open vocabularies: Google treats them as free text and asks that the submitted value match the merchant's own product page, so these are a deliberately small starting point rather than a canonical list. Size uses abbreviations per Google's consistency guidance, which is the opposite of the `Small`/`Medium`/`Large` form WooCommerce's own sample data creates.
 
 - **Written by:** `WC_AI_Storefront_Attribute_Seeder::seed()`, on `init`
 - **When:** on activation, and on any later request where the stored seed version differs from `SEED_VERSION` — which for most releases is never. See `wc_ai_storefront_attributes_seeded`, above.
-- **Read by:** `WC_AI_Storefront_JsonLd` for typed `color`/`size`/`material`/`pattern` properties and the `Product.audience` block
+- **Read by:** `WC_AI_Storefront_JsonLd` for typed `color`/`size`/`material`/`pattern` properties, the `Product.audience` block, and `offers[0].itemCondition`
 - **Existing attributes:** never touched, per attribute rather than all-or-nothing. Terms may be variation axes on live products, so adding to or renaming them would break variations and orphan product data.
 - **Opt out:** `add_filter( 'wc_ai_storefront_seed_attributes', '__return_false' );` — prevents creation, does not remove attributes an earlier version already created.
 - **Uninstall:** NOT deleted. By then terms may be attached to products and used as variation axes; removing them would orphan product data for a plugin removal.

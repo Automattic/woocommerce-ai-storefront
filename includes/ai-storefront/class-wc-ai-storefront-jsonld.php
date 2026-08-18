@@ -2166,12 +2166,13 @@ class WC_AI_Storefront_JsonLd {
 					'url'  => self::CONDITION_VALUE_MAP[ $key ],
 				);
 			}
-			// Unrecognised, or multi-value — WooCommerce joins taxonomy
-			// terms with ', ' and custom-attribute values with ' | ', and
-			// Google forbids more than one value either way, so there is
-			// no honest single claim. Falls through to the next candidate;
-			// emit_attributes() routes it to additionalProperty instead of
-			// discarding what the merchant entered.
+			// Unrecognised, or multi-value. WooCommerce joins TAXONOMY
+			// terms with ', ' and CUSTOM attribute values with ' | '
+			// (WC_DELIMITER) — do not assume a comma if this is ever
+			// split. Google forbids more than one value either way, so
+			// there is no honest single claim. Falls through to the next
+			// candidate; emit_attributes() routes it to additionalProperty
+			// instead of discarding what the merchant entered.
 		}
 		return array(
 			'slug' => '',

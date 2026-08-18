@@ -12,9 +12,9 @@
  * taxonomy names exactly, so JSON-LD emission is an exact lookup rather
  * than guesswork against whatever the merchant typed.
  *
- * The six split into two groups:
+ * The seven split into two groups:
  *
- *   Closed lists (gender, age_group) — Google defines these
+ *   Closed lists (gender, age_group, condition) — Google defines these
  *   exhaustively. Our terms are the complete correct set.
  *
  *   Open vocabularies (color, size, material, pattern) — free text in
@@ -103,8 +103,8 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 *
 	 * Terms are deliberately NOT translated, for two different reasons:
 	 *
-	 *   Closed lists (gender, age_group) must be Google's exact English
-	 *   values. Google requires them "submitted in English" regardless of
+	 *   Closed lists (gender, age_group, condition) must be Google's exact
+	 *   English values. Google requires them "submitted in English" regardless of
 	 *   store language, and a localised value is simply rejected.
 	 *
 	 *   Open vocabularies (color, size, material, pattern) are a starting
@@ -330,7 +330,7 @@ class WC_AI_Storefront_Attribute_Seeder {
 		 * Filters whether the plugin seeds its recommended product attributes.
 		 *
 		 * Return false to skip entirely — useful for a store that will
-		 * never sell apparel and does not want six unused taxonomies.
+		 * never sell apparel and does not want seven unused taxonomies.
 		 *
 		 * @since 0.35.0
 		 *
