@@ -87,6 +87,22 @@ class WC_AI_Storefront_JsonLd {
 	private array $free_shipping_cache = array();
 
 	/**
+	 * The one AdultOrientedEnumeration value Google Search reads.
+	 *
+	 * The enumeration has ten members — AlcoholConsideration,
+	 * TobaccoNicotineConsideration, WeaponConsideration and the rest.
+	 * Google documents support for exactly this one, so the others are
+	 * valid schema.org that Google ignores.
+	 *
+	 * Do NOT "complete" the set. Alcohol in particular is handled by
+	 * google_product_category in the Merchant Center feed, and Google
+	 * states plainly that the adult signal is the wrong tool for it.
+	 * Offering a value that silently does nothing is worse than offering
+	 * none, because a merchant believes they have complied.
+	 */
+	private const ADULT_CONSIDERATION = 'https://schema.org/SexualContentConsideration';
+
+	/**
 	 * Maps WC attribute slugs to their typed Schema.org Product properties.
 	 * Schema.org's directive — "use specific schema.org properties when they
 	 * exist" — supersedes the generic additionalProperty fallback for these.
@@ -425,6 +441,7 @@ class WC_AI_Storefront_JsonLd {
 		$this->add_shipping_details( $markup, $country, $product );
 		$this->add_handling_time( $markup, $settings );
 		$this->add_return_policy( $markup, $product, $settings, $country );
+		$this->add_adult_consideration( $markup, $product );
 
 		$this->add_related_products( $markup, $product, $settings );
 
@@ -2891,6 +2908,50 @@ class WC_AI_Storefront_JsonLd {
 		$policy_block = $this->build_return_policy_block( $policy, $country, $policy_product_id );
 		if ( null !== $policy_block ) {
 			$markup['offers'][0]['hasMerchantReturnPolicy'] = $policy_block;
+		}
+	}
+
+	/**
+	 * Emit `hasAdultConsideration` when the merchant flagged the product.
+	 *
+	 * Google requires adult-oriented products to be labelled and
+	 * disapproves them otherwise, so this is one of the few structured-data
+	 * properties whose ABSENCE has a penalty rather than merely a missed
+	 * opportunity.
+	 *
+	 * Emitted on both the Product and the Offer: schema.org allows both,
+	 * and Google documents the property under merchant listings, which is
+	 * the Offer-bearing context. Emitting both costs one line and removes
+	 * any question about which node a consumer reads.
+	 *
+	 * Variations resolve to their parent, matching add_return_policy().
+	 * Here that is more than convenience — a product is adult-oriented or
+	 * it is not, and a colourway cannot change that. Per-variation control
+	 * would let a merchant mark one size and leave another unmarked, which
+	 * is incoherent and would get the unmarked one disapproved.
+	 *
+	 * @param array      $markup  Markup array, modified by reference.
+	 * @param WC_Product $product The product or variation.
+	 */
+	private function add_adult_consideration( array &$markup, $product ): void {
+		if ( ! $product instanceof WC_Product ) {
+			return;
+		}
+
+		// wp_get_post_parent_id() rather than WC_Product::get_parent_id()
+		// to avoid a PHPStan stubs gap in the pinned woocommerce-stubs
+		// version — same reason add_return_policy() uses it.
+		$parent_id  = wp_get_post_parent_id( $product->get_id() );
+		$product_id = $parent_id > 0 ? $parent_id : $product->get_id();
+
+		if ( ! WC_AI_Storefront_Product_Meta_Box::is_adult( $product_id ) ) {
+			return;
+		}
+
+		$markup['hasAdultConsideration'] = self::ADULT_CONSIDERATION;
+
+		if ( isset( $markup['offers'][0] ) && is_array( $markup['offers'][0] ) ) {
+			$markup['offers'][0]['hasAdultConsideration'] = self::ADULT_CONSIDERATION;
 		}
 	}
 

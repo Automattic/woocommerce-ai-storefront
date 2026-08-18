@@ -4852,6 +4852,72 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	// ------------------------------------------------------------------
+	// hasAdultConsideration (#644)
+	// ------------------------------------------------------------------
+
+	public function test_adult_product_emits_the_single_supported_value(): void {
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
+		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+
+		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+
+		$this->assertSame( 'https://schema.org/SexualContentConsideration', $out['hasAdultConsideration'] );
+		$this->assertSame(
+			'https://schema.org/SexualContentConsideration',
+			$out['offers'][0]['hasAdultConsideration'],
+			'Google documents the property under merchant listings, which is the Offer-bearing context.'
+		);
+	}
+
+	public function test_unflagged_product_emits_no_adult_key_at_all(): void {
+		// Absent, not false and not an empty string. This is a legal claim
+		// about the catalogue, so silence is the correct default.
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 0 );
+		Functions\when( 'get_post_meta' )->justReturn( 'no' );
+
+		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+
+		$this->assertArrayNotHasKey( 'hasAdultConsideration', $out );
+		$this->assertArrayNotHasKey( 'hasAdultConsideration', $out['offers'][0] );
+	}
+
+	public function test_variation_inherits_the_parent_adult_flag(): void {
+		// A product is adult-oriented or it is not; a colourway cannot
+		// change that. Resolution matches add_return_policy().
+		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		Functions\when( 'wp_get_post_parent_id' )->justReturn( 42 );
+		Functions\when( 'get_post_meta' )->justReturn( 'yes' );
+
+		$out = $this->jsonld->enhance_product_data( $this->base_markup(), $this->make_product_with_shipping() );
+
+		$this->assertSame( 'https://schema.org/SexualContentConsideration', $out['hasAdultConsideration'] );
+	}
+
+	public function test_only_the_google_supported_consideration_is_reachable(): void {
+		// AdultOrientedEnumeration has ten members and Google Search reads
+		// exactly one. Pin it so nobody "completes" the set later and starts
+		// emitting values that silently do nothing — alcohol especially,
+		// which Google says the adult signal is the wrong tool for.
+		$source = file_get_contents(
+			dirname( __DIR__, 3 ) . '/includes/ai-storefront/class-wc-ai-storefront-jsonld.php'
+		);
+		$this->assertNotFalse( $source );
+
+		preg_match_all( '#https://schema\.org/\w+Consideration#', $source, $found );
+
+		$this->assertNotEmpty( $found[0], 'Constant not found — did it move to another file?' );
+		$this->assertSame(
+			array( 'https://schema.org/SexualContentConsideration' ),
+			array_values( array_unique( $found[0] ) )
+		);
+	}
+
 	public function test_business_days_emit_alongside_handling_time(): void {
 		WC_AI_Storefront::$test_settings = array(
 			'enabled'       => 'yes',
