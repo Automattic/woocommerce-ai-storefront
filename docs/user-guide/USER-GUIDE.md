@@ -627,7 +627,7 @@ You can also link to an existing returns/refunds page from the dropdown. This is
 
 Some merchants have a generally returnable catalog with specific final-sale items (clearance, custom, perishable). The **Final sale** checkbox in the product editor's Inventory tab overrides the store-wide policy for that single product.
 
-![Product editor Inventory tab with AI Final sale checkbox](screenshots/08-product-final-sale.png)
+![Product editor Inventory tab with Final sale checkbox](screenshots/08-product-final-sale.png)
 
 #### Adult content
 
@@ -637,7 +637,7 @@ Tick it for individual adult products in an otherwise general store: nudity, sex
 
 If your entire store is adult oriented, don't tick this on every product. Designate the whole store as adult in Google Merchant Center instead, under Settings then Business info.
 
-This is for adult content specifically. Google tells you not to use it for alcohol — set the product's Google category instead. Other restricted goods have their own Merchant Center rules, and some categories aren't eligible for Shopping at all.
+This is for adult content specifically. Google tells you not to use it for alcohol. Set the product's Google category instead. Other restricted goods have their own Merchant Center rules, and some categories aren't eligible for Shopping at all.
 
 ### Shipping: handling time
 
