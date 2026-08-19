@@ -1203,11 +1203,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Detects unrecognized top-level request params in a catalog/search body.
+	 * Detects unrecognized request params in a catalog/search body.
 	 *
-	 * Sanitizes, bounds, and joins any keys not in the UCP catalog/search spec.
-	 * Returns an ASCII string safe for HTTP response headers (max 8 keys /
-	 * 256 chars). Returns '' when no unknown params are present.
+	 * Sanitizes, bounds, and joins any keys not in the UCP catalog/search
+	 * spec — both top-level and, one level deep, inside `filters`,
+	 * `pagination`, and `sort`. Nested keys are reported dotted (e.g.
+	 * `pagination.page`). Returns an ASCII string safe for HTTP response
+	 * headers (max 8 keys / 256 chars). Returns '' when no unknown
+	 * params are present.
 	 *
 	 * Side-effect: logs detected params via WC_AI_Storefront_Logger::debug()
 	 * when logging is enabled, so integrators can self-diagnose misnaming
@@ -1224,12 +1227,48 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return '';
 		}
 
-		$known        = array( 'query', 'filters', 'pagination', 'sort', 'context', 'signals' );
+		$known = array( 'query', 'filters', 'pagination', 'sort', 'context', 'signals' );
+
+		// Known sub-keys, one level deep. Anything absent here is
+		// silently discarded downstream, which is exactly the class of
+		// bug #656 and #659 turned out to be — a caller sends a
+		// plausible key, we ignore it, and the response looks fine.
+		// `signals` and `context` are deliberately absent: both are
+		// logged-but-unhonored pass-throughs whose shape is the UCP
+		// spec's to define, not ours, so we don't second-guess them.
+		// `sort` reads `field` + `direction` (see
+		// map_ucp_search_to_store_api()); `direction` maps internally
+		// to the Store API's `order` param, but `order` itself is never
+		// a key this handler reads from the client.
+		$known_nested = array(
+			'filters'    => array( 'attributes', 'brands', 'categories', 'featured', 'in_stock', 'min_rating', 'on_sale', 'price', 'tags' ),
+			'pagination' => array( 'limit', 'cursor' ),
+			'sort'       => array( 'field', 'direction' ),
+		);
+
 		$unknown_keys = array_values( array_diff( array_keys( $body ), $known ) );
 
-		$sanitized = function_exists( 'sanitize_key' )
-			? array_map( 'sanitize_key', $unknown_keys )
-			: $unknown_keys;
+		foreach ( $known_nested as $parent => $allowed ) {
+			$child = $body[ $parent ] ?? null;
+			if ( ! is_array( $child ) || array_is_list( $child ) ) {
+				continue;
+			}
+			foreach ( array_diff( array_keys( $child ), $allowed ) as $bad ) {
+				$unknown_keys[] = $parent . '.' . $bad;
+			}
+		}
+
+		$sanitized = array_map(
+			static function ( $key ): string {
+				$key = (string) $key;
+				if ( ! function_exists( 'sanitize_key' ) ) {
+					return $key;
+				}
+				// Sanitize each dotted segment so the separator survives.
+				return implode( '.', array_map( 'sanitize_key', explode( '.', $key ) ) );
+			},
+			$unknown_keys
+		);
 		// Cast through (string) so empty strings AND '0' both filter correctly.
 		$sanitized = array_values(
 			array_filter(

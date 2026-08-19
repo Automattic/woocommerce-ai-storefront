@@ -96,6 +96,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
+		// detect_unknown_search_params() sanitizes any detected unknown
+		// key through sanitize_key(). Stub it with real WP semantics
+		// (lowercase; strip anything but a-z0-9_-) so tests that send
+		// an unrecognized key — e.g. the singular `brand` filter, #659
+		// — exercise the actual header-building path instead of
+		// hitting Brain\Monkey's "not defined nor mocked" error.
+		Functions\when( 'sanitize_key' )->alias(
+			static fn( $v ) => preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $v ) )
+		);
+
 		// Minimal `add_query_arg()` stub for the TWO signatures the
 		// controller exercises in this handler:
 		//

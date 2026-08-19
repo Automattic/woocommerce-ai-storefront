@@ -92,6 +92,15 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'trailingslashit' )->alias(
 			static fn( string $url ): string => rtrim( $url, '/' ) . '/'
 		);
+
+		// detect_unknown_search_params() sanitizes any detected unknown
+		// key through sanitize_key(). Stub it with real WP semantics
+		// (lowercase; strip anything but a-z0-9_-) so the nested-key
+		// detection tests below exercise the actual sanitization path
+		// instead of hitting Brain\Monkey's "not defined nor mocked" error.
+		Functions\when( 'sanitize_key' )->alias(
+			static fn( $v ) => preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $v ) )
+		);
 	}
 
 	protected function tearDown(): void {
@@ -709,5 +718,72 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $result[0] );
 		$this->assertSame( 'WIDGET-1', $result[0]['sku'] );
 		$this->assertSame( 10, $result[0]['stock'] );
+	}
+
+	// ------------------------------------------------------------------
+	// detect_unknown_search_params — nested-key detection (#656, #659)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Helper to invoke the private static detect_unknown_search_params()
+	 * method via reflection.
+	 *
+	 * @param array<string, mixed> $body Decoded JSON body.
+	 * @return string
+	 */
+	private function invoke_detect_unknown_search_params( array $body ): string {
+		$reflection = new \ReflectionClass( WC_AI_Storefront_UCP_REST_Controller::class );
+		$method     = $reflection->getMethod( 'detect_unknown_search_params' );
+		$method->setAccessible( true );
+		return $method->invoke( null, $body );
+	}
+
+	public function test_unknown_nested_keys_are_reported(): void {
+		$method = new ReflectionMethod(
+			WC_AI_Storefront_UCP_REST_Controller::class,
+			'detect_unknown_search_params'
+		);
+		$method->setAccessible( true );
+
+		$header = $method->invoke(
+			null,
+			array(
+				'query'      => 'tote',
+				'pagination' => array(
+					'page'  => 2,
+					'limit' => 5,
+				),
+				'filters'    => array( 'gibberish_filter' => array( 'x' ) ),
+			)
+		);
+
+		$this->assertStringContainsString( 'pagination.page', $header );
+		$this->assertStringContainsString( 'filters.gibberish_filter', $header );
+		$this->assertStringNotContainsString( 'pagination.limit', $header );
+		$this->assertStringNotContainsString( 'query', $header );
+	}
+
+	public function test_known_sort_direction_key_is_not_flagged_but_sort_order_is(): void {
+		// map_ucp_search_to_store_api() reads `sort.field` and
+		// `sort.direction` from the request (see its own comment: "top-
+		// level `sort: {field, direction}`, ... Maps to Store API's
+		// `orderby` + `order`"). `order` is the *internal* Store API
+		// param name the handler maps direction TO — never a key it
+		// reads FROM the client. A nested allow-list that flagged
+		// `direction` as unknown, or let `order` through unreported,
+		// would reintroduce the exact silent-drop bug class (#656,
+		// #659) this function exists to catch.
+		$header = $this->invoke_detect_unknown_search_params(
+			array(
+				'sort' => array(
+					'field'     => 'price',
+					'direction' => 'desc',
+					'order'     => 'desc',
+				),
+			)
+		);
+
+		$this->assertStringContainsString( 'sort.order', $header );
+		$this->assertStringNotContainsString( 'sort.direction', $header );
 	}
 }
