@@ -751,7 +751,19 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_singular_brand_key_is_not_honored(): void {
-		$this->fake_product_list = array( $this->make_simple_product( 1, 'Tote' ) );
+		// Seed the term exactly as test_brands_filter_uses_plural_key does.
+		// Without it 'thornwick' is unresolvable, so $store_params['brand']
+		// stays unset whichever key the mapper reads, and the assertion
+		// below passes even with the #659 rename reverted — certifying
+		// nothing. With the term seeded, a mapper that read the singular
+		// `brand` key would resolve it and set the param, and this fails.
+		$term = (object) array(
+			'term_id' => 77,
+			'slug'    => 'thornwick',
+			'name'    => 'Thornwick',
+		);
+		$this->fake_terms['product_brand:slug:thornwick'] = $term;
+		$this->fake_product_list                          = array( $this->make_simple_product( 1, 'Tote' ) );
 
 		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
 			$this->search_request(
@@ -3601,5 +3613,96 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			}
 		}
 		$this->assertFalse( $found, 'base currency must not emit a currency_conversion_unsupported warning' );
+	}
+
+	// ------------------------------------------------------------------
+	// MCP transport: unrecognized tool arguments (#656, #659)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Pull the unknown-params warning out of an MCP tool result.
+	 *
+	 * @param array<string, mixed> $result MCP tools/call result.
+	 * @return array<string, mixed>|null
+	 */
+	private function unknown_params_warning( array $result ): ?array {
+		$messages = $result['structuredContent']['messages'] ?? array();
+		foreach ( $messages as $message ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::UNKNOWN_PARAMS === ( $message['code'] ?? '' ) ) {
+				return $message;
+			}
+		}
+		return null;
+	}
+
+	public function test_mcp_search_reports_unrecognized_arguments_in_messages(): void {
+		// The REST transport reports unrecognized keys in a response
+		// header. MCP has no response headers, so before this an MCP
+		// client asking for page 2 with the GET-only `pagination.page`
+		// spelling got page one back with `has_next_page: true`, empty
+		// `messages`, and no signal at all — the original #656 bug on the
+		// transport that ships enabled by default.
+		$this->fake_product_list = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		$result = WC_AI_Storefront_MCP_Tools::call(
+			'search_catalog',
+			array(
+				'query'      => 'tote',
+				'pagination' => array( 'page' => 2 ),
+			),
+			''
+		);
+
+		$warning = $this->unknown_params_warning( $result );
+
+		$this->assertIsArray( $warning, 'MCP must surface unrecognized arguments in messages[].' );
+		$this->assertSame( 'warning', $warning['type'] );
+		$this->assertStringContainsString( 'pagination.page', $warning['content'] );
+
+		// structuredContent alone is not enough: clients are not obliged
+		// to read it, so the model can miss it entirely. The text channel
+		// must name the offending key too.
+		$this->assertStringContainsString( 'pagination.page', $result['content'][0]['text'] );
+	}
+
+	public function test_mcp_search_stays_silent_when_every_argument_is_recognized(): void {
+		$this->fake_product_list = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		$result = WC_AI_Storefront_MCP_Tools::call(
+			'search_catalog',
+			array(
+				'query'      => 'tote',
+				'pagination' => array( 'limit' => 5 ),
+				'sort'       => array(
+					'field'     => 'price',
+					'direction' => 'asc',
+				),
+				'context'    => array( 'currency' => 'USD' ),
+			),
+			''
+		);
+
+		$this->assertNull( $this->unknown_params_warning( $result ) );
+		$this->assertStringNotContainsString( 'Unrecognized', $result['content'][0]['text'] );
+	}
+
+	public function test_mcp_search_reports_unrecognized_arguments_on_a_zero_result_search(): void {
+		// A misnamed filter is most likely to produce zero results, and
+		// the empty-result summary takes an early return — so the advisory
+		// has to survive that branch too, or the one case where the agent
+		// most needs the hint is the one case it never gets it.
+		$this->fake_product_list = array();
+
+		$result = WC_AI_Storefront_MCP_Tools::call(
+			'search_catalog',
+			array(
+				'query'   => 'tote',
+				'filters' => array( 'colour' => array( 'blue' ) ),
+			),
+			''
+		);
+
+		$this->assertIsArray( $this->unknown_params_warning( $result ) );
+		$this->assertStringContainsString( 'filters.colour', $result['content'][0]['text'] );
 	}
 }
