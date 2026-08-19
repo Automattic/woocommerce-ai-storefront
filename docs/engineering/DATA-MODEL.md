@@ -400,6 +400,34 @@ Per-product override for the store-wide return policy. When `'yes'`, the product
 
 The underscore prefix marks the key as protected (not editable from the default Custom Fields meta box). This matches WooCommerce's convention for keys we control programmatically.
 
+### `wc_ai_storefront_attributes_seeding_lock`
+
+Mutex held while seeding runs.
+
+- **Type:** string, a Unix timestamp
+- **Autoload:** `no` — transient by nature, and never read on a normal request
+- **Defined in:** `WC_AI_Storefront_Attribute_Seeder::LOCK_OPTION`
+- **Written by:** `::seed()`, via `add_option()`, and deleted in a `finally`
+- **Uninstall:** not deleted explicitly; it should never outlive a request
+
+`add_option()` is the only atomic primitive available here. The options table has a unique index on `option_name`, so exactly one concurrent caller can create this row; the losers skip seeding entirely. Everything else the seeder could ask — `taxonomy_exists()`, `wc_attribute_taxonomy_id_by_name()` — reads a cache, and on a host with a shared persistent object cache two requests can both be told an attribute is absent. That is how #649 put two `condition` rows in the table on an Atomic store.
+
+A lock older than `LOCK_TIMEOUT` (300s) is treated as abandoned and reclaimed by deleting and re-adding, so the re-add remains the atomic step. Without that, a request dying mid-seed would block seeding forever with nothing to indicate why.
+
+### `wc_ai_storefront_attributes_repaired`
+
+Records the duplicate-row repair version last applied.
+
+- **Type:** string, currently `'1'`
+- **Defined in:** `WC_AI_Storefront_Attribute_Seeder::REPAIRED_OPTION`
+- **Written by:** `::seed()` after `::repair_duplicates()` runs
+- **Read by:** `::needs_repair()`
+- **Uninstall:** NOT deleted — the repair it records is a one-time fix
+
+Deliberately separate from `SEED_VERSION`. A store hit by #649 already holds the current `SEED_VERSION`, because the run that created the duplicates succeeded. Anything gated on `needs_seeding()` would therefore skip exactly the stores that need repairing.
+
+The repair deletes the duplicate **row** directly rather than calling `wc_delete_attribute()`. That function deletes every term in the taxonomy, and duplicate rows share one taxonomy, so calling it would wipe `new`/`refurbished`/`used` and leave the survivor empty. It is also why a merchant cannot fix this from Products → Attributes. Scope is limited to slugs in `get_definitions()`; a merchant with two of their own attributes sharing a name is left alone.
+
 ### `_wc_ai_storefront_adult_consideration`
 
 Marks a product as adult-oriented. When `'yes'`, the product's JSON-LD emits `hasAdultConsideration` on both the Product and the Offer. Google requires adult products to be labelled and disapproves them otherwise.

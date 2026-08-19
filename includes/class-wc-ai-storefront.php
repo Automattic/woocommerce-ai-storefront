@@ -341,7 +341,12 @@ class WC_AI_Storefront {
 		// schedule and each run — which is how the duplicate in #628
 		// happened. Deciding here means an already-seeded store hooks
 		// nothing at all. See #629.
-		if ( ! WC_AI_Storefront_Attribute_Seeder::needs_seeding() ) {
+		// Repair is a separate question from seeding, and it has to be asked
+		// here too: a store carrying #649's duplicate rows already holds the
+		// current SEED_VERSION, so gating on needs_seeding() alone would
+		// skip exactly the stores that need fixing.
+		if ( ! WC_AI_Storefront_Attribute_Seeder::needs_seeding()
+			&& ! WC_AI_Storefront_Attribute_Seeder::needs_repair() ) {
 			return;
 		}
 

@@ -77,6 +77,61 @@ class WC_AI_Storefront_Attribute_Seeder {
 	const SEEDED_OPTION = 'wc_ai_storefront_attributes_seeded';
 
 	/**
+	 * Version of the duplicate-row REPAIR, independent of the attribute set.
+	 *
+	 * Separate from SEED_VERSION on purpose. A store hit by #649 already
+	 * holds the current SEED_VERSION — the duplicates were created by a run
+	 * that succeeded — so anything gated on needs_seeding() would never run
+	 * on exactly the stores that need it.
+	 *
+	 * @var string
+	 */
+	const REPAIR_VERSION = '1';
+
+	/**
+	 * Option recording the REPAIR_VERSION last applied.
+	 *
+	 * @var string
+	 */
+	const REPAIRED_OPTION = 'wc_ai_storefront_attributes_repaired';
+
+	/**
+	 * Whether this store still needs the duplicate-row repair.
+	 *
+	 * @return bool
+	 */
+	public static function needs_repair(): bool {
+		return get_option( self::REPAIRED_OPTION, '' ) !== self::REPAIR_VERSION;
+	}
+
+	/**
+	 * Option used as a mutex around seeding.
+	 *
+	 * `add_option()` is the only atomic primitive available here: the
+	 * options table has a unique index on `option_name`, so exactly one
+	 * concurrent caller can create this row. Everything else the seeder
+	 * could ask — `taxonomy_exists()`, `wc_attribute_taxonomy_id_by_name()`
+	 * — reads a cache, and on a host with a shared persistent object cache
+	 * two requests can both be told the attribute is absent. That is how
+	 * #649 put two `condition` rows in the table.
+	 *
+	 * @var string
+	 */
+	const LOCK_OPTION = 'wc_ai_storefront_attributes_seeding_lock';
+
+	/**
+	 * Seconds after which a held lock is treated as abandoned.
+	 *
+	 * A request that dies mid-seed leaves the row behind. Without a timeout
+	 * the store never seeds again and nothing says why. Five minutes is far
+	 * longer than a seed run (seven inserts) and short enough that a genuine
+	 * crash self-heals on the next request.
+	 *
+	 * @var int
+	 */
+	const LOCK_TIMEOUT = 300;
+
+	/**
 	 * Whether the current attribute set still needs applying to this store.
 	 *
 	 * Public so callers can skip scheduling work entirely rather than
@@ -87,6 +142,202 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 */
 	public static function needs_seeding(): bool {
 		return get_option( self::SEEDED_OPTION, '' ) !== self::SEED_VERSION;
+	}
+
+	/**
+	 * Take the seeding lock, or report that someone else holds it.
+	 *
+	 * Returns true only for the caller that created the option row. A
+	 * held-but-stale lock is reclaimed; a held-and-fresh one is obeyed.
+	 *
+	 * The reclaim path deletes and re-adds rather than updating, so the
+	 * re-add is still the atomic step — two requests racing to reclaim the
+	 * same stale lock cannot both win.
+	 *
+	 * The value stored is `<timestamp>:<random>`. The random half is an
+	 * ownership token: {@see release_lock()} deletes only a lock whose
+	 * value still matches, so a run that overran LOCK_TIMEOUT and had its
+	 * lock reclaimed cannot free the NEW owner's lock on its way out and
+	 * let a third request seed alongside it.
+	 *
+	 * @return string The token held, or '' when another request holds it.
+	 */
+	private static function acquire_lock(): string {
+		$now   = time();
+		$token = $now . ':' . wp_generate_password( 12, false );
+
+		// Assigned rather than inlined into the `if`: PHPStan otherwise
+		// treats the second add_option() below as the same call and reports
+		// its result as always false, missing that delete_option() changed
+		// the state in between.
+		$took_lock = add_option( self::LOCK_OPTION, $token, '', false );
+		if ( $took_lock ) {
+			return $token;
+		}
+
+		$held       = (string) get_option( self::LOCK_OPTION, '' );
+		$held_since = (int) strtok( $held, ':' );
+		if ( $held_since > 0 && ( $now - $held_since ) < self::LOCK_TIMEOUT ) {
+			// Someone is mid-seed. Do nothing — this is the whole point.
+			return '';
+		}
+
+		// Abandoned, or an unreadable value we should not trust. Clear it
+		// and contend for it again on equal terms.
+		delete_option( self::LOCK_OPTION );
+
+		$reclaimed = add_option( self::LOCK_OPTION, $token, '', false );
+
+		return $reclaimed ? $token : '';
+	}
+
+	/**
+	 * Release the seeding lock, but only if we still own it.
+	 *
+	 * Always call this on the way out, including when nothing was created —
+	 * a run that creates nothing still held the lock.
+	 *
+	 * Conditional on the token, and done as a single DELETE with both
+	 * columns in the WHERE. A read-then-delete would reintroduce the race
+	 * this whole change exists to remove, and `get_option()` can serve a
+	 * value another request has already replaced.
+	 *
+	 * @param string $token The token returned by {@see acquire_lock()}.
+	 */
+	private static function release_lock( string $token ): void {
+		if ( '' === $token ) {
+			return;
+		}
+
+		global $wpdb;
+
+		if ( isset( $wpdb ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Conditional delete; the option cache is what we are avoiding.
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+					self::LOCK_OPTION,
+					$token
+				)
+			);
+			wp_cache_delete( self::LOCK_OPTION, 'options' );
+			return;
+		}
+
+		// No $wpdb to speak of. Check-then-act is weaker, but this path is
+		// unreachable in WordPress and the alternative is leaking the lock.
+		if ( (string) get_option( self::LOCK_OPTION, '' ) === $token ) {
+			delete_option( self::LOCK_OPTION );
+		}
+	}
+
+	/**
+	 * Whether a row for this slug already exists in the attributes table.
+	 *
+	 * Deliberately bypasses `wc_get_attribute_taxonomies()` and every other
+	 * cached accessor — see the call site in {@see create_attribute()}.
+	 *
+	 * @param string $slug Bare attribute slug, without the `pa_` prefix.
+	 * @return bool
+	 */
+	private static function attribute_row_exists( string $slug ): bool {
+		global $wpdb;
+
+		if ( ! isset( $wpdb ) ) {
+			return false;
+		}
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Reading the cache is the bug this guards against.
+		$found = $wpdb->get_var(
+			$wpdb->prepare(
+				"SELECT attribute_id FROM {$wpdb->prefix}woocommerce_attribute_taxonomies WHERE attribute_name = %s LIMIT 1",
+				$slug
+			)
+		);
+
+		return null !== $found && '' !== $found;
+	}
+
+	/**
+	 * Remove duplicate rows this plugin's seeding created.
+	 *
+	 * Repairs stores hit by #649, where two concurrent requests each passed
+	 * a cache-backed existence check and both inserted. Keeps the lowest
+	 * `attribute_id` for each affected slug and deletes the rest.
+	 *
+	 * **Deletes the row directly, and must keep doing so.**
+	 * `wc_delete_attribute()` deletes every term in the taxonomy, and
+	 * duplicate rows share one taxonomy — calling it here would wipe the
+	 * terms the surviving row still needs. That is also why a merchant
+	 * cannot fix this from Products → Attributes.
+	 *
+	 * Scoped to slugs in {@see get_definitions()}. A merchant with two of
+	 * their own attributes sharing a name is not ours to change.
+	 *
+	 * Products are unaffected by which row survives: `_product_attributes`
+	 * stores `name => pa_<slug>` with no attribute id, so the link is by
+	 * taxonomy name.
+	 *
+	 * Public so it can be tested directly and invoked from a recovery path.
+	 *
+	 * @return int Rows deleted.
+	 */
+	public static function repair_duplicates(): int {
+		global $wpdb;
+
+		if ( ! isset( $wpdb ) ) {
+			return 0;
+		}
+
+		$ours = array_keys( self::get_definitions() );
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Repairing the table the cache misreports.
+		$rows = $wpdb->get_results(
+			"SELECT attribute_id, attribute_name FROM {$wpdb->prefix}woocommerce_attribute_taxonomies ORDER BY attribute_name ASC, attribute_id ASC"
+		);
+		if ( empty( $rows ) ) {
+			return 0;
+		}
+
+		$seen    = array();
+		$deleted = 0;
+		foreach ( $rows as $row ) {
+			$name = isset( $row->attribute_name ) ? (string) $row->attribute_name : '';
+			if ( '' === $name || ! in_array( $name, $ours, true ) ) {
+				continue;
+			}
+			if ( ! isset( $seen[ $name ] ) ) {
+				// Lowest id wins — the ordering above guarantees we meet it
+				// first, and it is the one any earlier cache warm-up is most
+				// likely to have resolved to.
+				$seen[ $name ] = true;
+				continue;
+			}
+
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- See the docblock: wc_delete_attribute() would take the terms with it.
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->prefix}woocommerce_attribute_taxonomies WHERE attribute_id = %d",
+					(int) $row->attribute_id
+				)
+			);
+			++$deleted;
+		}
+
+		if ( $deleted > 0 ) {
+			// The cached list still holds the row we just removed, and every
+			// admin surface reads it. Exactly what wc_create_attribute()
+			// does after it writes — NOT wp_cache_flush(), which empties
+			// every group on the site and is expensive where a persistent
+			// object cache is in play, which is precisely the kind of host
+			// that produces these duplicates.
+			delete_transient( 'wc_attribute_taxonomies' );
+			if ( class_exists( 'WC_Cache_Helper' ) ) {
+				WC_Cache_Helper::invalidate_cache_group( 'woocommerce-attributes' );
+			}
+		}
+
+		return $deleted;
 	}
 
 	/**
@@ -247,14 +498,21 @@ class WC_AI_Storefront_Attribute_Seeder {
 			return false;
 		}
 
-		// Second, DB-backed guard — see the method docblock above for why
-		// taxonomy_exists() alone is not enough to prevent a duplicate
-		// row under concurrent requests. function_exists() keeps this
-		// file's existing per-call defensive posture even though, in
-		// practice, this function is always defined alongside
-		// wc_create_attribute() and wc_attribute_taxonomy_name() (all
-		// three live in WooCommerce's wc-attribute-functions.php).
-		if ( function_exists( 'wc_attribute_taxonomy_id_by_name' ) && wc_attribute_taxonomy_id_by_name( $slug ) ) {
+		// Second guard, and it reads the TABLE rather than a cache.
+		//
+		// wc_attribute_taxonomy_id_by_name() used to sit here. It resolves
+		// through wc_get_attribute_taxonomies(), which serves from the
+		// `wc_attribute_taxonomies` transient — so on a host with a shared
+		// persistent object cache it can report "absent" for a row that
+		// exists, exactly as taxonomy_exists() does. Two guards, one
+		// answer, both wrong: #649 put two `condition` rows in the table
+		// that way.
+		//
+		// This does NOT make concurrent creation safe on its own — two
+		// requests can both read "no row" and both insert. seed() holds an
+		// add_option() lock for that. This makes the method correct for any
+		// caller that does not.
+		if ( self::attribute_row_exists( $slug ) ) {
 			return false;
 		}
 
@@ -322,7 +580,9 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * @return int Number of attributes created.
 	 */
 	public static function seed(): int {
-		if ( ! self::needs_seeding() ) {
+		$needs_seeding = self::needs_seeding();
+		$needs_repair  = self::needs_repair();
+		if ( ! $needs_seeding && ! $needs_repair ) {
 			return 0;
 		}
 
@@ -341,16 +601,46 @@ class WC_AI_Storefront_Attribute_Seeder {
 			return 0;
 		}
 
-		$created = 0;
-		foreach ( self::get_definitions() as $slug => $definition ) {
-			if ( self::create_attribute( $slug, $definition ) ) {
-				++$created;
-			}
+		// Everything above this line is cheap and cache-safe. Past this
+		// point we are about to INSERT, and the existence checks inside
+		// create_attribute() cannot be trusted against a concurrent
+		// request — see LOCK_OPTION. Nothing may create an attribute
+		// without holding this.
+		$lock_token = self::acquire_lock();
+		if ( '' === $lock_token ) {
+			return 0;
 		}
 
-		// Recorded even when $created is 0: every attribute already existing
-		// is a successful outcome, not a reason to retry on the next request.
-		update_option( self::SEEDED_OPTION, self::SEED_VERSION );
+		try {
+			$created = 0;
+
+			// Repair BEFORE creating. A store carrying duplicates from #649
+			// should be cleaned up whether or not it also needs new
+			// attributes, and cleaning up first means create_attribute()'s
+			// table check reads a table with one row per slug.
+			if ( $needs_repair ) {
+				self::repair_duplicates();
+				update_option( self::REPAIRED_OPTION, self::REPAIR_VERSION );
+			}
+
+			if ( $needs_seeding ) {
+				foreach ( self::get_definitions() as $slug => $definition ) {
+					if ( self::create_attribute( $slug, $definition ) ) {
+						++$created;
+					}
+				}
+
+				// Recorded even when $created is 0: every attribute already
+				// existing is a successful outcome, not a reason to retry on
+				// the next request.
+				update_option( self::SEEDED_OPTION, self::SEED_VERSION );
+			}
+		} finally {
+			// finally, not a trailing call: an exception partway through
+			// would otherwise leave the lock held for LOCK_TIMEOUT and
+			// silently block every other request from seeding.
+			self::release_lock( $lock_token );
+		}
 
 		return $created;
 	}

@@ -15,12 +15,17 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
+		// $wpdb is a global, and a mock left behind by one test will answer
+		// queries in the next. Clear it both ways so a test that sets one up
+		// cannot leak, and a test that expects none cannot inherit one.
+		unset( $GLOBALS['wpdb'] );
 		// Attribute labels are merchant-facing and therefore translated.
 		// Return the source string so the assertions below stay readable.
 		Functions\when( '__' )->returnArg();
 	}
 
 	protected function tearDown(): void {
+		unset( $GLOBALS['wpdb'] );
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -132,13 +137,24 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		// created it after this request's init:5 registry was already
 		// built), but the DB row already exists and wc_create_attribute()
 		// busted the wc_attribute_taxonomies cache when it was inserted, so
-		// wc_attribute_taxonomy_id_by_name() (which re-reads that cache)
-		// reports a non-zero ID.
+		// a direct read of the table reports the row.
+		//
+		// This used to assert against wc_attribute_taxonomy_id_by_name().
+		// #649 showed that accessor serves from the same transient the
+		// taxonomy registry is built from, so on a host with a shared
+		// persistent object cache BOTH guards answer "absent" together.
+		// The table is the only source that cannot.
 		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
 			static fn( $slug ) => 'pa_' . $slug
 		);
 		Functions\when( 'taxonomy_exists' )->justReturn( false );
-		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 42 );
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 0 );
+
+		global $wpdb;
+		$wpdb         = Mockery::mock();
+		$wpdb->prefix = 'wp_';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '42' );
 
 		// If the seeder relied on taxonomy_exists() alone, it would reach
 		// these calls and create a duplicate row.
@@ -294,6 +310,45 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 	private function stub_creation_environment( array $existing, array &$created ): void {
 		Functions\when( 'get_option' )->justReturn( '' );
 		Functions\when( 'update_option' )->justReturn( true );
+		// Seeding holds an add_option()-backed lock (#649). The default here
+		// is "this caller won the lock"; tests about contention override it.
+		Functions\when( 'add_option' )->justReturn( true );
+		Functions\when( 'delete_option' )->justReturn( true );
+		// The lock value carries an ownership token (#649 review).
+		Functions\when( 'wp_generate_password' )->justReturn( 'tok123456789' );
+		Functions\when( 'wp_cache_delete' )->justReturn( true );
+
+		// create_attribute() now reads the attributes table directly rather
+		// than a cached accessor (#649). Report the same absent/present
+		// answer $existing gives, so both guards stay consistent here.
+		global $wpdb;
+		$wpdb         = Mockery::mock();
+		$wpdb->prefix = 'wp_';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static function ( $sql, ...$args ) {
+				foreach ( $args as $arg ) {
+					$sql = preg_replace( '/%[sd]/', (string) $arg, $sql, 1 );
+				}
+				return $sql;
+			}
+		);
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'get_var' )->andReturnUsing(
+			static function ( $sql ) use ( $existing ) {
+				foreach ( $existing as $taxonomy ) {
+					if ( false !== strpos( $sql, '= ' . substr( $taxonomy, 3 ) ) ) {
+						return '1';
+					}
+				}
+				return null;
+			}
+		);
+		// seed() also runs the #649 repair pass, which scans the table.
+		// No duplicates in these fixtures.
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'query' )->andReturn( 0 );
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_cache_flush' )->justReturn( true );
 		Functions\when( 'wc_attribute_taxonomy_name' )->alias(
 			static fn( $slug ) => 'pa_' . $slug
 		);
@@ -336,6 +391,337 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 			array( 'gender', 'age_group', 'condition', 'color', 'size', 'material', 'pattern' ),
 			$created
 		);
+	}
+
+	public function test_repair_runs_on_a_store_whose_seed_flag_is_current(): void {
+		// The whole point of a separate trigger. An affected store already
+		// holds attributes_seeded = SEED_VERSION, so needs_seeding() is
+		// false and anything hanging off it never runs.
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = false ) {
+				if ( WC_AI_Storefront_Attribute_Seeder::SEEDED_OPTION === $name ) {
+					return WC_AI_Storefront_Attribute_Seeder::SEED_VERSION;
+				}
+				return '';
+			}
+		);
+
+		$this->assertFalse(
+			WC_AI_Storefront_Attribute_Seeder::needs_seeding(),
+			'Precondition: this store looks fully seeded.'
+		);
+		$this->assertTrue(
+			WC_AI_Storefront_Attribute_Seeder::needs_repair(),
+			'…and must still be offered the repair.'
+		);
+	}
+
+	public function test_repair_does_not_rerun_once_recorded(): void {
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = false ) {
+				if ( WC_AI_Storefront_Attribute_Seeder::REPAIRED_OPTION === $name ) {
+					return WC_AI_Storefront_Attribute_Seeder::REPAIR_VERSION;
+				}
+				return '';
+			}
+		);
+
+		$this->assertFalse( WC_AI_Storefront_Attribute_Seeder::needs_repair() );
+	}
+
+	public function test_create_attribute_skips_a_slug_already_in_the_table(): void {
+		// The state that produced #649: the row exists, but the taxonomy is
+		// not registered and WooCommerce's cached attribute list does not
+		// know about it. Both existing guards say "absent". A direct read of
+		// the table is the only one that can say otherwise.
+		Functions\when( 'wc_attribute_taxonomy_name' )->alias( static fn( $s ) => 'pa_' . $s );
+		Functions\when( 'taxonomy_exists' )->justReturn( false );
+		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 0 );
+		Functions\when( '__' )->returnArg();
+		Functions\expect( 'wc_create_attribute' )->never();
+
+		global $wpdb;
+		$wpdb         = Mockery::mock();
+		$wpdb->prefix = 'wp_';
+		$wpdb->shouldReceive( 'prepare' )->andReturn( 'SQL' );
+		$wpdb->shouldReceive( 'get_var' )->andReturn( '9' );
+
+		$this->assertFalse(
+			WC_AI_Storefront_Attribute_Seeder::create_attribute(
+				'condition',
+				array(
+					'label' => 'Condition',
+					'terms' => array( 'new' ),
+				)
+			)
+		);
+	}
+
+	public function test_repair_removes_extra_rows_but_keeps_the_terms(): void {
+		// The trap. wc_delete_attribute() deletes every term in the
+		// taxonomy, and both duplicate rows share pa_condition — so calling
+		// it would wipe new/refurbished/used and leave the survivor empty.
+		// The repair must delete the ROW only.
+		Functions\expect( 'wc_delete_attribute' )->never();
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_cache_flush' )->justReturn( true );
+		Functions\when( '__' )->returnArg();
+
+		global $wpdb;
+		$wpdb         = Mockery::mock();
+		$wpdb->prefix = 'wp_';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static fn( $sql, $arg ) => str_replace( '%d', (string) $arg, $sql )
+		);
+		// Two condition rows; ids 9 and 10.
+		$wpdb->shouldReceive( 'get_results' )->andReturn(
+			array(
+				(object) array(
+					'attribute_id'   => '9',
+					'attribute_name' => 'condition',
+				),
+				(object) array(
+					'attribute_id'   => '10',
+					'attribute_name' => 'condition',
+				),
+			)
+		);
+		$deleted = array();
+		$wpdb->shouldReceive( 'query' )->andReturnUsing(
+			static function ( $sql ) use ( &$deleted ) {
+				if ( preg_match( '/attribute_id\s*=\s*(\d+)/', $sql, $m ) ) {
+					$deleted[] = (int) $m[1];
+				}
+				return 1;
+			}
+		);
+
+		$removed = WC_AI_Storefront_Attribute_Seeder::repair_duplicates();
+
+		$this->assertSame( 1, $removed );
+		$this->assertSame( array( 10 ), $deleted, 'Keep the lowest id, drop the rest.' );
+	}
+
+	public function test_repair_ignores_attributes_this_plugin_does_not_seed(): void {
+		// A merchant with two of their own attributes sharing a name is not
+		// our business to "fix".
+		Functions\when( 'delete_transient' )->justReturn( true );
+		Functions\when( 'wp_cache_flush' )->justReturn( true );
+		Functions\when( '__' )->returnArg();
+
+		global $wpdb;
+		$wpdb         = Mockery::mock();
+		$wpdb->prefix = 'wp_';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static fn( $sql, $arg ) => str_replace( '%d', (string) $arg, $sql )
+		);
+		$wpdb->shouldReceive( 'get_results' )->andReturn(
+			array(
+				(object) array(
+					'attribute_id'   => '20',
+					'attribute_name' => 'fabric_weight',
+				),
+				(object) array(
+					'attribute_id'   => '21',
+					'attribute_name' => 'fabric_weight',
+				),
+			)
+		);
+		$wpdb->shouldReceive( 'query' )->never();
+
+		$this->assertSame( 0, WC_AI_Storefront_Attribute_Seeder::repair_duplicates() );
+	}
+
+	public function test_second_concurrent_seed_creates_nothing(): void {
+		// #649. Both existing guards ask a CACHE whether the attribute
+		// exists, and a cache can answer wrongly. add_option() is backed by
+		// a unique index on option_name, so exactly one concurrent caller
+		// can create the lock. The loser must create nothing at all —
+		// not "fewer duplicates", none.
+		$created = array();
+		$this->stub_creation_environment( array(), $created );
+		Functions\when( 'apply_filters' )->justReturn( true );
+
+		// First caller takes the lock; every later add_option() fails, which
+		// is what the unique index gives us in production.
+		$lock_taken = false;
+		Functions\when( 'add_option' )->alias(
+			static function () use ( &$lock_taken ) {
+				if ( $lock_taken ) {
+					return false;
+				}
+				$lock_taken = true;
+				return true;
+			}
+		);
+
+		WC_AI_Storefront_Attribute_Seeder::seed();
+		$first_round = $created;
+		$created     = array();
+
+		// Second request, arriving while the first still holds the lock.
+		// Its seed flag read is stale, so needs_seeding() is still true.
+		WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertCount( 7, $first_round );
+		$this->assertSame( array(), $created, 'The losing request must create nothing.' );
+	}
+
+	public function test_release_does_not_delete_a_lock_someone_else_reclaimed(): void {
+		// The mutex is only correct if release is scoped to the lock this
+		// request took. A run that overruns LOCK_TIMEOUT gets its lock
+		// reclaimed by a second request; if its finally then deletes
+		// unconditionally, it frees the SECOND request's lock and a third
+		// can start seeding alongside it.
+		$created = array();
+		$this->stub_creation_environment( array(), $created );
+		Functions\when( 'apply_filters' )->justReturn( true );
+		Functions\when( 'add_option' )->justReturn( true );
+
+		// Replace the harness's $wpdb wholesale rather than layering another
+		// shouldReceive() on it — Mockery keeps the first matching
+		// expectation, so an added one would never be consulted.
+		$delete_sql = array();
+		global $wpdb;
+		$wpdb          = Mockery::mock();
+		$wpdb->prefix  = 'wp_';
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static function ( $sql, ...$args ) {
+				foreach ( $args as $arg ) {
+					$sql = preg_replace( '/%[sd]/', (string) $arg, $sql, 1 );
+				}
+				return $sql;
+			}
+		);
+		$wpdb->shouldReceive( 'get_var' )->andReturn( null );
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'query' )->andReturnUsing(
+			static function ( $sql ) use ( &$delete_sql ) {
+				if ( false !== strpos( $sql, 'DELETE' ) && false !== strpos( $sql, 'option_name' ) ) {
+					$delete_sql[] = $sql;
+				}
+				return 1;
+			}
+		);
+
+		WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertNotEmpty( $delete_sql, 'The lock must be released through a conditional delete.' );
+		$this->assertStringContainsString(
+			'option_value',
+			$delete_sql[0],
+			'Release must match on the token this request stored, not just the option name.'
+		);
+	}
+
+	public function test_repair_does_not_flush_the_whole_object_cache(): void {
+		// wp_cache_flush() empties every group on the site. WooCommerce
+		// itself invalidates only `woocommerce-attributes` plus the
+		// transient after wc_create_attribute(); match that.
+		Functions\expect( 'wp_cache_flush' )->never();
+		Functions\expect( 'delete_transient' )->atLeast()->once();
+		Functions\when( '__' )->returnArg();
+
+		global $wpdb;
+		$wpdb          = Mockery::mock();
+		$wpdb->prefix  = 'wp_';
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static fn( $sql, $arg ) => str_replace( '%d', (string) $arg, $sql )
+		);
+		$wpdb->shouldReceive( 'get_results' )->andReturn(
+			array(
+				(object) array(
+					'attribute_id'   => '9',
+					'attribute_name' => 'condition',
+				),
+				(object) array(
+					'attribute_id'   => '10',
+					'attribute_name' => 'condition',
+				),
+			)
+		);
+		$wpdb->shouldReceive( 'query' )->andReturn( 1 );
+
+		WC_AI_Storefront_Attribute_Seeder::repair_duplicates();
+	}
+
+	public function test_a_stale_lock_does_not_block_seeding_forever(): void {
+		// A request that dies mid-seed leaves the lock behind. Without a
+		// timeout the store never seeds again and the failure is silent.
+		$created = array();
+		$this->stub_creation_environment( array(), $created );
+		Functions\when( 'apply_filters' )->justReturn( true );
+
+		// Lock exists and is older than the timeout. add_option() fails
+		// while the stale row is present and succeeds once it is gone —
+		// which is what the unique index does in production, and what
+		// makes the re-add the atomic step rather than the delete.
+		$stale_row_present = true;
+		Functions\when( 'delete_option' )->alias(
+			static function () use ( &$stale_row_present ) {
+				$stale_row_present = false;
+				return true;
+			}
+		);
+		Functions\when( 'add_option' )->alias(
+			static function () use ( &$stale_row_present ) {
+				return ! $stale_row_present;
+			}
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = false ) {
+				if ( WC_AI_Storefront_Attribute_Seeder::LOCK_OPTION === $name ) {
+					// Timestamp-first, matching what acquire_lock() stores.
+					return ( time() - 3600 ) . ':stale-token';
+				}
+				return '';
+			}
+		);
+
+		WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertCount( 7, $created, 'A stale lock must be reclaimed, not obeyed forever.' );
+	}
+
+	public function test_a_fresh_lock_is_obeyed(): void {
+		// The companion: a lock taken seconds ago belongs to a request that
+		// is still working. Stealing it would recreate the very race the
+		// lock exists to prevent.
+		$created = array();
+		$this->stub_creation_environment( array(), $created );
+		Functions\when( 'apply_filters' )->justReturn( true );
+		// Modelled exactly like the stale-lock test: add_option() fails only
+		// while the row is present. If the freshness check is removed, the
+		// reclaim path deletes and re-adds successfully and seeding runs —
+		// so this test fails for the right reason rather than because
+		// add_option() was rigged to always fail.
+		$lock_row_present = true;
+		Functions\when( 'delete_option' )->alias(
+			static function () use ( &$lock_row_present ) {
+				$lock_row_present = false;
+				return true;
+			}
+		);
+		Functions\when( 'add_option' )->alias(
+			static function () use ( &$lock_row_present ) {
+				return ! $lock_row_present;
+			}
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = false ) {
+				if ( WC_AI_Storefront_Attribute_Seeder::LOCK_OPTION === $name ) {
+					return time() . ':fresh-token';
+				}
+				return '';
+			}
+		);
+
+		WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertSame( array(), $created );
+		$this->assertTrue( $lock_row_present, 'A fresh lock must not even be deleted.' );
 	}
 
 	public function test_reseed_creates_only_the_new_attribute(): void {
@@ -447,8 +833,17 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_seed_returns_zero_without_touching_anything_when_already_seeded(): void {
-		Functions\when( 'get_option' )->justReturn(
-			WC_AI_Storefront_Attribute_Seeder::SEED_VERSION
+		// Per option name, not a blanket answer: seed() now asks two
+		// separate questions and a stub that says SEED_VERSION to both
+		// leaves needs_repair() true, so the run proceeds and the
+		// expectations below fire for the wrong reason.
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default = false ) {
+				if ( WC_AI_Storefront_Attribute_Seeder::REPAIRED_OPTION === $name ) {
+					return WC_AI_Storefront_Attribute_Seeder::REPAIR_VERSION;
+				}
+				return WC_AI_Storefront_Attribute_Seeder::SEED_VERSION;
+			}
 		);
 		// The whole point: no filter, no taxonomy probe, no insert, and no
 		// re-recording of a flag that's already correct.
@@ -475,6 +870,10 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_create_attribute' )->justReturn( 1 );
 		Functions\when( 'wc_attribute_taxonomy_id_by_name' )->justReturn( 0 );
 		Functions\when( '__' )->returnArg();
+		Functions\when( 'add_option' )->justReturn( true );
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'wp_generate_password' )->justReturn( 'tok123456789' );
+		Functions\when( 'wp_cache_delete' )->justReturn( true );
 		Functions\when( 'update_option' )->alias(
 			static function ( $name, $value ) use ( &$recorded ) {
 				$recorded[ $name ] = $value;
