@@ -1,6 +1,10 @@
 ## [Unreleased]
 
 ### Fixed
+- **Out-of-stock products were offered to AI assistants as available (#658).**
+  - WooCommerce tracks stock in two places, and for some products they disagree. A variable product whose every option is unavailable still reports "in stock" internally, while your storefront correctly shows shoppers "Out of stock".
+  - Your store was sending assistants the internal answer. An assistant could recommend something a shopper then couldn't buy.
+  - Availability now follows what your product page shows. Products you sell through an external link are unaffected — they stay available, because they can still be bought, just not on your site.
 - **AI assistants that follow the commerce standard couldn't use your MCP connection (#651).**
   - The three tools your store offers over MCP were named back-to-front compared with the Universal Commerce Protocol standard — `catalog_search` where the standard says `search_catalog`.
   - Assistants that go by the standard's names, rather than asking your store what it offers, decided your store had no catalog and gave up before sending a single search. Shopify's own UCP client did exactly that.

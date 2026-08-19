@@ -189,6 +189,65 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'sku', $result );
 	}
 
+	public function test_translate_marks_out_of_stock_class_unavailable_despite_in_stock_flag(): void {
+		// WooCommerce reports both signals and they can disagree. A variable
+		// parent whose variations are all unpurchasable aggregates to
+		// `is_in_stock: true` while `stock_availability.class` resolves to
+		// `out-of-stock` — which is what the shopper is shown on the product
+		// page. Observed live on prod_82 "Camp Shirt, Olive" (#658).
+		$fixture                       = $this->variation_fixture();
+		$fixture['is_in_stock']        = true;
+		$fixture['is_purchasable']     = false;
+		$fixture['stock_availability'] = array(
+			'text'  => 'Out of stock',
+			'class' => 'out-of-stock',
+		);
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertFalse(
+			$result['availability']['available'],
+			'A product WooCommerce shows as "Out of stock" must not be advertised as available — see #658.'
+		);
+	}
+
+	public function test_translate_keeps_external_product_available(): void {
+		// External/affiliate products read `is_purchasable: false` because they
+		// cannot be added to THIS store's cart, but they are genuinely
+		// obtainable elsewhere, and the UCP spec defines `available` as
+		// "whether this can be obtained". Gating on `is_purchasable` alone
+		// would wrongly hide them (#657). Observed live on prod_44.
+		$fixture                       = $this->variation_fixture();
+		$fixture['is_in_stock']        = true;
+		$fixture['is_purchasable']     = false;
+		$fixture['stock_availability'] = array(
+			'text'  => 'In stock',
+			'class' => 'in-stock',
+		);
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertTrue(
+			$result['availability']['available'],
+			'External products are obtainable elsewhere and must stay available — see #657.'
+		);
+	}
+
+	public function test_translate_defaults_availability_closed_when_stock_unknown(): void {
+		// Availability must fail closed. An absent `is_in_stock` previously
+		// defaulted to `true`, so a payload missing the field advertised the
+		// product as buyable on no evidence at all.
+		$fixture = $this->variation_fixture();
+		unset( $fixture['is_in_stock'] );
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertFalse(
+			$result['availability']['available'],
+			'Unknown stock must resolve to unavailable, not available — see #658.'
+		);
+	}
+
 	public function test_translate_marks_out_of_stock_variant_unavailable(): void {
 		$fixture                = $this->variation_fixture();
 		$fixture['is_in_stock'] = false;
