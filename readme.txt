@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 10.9
-Stable tag: 0.38.0
+Stable tag: 0.38.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.38.1 - 2026-08-18 =
+**Fixed**
+* Upgrading could create a duplicate Condition attribute, so two copies appeared under Products then Attributes. Upgrading to this version removes the extra copy and keeps your values. Don't delete a duplicate yourself from Products then Attributes: WooCommerce removes every value in the attribute when you do that, which empties the copy you keep.
 
 = 0.38.0 - 2026-08-18 =
 **New**

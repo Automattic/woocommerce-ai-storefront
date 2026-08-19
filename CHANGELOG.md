@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.38.1] – 2026-08-18
+
 ### Fixed
 - **Upgrading could create a duplicate Condition attribute (#649).**
   - Two copies of Condition could appear under Products then Attributes, depending on how busy your store was during the upgrade.
