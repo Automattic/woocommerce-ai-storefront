@@ -10,7 +10,7 @@ Discovery surfaces (`/llms.txt`, `/agents.md`, `/.well-known/ucp`, `/robots.txt`
 
 ## Conventions
 
-- Every UCP response is wrapped in a `ucp` envelope with `version`, `capabilities`, and `payment_handlers`. Built by `WC_AI_Storefront_UCP_Envelope`.
+- Every UCP response is wrapped in a `ucp` envelope with `version` and `capabilities`. Checkout responses carry a third key, `payment_handlers` (`{}` when none are configured); catalog responses (`/catalog/search`, `/catalog/lookup`) never emit it. Built by `WC_AI_Storefront_UCP_Envelope` (`catalog_envelope()` / `checkout_envelope()`).
 - Errors use `error: { code, message }` plus an HTTP status code matching the failure class.
 - Currency amounts on UCP responses are integers in **minor units** (cents for USD, pence for GBP). No floats. Read currency precision from the response context.
 - Date-times are ISO 8601 UTC.
@@ -65,9 +65,9 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `query` | string | no | Free-text search term. |
-| `filters` | object | no | UCP filter object. Honored fields: `categories`, `tags`, `brands`, `price` (`{min, max}`). |
+| `filters` | object | no | UCP filter object. Honored fields: `categories` (slugs or names), `tags` (slugs or names), `brands` (slugs or names), `price` (`{min, max}` in minor units, denominated in `context.currency`), `attributes` (map of attribute slug → array of accepted values, e.g. `{"color": ["blue"]}`), `featured` (boolean), `in_stock` (boolean), `min_rating` (integer, 1–5), `on_sale` (boolean). |
 | `pagination` | object | no | `{ "limit": int, "cursor": string }`. `limit` defaults to 10, clamped to `[1, 100]`. `cursor` is the opaque `pagination.cursor` value from a previous response; omit it for the first page. **`page` and `per_page` are not accepted on POST** — they are GET-only spellings, translated to `cursor` / `limit` internally. |
-| `sort` | object | no | `{ "field": "price"\|"title"\|"date"\|"newest"\|"popularity"\|"rating"\|"menu_order", "direction": "asc"\|"desc" }`. `direction` defaults to `asc` (ignored for `newest`, which is always `desc`). An unrecognized `field` doesn't error — it emits an `invalid_sort_field` warning in `messages` and falls back to default ordering. **`order` is not accepted** — it is the internal Store API spelling, never a request key. |
+| `sort` | object | no | `{ "field": "price"\|"title"\|"date"\|"newest"\|"popularity"\|"rating"\|"menu_order", "direction": "asc"\|"desc" }`. `direction` defaults to `asc` (ignored for `newest`, which is always `desc`). An unrecognized `field` doesn't error — it emits an `invalid_sort_field` warning in `messages` and falls back to default ordering. An unrecognized `direction` gets no warning: anything other than `desc` (case-insensitive) silently falls back to `asc`. **`order` is not accepted** — it is the internal Store API spelling, never a request key. |
 | `context` | object | no | UCP context block (currency, locale). Logged but not currently honored. |
 | `signals` | object | no | Platform-observed environment data. Logged but not honored — UCP spec mandates these MUST NOT be buyer-asserted; until we have a trust model we ignore values. |
 
