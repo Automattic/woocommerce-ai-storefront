@@ -1,5 +1,11 @@
 ## [Unreleased]
 
+### Fixed
+- **Upgrading could create a duplicate Condition attribute (#649).**
+  - Two copies of Condition could appear under Products then Attributes, depending on how busy your store was during the upgrade.
+  - Upgrading to this version removes the extra copy automatically and keeps your values.
+  - Don't delete a duplicate yourself from Products then Attributes. WooCommerce removes every value in the attribute when you do that, which empties the copy you keep.
+
 ---
 
 ## [0.38.0] – 2026-08-18
