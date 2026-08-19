@@ -77,22 +77,21 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
 {
   "ucp": {
     "version": "2026-04-08",
-    "capabilities": ["dev.ucp.shopping.catalog.search"],
-    "payment_handlers": {}
+    "capabilities": { "dev.ucp.shopping.catalog.search": [{ "version": "2026-04-08" }] }
   },
   "products": [
     {
       "id": "prod_42",
       "title": "Acme Running Shoes",
-      "description": "...",
+      "description": { "plain": "..." },
       "url": "https://your-store.com/product/acme-running-shoes/?utm_source=chatgpt.com&utm_medium=referral&utm_id=woo_ucp&ai_agent_host_raw=chatgpt.com",
       "variants": [
         {
           "id": "var_42_default",
-          "title": "Default",
+          "title": "Acme Running Shoes",
           "description": { "plain": "Premium running shoes designed for daily training." },
-          "price": { "amount_minor": 12999, "currency": "USD" },
-          "availability": "in_stock"
+          "price": { "amount": 12999, "currency": "USD" },
+          "availability": { "available": true }
         }
       ],
       "metadata": {
@@ -156,7 +155,7 @@ curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
   }'
 ```
 
-**Paging.** Feed the response's `pagination.cursor` back as the request's `pagination.cursor` to advance. The value is opaque — do not construct or parse it.
+**Paging.** Feed the response's `pagination.cursor` back as the request's `pagination.cursor` to advance. The value is opaque — do not construct or parse it. `cursor` is only present when `has_next_page` is `true` — the last page omits the key entirely rather than sending it as `null`, so check `has_next_page` before reading `cursor`.
 
 ```bash
 # First page

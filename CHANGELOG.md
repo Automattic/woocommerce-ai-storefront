@@ -12,7 +12,7 @@
   - The brand filter was documented as `brands` but read as `brand`, so brand filtering silently did nothing too.
   - Sorting had the same problem: the reference said `sort.order`, the code reads `sort.direction`, so asking for cheapest-first quietly did nothing.
   - The reference also listed a `relevance` sort option that never existed. Asking for it quietly fell back to default ordering. The real options are now documented: price, title, date, newest, popularity, rating and menu order.
-  - All three are corrected, and unknown keys inside `filters`, `pagination`, and `sort` now come back in the `X-WC-AI-Storefront-Unknown-Params` header instead of vanishing.
+  - The reference now matches the code, and unknown keys inside `filters`, `pagination`, and `sort` come back in the `X-WC-AI-Storefront-Unknown-Params` header instead of vanishing.
 
 ---
 
