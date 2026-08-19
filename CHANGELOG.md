@@ -7,6 +7,12 @@
   - The tools are now named `search_catalog`, `lookup_catalog` and `create_checkout`.
   - The MCP connection is on by default, so every store with syndication switched on starts serving the new names as soon as it upgrades.
   - Assistants that ask your store what it offers pick the new names up on their own. You don't need to do anything.
+- **Agents could only ever see the first ten products (#656, #659).**
+  - The API reference told agents to page with `page` and `per_page`. The code reads `limit` and `cursor`, so paging silently did nothing and every request returned the same first ten products.
+  - The brand filter was documented as `brands` but read as `brand`, so brand filtering silently did nothing too.
+  - Sorting had the same problem: the reference said `sort.order`, the code reads `sort.direction`, so asking for cheapest-first quietly did nothing.
+  - The reference also listed a `relevance` sort option that never existed. Asking for it quietly fell back to default ordering. The real options are now documented: price, title, date, newest, popularity, rating and menu order.
+  - All three are corrected, and unknown keys inside `filters`, `pagination`, and `sort` now come back in the `X-WC-AI-Storefront-Unknown-Params` header instead of vanishing.
 
 ---
 

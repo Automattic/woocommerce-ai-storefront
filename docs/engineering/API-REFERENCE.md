@@ -66,8 +66,8 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
 |-------|------|----------|-------------|
 | `query` | string | no | Free-text search term. |
 | `filters` | object | no | UCP filter object. Honored fields: `categories`, `tags`, `brands`, `price` (`{min, max}`). |
-| `pagination` | object | no | `{ "page": int, "per_page": int }`. Default 1 / 20. Max `per_page` 100. |
-| `sort` | object | no | `{ "field": "relevance"\|"price"\|"date", "order": "asc"\|"desc" }`. |
+| `pagination` | object | no | `{ "limit": int, "cursor": string }`. `limit` defaults to 10, clamped to `[1, 100]`. `cursor` is the opaque `pagination.cursor` value from a previous response; omit it for the first page. **`page` and `per_page` are not accepted on POST** — they are GET-only spellings, translated to `cursor` / `limit` internally. |
+| `sort` | object | no | `{ "field": "price"\|"title"\|"date"\|"newest"\|"popularity"\|"rating"\|"menu_order", "direction": "asc"\|"desc" }`. `direction` defaults to `asc` (ignored for `newest`, which is always `desc`). An unrecognized `field` doesn't error — it emits an `invalid_sort_field` warning in `messages` and falls back to default ordering. **`order` is not accepted** — it is the internal Store API spelling, never a request key. |
 | `context` | object | no | UCP context block (currency, locale). Logged but not currently honored. |
 | `signals` | object | no | Platform-observed environment data. Logged but not honored — UCP spec mandates these MUST NOT be buyer-asserted; until we have a trust model we ignore values. |
 
@@ -104,7 +104,7 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
       }
     }
   ],
-  "pagination": { "page": 1, "per_page": 20, "total": 142 }
+  "pagination": { "has_next_page": true, "cursor": "cDI=", "total_count": 142 }
 }
 ```
 
@@ -152,8 +152,23 @@ curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
   -d '{
     "query": "running shoes",
     "filters": { "price": { "max": 15000 } },
-    "pagination": { "per_page": 10 }
+    "pagination": { "limit": 10 }
   }'
+```
+
+**Paging.** Feed the response's `pagination.cursor` back as the request's `pagination.cursor` to advance. The value is opaque — do not construct or parse it.
+
+```bash
+# First page
+curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
+  -H 'Content-Type: application/json' \
+  -d '{ "query": "tote", "pagination": { "limit": 5 } }'
+# -> "pagination": { "has_next_page": true, "cursor": "cDI=", "total_count": 39 }
+
+# Next page
+curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
+  -H 'Content-Type: application/json' \
+  -d '{ "query": "tote", "pagination": { "limit": 5, "cursor": "cDI=" } }'
 ```
 
 ### `GET /catalog/search`
