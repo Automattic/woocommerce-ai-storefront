@@ -133,7 +133,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 	/**
 	 * Upper bound on per-filter array length for taxonomy filters
-	 * (`filters.categories[]`, `filters.tags[]`, `filters.brand[]`)
+	 * (`filters.categories[]`, `filters.tags[]`, `filters.brands[]`)
 	 * and attribute-set keys (`filters.attributes.*`).
 	 *
 	 * DoS mitigation: without a cap, an agent can submit a filter
@@ -1227,7 +1227,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return '';
 		}
 
-		$known = array( 'query', 'filters', 'pagination', 'sort', 'context', 'signals' );
+		// `meta` carries `meta.source`, the third-precedence attribution
+		// path resolve_agent_host() reads (profile-URL header → Product
+		// header → body meta.source → User-Agent → unknown; see
+		// API-REFERENCE.md). No nested allow-list for it: its shape is
+		// the caller's to define, not ours.
+		$known = array( 'query', 'filters', 'pagination', 'sort', 'context', 'signals', 'meta' );
 
 		// Known sub-keys, one level deep. Anything absent here is
 		// silently discarded downstream, which is exactly the class of
@@ -1250,8 +1255,26 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 		foreach ( $known_nested as $parent => $allowed ) {
 			$child = $body[ $parent ] ?? null;
-			if ( ! is_array( $child ) || array_is_list( $child ) ) {
+			if ( ! is_array( $child ) ) {
 				continue;
+			}
+			if ( array_is_list( $child ) ) {
+				// `filters` gets the same list-shape normalization
+				// map_ucp_search_to_store_api() applies before it reads
+				// filter keys: some agent clients (observed across
+				// Gemini, Grok, and GPT through the OpenRouter tool-call
+				// path) serialize `filters` as a LIST of single-key
+				// objects rather than one object. The mapper merges and
+				// honors that shape, so skipping it here — as a bare
+				// list-shaped body is skipped above — would hide a
+				// genuinely unknown key inside it. `pagination`/`sort`
+				// get no such normalization in the mapper, so a
+				// list-shaped payload there is still a no-op we don't
+				// need to inspect.
+				if ( 'filters' !== $parent ) {
+					continue;
+				}
+				$child = self::merge_list_shaped_object( $child );
 			}
 			foreach ( array_diff( array_keys( $child ), $allowed ) as $bad ) {
 				$unknown_keys[] = $parent . '.' . $bad;
@@ -1300,6 +1323,31 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		return $joined;
+	}
+
+	/**
+	 * Merges a list-shaped UCP object payload into one associative map.
+	 *
+	 * Some agent clients (observed across Gemini, Grok, and GPT through
+	 * the OpenRouter tool-call path) serialize an object-typed field as
+	 * a LIST of single-key objects — e.g. `[{ "in_stock": true }]` —
+	 * instead of one object (`{ "in_stock": true }`). Both
+	 * map_ucp_search_to_store_api() (which honors `filters` in this
+	 * shape) and detect_unknown_search_params() (which must recognize
+	 * the same keys once merged) share this helper so the two can't
+	 * drift apart on what counts as a "known" nested key.
+	 *
+	 * @param array<int, mixed> $items List-shaped payload (array_is_list() true).
+	 * @return array<string, mixed> Merged associative map; later entries win on key collision.
+	 */
+	private static function merge_list_shaped_object( array $items ): array {
+		$merged = array();
+		foreach ( $items as $entry ) {
+			if ( is_array( $entry ) ) {
+				$merged = array_merge( $merged, $entry );
+			}
+		}
+		return $merged;
 	}
 
 	/**
@@ -4823,17 +4871,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// e.g. `[{ "in_stock": true }]` instead of `{ "in_stock": true }`. Left
 		// as-is, the string-keyed lookups below never match and every filter is
 		// silently dropped. Normalize a list-shaped payload by merging its array
-		// elements into one associative map so the agent's filters take effect.
-		// A correctly-shaped object has string keys (not a list) and passes
-		// through untouched; an empty array is left alone (it's a no-op anyway).
+		// elements into one associative map (see merge_list_shaped_object(), also
+		// used by detect_unknown_search_params() so the two stay in sync) so the
+		// agent's filters take effect. A correctly-shaped object has string keys
+		// (not a list) and passes through untouched; an empty array is left alone
+		// (it's a no-op anyway).
 		if ( array() !== $filters && array_is_list( $filters ) ) {
-			$merged = array();
-			foreach ( $filters as $entry ) {
-				if ( is_array( $entry ) ) {
-					$merged = array_merge( $merged, $entry );
-				}
-			}
-			$filters = $merged;
+			$filters = self::merge_list_shaped_object( $filters );
 		}
 
 		if ( isset( $filters['categories'] ) && is_array( $filters['categories'] ) ) {

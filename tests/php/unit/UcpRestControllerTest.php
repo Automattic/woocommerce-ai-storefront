@@ -786,4 +786,107 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'sort.order', $header );
 		$this->assertStringNotContainsString( 'sort.direction', $header );
 	}
+
+	public function test_meta_source_key_is_not_flagged_as_unknown(): void {
+		// resolve_agent_host() reads $body['meta']['source'] as the
+		// third-precedence attribution path (profile-URL header → Product
+		// header → body meta.source → User-Agent → unknown; see
+		// API-REFERENCE.md). A legitimate `meta` key must not appear in
+		// the unknown-params header, or an agent following this branch's
+		// documented guidance to trust that header would drop attribution
+		// data the server actually honors — the #656/#659 bug class.
+		$header = $this->invoke_detect_unknown_search_params(
+			array(
+				'query' => 'tote',
+				'meta'  => array( 'source' => 'chatgpt.com' ),
+			)
+		);
+
+		$this->assertSame( '', $header );
+	}
+
+	public function test_unknown_key_inside_list_shaped_filters_is_reported(): void {
+		// map_ucp_search_to_store_api() merges a list-shaped `filters`
+		// payload (observed across Gemini, Grok, and GPT through the
+		// OpenRouter tool-call path) into one associative map and honors
+		// it. The detector must normalize the same way before diffing, or
+		// a genuinely unknown key hidden inside a list-shaped `filters`
+		// body sails through unreported — the #656/#659 bug class.
+		$header = $this->invoke_detect_unknown_search_params(
+			array(
+				'filters' => array(
+					array( 'gibberish' => 1 ),
+				),
+			)
+		);
+
+		$this->assertStringContainsString( 'filters.gibberish', $header );
+	}
+
+	public function test_list_shaped_filters_with_only_known_keys_produce_no_unknown_params(): void {
+		$header = $this->invoke_detect_unknown_search_params(
+			array(
+				'filters' => array(
+					array( 'in_stock' => true ),
+					array( 'brands' => array( 'acme' ) ),
+				),
+			)
+		);
+
+		$this->assertSame( '', $header );
+	}
+
+	public function test_list_shaped_pagination_is_still_skipped_not_flagged(): void {
+		// Unlike `filters`, the mapper applies no list-shape normalization
+		// to `pagination` or `sort` — a list-shaped payload there is a
+		// mapper no-op, so the detector keeps skipping it rather than
+		// misreporting keys the mapper never merges.
+		$header = $this->invoke_detect_unknown_search_params(
+			array(
+				'pagination' => array( array( 'gibberish' => 1 ) ),
+			)
+		);
+
+		$this->assertSame( '', $header );
+	}
+
+	public function test_all_known_filter_pagination_and_sort_keys_produce_no_unknown_params(): void {
+		// Pins the allow-lists to the code: a typo in $known_nested['filters'],
+		// or a legitimate filter added to map_ucp_search_to_store_api()
+		// without updating the detector, would silently flag a real filter
+		// as unknown and no test would fail. Sends every filter key the
+		// mapper honors — attributes, brands, categories, featured,
+		// in_stock, min_rating, on_sale, price, tags — plus every
+		// legitimate `pagination` and `sort` key, and asserts the
+		// unknown-params header comes back empty.
+		$header = $this->invoke_detect_unknown_search_params(
+			array(
+				'query'      => 'tote',
+				'filters'    => array(
+					'attributes' => array( 'color' => array( 'blue' ) ),
+					'brands'     => array( 'acme' ),
+					'categories' => array( 'bags' ),
+					'featured'   => true,
+					'in_stock'   => true,
+					'min_rating' => 4,
+					'on_sale'    => true,
+					'price'      => array(
+						'min' => 1000,
+						'max' => 5000,
+					),
+					'tags'       => array( 'summer' ),
+				),
+				'pagination' => array(
+					'limit'  => 10,
+					'cursor' => 'abc123',
+				),
+				'sort'       => array(
+					'field'     => 'price',
+					'direction' => 'desc',
+				),
+			)
+		);
+
+		$this->assertSame( '', $header );
+	}
 }
