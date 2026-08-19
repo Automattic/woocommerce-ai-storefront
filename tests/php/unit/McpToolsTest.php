@@ -29,13 +29,20 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_definitions_exposes_exactly_three_tools(): void {
+		// These names are the UCP wire contract, not our choice of spelling.
+		// They are defined verbatim in `source/services/shopping/mcp.openrpc.json`
+		// in Universal-Commerce-Protocol/ucp. Clients that resolve an operation
+		// by canonical name — Shopify's `@shopify/ucp-cli` among them — reject
+		// the whole store when they don't match, without ever calling
+		// `tools/list` to find out what we actually offer. That was #651.
 		$defs  = WC_AI_Storefront_MCP_Tools::definitions();
 		$names = array_column( $defs, 'name' );
 
 		$this->assertCount( 3, $defs );
 		$this->assertSame(
 			array( 'search_catalog', 'lookup_catalog', 'create_checkout' ),
-			$names
+			$names,
+			'MCP tool names are the UCP wire contract (mcp.openrpc.json). Renaming them breaks spec-following clients — see #651.'
 		);
 	}
 
@@ -298,7 +305,7 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_require_continue_url_defaults_off_for_non_checkout_tools(): void {
-		// search_catalog/lookup never carry a continue_url; the default
+		// search_catalog/lookup_catalog never carry a continue_url; the default
 		// (false) must leave their 200 responses as successes.
 		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
 			array(

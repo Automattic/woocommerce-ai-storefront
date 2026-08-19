@@ -159,6 +159,7 @@ class WC_AI_Storefront_MCP_Tools {
 			),
 			array(
 				'name'        => 'lookup_catalog',
+				/* translators: `search_catalog` is a UCP tool name — do not translate it. */
 				'description' => __( 'Look up specific products by their UCP id; returns full UCP product records. Use ids returned by search_catalog.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => array(
 					'type'       => 'object',
@@ -388,7 +389,7 @@ class WC_AI_Storefront_MCP_Tools {
 				);
 				$code    = 'error';
 				$message = sprintf(
-					/* translators: 1: tool name, 2: HTTP status code. */
+					/* translators: 1: operation label, e.g. "Catalog search", 2: HTTP status code. */
 					__( '%1$s failed (HTTP %2$d).', 'woocommerce-ai-storefront' ),
 					$summary,
 					$status

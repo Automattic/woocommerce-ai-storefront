@@ -149,7 +149,16 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertCount( 3, $response->get_data()['result']['tools'] );
+		$tools = $response->get_data()['result']['tools'];
+		$this->assertCount( 3, $tools );
+		// Assert the canonical names on the PROTOCOL RESPONSE, not just in
+		// definitions(). This is the surface an external client reads, and the
+		// surface #651 was reported against.
+		$this->assertSame(
+			array( 'search_catalog', 'lookup_catalog', 'create_checkout' ),
+			array_column( $tools, 'name' ),
+			'tools/list must advertise the UCP canonical tool names — see #651.'
+		);
 	}
 
 	public function test_tools_list_ignores_session_state(): void {

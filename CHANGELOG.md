@@ -4,8 +4,9 @@
 - **AI assistants that follow the commerce standard couldn't use your MCP connection (#651).**
   - The three tools your store offers over MCP were named back-to-front compared with the Universal Commerce Protocol standard — `catalog_search` where the standard says `search_catalog`.
   - Assistants that go by the standard's names, rather than asking your store what it offers, decided your store had no catalog and gave up before sending a single search. Shopify's own UCP client did exactly that.
-  - The tools are now named `search_catalog`, `lookup_catalog` and `create_checkout`. Assistants that ask your store what it offers were never affected and carry on working.
-  - Only affects stores with the MCP connection switched on, which is off unless you turned it on.
+  - The tools are now named `search_catalog`, `lookup_catalog` and `create_checkout`.
+  - The MCP connection is on by default, so every store with syndication switched on starts serving the new names as soon as it upgrades.
+  - Assistants that ask your store what it offers pick the new names up on their own. You don't need to do anything.
 
 ---
 
