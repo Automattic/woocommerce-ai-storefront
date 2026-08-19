@@ -31,7 +31,7 @@ class WC_AI_Storefront_MCP_Tools {
 	 *
 	 * Schema keywords are kept close to the subset every major model's
 	 * function-calling layer accepts: type, properties, items, required, enum,
-	 * description — plus one `anyOf` on catalog_search. We deliberately avoid
+	 * description — plus one `anyOf` on search_catalog. We deliberately avoid
 	 * the numeric/array bound keywords `minItems`/`maxItems` and
 	 * `minimum`/`maximum`: Gemini's function-declaration validator rejects them
 	 * with a hard 400 that breaks tool registration for the WHOLE session, and
@@ -39,7 +39,7 @@ class WC_AI_Storefront_MCP_Tools {
 	 * (e.g. "1-100 ids", "rating 1-5") instead.
 	 *
 	 * `anyOf` is the one structural constraint we keep — it expresses
-	 * catalog_search's "provide query and/or filters" rule, which no single
+	 * search_catalog's "provide query and/or filters" rule, which no single
 	 * `required` entry can (filters-only browse is valid). Caveat: Gemini's
 	 * function-calling is documented to reject `anyOf` too, but we could not
 	 * verify that here (the playground 500s were its own backend, not our
@@ -51,7 +51,7 @@ class WC_AI_Storefront_MCP_Tools {
 	public static function definitions(): array {
 		return array(
 			array(
-				'name'        => 'catalog_search',
+				'name'        => 'search_catalog',
 				'description' => __( 'Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse — at least one is recommended.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => array(
 					'type'       => 'object',
@@ -158,8 +158,8 @@ class WC_AI_Storefront_MCP_Tools {
 				),
 			),
 			array(
-				'name'        => 'catalog_lookup',
-				'description' => __( 'Look up specific products by their UCP id; returns full UCP product records. Use ids returned by catalog_search.', 'woocommerce-ai-storefront' ),
+				'name'        => 'lookup_catalog',
+				'description' => __( 'Look up specific products by their UCP id; returns full UCP product records. Use ids returned by search_catalog.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => array(
 					'type'       => 'object',
 					'properties' => array(
@@ -174,7 +174,7 @@ class WC_AI_Storefront_MCP_Tools {
 				),
 			),
 			array(
-				'name'        => 'checkout_create',
+				'name'        => 'create_checkout',
 				'description' => __( 'Create a stateless checkout session for one or more products and return a continue_url to redirect the shopper to. Does not place the order.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => array(
 					'type'       => 'object',
@@ -240,7 +240,7 @@ class WC_AI_Storefront_MCP_Tools {
 	/**
 	 * Dispatch a tool call to its neutral core and return an MCP tool result.
 	 *
-	 * @param string $tool_name   catalog_search|catalog_lookup|checkout_create.
+	 * @param string $tool_name   search_catalog|lookup_catalog|create_checkout.
 	 * @param array  $arguments   Validated tool arguments.
 	 * @param string $client_name Raw agent handshake name from the session.
 	 * @return array|WP_Error MCP tools/call result, or WP_Error for unknown tool.
@@ -257,7 +257,7 @@ class WC_AI_Storefront_MCP_Tools {
 		$controller = new WC_AI_Storefront_UCP_REST_Controller();
 
 		switch ( $tool_name ) {
-			case 'catalog_search':
+			case 'search_catalog':
 				$params = array_merge(
 					$base,
 					array(
@@ -276,7 +276,7 @@ class WC_AI_Storefront_MCP_Tools {
 					array( self::class, 'summarize_search' )
 				);
 
-			case 'catalog_lookup':
+			case 'lookup_catalog':
 				$params = array_merge(
 					$base,
 					array(
@@ -295,7 +295,7 @@ class WC_AI_Storefront_MCP_Tools {
 					array( self::class, 'summarize_lookup' )
 				);
 
-			case 'checkout_create':
+			case 'create_checkout':
 				$params = array_merge(
 					$base,
 					array(
@@ -462,7 +462,7 @@ class WC_AI_Storefront_MCP_Tools {
 	private const THREE_DECIMAL_CURRENCIES = array( 'BHD', 'IQD', 'JOD', 'KWD', 'LYD', 'OMR', 'TND' );
 
 	/**
-	 * Build the `content` text for a successful catalog_search result.
+	 * Build the `content` text for a successful search_catalog result.
 	 *
 	 * @param array $body Search response body (`products`, `pagination`).
 	 * @return string
@@ -496,7 +496,7 @@ class WC_AI_Storefront_MCP_Tools {
 	}
 
 	/**
-	 * Build the `content` text for a successful catalog_lookup result.
+	 * Build the `content` text for a successful lookup_catalog result.
 	 *
 	 * @param array $body Lookup response body (`products`, optional `messages`).
 	 * @return string
@@ -522,7 +522,7 @@ class WC_AI_Storefront_MCP_Tools {
 	}
 
 	/**
-	 * Build the `content` text for a successful checkout_create result.
+	 * Build the `content` text for a successful create_checkout result.
 	 *
 	 * @param array $body Checkout response body (`continue_url`, `line_items`).
 	 * @return string

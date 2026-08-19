@@ -807,7 +807,7 @@ class WC_AI_Storefront_Llms_Txt {
 		$lines[] = '5. **Hand off to the buyer** — redirect the buyer to that `continue_url` to review and pay on the store\'s own checkout. This store is buyer-confirmed: there is no delegated or in-chat payment to complete programmatically.';
 		if ( $mcp_enabled ) {
 			$lines[] = '';
-			$lines[] = "MCP-capable agents can drive the same flow over the MCP transport (`POST {$ucp_api_base}/mcp`) using the `catalog_search`, `catalog_lookup`, and `checkout_create` tools (call `tools/list` to discover their schemas).";
+			$lines[] = "MCP-capable agents can drive the same flow over the MCP transport (`POST {$ucp_api_base}/mcp`) using the `search_catalog`, `lookup_catalog`, and `create_checkout` tools (call `tools/list` to discover their schemas).";
 		}
 		$lines[] = '';
 

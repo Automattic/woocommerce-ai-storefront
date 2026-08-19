@@ -1920,9 +1920,9 @@ class LlmsTxtTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringContainsString( 'MCP-capable agents', $output );
 		$this->assertStringContainsString( '/wp-json/wc/ucp/v1/mcp', $output );
-		$this->assertStringContainsString( '`catalog_search`', $output );
-		$this->assertStringContainsString( '`catalog_lookup`', $output );
-		$this->assertStringContainsString( '`checkout_create`', $output );
+		$this->assertStringContainsString( '`search_catalog`', $output );
+		$this->assertStringContainsString( '`lookup_catalog`', $output );
+		$this->assertStringContainsString( '`create_checkout`', $output );
 	}
 
 	// ------------------------------------------------------------------

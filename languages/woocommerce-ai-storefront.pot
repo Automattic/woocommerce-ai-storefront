@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-19T02:55:00+00:00\n"
+"POT-Creation-Date: 2026-08-19T06:28:58+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -319,7 +319,7 @@ msgid "Opaque cursor from a prior response's pagination.cursor, to fetch the nex
 msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:162
-msgid "Look up specific products by their UCP id; returns full UCP product records. Use ids returned by catalog_search."
+msgid "Look up specific products by their UCP id; returns full UCP product records. Use ids returned by search_catalog."
 msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:169
