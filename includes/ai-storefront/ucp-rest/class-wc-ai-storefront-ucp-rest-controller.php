@@ -5009,11 +5009,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// taxonomy (native in WC 9.5+, previously a plugin). Same
 		// resolution path + unresolved-warning emission. Store API
 		// accepts comma-joined term IDs or slugs on the `brand` param;
-		// we resolve to IDs for consistency with category/tag.
-		if ( isset( $filters['brand'] ) && is_array( $filters['brand'] ) ) {
+		// we resolve to IDs for consistency with category/tag. UCP-side
+		// key is `filters.brands` (plural), matching `categories`/`tags`.
+		if ( isset( $filters['brands'] ) && is_array( $filters['brands'] ) ) {
 			$brand_capped = self::cap_filter_array(
-				$filters['brand'],
-				'$.filters.brand',
+				$filters['brands'],
+				'$.filters.brands',
 				$messages
 			);
 			$brand_result = self::resolve_brand_term_ids( $brand_capped );
@@ -5024,7 +5025,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$messages[] = array(
 					'type'    => 'warning',
 					'code'    => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
-					'path'    => '$.filters.brand[' . $index . ']',
+					'path'    => '$.filters.brands[' . $index . ']',
 					'content' => sprintf(
 						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
 						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),

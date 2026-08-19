@@ -714,6 +714,48 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( '11,12', $this->captured_store_params['tag'] );
 	}
 
+	public function test_brands_filter_uses_plural_key(): void {
+		// resolve_brand_term_ids() only populates $store_params['brand']
+		// when at least one input resolves — seed a term so 'thornwick'
+		// isn't dropped as unresolved before it ever reaches the key
+		// check this test exists to guard.
+		$term = (object) array(
+			'term_id' => 77,
+			'slug'    => 'thornwick',
+			'name'    => 'Thornwick',
+		);
+		$this->fake_terms['product_brand:slug:thornwick'] = $term;
+		$this->fake_product_list                          = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request(
+				array( 'filters' => array( 'brands' => array( 'thornwick' ) ) )
+			)
+		);
+
+		$this->assertArrayHasKey(
+			'brand',
+			$this->captured_store_params,
+			'filters.brands must map onto the Store API brand param'
+		);
+	}
+
+	public function test_singular_brand_key_is_not_honored(): void {
+		$this->fake_product_list = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request(
+				array( 'filters' => array( 'brand' => array( 'thornwick' ) ) )
+			)
+		);
+
+		$this->assertArrayNotHasKey(
+			'brand',
+			$this->captured_store_params,
+			'The singular key was replaced by filters.brands — see #659'
+		);
+	}
+
 	public function test_unresolvable_tag_produces_tag_not_found_warning(): void {
 		// Symmetric with the category_not_found warning behavior —
 		// agents must see a signal that their filter was ignored.
@@ -1211,7 +1253,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_terms['product_brand:slug:acme'] = $term;
 
 		$this->successful_search(
-			array( 'filters' => array( 'brand' => array( 'acme' ) ) )
+			array( 'filters' => array( 'brands' => array( 'acme' ) ) )
 		);
 
 		$this->assertSame( '88', $this->captured_store_params['brand'] );
@@ -1228,7 +1270,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_terms['product_brand:slug:acme'] = $term;
 
 		$body = $this->successful_search(
-			array( 'filters' => array( 'brand' => array( 'acme', 'unknown-brand' ) ) )
+			array( 'filters' => array( 'brands' => array( 'acme', 'unknown-brand' ) ) )
 		);
 
 		$not_found = array_filter(
@@ -2547,7 +2589,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_oversized_brand_filter_is_capped_with_warning(): void {
 		$many = array_fill( 0, 60, 'brand-x' );
-		$body = $this->successful_search( array( 'filters' => array( 'brand' => $many ) ) );
+		$body = $this->successful_search( array( 'filters' => array( 'brands' => $many ) ) );
 		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
 
