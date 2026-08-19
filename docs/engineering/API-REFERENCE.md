@@ -10,7 +10,7 @@ Discovery surfaces (`/llms.txt`, `/agents.md`, `/.well-known/ucp`, `/robots.txt`
 
 ## Conventions
 
-- Every UCP response is wrapped in a `ucp` envelope with `version` and `capabilities`. Checkout responses carry a third key, `payment_handlers` (`{}` when none are configured); catalog responses (`/catalog/search`, `/catalog/lookup`) never emit it. Built by `WC_AI_Storefront_UCP_Envelope` (`catalog_envelope()` / `checkout_envelope()`).
+- Every UCP response is wrapped in a `ucp` envelope with `version` and `capabilities`. Checkout responses carry a third key, `payment_handlers`, always the empty object `{}` — `checkout_envelope()` hardcodes it, and no setting anywhere in the plugin changes it. That is the redirect-only posture stated deliberately: zero handlers means "web redirect only, no in-chat or delegated payments" (see [`UCP-BUY-FLOW.md`](UCP-BUY-FLOW.md)). Catalog responses (`/catalog/search`, `/catalog/lookup`) never emit the key at all. Built by `WC_AI_Storefront_UCP_Envelope` (`catalog_envelope()` / `checkout_envelope()`).
 - Errors use `error: { code, message }` plus an HTTP status code matching the failure class.
 - Currency amounts on UCP responses are integers in **minor units** (cents for USD, pence for GBP). No floats. Read currency precision from the response context.
 - Date-times are ISO 8601 UTC.
@@ -68,7 +68,7 @@ The free-text `query` is preprocessed by `WC_AI_Storefront_UCP_Store_API_Filter:
 | `filters` | object | no | UCP filter object. Honored fields: `categories` (slugs or names), `tags` (slugs or names), `brands` (slugs or names), `price` (`{min, max}` in minor units, denominated in `context.currency`), `attributes` (map of attribute slug → array of accepted values, e.g. `{"color": ["blue"]}`), `featured` (boolean), `in_stock` (boolean), `min_rating` (integer, 1–5), `on_sale` (boolean). |
 | `pagination` | object | no | `{ "limit": int, "cursor": string }`. `limit` defaults to 10, clamped to `[1, 100]`. `cursor` is the opaque `pagination.cursor` value from a previous response; omit it for the first page. **`page` and `per_page` are not accepted on POST** — they are GET-only spellings, translated to `cursor` / `limit` internally. |
 | `sort` | object | no | `{ "field": "price"\|"title"\|"date"\|"newest"\|"popularity"\|"rating"\|"menu_order", "direction": "asc"\|"desc" }`. `direction` defaults to `asc` (ignored for `newest`, which is always `desc`). An unrecognized `field` doesn't error — it emits an `invalid_sort_field` warning in `messages` and falls back to default ordering. An unrecognized `direction` gets no warning: anything other than `desc` (case-insensitive) silently falls back to `asc`. **`order` is not accepted** — it is the internal Store API spelling, never a request key. |
-| `context` | object | no | UCP context block (currency, locale). Logged but not currently honored. |
+| `context` | object | no | UCP context block. `context.currency` **is** honored: it denominates `filters.price`, and a code the store doesn't accept drops the price filter with a `currency_conversion_unsupported` warning rather than converting (no FX rates are carried). It is also stamped onto every returned product `url`. `context.locale` and the address fields (`address_country`, `address_region`, `postal_code`) are accepted and not yet acted upon — send them for forward compatibility. |
 | `signals` | object | no | Platform-observed environment data. Logged but not honored — UCP spec mandates these MUST NOT be buyer-asserted; until we have a trust model we ignore values. |
 
 **Response (200):**
@@ -170,6 +170,17 @@ curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
   -d '{ "query": "tote", "pagination": { "limit": 5, "cursor": "cDI=" } }'
 ```
 
+**Unrecognized parameters (`X-WC-AI-Storefront-Unknown-Params`).** Request keys this implementation doesn't read are ignored, not rejected — a misnamed key never produces a 400. To keep that from being silent, every response this handler builds (including the `503 ucp_disabled` envelope) carries the ignored names in the `X-WC-AI-Storefront-Unknown-Params` response header. The header is **absent**, not empty, when every key is recognized.
+
+- **Where it looks.** Top level, and one level deep inside `filters`, `pagination` and `sort`. Nested names are reported dotted: `pagination.page`, `filters.colour`. The recognized top-level keys are `query`, `filters`, `pagination`, `sort`, `context`, `signals` and `meta`; the recognized nested keys are exactly the ones in the field tables above. A `filters` payload sent as a *list* of single-key objects (some agent clients serialize objects that way) is merged before the comparison, so keys hidden inside it are still reported.
+- **Where it doesn't look.** Inside `context`, `signals` or `meta`. The UCP spec owns the first two sub-shapes, and this implementation deliberately accepts spec fields it doesn't act on yet (`context.address_country` and friends), so flagging them would punish forward-compatible callers. `meta` carries caller-defined attribution data (`meta.source`), so its shape isn't ours to police either.
+- **Format.** Names joined with `, ` (comma + space).
+- **Names are sanitized.** Each dotted segment passes through WordPress's `sanitize_key()` — lowercased, anything outside `a-z0-9_-` stripped. A reported name can therefore differ from what you sent, and one that sanitizes to nothing is dropped rather than reported.
+- **At most 8 names.** A 9th detected key replaces the tail with a literal `...` token. `...` is a truncation sentinel, **not** a parameter name — don't parse it as one.
+- **At most 256 bytes.** A longer joined value is cut to 253 bytes with `...` appended, so a value can end in `...` for either reason.
+- **Readable cross-origin.** The header is added to `rest_exposed_cors_headers`, so a browser-based agent's `response.headers.get()` returns it. Without that WordPress exposes only `X-WP-Total`, `X-WP-TotalPages` and `Link`, and the header reads as `null` — indistinguishable from "nothing was ignored".
+- **Over MCP.** `tools/call` has no response headers, so `search_catalog` reports the same detection — same detector, same key list, same caps — as a `messages[]` entry instead: `{ "type": "warning", "code": "unknown_params", "path": "$", "content": "Unrecognized request parameters were ignored: …" }`. It is also appended to the tool result's text summary, because MCP clients are not obliged to read `structuredContent`. `unknown_params` is a plugin-specific code, not a UCP-defined one.
+
 ### `GET /catalog/search`
 
 Public, fetch-friendly variant of `POST /catalog/search` for agents (Perplexity, Bing, fetch-based crawlers) that cannot POST a JSON body or scan `<head>` for a discovery document. It translates flat query-string params into the same `$params` shape the POST handler builds, then delegates to the identical `run_catalog_search()` neutral core — so normalization, validation, warning emission, and the response envelope are all shared. There is no new filter logic.
@@ -191,7 +202,7 @@ Public, fetch-friendly variant of `POST /catalog/search` for agents (Perplexity,
 
 **Validation parity.** Price and `per_page` params are forwarded as their **raw string values**, not pre-cast to `int`. The shared `is_integer_like_non_negative()` validator (digit-only string or native int) then gates them exactly as on the POST path: `?min_price=abc` is rejected (the filter is dropped, not silently applied as `min=0`), `?min_price=19.99` is rejected rather than truncated to `19`, and `?per_page=abc` produces the validator's truthful "must be a non-negative integer" warning rather than a misleading "clamped from 0". This keeps GET and POST behaviorally identical for malformed numeric input.
 
-**Response:** identical body + status to `POST /catalog/search`. The `X-WC-AI-Storefront-Unknown-Params` advisory header is not emitted on GET (there's no JSON body to inspect for unknown keys).
+**Response:** identical body + status to `POST /catalog/search`. The `X-WC-AI-Storefront-Unknown-Params` advisory header (documented under `POST /catalog/search` above) is not emitted on GET — there's no JSON body to inspect for unknown keys.
 
 **Errors:** same as `POST /catalog/search` — `503 ucp_disabled` (the neutral core 503s before any work when syndication is paused), `429 ucp_rate_limit_exceeded`.
 
