@@ -270,8 +270,27 @@ class WC_AI_Storefront_MCP_Tools {
 						'sort'       => $arguments['sort'] ?? null,
 					)
 				);
+				$result = $controller->run_catalog_search( $params );
+
+				// MCP has no response headers, so the REST transport's
+				// X-WC-AI-Storefront-Unknown-Params advisory has nowhere to
+				// go here. Carry the same detection in `messages[]` — the
+				// body channel this class already reads — so an MCP client
+				// that pages with `pagination.page` (the GET-only spelling)
+				// learns its paging did nothing, instead of re-reading page
+				// one and believing it advanced. Runs against the raw
+				// `$arguments`: `$params` above copies only the keys the
+				// core honors, so by that point the unrecognized ones are
+				// already gone. The MCP tool schemas declare no
+				// `additionalProperties: false` and the server does no
+				// argument validation, so nothing else catches them.
+				$unknown_params = WC_AI_Storefront_UCP_REST_Controller::unknown_search_params_message( $arguments );
+				if ( null !== $unknown_params ) {
+					$result['body']['messages'][] = $unknown_params;
+				}
+
 				return self::core_result_to_mcp(
-					$controller->run_catalog_search( $params ),
+					$result,
 					__( 'Catalog search', 'woocommerce-ai-storefront' ),
 					false,
 					array( self::class, 'summarize_search' )
@@ -471,7 +490,10 @@ class WC_AI_Storefront_MCP_Tools {
 	public static function summarize_search( array $body ): string {
 		$products = self::products_of( $body );
 		if ( empty( $products ) ) {
-			return __( 'No products matched.', 'woocommerce-ai-storefront' );
+			return self::with_unknown_params_note(
+				__( 'No products matched.', 'woocommerce-ai-storefront' ),
+				$body
+			);
 		}
 
 		$count      = count( $products );
@@ -491,6 +513,37 @@ class WC_AI_Storefront_MCP_Tools {
 
 		if ( ! empty( $pagination['has_next_page'] ) ) {
 			$text .= ' ' . __( 'More available — pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
+		}
+
+		return self::with_unknown_params_note( $text, $body );
+	}
+
+	/**
+	 * Append the unrecognized-parameters advisory to a summary line.
+	 *
+	 * `structuredContent` already carries the whole `messages[]` array,
+	 * but clients are not obliged to read it (see core_result_to_mcp),
+	 * so an advisory that lives only there can still never reach the
+	 * model. summarize_lookup() and summarize_checkout() already mirror
+	 * their messages into the text channel; search does the same for
+	 * this one, and names the offending keys so the model can correct
+	 * the call rather than just learn that something was wrong.
+	 *
+	 * @param string $text Summary text built by the caller.
+	 * @param array  $body Response body, possibly carrying `messages[]`.
+	 * @return string
+	 */
+	private static function with_unknown_params_note( string $text, array $body ): string {
+		$messages = is_array( $body['messages'] ?? null ) ? $body['messages'] : array();
+
+		foreach ( $messages as $message ) {
+			if ( ! is_array( $message ) ) {
+				continue;
+			}
+			if ( WC_AI_Storefront_UCP_Error_Codes::UNKNOWN_PARAMS !== ( $message['code'] ?? '' ) ) {
+				continue;
+			}
+			return trim( $text . ' ' . (string) ( $message['content'] ?? '' ) );
 		}
 
 		return $text;

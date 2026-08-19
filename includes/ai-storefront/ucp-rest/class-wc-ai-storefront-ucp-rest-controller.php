@@ -152,6 +152,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	const MAX_FILTER_VALUES = 50;
 
 	/**
+	 * Response header carrying the unrecognized-param advisory on
+	 * `POST /catalog/search`.
+	 *
+	 * Named here rather than inlined because it is referenced twice —
+	 * once when the header is set, once when it is added to the REST
+	 * CORS expose-list — and a typo in either place would silently
+	 * un-expose it to browser clients.
+	 */
+	const UNKNOWN_PARAMS_HEADER = 'X-WC-AI-Storefront-Unknown-Params';
+
+	/**
 	 * Per-request product cache. Holds memoized results for
 	 * `fetch_store_api_product()` so duplicate product or variation IDs
 	 * within a single UCP request do not re-dispatch inner
@@ -228,6 +239,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * rewrite-flush churn every time a merchant toggles the setting.
 	 */
 	public function register_routes(): void {
+		$this->add_cors_support();
+
 		// `check_agent_access` gates commerce routes by the merchant's
 		// `allowed_crawlers` setting. When a UCP-Agent header resolves
 		// to a known brand (e.g. "ChatGPT") whose mapped crawler IDs
@@ -378,6 +391,32 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'callback'            => array( $this, 'handle_extension_schema' ),
 				'permission_callback' => '__return_true',
 			)
+		);
+	}
+
+	/**
+	 * Expose the unknown-params advisory header in WordPress's REST CORS
+	 * responses.
+	 *
+	 * These are PUBLIC endpoints reached cross-origin by agent web UIs
+	 * (the same reason WC_AI_Storefront_MCP_Server does this for
+	 * `Mcp-Session-Id`). WP's default REST CORS echoes the request Origin
+	 * but exposes only `X-WP-Total`, `X-WP-TotalPages` and `Link` — every
+	 * other response header is invisible to `fetch()`. Without this
+	 * filter a browser agent's
+	 * `response.headers.get( 'X-WC-AI-Storefront-Unknown-Params' )`
+	 * returns `null`, which reads as "no unknown params" rather than
+	 * "you can't see them", and the self-diagnosis signal the header
+	 * exists to carry never arrives. The filter is global to the REST
+	 * API but only matters here; no other route emits the header.
+	 */
+	private function add_cors_support(): void {
+		add_filter(
+			'rest_exposed_cors_headers',
+			static function ( $headers ) {
+				$headers[] = self::UNKNOWN_PARAMS_HEADER;
+				return $headers;
+			}
 		);
 	}
 
@@ -673,7 +712,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$unknown_params_header = self::detect_unknown_search_params( $request->get_json_params() );
 		if ( '' !== $unknown_params_header ) {
 			$response->header(
-				'X-WC-AI-Storefront-Unknown-Params',
+				self::UNKNOWN_PARAMS_HEADER,
 				$unknown_params_header
 			);
 		}
@@ -1238,9 +1277,19 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// silently discarded downstream, which is exactly the class of
 		// bug #656 and #659 turned out to be — a caller sends a
 		// plausible key, we ignore it, and the response looks fine.
-		// `signals` and `context` are deliberately absent: both are
-		// logged-but-unhonored pass-throughs whose shape is the UCP
-		// spec's to define, not ours, so we don't second-guess them.
+		// `signals` and `context` are deliberately absent, for two
+		// different reasons. `signals` is a logged-but-unhonored
+		// pass-through: nothing inside it is read, so nothing inside it
+		// can be silently dropped. `context` IS read — `context.currency`
+		// denominates `filters.price`, drops that filter with a
+		// `currency_conversion_unsupported` warning on a store-currency
+		// mismatch, and is stamped onto every product URL — but the UCP
+		// spec owns its sub-shape, and we deliberately accept
+		// spec-defined fields we don't act on yet (`address_country`,
+		// `address_region`, `postal_code`; see the extension-schema
+		// description in handle_extension_schema()) so agents can send
+		// them for forward compatibility. Flagging those as unknown
+		// would punish exactly that.
 		// `sort` reads `field` + `direction` (see
 		// map_ucp_search_to_store_api()); `direction` maps internally
 		// to the Store API's `order` param, but `order` itself is never
@@ -1281,24 +1330,33 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			}
 		}
 
-		$sanitized = array_map(
-			static function ( $key ): string {
-				$key = (string) $key;
-				if ( ! function_exists( 'sanitize_key' ) ) {
-					return $key;
-				}
+		// Sanitize lazily and stop at 9 survivors. Mapping the whole key
+		// space first would allocate two more arrays the size of the
+		// request body: a payload with hundreds of thousands of distinct
+		// filter keys turned a header bounded at 256 bytes into hundreds
+		// of MB of transient arrays on top of the decoded body. Nine is
+		// the exact number the output can depend on — the cap below is 8
+		// keys plus the `...` sentinel, so a 9th survivor only ever
+		// decides whether the sentinel is appended and never appears
+		// itself. Keys that sanitize to '' are skipped without counting,
+		// so the surviving list is identical to sanitizing everything
+		// first and slicing afterwards.
+		$sanitized = array();
+		foreach ( $unknown_keys as $key ) {
+			$key = (string) $key;
+			if ( function_exists( 'sanitize_key' ) ) {
 				// Sanitize each dotted segment so the separator survives.
-				return implode( '.', array_map( 'sanitize_key', explode( '.', $key ) ) );
-			},
-			$unknown_keys
-		);
-		// Cast through (string) so empty strings AND '0' both filter correctly.
-		$sanitized = array_values(
-			array_filter(
-				$sanitized,
-				static fn( $s ): bool => '' !== (string) $s
-			)
-		);
+				$key = implode( '.', array_map( 'sanitize_key', explode( '.', $key ) ) );
+			}
+			// Cast through (string) so empty strings AND '0' both filter correctly.
+			if ( '' === (string) $key ) {
+				continue;
+			}
+			$sanitized[] = $key;
+			if ( count( $sanitized ) >= 9 ) {
+				break;
+			}
+		}
 
 		if ( empty( $sanitized ) ) {
 			return '';
@@ -1323,6 +1381,43 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		return $joined;
+	}
+
+	/**
+	 * Builds a `messages[]` advisory for unrecognized catalog/search params.
+	 *
+	 * Body-channel counterpart to the `X-WC-AI-Storefront-Unknown-Params`
+	 * response header, for transports that have no response headers to
+	 * carry it — MCP `tools/call` being the one that ships today. Both
+	 * routes run the SAME detector, so the two transports can never
+	 * disagree about which keys are unrecognized, and the debug log line
+	 * is emitted once either way.
+	 *
+	 * REST does NOT call this: adding the advisory to the response body
+	 * there would change a documented payload shape for every existing
+	 * integrator, and REST already has the header.
+	 *
+	 * @param mixed $body Decoded request payload (MCP tool arguments, or a
+	 *                    JSON body of the same shape).
+	 * @return array<string, string>|null UCP warning message, or null when every
+	 *                                    key is recognized.
+	 */
+	public static function unknown_search_params_message( $body ): ?array {
+		$joined = self::detect_unknown_search_params( $body );
+		if ( '' === $joined ) {
+			return null;
+		}
+
+		return array(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::UNKNOWN_PARAMS,
+			'path'    => '$',
+			'content' => sprintf(
+				/* translators: %s is a comma-separated list of unrecognized request parameter names. */
+				__( 'Unrecognized request parameters were ignored: %s. Check the tool schema for the supported field names — filtering, sorting or paging sent under a name this store does not read has no effect on the results.', 'woocommerce-ai-storefront' ),
+				$joined
+			),
+		);
 	}
 
 	/**

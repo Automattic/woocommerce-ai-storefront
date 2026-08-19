@@ -851,14 +851,17 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_all_known_filter_pagination_and_sort_keys_produce_no_unknown_params(): void {
-		// Pins the allow-lists to the code: a typo in $known_nested['filters'],
-		// or a legitimate filter added to map_ucp_search_to_store_api()
-		// without updating the detector, would silently flag a real filter
-		// as unknown and no test would fail. Sends every filter key the
-		// mapper honors — attributes, brands, categories, featured,
-		// in_stock, min_rating, on_sale, price, tags — plus every
-		// legitimate `pagination` and `sort` key, and asserts the
-		// unknown-params header comes back empty.
+		// Pins today's allow-lists to the code: a typo in, or a deletion
+		// from, $known_nested would make one of the nine filter keys below
+		// — attributes, brands, categories, featured, in_stock,
+		// min_rating, on_sale, price, tags — or one of the legitimate
+		// `pagination` / `sort` keys report as unknown, and this fails.
+		//
+		// It canNOT catch a NEW filter added to map_ucp_search_to_store_api()
+		// without a matching allow-list entry: the payload hardcodes the
+		// keys that exist today, so a tenth one never enters the request.
+		// Keeping the two in sync on additions stays a review-time
+		// obligation, not something this test enforces.
 		$header = $this->invoke_detect_unknown_search_params(
 			array(
 				'query'      => 'tote',
@@ -888,5 +891,151 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( '', $header );
+	}
+
+	// ------------------------------------------------------------------
+	// detect_unknown_search_params — bounded work on hostile key spaces
+	// ------------------------------------------------------------------
+
+	public function test_unknown_param_report_sanitizes_at_most_nine_keys(): void {
+		// The report is capped at 8 keys plus a `...` sentinel, so only the
+		// first 9 survivors can affect the output — the 9th merely decides
+		// whether the sentinel appears. Sanitizing the whole key space
+		// first and slicing afterwards allocates two more arrays the size
+		// of the request body: a body with hundreds of thousands of
+		// distinct keys turned a 256-byte header into hundreds of MB of
+		// transient arrays. Counting sanitize_key() calls pins the bound
+		// directly rather than measuring memory, which is not deterministic.
+		$calls = 0;
+		Functions\when( 'sanitize_key' )->alias(
+			static function ( $v ) use ( &$calls ) {
+				++$calls;
+				return preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $v ) );
+			}
+		);
+
+		$body = array();
+		for ( $i = 0; $i < 5000; $i++ ) {
+			// Zero-padded so array_keys() order is also lexical order,
+			// making the expected first-eight list readable below.
+			$body[ sprintf( 'k%04d', $i ) ] = 1;
+		}
+
+		$header = $this->invoke_detect_unknown_search_params( $body );
+
+		$this->assertSame( 9, $calls, 'Sanitization must stop once the cap can no longer change.' );
+		$this->assertSame(
+			'k0000, k0001, k0002, k0003, k0004, k0005, k0006, k0007, ...',
+			$header,
+			'Bounding the work must not change a single byte of the reported header.'
+		);
+	}
+
+	public function test_unsanitizable_keys_do_not_consume_the_eight_key_cap(): void {
+		// Keys that sanitize away to '' are dropped, not reported — so
+		// they must not count against the cap either. A naive
+		// `array_slice($keys, 0, 9)` BEFORE sanitizing would let these two
+		// eat two of the nine slots and return seven keys with no
+		// sentinel, quietly under-reporting.
+		$body = array(
+			'!!!'   => 1,
+			'@@@'   => 1,
+			'k0001' => 1,
+			'k0002' => 1,
+			'k0003' => 1,
+			'k0004' => 1,
+			'k0005' => 1,
+			'k0006' => 1,
+			'k0007' => 1,
+			'k0008' => 1,
+			'k0009' => 1,
+		);
+
+		$header = $this->invoke_detect_unknown_search_params( $body );
+
+		$this->assertSame(
+			'k0001, k0002, k0003, k0004, k0005, k0006, k0007, k0008, ...',
+			$header
+		);
+	}
+
+	// ------------------------------------------------------------------
+	// unknown_search_params_message — the MCP-side channel (#656, #659)
+	// ------------------------------------------------------------------
+
+	public function test_unknown_search_params_message_is_null_when_every_key_is_known(): void {
+		$this->assertNull(
+			WC_AI_Storefront_UCP_REST_Controller::unknown_search_params_message(
+				array(
+					'query'      => 'tote',
+					'pagination' => array( 'limit' => 5 ),
+				)
+			)
+		);
+	}
+
+	public function test_unknown_search_params_message_reports_the_same_keys_as_the_header(): void {
+		// MCP has no response headers, so the advisory rides in
+		// `messages[]` instead. Both channels MUST run the one detector:
+		// a second implementation would drift, and an agent switching
+		// transports would get different answers about the same payload.
+		$payload = array(
+			'query'      => 'tote',
+			'pagination' => array( 'page' => 2 ),
+			'sort'       => array( 'order' => 'desc' ),
+		);
+
+		$message = WC_AI_Storefront_UCP_REST_Controller::unknown_search_params_message( $payload );
+		$header  = $this->invoke_detect_unknown_search_params( $payload );
+
+		$this->assertIsArray( $message );
+		$this->assertSame( 'warning', $message['type'] );
+		$this->assertSame(
+			WC_AI_Storefront_UCP_Error_Codes::UNKNOWN_PARAMS,
+			$message['code']
+		);
+		$this->assertStringContainsString( $header, $message['content'] );
+		$this->assertStringContainsString( 'pagination.page', $message['content'] );
+		$this->assertStringContainsString( 'sort.order', $message['content'] );
+	}
+
+	// ------------------------------------------------------------------
+	// CORS exposure for the unknown-params header
+	// ------------------------------------------------------------------
+
+	public function test_unknown_params_header_is_exposed_to_cross_origin_callers(): void {
+		// WP exposes only X-WP-Total, X-WP-TotalPages and Link on REST
+		// responses. Agent web UIs reach this public endpoint from the
+		// browser, where an unexposed header reads as `null` — which is
+		// indistinguishable from "no unknown params", exactly the silent
+		// degradation the header exists to end.
+		$callback = null;
+		\Brain\Monkey\Filters\expectAdded( 'rest_exposed_cors_headers' )
+			->once()
+			->whenHappen(
+				static function ( $cb ) use ( &$callback ): void {
+					$callback = $cb;
+				}
+			);
+
+		( new WC_AI_Storefront_UCP_REST_Controller() )->register_routes();
+
+		$this->assertIsCallable( $callback );
+		$this->assertContains(
+			WC_AI_Storefront_UCP_REST_Controller::UNKNOWN_PARAMS_HEADER,
+			$callback( array( 'X-WP-Total' ) ),
+			'The advisory header must be readable cross-origin.'
+		);
+	}
+
+	public function test_unknown_params_header_const_matches_the_emitted_header_name(): void {
+		// The name is a documented wire contract (API-REFERENCE.md) and is
+		// referenced from two places in the class — the response header and
+		// the CORS expose-list. Pin the literal so a rename can't quietly
+		// change what agents look for.
+		$this->assertSame(
+			'X-WC-AI-Storefront-Unknown-Params',
+			WC_AI_Storefront_UCP_REST_Controller::UNKNOWN_PARAMS_HEADER
+		);
 	}
 }
