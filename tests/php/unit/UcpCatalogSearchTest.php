@@ -96,6 +96,16 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wc_get_price_decimals' )->justReturn( 2 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
+		// detect_unknown_search_params() sanitizes any detected unknown
+		// key through sanitize_key(). Stub it with real WP semantics
+		// (lowercase; strip anything but a-z0-9_-) so tests that send
+		// an unrecognized key — e.g. the singular `brand` filter, #659
+		// — exercise the actual header-building path instead of
+		// hitting Brain\Monkey's "not defined nor mocked" error.
+		Functions\when( 'sanitize_key' )->alias(
+			static fn( $v ) => preg_replace( '/[^a-z0-9_\-]/', '', strtolower( (string) $v ) )
+		);
+
 		// Minimal `add_query_arg()` stub for the TWO signatures the
 		// controller exercises in this handler:
 		//
@@ -714,6 +724,60 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->assertEquals( '11,12', $this->captured_store_params['tag'] );
 	}
 
+	public function test_brands_filter_uses_plural_key(): void {
+		// resolve_brand_term_ids() only populates $store_params['brand']
+		// when at least one input resolves — seed a term so 'thornwick'
+		// isn't dropped as unresolved before it ever reaches the key
+		// check this test exists to guard.
+		$term = (object) array(
+			'term_id' => 77,
+			'slug'    => 'thornwick',
+			'name'    => 'Thornwick',
+		);
+		$this->fake_terms['product_brand:slug:thornwick'] = $term;
+		$this->fake_product_list                          = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request(
+				array( 'filters' => array( 'brands' => array( 'thornwick' ) ) )
+			)
+		);
+
+		$this->assertArrayHasKey(
+			'brand',
+			$this->captured_store_params,
+			'filters.brands must map onto the Store API brand param'
+		);
+	}
+
+	public function test_singular_brand_key_is_not_honored(): void {
+		// Seed the term exactly as test_brands_filter_uses_plural_key does.
+		// Without it 'thornwick' is unresolvable, so $store_params['brand']
+		// stays unset whichever key the mapper reads, and the assertion
+		// below passes even with the #659 rename reverted — certifying
+		// nothing. With the term seeded, a mapper that read the singular
+		// `brand` key would resolve it and set the param, and this fails.
+		$term = (object) array(
+			'term_id' => 77,
+			'slug'    => 'thornwick',
+			'name'    => 'Thornwick',
+		);
+		$this->fake_terms['product_brand:slug:thornwick'] = $term;
+		$this->fake_product_list                          = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		( new WC_AI_Storefront_UCP_REST_Controller() )->handle_catalog_search(
+			$this->search_request(
+				array( 'filters' => array( 'brand' => array( 'thornwick' ) ) )
+			)
+		);
+
+		$this->assertArrayNotHasKey(
+			'brand',
+			$this->captured_store_params,
+			'The singular key was replaced by filters.brands — see #659'
+		);
+	}
+
 	public function test_unresolvable_tag_produces_tag_not_found_warning(): void {
 		// Symmetric with the category_not_found warning behavior —
 		// agents must see a signal that their filter was ignored.
@@ -1211,7 +1275,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_terms['product_brand:slug:acme'] = $term;
 
 		$this->successful_search(
-			array( 'filters' => array( 'brand' => array( 'acme' ) ) )
+			array( 'filters' => array( 'brands' => array( 'acme' ) ) )
 		);
 
 		$this->assertSame( '88', $this->captured_store_params['brand'] );
@@ -1228,7 +1292,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 		$this->fake_terms['product_brand:slug:acme'] = $term;
 
 		$body = $this->successful_search(
-			array( 'filters' => array( 'brand' => array( 'acme', 'unknown-brand' ) ) )
+			array( 'filters' => array( 'brands' => array( 'acme', 'unknown-brand' ) ) )
 		);
 
 		$not_found = array_filter(
@@ -2547,7 +2611,7 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_oversized_brand_filter_is_capped_with_warning(): void {
 		$many = array_fill( 0, 60, 'brand-x' );
-		$body = $this->successful_search( array( 'filters' => array( 'brand' => $many ) ) );
+		$body = $this->successful_search( array( 'filters' => array( 'brands' => $many ) ) );
 		$this->assertWarning( $body, WC_AI_Storefront_UCP_Error_Codes::FILTER_TRUNCATED );
 	}
 
@@ -3549,5 +3613,96 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 			}
 		}
 		$this->assertFalse( $found, 'base currency must not emit a currency_conversion_unsupported warning' );
+	}
+
+	// ------------------------------------------------------------------
+	// MCP transport: unrecognized tool arguments (#656, #659)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Pull the unknown-params warning out of an MCP tool result.
+	 *
+	 * @param array<string, mixed> $result MCP tools/call result.
+	 * @return array<string, mixed>|null
+	 */
+	private function unknown_params_warning( array $result ): ?array {
+		$messages = $result['structuredContent']['messages'] ?? array();
+		foreach ( $messages as $message ) {
+			if ( WC_AI_Storefront_UCP_Error_Codes::UNKNOWN_PARAMS === ( $message['code'] ?? '' ) ) {
+				return $message;
+			}
+		}
+		return null;
+	}
+
+	public function test_mcp_search_reports_unrecognized_arguments_in_messages(): void {
+		// The REST transport reports unrecognized keys in a response
+		// header. MCP has no response headers, so before this an MCP
+		// client asking for page 2 with the GET-only `pagination.page`
+		// spelling got page one back with `has_next_page: true`, empty
+		// `messages`, and no signal at all — the original #656 bug on the
+		// transport that ships enabled by default.
+		$this->fake_product_list = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		$result = WC_AI_Storefront_MCP_Tools::call(
+			'search_catalog',
+			array(
+				'query'      => 'tote',
+				'pagination' => array( 'page' => 2 ),
+			),
+			''
+		);
+
+		$warning = $this->unknown_params_warning( $result );
+
+		$this->assertIsArray( $warning, 'MCP must surface unrecognized arguments in messages[].' );
+		$this->assertSame( 'warning', $warning['type'] );
+		$this->assertStringContainsString( 'pagination.page', $warning['content'] );
+
+		// structuredContent alone is not enough: clients are not obliged
+		// to read it, so the model can miss it entirely. The text channel
+		// must name the offending key too.
+		$this->assertStringContainsString( 'pagination.page', $result['content'][0]['text'] );
+	}
+
+	public function test_mcp_search_stays_silent_when_every_argument_is_recognized(): void {
+		$this->fake_product_list = array( $this->make_simple_product( 1, 'Tote' ) );
+
+		$result = WC_AI_Storefront_MCP_Tools::call(
+			'search_catalog',
+			array(
+				'query'      => 'tote',
+				'pagination' => array( 'limit' => 5 ),
+				'sort'       => array(
+					'field'     => 'price',
+					'direction' => 'asc',
+				),
+				'context'    => array( 'currency' => 'USD' ),
+			),
+			''
+		);
+
+		$this->assertNull( $this->unknown_params_warning( $result ) );
+		$this->assertStringNotContainsString( 'Unrecognized', $result['content'][0]['text'] );
+	}
+
+	public function test_mcp_search_reports_unrecognized_arguments_on_a_zero_result_search(): void {
+		// A misnamed filter is most likely to produce zero results, and
+		// the empty-result summary takes an early return — so the advisory
+		// has to survive that branch too, or the one case where the agent
+		// most needs the hint is the one case it never gets it.
+		$this->fake_product_list = array();
+
+		$result = WC_AI_Storefront_MCP_Tools::call(
+			'search_catalog',
+			array(
+				'query'   => 'tote',
+				'filters' => array( 'colour' => array( 'blue' ) ),
+			),
+			''
+		);
+
+		$this->assertIsArray( $this->unknown_params_warning( $result ) );
+		$this->assertStringContainsString( 'filters.colour', $result['content'][0]['text'] );
 	}
 }

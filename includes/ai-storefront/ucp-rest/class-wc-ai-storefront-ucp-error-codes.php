@@ -241,4 +241,16 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	 * Currency conversion is not supported for the requested currency pair.
 	 */
 	const CURRENCY_CONVERSION_UNSUPPORTED = 'currency_conversion_unsupported';
+
+	/**
+	 * The request carried parameter names this implementation doesn't
+	 * recognize; they were ignored.
+	 *
+	 * Plugin-specific, not a UCP-defined code. The REST transport reports
+	 * the same condition out-of-band in the
+	 * `X-WC-AI-Storefront-Unknown-Params` response header; MCP has no
+	 * response headers, so it carries the advisory in `messages[]`
+	 * instead. Same detection, same key list, two transports.
+	 */
+	const UNKNOWN_PARAMS = 'unknown_params';
 }

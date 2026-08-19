@@ -133,7 +133,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 
 	/**
 	 * Upper bound on per-filter array length for taxonomy filters
-	 * (`filters.categories[]`, `filters.tags[]`, `filters.brand[]`)
+	 * (`filters.categories[]`, `filters.tags[]`, `filters.brands[]`)
 	 * and attribute-set keys (`filters.attributes.*`).
 	 *
 	 * DoS mitigation: without a cap, an agent can submit a filter
@@ -150,6 +150,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * advisory so agents know their tail was dropped.
 	 */
 	const MAX_FILTER_VALUES = 50;
+
+	/**
+	 * Response header carrying the unrecognized-param advisory on
+	 * `POST /catalog/search`.
+	 *
+	 * Named here rather than inlined because it is referenced twice —
+	 * once when the header is set, once when it is added to the REST
+	 * CORS expose-list — and a typo in either place would silently
+	 * un-expose it to browser clients.
+	 */
+	const UNKNOWN_PARAMS_HEADER = 'X-WC-AI-Storefront-Unknown-Params';
 
 	/**
 	 * Per-request product cache. Holds memoized results for
@@ -228,6 +239,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * rewrite-flush churn every time a merchant toggles the setting.
 	 */
 	public function register_routes(): void {
+		$this->add_cors_support();
+
 		// `check_agent_access` gates commerce routes by the merchant's
 		// `allowed_crawlers` setting. When a UCP-Agent header resolves
 		// to a known brand (e.g. "ChatGPT") whose mapped crawler IDs
@@ -378,6 +391,32 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				'callback'            => array( $this, 'handle_extension_schema' ),
 				'permission_callback' => '__return_true',
 			)
+		);
+	}
+
+	/**
+	 * Expose the unknown-params advisory header in WordPress's REST CORS
+	 * responses.
+	 *
+	 * These are PUBLIC endpoints reached cross-origin by agent web UIs
+	 * (the same reason WC_AI_Storefront_MCP_Server does this for
+	 * `Mcp-Session-Id`). WP's default REST CORS echoes the request Origin
+	 * but exposes only `X-WP-Total`, `X-WP-TotalPages` and `Link` — every
+	 * other response header is invisible to `fetch()`. Without this
+	 * filter a browser agent's
+	 * `response.headers.get( 'X-WC-AI-Storefront-Unknown-Params' )`
+	 * returns `null`, which reads as "no unknown params" rather than
+	 * "you can't see them", and the self-diagnosis signal the header
+	 * exists to carry never arrives. The filter is global to the REST
+	 * API but only matters here; no other route emits the header.
+	 */
+	private function add_cors_support(): void {
+		add_filter(
+			'rest_exposed_cors_headers',
+			static function ( $headers ) {
+				$headers[] = self::UNKNOWN_PARAMS_HEADER;
+				return $headers;
+			}
 		);
 	}
 
@@ -673,7 +712,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$unknown_params_header = self::detect_unknown_search_params( $request->get_json_params() );
 		if ( '' !== $unknown_params_header ) {
 			$response->header(
-				'X-WC-AI-Storefront-Unknown-Params',
+				self::UNKNOWN_PARAMS_HEADER,
 				$unknown_params_header
 			);
 		}
@@ -1203,11 +1242,14 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
-	 * Detects unrecognized top-level request params in a catalog/search body.
+	 * Detects unrecognized request params in a catalog/search body.
 	 *
-	 * Sanitizes, bounds, and joins any keys not in the UCP catalog/search spec.
-	 * Returns an ASCII string safe for HTTP response headers (max 8 keys /
-	 * 256 chars). Returns '' when no unknown params are present.
+	 * Sanitizes, bounds, and joins any keys not in the UCP catalog/search
+	 * spec — both top-level and, one level deep, inside `filters`,
+	 * `pagination`, and `sort`. Nested keys are reported dotted (e.g.
+	 * `pagination.page`). Returns an ASCII string safe for HTTP response
+	 * headers (max 8 keys / 256 chars). Returns '' when no unknown
+	 * params are present.
 	 *
 	 * Side-effect: logs detected params via WC_AI_Storefront_Logger::debug()
 	 * when logging is enabled, so integrators can self-diagnose misnaming
@@ -1224,19 +1266,97 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			return '';
 		}
 
-		$known        = array( 'query', 'filters', 'pagination', 'sort', 'context', 'signals' );
+		// `meta` carries `meta.source`, the third-precedence attribution
+		// path resolve_agent_host() reads (profile-URL header → Product
+		// header → body meta.source → User-Agent → unknown; see
+		// API-REFERENCE.md). No nested allow-list for it: its shape is
+		// the caller's to define, not ours.
+		$known = array( 'query', 'filters', 'pagination', 'sort', 'context', 'signals', 'meta' );
+
+		// Known sub-keys, one level deep. Anything absent here is
+		// silently discarded downstream, which is exactly the class of
+		// bug #656 and #659 turned out to be — a caller sends a
+		// plausible key, we ignore it, and the response looks fine.
+		// `signals` and `context` are deliberately absent, for two
+		// different reasons. `signals` is a logged-but-unhonored
+		// pass-through: nothing inside it is read, so nothing inside it
+		// can be silently dropped. `context` IS read — `context.currency`
+		// denominates `filters.price`, drops that filter with a
+		// `currency_conversion_unsupported` warning on a store-currency
+		// mismatch, and is stamped onto every product URL — but the UCP
+		// spec owns its sub-shape, and we deliberately accept
+		// spec-defined fields we don't act on yet (`address_country`,
+		// `address_region`, `postal_code`; see the extension-schema
+		// description in handle_extension_schema()) so agents can send
+		// them for forward compatibility. Flagging those as unknown
+		// would punish exactly that.
+		// `sort` reads `field` + `direction` (see
+		// map_ucp_search_to_store_api()); `direction` maps internally
+		// to the Store API's `order` param, but `order` itself is never
+		// a key this handler reads from the client.
+		$known_nested = array(
+			'filters'    => array( 'attributes', 'brands', 'categories', 'featured', 'in_stock', 'min_rating', 'on_sale', 'price', 'tags' ),
+			'pagination' => array( 'limit', 'cursor' ),
+			'sort'       => array( 'field', 'direction' ),
+		);
+
 		$unknown_keys = array_values( array_diff( array_keys( $body ), $known ) );
 
-		$sanitized = function_exists( 'sanitize_key' )
-			? array_map( 'sanitize_key', $unknown_keys )
-			: $unknown_keys;
-		// Cast through (string) so empty strings AND '0' both filter correctly.
-		$sanitized = array_values(
-			array_filter(
-				$sanitized,
-				static fn( $s ): bool => '' !== (string) $s
-			)
-		);
+		foreach ( $known_nested as $parent => $allowed ) {
+			$child = $body[ $parent ] ?? null;
+			if ( ! is_array( $child ) ) {
+				continue;
+			}
+			if ( array_is_list( $child ) ) {
+				// `filters` gets the same list-shape normalization
+				// map_ucp_search_to_store_api() applies before it reads
+				// filter keys: some agent clients (observed across
+				// Gemini, Grok, and GPT through the OpenRouter tool-call
+				// path) serialize `filters` as a LIST of single-key
+				// objects rather than one object. The mapper merges and
+				// honors that shape, so skipping it here — as a bare
+				// list-shaped body is skipped above — would hide a
+				// genuinely unknown key inside it. `pagination`/`sort`
+				// get no such normalization in the mapper, so a
+				// list-shaped payload there is still a no-op we don't
+				// need to inspect.
+				if ( 'filters' !== $parent ) {
+					continue;
+				}
+				$child = self::merge_list_shaped_object( $child );
+			}
+			foreach ( array_diff( array_keys( $child ), $allowed ) as $bad ) {
+				$unknown_keys[] = $parent . '.' . $bad;
+			}
+		}
+
+		// Sanitize lazily and stop at 9 survivors. Mapping the whole key
+		// space first would allocate two more arrays the size of the
+		// request body: a payload with hundreds of thousands of distinct
+		// filter keys turned a header bounded at 256 bytes into hundreds
+		// of MB of transient arrays on top of the decoded body. Nine is
+		// the exact number the output can depend on — the cap below is 8
+		// keys plus the `...` sentinel, so a 9th survivor only ever
+		// decides whether the sentinel is appended and never appears
+		// itself. Keys that sanitize to '' are skipped without counting,
+		// so the surviving list is identical to sanitizing everything
+		// first and slicing afterwards.
+		$sanitized = array();
+		foreach ( $unknown_keys as $key ) {
+			$key = (string) $key;
+			if ( function_exists( 'sanitize_key' ) ) {
+				// Sanitize each dotted segment so the separator survives.
+				$key = implode( '.', array_map( 'sanitize_key', explode( '.', $key ) ) );
+			}
+			// Cast through (string) so empty strings AND '0' both filter correctly.
+			if ( '' === (string) $key ) {
+				continue;
+			}
+			$sanitized[] = $key;
+			if ( count( $sanitized ) >= 9 ) {
+				break;
+			}
+		}
 
 		if ( empty( $sanitized ) ) {
 			return '';
@@ -1261,6 +1381,68 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		}
 
 		return $joined;
+	}
+
+	/**
+	 * Builds a `messages[]` advisory for unrecognized catalog/search params.
+	 *
+	 * Body-channel counterpart to the `X-WC-AI-Storefront-Unknown-Params`
+	 * response header, for transports that have no response headers to
+	 * carry it — MCP `tools/call` being the one that ships today. Both
+	 * routes run the SAME detector, so the two transports can never
+	 * disagree about which keys are unrecognized, and the debug log line
+	 * is emitted once either way.
+	 *
+	 * REST does NOT call this: adding the advisory to the response body
+	 * there would change a documented payload shape for every existing
+	 * integrator, and REST already has the header.
+	 *
+	 * @param mixed $body Decoded request payload (MCP tool arguments, or a
+	 *                    JSON body of the same shape).
+	 * @return array<string, string>|null UCP warning message, or null when every
+	 *                                    key is recognized.
+	 */
+	public static function unknown_search_params_message( $body ): ?array {
+		$joined = self::detect_unknown_search_params( $body );
+		if ( '' === $joined ) {
+			return null;
+		}
+
+		return array(
+			'type'    => 'warning',
+			'code'    => WC_AI_Storefront_UCP_Error_Codes::UNKNOWN_PARAMS,
+			'path'    => '$',
+			'content' => sprintf(
+				/* translators: %s is a comma-separated list of unrecognized request parameter names. */
+				__( 'Unrecognized request parameters were ignored: %s. Check the tool schema for the supported field names — filtering, sorting or paging sent under a name this store does not read has no effect on the results.', 'woocommerce-ai-storefront' ),
+				$joined
+			),
+		);
+	}
+
+	/**
+	 * Merges a list-shaped UCP object payload into one associative map.
+	 *
+	 * Some agent clients (observed across Gemini, Grok, and GPT through
+	 * the OpenRouter tool-call path) serialize an object-typed field as
+	 * a LIST of single-key objects — e.g. `[{ "in_stock": true }]` —
+	 * instead of one object (`{ "in_stock": true }`). Both
+	 * map_ucp_search_to_store_api() (which honors `filters` in this
+	 * shape) and detect_unknown_search_params() (which must recognize
+	 * the same keys once merged) share this helper so the two can't
+	 * drift apart on what counts as a "known" nested key.
+	 *
+	 * @param array<int, mixed> $items List-shaped payload (array_is_list() true).
+	 * @return array<string, mixed> Merged associative map; later entries win on key collision.
+	 */
+	private static function merge_list_shaped_object( array $items ): array {
+		$merged = array();
+		foreach ( $items as $entry ) {
+			if ( is_array( $entry ) ) {
+				$merged = array_merge( $merged, $entry );
+			}
+		}
+		return $merged;
 	}
 
 	/**
@@ -3627,7 +3809,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							'type'        => 'object',
 							'description' => 'Custom filters via `additionalProperties` — accepted on `filters{}` in `/catalog/search` only. (`/catalog/lookup` reads only `ids` + `signals`; filters are ignored there because lookup resolves by explicit ID.) Unresolvable values on search emit `*_not_found` advisory warnings with JSONPath.',
 							'properties'  => array(
-								'brand'      => array(
+								'brands'     => array(
 									'type'        => 'array',
 									'description' => 'Array of brand names or slugs. Resolves against the native WC 9.5+ `product_brand` taxonomy. Multiple values OR together.',
 									'items'       => array( 'type' => 'string' ),
@@ -4784,17 +4966,13 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// e.g. `[{ "in_stock": true }]` instead of `{ "in_stock": true }`. Left
 		// as-is, the string-keyed lookups below never match and every filter is
 		// silently dropped. Normalize a list-shaped payload by merging its array
-		// elements into one associative map so the agent's filters take effect.
-		// A correctly-shaped object has string keys (not a list) and passes
-		// through untouched; an empty array is left alone (it's a no-op anyway).
+		// elements into one associative map (see merge_list_shaped_object(), also
+		// used by detect_unknown_search_params() so the two stay in sync) so the
+		// agent's filters take effect. A correctly-shaped object has string keys
+		// (not a list) and passes through untouched; an empty array is left alone
+		// (it's a no-op anyway).
 		if ( array() !== $filters && array_is_list( $filters ) ) {
-			$merged = array();
-			foreach ( $filters as $entry ) {
-				if ( is_array( $entry ) ) {
-					$merged = array_merge( $merged, $entry );
-				}
-			}
-			$filters = $merged;
+			$filters = self::merge_list_shaped_object( $filters );
 		}
 
 		if ( isset( $filters['categories'] ) && is_array( $filters['categories'] ) ) {
@@ -5009,11 +5187,12 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// taxonomy (native in WC 9.5+, previously a plugin). Same
 		// resolution path + unresolved-warning emission. Store API
 		// accepts comma-joined term IDs or slugs on the `brand` param;
-		// we resolve to IDs for consistency with category/tag.
-		if ( isset( $filters['brand'] ) && is_array( $filters['brand'] ) ) {
+		// we resolve to IDs for consistency with category/tag. UCP-side
+		// key is `filters.brands` (plural), matching `categories`/`tags`.
+		if ( isset( $filters['brands'] ) && is_array( $filters['brands'] ) ) {
 			$brand_capped = self::cap_filter_array(
-				$filters['brand'],
-				'$.filters.brand',
+				$filters['brands'],
+				'$.filters.brands',
 				$messages
 			);
 			$brand_result = self::resolve_brand_term_ids( $brand_capped );
@@ -5024,7 +5203,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				$messages[] = array(
 					'type'    => 'warning',
 					'code'    => WC_AI_Storefront_UCP_Error_Codes::BRAND_NOT_FOUND,
-					'path'    => '$.filters.brand[' . $index . ']',
+					'path'    => '$.filters.brands[' . $index . ']',
 					'content' => sprintf(
 						/* translators: %s is the brand slug/name the agent sent that couldn't be resolved. */
 						__( 'Brand "%s" was not found; filter ignored for this value.', 'woocommerce-ai-storefront' ),

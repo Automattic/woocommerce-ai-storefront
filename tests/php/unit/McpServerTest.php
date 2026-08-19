@@ -286,7 +286,16 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		// emit an "Array to string conversion" PHP warning on a public,
 		// unauthenticated endpoint (log spam). Promote warnings to exceptions
 		// for this test so an accidental cast would fail loudly.
-		$prev = set_error_handler(
+		//
+		// Undone with restore_error_handler(), which POPS the handler.
+		// Re-setting the captured previous handler instead pushes another
+		// one rather than popping this one, and this one ends up live again
+		// for the rest of the run. That matters because a custom handler
+		// still runs for warnings the emitting code suppressed with `@` —
+		// Brain Monkey suppresses exactly such a warning when it stringifies
+		// a static closure — so a later test that registers one blew up
+		// here instead of in its own file.
+		set_error_handler(
 			static function ( $errno, $errstr ) {
 				throw new \RuntimeException( $errstr, $errno );
 			},
@@ -302,11 +311,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 			$this->assertSame( 400, $response->get_status() );
 			$this->assertSame( -32600, $response->get_data()['error']['code'] );
 		} finally {
-			if ( null !== $prev ) {
-				set_error_handler( $prev );
-			} else {
-				restore_error_handler();
-			}
+			restore_error_handler();
 		}
 	}
 
