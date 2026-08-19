@@ -149,7 +149,16 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$response = ( new WC_AI_Storefront_MCP_Server() )->handle( $request );
 
 		$this->assertSame( 200, $response->get_status() );
-		$this->assertCount( 3, $response->get_data()['result']['tools'] );
+		$tools = $response->get_data()['result']['tools'];
+		$this->assertCount( 3, $tools );
+		// Assert the canonical names on the PROTOCOL RESPONSE, not just in
+		// definitions(). This is the surface an external client reads, and the
+		// surface #651 was reported against.
+		$this->assertSame(
+			array( 'search_catalog', 'lookup_catalog', 'create_checkout' ),
+			array_column( $tools, 'name' ),
+			'tools/list must advertise the UCP canonical tool names — see #651.'
+		);
 	}
 
 	public function test_tools_list_ignores_session_state(): void {
@@ -331,7 +340,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 					'id'      => 2,
 					'method'  => 'tools/call',
 					'params'  => array(
-						'name'      => 'catalog_search',
+						'name'      => 'search_catalog',
 						'arguments' => array( 'query' => 'x' ),
 					),
 				),
@@ -395,7 +404,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_tools_call_wraps_core_error_as_iserror(): void {
 		// Full tools/call through the server: session validation → re-gate →
 		// rate limit → dispatch → MCP_Tools::call → run_checkout_create →
-		// core_result_to_mcp → rpc_result wrapping. checkout_create with empty
+		// core_result_to_mcp → rpc_result wrapping. create_checkout with empty
 		// line_items is rejected with a 400 BEFORE any WooCommerce/Store-API
 		// work, so no heavy stubbing is needed. The SUCCESS branch (status<400
 		// → structuredContent) is unit-tested in McpToolsTest and live-tested
@@ -422,7 +431,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 					'id'      => 7,
 					'method'  => 'tools/call',
 					'params'  => array(
-						'name'      => 'checkout_create',
+						'name'      => 'create_checkout',
 						'arguments' => array( 'line_items' => array() ),
 					),
 				),
@@ -574,7 +583,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 200, $response->get_status() );
 	}
 
-	public function test_catalog_lookup_missing_ids_distinct_from_empty(): void {
+	public function test_lookup_catalog_missing_ids_distinct_from_empty(): void {
 		// The adapter passes null (not []) for a missing ids argument so the
 		// core's "missing array" error stays distinct from "empty array".
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
@@ -599,7 +608,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 						'id'      => 2,
 						'method'  => 'tools/call',
 						'params'  => array(
-							'name'      => 'catalog_lookup',
+							'name'      => 'lookup_catalog',
 							'arguments' => $arguments,
 						),
 					),
@@ -673,7 +682,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 	public function test_tools_call_without_session_allowed_when_unknown_agents_allowed(): void {
 		// Sessions are optional: with allow_unknown_ucp_agents on (setUp default),
 		// a sessionless tools/call is admitted as the anonymous agent and the
-		// tool runs (here checkout_create with empty line_items → a 400 business
+		// tool runs (here create_checkout with empty line_items → a 400 business
 		// error surfaced as isError, proving the caller passed the gate).
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
@@ -684,7 +693,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 					'id'      => 1,
 					'method'  => 'tools/call',
 					'params'  => array(
-						'name'      => 'checkout_create',
+						'name'      => 'create_checkout',
 						'arguments' => array( 'line_items' => array() ),
 					),
 				),
@@ -713,7 +722,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 					'id'      => 1,
 					'method'  => 'tools/call',
 					'params'  => array(
-						'name'      => 'catalog_search',
+						'name'      => 'search_catalog',
 						'arguments' => array( 'query' => 'x' ),
 					),
 				),
@@ -734,7 +743,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 					'id'      => 1,
 					'method'  => 'tools/call',
 					'params'  => array(
-						'name'      => 'catalog_search',
+						'name'      => 'search_catalog',
 						'arguments' => array( 'query' => 'x' ),
 					),
 				),
@@ -781,7 +790,7 @@ class McpServerTest extends \PHPUnit\Framework\TestCase {
 					'id'      => 2,
 					'method'  => 'tools/call',
 					'params'  => array(
-						'name'      => 'catalog_search',
+						'name'      => 'search_catalog',
 						'arguments' => array( 'query' => 'x' ),
 					),
 				),

@@ -29,13 +29,20 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_definitions_exposes_exactly_three_tools(): void {
+		// These names are the UCP wire contract, not our choice of spelling.
+		// They are defined verbatim in `source/services/shopping/mcp.openrpc.json`
+		// in Universal-Commerce-Protocol/ucp. Clients that resolve an operation
+		// by canonical name — Shopify's `@shopify/ucp-cli` among them — reject
+		// the whole store when they don't match, without ever calling
+		// `tools/list` to find out what we actually offer. That was #651.
 		$defs  = WC_AI_Storefront_MCP_Tools::definitions();
 		$names = array_column( $defs, 'name' );
 
 		$this->assertCount( 3, $defs );
 		$this->assertSame(
-			array( 'catalog_search', 'catalog_lookup', 'checkout_create' ),
-			$names
+			array( 'search_catalog', 'lookup_catalog', 'create_checkout' ),
+			$names,
+			'MCP tool names are the UCP wire contract (mcp.openrpc.json). Renaming them breaks spec-following clients — see #651.'
 		);
 	}
 
@@ -46,11 +53,11 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
-	public function test_catalog_lookup_requires_ids(): void {
+	public function test_lookup_catalog_requires_ids(): void {
 		$defs   = WC_AI_Storefront_MCP_Tools::definitions();
 		$lookup = null;
 		foreach ( $defs as $def ) {
-			if ( 'catalog_lookup' === $def['name'] ) {
+			if ( 'lookup_catalog' === $def['name'] ) {
 				$lookup = $def;
 				break;
 			}
@@ -60,11 +67,11 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'ids', $lookup['inputSchema']['required'] );
 	}
 
-	public function test_checkout_create_requires_line_items(): void {
+	public function test_create_checkout_requires_line_items(): void {
 		$defs     = WC_AI_Storefront_MCP_Tools::definitions();
 		$checkout = null;
 		foreach ( $defs as $def ) {
-			if ( 'checkout_create' === $def['name'] ) {
+			if ( 'create_checkout' === $def['name'] ) {
 				$checkout = $def;
 				break;
 			}
@@ -135,7 +142,7 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		// and `filters.price`-style free-form maps are exempt only where the
 		// shape is genuinely dynamic (attributes), which we assert explicitly
 		// below rather than skipping silently.
-		$search = $this->tool( 'catalog_search' )['inputSchema']['properties'];
+		$search = $this->tool( 'search_catalog' )['inputSchema']['properties'];
 		foreach ( array( 'filters', 'sort', 'pagination', 'context' ) as $obj ) {
 			$this->assertSame( 'object', $search[ $obj ]['type'] );
 			$this->assertNotEmpty( $search[ $obj ]['properties'], "{$obj} needs nested properties" );
@@ -160,7 +167,7 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 	public function test_sort_field_enum_matches_core_allow_list(): void {
 		// Lock the advertised sort vocabulary to the orderby_map the core
 		// honors; drift here means agents get told about fields we ignore.
-		$sort = $this->tool( 'catalog_search' )['inputSchema']['properties']['sort'];
+		$sort = $this->tool( 'search_catalog' )['inputSchema']['properties']['sort'];
 		$this->assertSame(
 			array( 'price', 'title', 'date', 'newest', 'popularity', 'rating', 'menu_order' ),
 			$sort['properties']['field']['enum']
@@ -170,19 +177,19 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_checkout_line_item_shape_requires_item_id(): void {
 		// Mirrors process_line_item: each entry is { item: { id }, quantity }.
-		$items = $this->tool( 'checkout_create' )['inputSchema']['properties']['line_items']['items'];
+		$items = $this->tool( 'create_checkout' )['inputSchema']['properties']['line_items']['items'];
 		$this->assertSame( 'object', $items['type'] );
 		$this->assertContains( 'item', $items['required'] );
 		$this->assertContains( 'id', $items['properties']['item']['required'] );
 	}
 
-	public function test_catalog_search_requires_query_or_filters(): void {
-		// catalog_search has no single top-level required field (filters-only
+	public function test_search_catalog_requires_query_or_filters(): void {
+		// search_catalog has no single top-level required field (filters-only
 		// browse is valid), so the "query and/or filters" rule is expressed as
 		// an anyOf and reinforced in the description. (anyOf is a documented
 		// Gemini function-calling risk — see the class docblock — but it's the
 		// only machine-readable way to say "at least one of these two".)
-		$tool   = $this->tool( 'catalog_search' );
+		$tool   = $this->tool( 'search_catalog' );
 		$schema = $tool['inputSchema'];
 		$this->assertArrayNotHasKey( 'required', $schema );
 		$this->assertArrayHasKey( 'anyOf', $schema );
@@ -197,7 +204,7 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		// Gemini's function-declaration validator 400s on array/number bound
 		// keywords, breaking tool registration for the whole session. Keep them
 		// out of every inputSchema (the limits live in descriptions instead).
-		// `anyOf` is deliberately retained on catalog_search — see the dedicated
+		// `anyOf` is deliberately retained on search_catalog — see the dedicated
 		// test above — so it is NOT in this forbidden set.
 		$forbidden = array( 'oneOf', 'allOf', 'minItems', 'maxItems', 'minimum', 'maximum', 'exclusiveMinimum', 'exclusiveMaximum' );
 		$keys      = $this->collect_schema_keys( array_column( WC_AI_Storefront_MCP_Tools::definitions(), 'inputSchema' ) );
@@ -298,7 +305,7 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_require_continue_url_defaults_off_for_non_checkout_tools(): void {
-		// catalog_search/lookup never carry a continue_url; the default
+		// search_catalog/lookup_catalog never carry a continue_url; the default
 		// (false) must leave their 200 responses as successes.
 		$result = WC_AI_Storefront_MCP_Tools::core_result_to_mcp(
 			array(
@@ -361,34 +368,34 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'mcp_unknown_tool', $result->get_error_code() );
 	}
 
-	public function test_call_dispatches_catalog_lookup_through_core(): void {
-		// Parity with the catalog_search dispatch test: drive the disabled-
-		// syndication gate to prove call() routes 'catalog_lookup' to the right
+	public function test_call_dispatches_lookup_catalog_through_core(): void {
+		// Parity with the search_catalog dispatch test: drive the disabled-
+		// syndication gate to prove call() routes 'lookup_catalog' to the right
 		// core (not the default WP_Error unknown-tool path).
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'no' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
-		$result = WC_AI_Storefront_MCP_Tools::call( 'catalog_lookup', array( 'ids' => array( 'prod_1' ) ), 'ChatGPT' );
+		$result = WC_AI_Storefront_MCP_Tools::call( 'lookup_catalog', array( 'ids' => array( 'prod_1' ) ), 'ChatGPT' );
 
 		$this->assertTrue( $result['isError'] );
 		$this->assertStringContainsString( 'ucp_disabled', $result['content'][0]['text'] );
 	}
 
-	public function test_call_dispatches_checkout_create_through_core(): void {
+	public function test_call_dispatches_create_checkout_through_core(): void {
 		// Drive the empty-line_items 400 path to prove call() routes
-		// 'checkout_create' to the right core without needing WC stubbing.
+		// 'create_checkout' to the right core without needing WC stubbing.
 		WC_AI_Storefront::$test_settings = array( 'enabled' => 'yes' );
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		WC_AI_Storefront_Logger::reset_cache();
 
-		$result = WC_AI_Storefront_MCP_Tools::call( 'checkout_create', array( 'line_items' => array() ), 'ChatGPT' );
+		$result = WC_AI_Storefront_MCP_Tools::call( 'create_checkout', array( 'line_items' => array() ), 'ChatGPT' );
 
 		$this->assertTrue( $result['isError'] );
 	}
 
-	public function test_call_dispatches_catalog_search_through_core(): void {
+	public function test_call_dispatches_search_catalog_through_core(): void {
 		// Drive the disabled-syndication gate so run_catalog_search short-
 		// circuits to a 503 UCP error envelope before any Store API dispatch.
 		// This proves call() routes the tool name to the right core, threads
@@ -398,7 +405,7 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'apply_filters' )->returnArg( 2 );
 		WC_AI_Storefront_Logger::reset_cache();
 
-		$result = WC_AI_Storefront_MCP_Tools::call( 'catalog_search', array( 'query' => 'hat' ), 'ChatGPT' );
+		$result = WC_AI_Storefront_MCP_Tools::call( 'search_catalog', array( 'query' => 'hat' ), 'ChatGPT' );
 
 		$this->assertTrue( $result['isError'] );
 		$this->assertStringContainsString( 'ucp_disabled', $result['content'][0]['text'] );
