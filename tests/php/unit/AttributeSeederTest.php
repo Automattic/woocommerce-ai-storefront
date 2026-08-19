@@ -314,6 +314,9 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		// is "this caller won the lock"; tests about contention override it.
 		Functions\when( 'add_option' )->justReturn( true );
 		Functions\when( 'delete_option' )->justReturn( true );
+		// The lock value carries an ownership token (#649 review).
+		Functions\when( 'wp_generate_password' )->justReturn( 'tok123456789' );
+		Functions\when( 'wp_cache_delete' )->justReturn( true );
 
 		// create_attribute() now reads the attributes table directly rather
 		// than a cached accessor (#649). Report the same absent/present
@@ -322,8 +325,14 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		$wpdb         = Mockery::mock();
 		$wpdb->prefix = 'wp_';
 		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
-			static fn( $sql, $arg ) => str_replace( '%s', (string) $arg, $sql )
+			static function ( $sql, ...$args ) {
+				foreach ( $args as $arg ) {
+					$sql = preg_replace( '/%[sd]/', (string) $arg, $sql, 1 );
+				}
+				return $sql;
+			}
 		);
+		$wpdb->options = 'wp_options';
 		$wpdb->shouldReceive( 'get_var' )->andReturnUsing(
 			static function ( $sql ) use ( $existing ) {
 				foreach ( $existing as $taxonomy ) {
@@ -558,6 +567,86 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( array(), $created, 'The losing request must create nothing.' );
 	}
 
+	public function test_release_does_not_delete_a_lock_someone_else_reclaimed(): void {
+		// The mutex is only correct if release is scoped to the lock this
+		// request took. A run that overruns LOCK_TIMEOUT gets its lock
+		// reclaimed by a second request; if its finally then deletes
+		// unconditionally, it frees the SECOND request's lock and a third
+		// can start seeding alongside it.
+		$created = array();
+		$this->stub_creation_environment( array(), $created );
+		Functions\when( 'apply_filters' )->justReturn( true );
+		Functions\when( 'add_option' )->justReturn( true );
+
+		// Replace the harness's $wpdb wholesale rather than layering another
+		// shouldReceive() on it — Mockery keeps the first matching
+		// expectation, so an added one would never be consulted.
+		$delete_sql = array();
+		global $wpdb;
+		$wpdb          = Mockery::mock();
+		$wpdb->prefix  = 'wp_';
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static function ( $sql, ...$args ) {
+				foreach ( $args as $arg ) {
+					$sql = preg_replace( '/%[sd]/', (string) $arg, $sql, 1 );
+				}
+				return $sql;
+			}
+		);
+		$wpdb->shouldReceive( 'get_var' )->andReturn( null );
+		$wpdb->shouldReceive( 'get_results' )->andReturn( array() );
+		$wpdb->shouldReceive( 'query' )->andReturnUsing(
+			static function ( $sql ) use ( &$delete_sql ) {
+				if ( false !== strpos( $sql, 'DELETE' ) && false !== strpos( $sql, 'option_name' ) ) {
+					$delete_sql[] = $sql;
+				}
+				return 1;
+			}
+		);
+
+		WC_AI_Storefront_Attribute_Seeder::seed();
+
+		$this->assertNotEmpty( $delete_sql, 'The lock must be released through a conditional delete.' );
+		$this->assertStringContainsString(
+			'option_value',
+			$delete_sql[0],
+			'Release must match on the token this request stored, not just the option name.'
+		);
+	}
+
+	public function test_repair_does_not_flush_the_whole_object_cache(): void {
+		// wp_cache_flush() empties every group on the site. WooCommerce
+		// itself invalidates only `woocommerce-attributes` plus the
+		// transient after wc_create_attribute(); match that.
+		Functions\expect( 'wp_cache_flush' )->never();
+		Functions\expect( 'delete_transient' )->atLeast()->once();
+		Functions\when( '__' )->returnArg();
+
+		global $wpdb;
+		$wpdb          = Mockery::mock();
+		$wpdb->prefix  = 'wp_';
+		$wpdb->options = 'wp_options';
+		$wpdb->shouldReceive( 'prepare' )->andReturnUsing(
+			static fn( $sql, $arg ) => str_replace( '%d', (string) $arg, $sql )
+		);
+		$wpdb->shouldReceive( 'get_results' )->andReturn(
+			array(
+				(object) array(
+					'attribute_id'   => '9',
+					'attribute_name' => 'condition',
+				),
+				(object) array(
+					'attribute_id'   => '10',
+					'attribute_name' => 'condition',
+				),
+			)
+		);
+		$wpdb->shouldReceive( 'query' )->andReturn( 1 );
+
+		WC_AI_Storefront_Attribute_Seeder::repair_duplicates();
+	}
+
 	public function test_a_stale_lock_does_not_block_seeding_forever(): void {
 		// A request that dies mid-seed leaves the lock behind. Without a
 		// timeout the store never seeds again and the failure is silent.
@@ -584,7 +673,8 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_option' )->alias(
 			static function ( $name, $default = false ) {
 				if ( WC_AI_Storefront_Attribute_Seeder::LOCK_OPTION === $name ) {
-					return (string) ( time() - 3600 );
+					// Timestamp-first, matching what acquire_lock() stores.
+					return ( time() - 3600 ) . ':stale-token';
 				}
 				return '';
 			}
@@ -622,7 +712,7 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_option' )->alias(
 			static function ( $name, $default = false ) {
 				if ( WC_AI_Storefront_Attribute_Seeder::LOCK_OPTION === $name ) {
-					return (string) time();
+					return time() . ':fresh-token';
 				}
 				return '';
 			}
@@ -782,6 +872,8 @@ class AttributeSeederTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( '__' )->returnArg();
 		Functions\when( 'add_option' )->justReturn( true );
 		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'wp_generate_password' )->justReturn( 'tok123456789' );
+		Functions\when( 'wp_cache_delete' )->justReturn( true );
 		Functions\when( 'update_option' )->alias(
 			static function ( $name, $value ) use ( &$recorded ) {
 				$recorded[ $name ] = $value;

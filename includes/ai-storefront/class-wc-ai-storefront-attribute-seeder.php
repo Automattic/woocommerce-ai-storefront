@@ -154,36 +154,81 @@ class WC_AI_Storefront_Attribute_Seeder {
 	 * re-add is still the atomic step — two requests racing to reclaim the
 	 * same stale lock cannot both win.
 	 *
-	 * @return bool Whether this caller may seed.
+	 * The value stored is `<timestamp>:<random>`. The random half is an
+	 * ownership token: {@see release_lock()} deletes only a lock whose
+	 * value still matches, so a run that overran LOCK_TIMEOUT and had its
+	 * lock reclaimed cannot free the NEW owner's lock on its way out and
+	 * let a third request seed alongside it.
+	 *
+	 * @return string The token held, or '' when another request holds it.
 	 */
-	private static function acquire_lock(): bool {
-		$now = time();
+	private static function acquire_lock(): string {
+		$now   = time();
+		$token = $now . ':' . wp_generate_password( 12, false );
 
-		if ( add_option( self::LOCK_OPTION, (string) $now, '', false ) ) {
-			return true;
+		// Assigned rather than inlined into the `if`: PHPStan otherwise
+		// treats the second add_option() below as the same call and reports
+		// its result as always false, missing that delete_option() changed
+		// the state in between.
+		$took_lock = add_option( self::LOCK_OPTION, $token, '', false );
+		if ( $took_lock ) {
+			return $token;
 		}
 
-		$held_since = (int) get_option( self::LOCK_OPTION, '0' );
+		$held       = (string) get_option( self::LOCK_OPTION, '' );
+		$held_since = (int) strtok( $held, ':' );
 		if ( $held_since > 0 && ( $now - $held_since ) < self::LOCK_TIMEOUT ) {
 			// Someone is mid-seed. Do nothing — this is the whole point.
-			return false;
+			return '';
 		}
 
 		// Abandoned, or an unreadable value we should not trust. Clear it
 		// and contend for it again on equal terms.
 		delete_option( self::LOCK_OPTION );
 
-		return (bool) add_option( self::LOCK_OPTION, (string) $now, '', false );
+		$reclaimed = add_option( self::LOCK_OPTION, $token, '', false );
+
+		return $reclaimed ? $token : '';
 	}
 
 	/**
-	 * Release the seeding lock.
+	 * Release the seeding lock, but only if we still own it.
 	 *
 	 * Always call this on the way out, including when nothing was created —
 	 * a run that creates nothing still held the lock.
+	 *
+	 * Conditional on the token, and done as a single DELETE with both
+	 * columns in the WHERE. A read-then-delete would reintroduce the race
+	 * this whole change exists to remove, and `get_option()` can serve a
+	 * value another request has already replaced.
+	 *
+	 * @param string $token The token returned by {@see acquire_lock()}.
 	 */
-	private static function release_lock(): void {
-		delete_option( self::LOCK_OPTION );
+	private static function release_lock( string $token ): void {
+		if ( '' === $token ) {
+			return;
+		}
+
+		global $wpdb;
+
+		if ( isset( $wpdb ) ) {
+			// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- Conditional delete; the option cache is what we are avoiding.
+			$wpdb->query(
+				$wpdb->prepare(
+					"DELETE FROM {$wpdb->options} WHERE option_name = %s AND option_value = %s",
+					self::LOCK_OPTION,
+					$token
+				)
+			);
+			wp_cache_delete( self::LOCK_OPTION, 'options' );
+			return;
+		}
+
+		// No $wpdb to speak of. Check-then-act is weaker, but this path is
+		// unreachable in WordPress and the alternative is leaking the lock.
+		if ( (string) get_option( self::LOCK_OPTION, '' ) === $token ) {
+			delete_option( self::LOCK_OPTION );
+		}
 	}
 
 	/**
@@ -281,10 +326,14 @@ class WC_AI_Storefront_Attribute_Seeder {
 
 		if ( $deleted > 0 ) {
 			// The cached list still holds the row we just removed, and every
-			// admin surface reads it.
+			// admin surface reads it. Exactly what wc_create_attribute()
+			// does after it writes — NOT wp_cache_flush(), which empties
+			// every group on the site and is expensive where a persistent
+			// object cache is in play, which is precisely the kind of host
+			// that produces these duplicates.
 			delete_transient( 'wc_attribute_taxonomies' );
-			if ( function_exists( 'wp_cache_flush' ) ) {
-				wp_cache_flush();
+			if ( class_exists( 'WC_Cache_Helper' ) ) {
+				WC_Cache_Helper::invalidate_cache_group( 'woocommerce-attributes' );
 			}
 		}
 
@@ -557,7 +606,8 @@ class WC_AI_Storefront_Attribute_Seeder {
 		// create_attribute() cannot be trusted against a concurrent
 		// request — see LOCK_OPTION. Nothing may create an attribute
 		// without holding this.
-		if ( ! self::acquire_lock() ) {
+		$lock_token = self::acquire_lock();
+		if ( '' === $lock_token ) {
 			return 0;
 		}
 
@@ -589,7 +639,7 @@ class WC_AI_Storefront_Attribute_Seeder {
 			// finally, not a trailing call: an exception partway through
 			// would otherwise leave the lock held for LOCK_TIMEOUT and
 			// silently block every other request from seeding.
-			self::release_lock();
+			self::release_lock( $lock_token );
 		}
 
 		return $created;
