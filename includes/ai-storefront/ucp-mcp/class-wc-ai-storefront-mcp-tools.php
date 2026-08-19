@@ -74,7 +74,7 @@ class WC_AI_Storefront_MCP_Tools {
 									'items'       => array( 'type' => 'string' ),
 									'description' => __( 'Tag slugs or names to match.', 'woocommerce-ai-storefront' ),
 								),
-								'brand'      => array(
+								'brands'     => array(
 									'type'        => 'array',
 									'items'       => array( 'type' => 'string' ),
 									'description' => __( 'Brand slugs or names to match.', 'woocommerce-ai-storefront' ),

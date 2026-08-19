@@ -3627,7 +3627,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 							'type'        => 'object',
 							'description' => 'Custom filters via `additionalProperties` — accepted on `filters{}` in `/catalog/search` only. (`/catalog/lookup` reads only `ids` + `signals`; filters are ignored there because lookup resolves by explicit ID.) Unresolvable values on search emit `*_not_found` advisory warnings with JSONPath.',
 							'properties'  => array(
-								'brand'      => array(
+								'brands'     => array(
 									'type'        => 'array',
 									'description' => 'Array of brand names or slugs. Resolves against the native WC 9.5+ `product_brand` taxonomy. Multiple values OR together.',
 									'items'       => array( 'type' => 'string' ),

@@ -458,7 +458,7 @@ class UcpRestControllerTest extends \PHPUnit\Framework\TestCase {
 		$this->assertIsArray( $inputs['custom_filters']['properties'] );
 
 		$custom = $inputs['custom_filters']['properties'];
-		foreach ( array( 'brand', 'tags', 'in_stock', 'featured', 'min_rating', 'on_sale', 'attributes' ) as $filter_name ) {
+		foreach ( array( 'brands', 'tags', 'in_stock', 'featured', 'min_rating', 'on_sale', 'attributes' ) as $filter_name ) {
 			$this->assertArrayHasKey(
 				$filter_name,
 				$custom,
