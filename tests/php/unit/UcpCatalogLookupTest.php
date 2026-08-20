@@ -203,6 +203,24 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * Seed a product with explicit price + price_html.
+	 *
+	 * @param string|null $price_html Null omits the key entirely.
+	 */
+	private function seed_priced_product(
+		int $id,
+		string $name,
+		string $price,
+		?string $price_html
+	): void {
+		$this->seed_simple_product( $id, $name );
+		$this->fake_store_api[ $id ]['prices']['price'] = $price;
+		if ( null !== $price_html ) {
+			$this->fake_store_api[ $id ]['price_html'] = $price_html;
+		}
+	}
+
+	/**
 	 * Seed a variable product + its variations at the given IDs.
 	 *
 	 * @param array<int, array{id: int, price: string, size: string, is_purchasable?: bool}> $variation_specs
@@ -860,6 +878,56 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 		$body = $this->successful_lookup( array( 'ids' => array( 'prod_123' ) ) );
 
 		$this->assertArrayNotHasKey( 'messages', $body );
+	}
+
+	// ------------------------------------------------------------------
+	// Unpriced-product suppression (#658)
+	// ------------------------------------------------------------------
+
+	public function test_unpriced_product_is_suppressed_with_a_message(): void {
+		// The agent named this ID, so silence would be worse than the
+		// bug. `not_found` would be a lie — the product exists, we are
+		// declining to syndicate it — so it gets the same code checkout
+		// already emits for the same condition.
+		$this->seed_priced_product( 100, 'Unpriced', '0', '' );
+
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_100' ) ) );
+
+		$this->assertSame( array(), $body['products'] );
+		$this->assertCount( 1, $body['messages'] );
+		$this->assertSame( 'item_unpurchasable', $body['messages'][0]['code'] );
+		$this->assertSame( '$.ids[0]', $body['messages'][0]['path'] );
+		$this->assertSame( 'unrecoverable', $body['messages'][0]['severity'] );
+		$this->assertSame( 'error', $body['messages'][0]['type'] );
+	}
+
+	public function test_unpriced_message_path_uses_raw_request_index(): void {
+		// Agents cross-reference `path` against the body they sent. The
+		// index must be the raw position, not the surviving-product index
+		// — the same rule not_found_message() follows.
+		$this->seed_simple_product( 100, 'Alpha' );
+		$this->seed_priced_product( 200, 'Unpriced', '0', '' );
+		$this->seed_simple_product( 300, 'Gamma' );
+
+		$body = $this->successful_lookup(
+			array( 'ids' => array( 'prod_100', 'prod_200', 'prod_300' ) )
+		);
+
+		$this->assertCount( 2, $body['products'] );
+		$this->assertSame( 'Alpha', $body['products'][0]['title'] );
+		$this->assertSame( 'Gamma', $body['products'][1]['title'] );
+		$this->assertCount( 1, $body['messages'] );
+		$this->assertSame( '$.ids[1]', $body['messages'][0]['path'] );
+	}
+
+	public function test_genuinely_free_product_resolves_normally(): void {
+		$this->seed_priced_product( 100, 'Freebie', '0', '<span>$0.00</span>' );
+
+		$body = $this->successful_lookup( array( 'ids' => array( 'prod_100' ) ) );
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertArrayNotHasKey( 'messages', $body );
+		$this->assertSame( 0, $body['products'][0]['variants'][0]['price']['amount'] );
 	}
 
 	// ------------------------------------------------------------------

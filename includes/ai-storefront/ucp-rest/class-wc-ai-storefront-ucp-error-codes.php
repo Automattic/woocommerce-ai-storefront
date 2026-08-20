@@ -92,6 +92,12 @@ final class WC_AI_Storefront_UCP_Error_Codes {
 	 * misconfigured variation, hidden from catalog). Distinct from
 	 * `OUT_OF_STOCK`: the product may have inventory but WC refuses
 	 * to add it to a cart. (#373)
+	 *
+	 * Emitted on two surfaces: per line item at checkout, and per
+	 * requested ID at `catalog/lookup` when the product has no price
+	 * configured (#658). Same condition, same code, so an agent that
+	 * hits it while browsing reads the same answer it would at
+	 * checkout.
 	 */
 	const ITEM_UNPURCHASABLE = 'item_unpurchasable';
 

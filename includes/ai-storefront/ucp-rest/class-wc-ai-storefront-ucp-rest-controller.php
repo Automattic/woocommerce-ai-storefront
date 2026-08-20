@@ -2481,6 +2481,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 				continue;
 			}
 
+			// Decline to syndicate products WooCommerce has no configured
+			// price for (#658). The only price we could emit is 0, which
+			// UCP defines as "free". Unlike catalog/search — where an
+			// intentional exclusion is silent — the agent named this ID,
+			// so it gets an explanation under the same code checkout uses
+			// for the same condition.
+			if ( self::product_has_no_configured_price( $wc_product ) ) {
+				$messages[] = self::unpriced_message( $raw_index, $id_echo );
+				continue;
+			}
+
 			$wc_products_by_index[ $index ] = $wc_product;
 		}
 
@@ -4670,6 +4681,46 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return array(
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
+			'content'  => $content,
+			'path'     => '$.ids[' . $raw_index . ']',
+			'severity' => 'unrecoverable',
+		);
+	}
+
+	/**
+	 * Build an `item_unpurchasable` message for a looked-up product that
+	 * WooCommerce has no configured price for.
+	 *
+	 * Distinct from `not_found_message()`: that one means "no such ID".
+	 * This one means "the ID resolves, but the store cannot sell it" —
+	 * the same condition checkout rejects in `process_line_item()`, under
+	 * the same code, so an agent hitting it at either surface reads one
+	 * consistent answer.
+	 *
+	 * `severity: unrecoverable` because retrying cannot help: only the
+	 * merchant setting a price changes the outcome.
+	 *
+	 * @since 0.39.0
+	 *
+	 * @param int    $raw_index Raw request-body index of the ID (first
+	 *                          occurrence for duplicates), matching the
+	 *                          rule `not_found_message()` follows.
+	 * @param string $id_echo   The ID string the agent submitted.
+	 * @return array<string, string>
+	 */
+	private static function unpriced_message( int $raw_index, string $id_echo = '' ): array {
+		$safe_echo = self::sanitize_reflected_value( $id_echo );
+		$content   = '' !== $safe_echo
+			? sprintf(
+				/* translators: %s: the input ID the agent submitted. */
+				__( 'Product "%s" has no price set in the store and cannot be purchased.', 'woocommerce-ai-storefront' ),
+				$safe_echo
+			)
+			: __( 'A requested product has no price set in the store and cannot be purchased.', 'woocommerce-ai-storefront' );
+
+		return array(
+			'type'     => 'error',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE,
 			'content'  => $content,
 			'path'     => '$.ids[' . $raw_index . ']',
 			'severity' => 'unrecoverable',
