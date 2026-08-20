@@ -16,6 +16,13 @@ if ( ! defined( 'WC_AI_STOREFRONT_TESTING' ) ) {
 // WordPress stubs (WP_Error, WP_REST_Request, etc.).
 require_once __DIR__ . '/stubs.php';
 
+// Jetpack SEO Tools test doubles (#668). Shared here rather than declared
+// inside a single test file so any test file — including one run in
+// isolation on the command line — can drive them without depending on
+// PHPUnit's file discovery order. See the file for why they're keyed by
+// post ID.
+require_once __DIR__ . '/stubs-jetpack.php';
+
 // WooCommerce version the suite pretends to run against. The shipping-policy
 // and JSON-LD zone readers gate on this because
 // WC_Shipping_Zones::get_shipping_zones() only exists in WC 10.3+, and the
@@ -62,6 +69,7 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-crawl-logger.p
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-return-policy.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-llms-txt.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-meta-tags.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-authored-seo.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-products-feed.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-ucp.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';

@@ -90,3 +90,22 @@ parameters:
         # (The previous `strtotime` alwaysFalse ignore was removed when
         # treatPhpDocTypesAsCertain:false started honoring the defensive
         # `=== false` check — PHPStan no longer flags it as unreachable.)
+
+        # Jetpack is an OPTIONAL runtime dependency, deliberately absent
+        # from `scanFiles`. `WC_AI_Storefront_Authored_SEO` is the only
+        # file allowed to name a Jetpack symbol, and every one of those
+        # calls sits behind a `class_exists()` / `method_exists()` guard
+        # so the plugin behaves identically with Jetpack uninstalled.
+        # PHPStan cannot see those classes, so it reads the guards as
+        # dead code and the calls as unresolvable. Both readings are
+        # wrong at runtime on a site that has Jetpack: the guards are
+        # exactly what makes the dependency optional. Scanning the test
+        # doubles instead would make a fixture the type authority for a
+        # third-party API and only convert these into
+        # `alreadyNarrowedType` - the opposite error, same waiver.
+        - identifier: function.impossibleType
+          path: includes/ai-storefront/class-wc-ai-storefront-authored-seo.php
+          message: '#Jetpack#'
+        - identifier: class.notFound
+          path: includes/ai-storefront/class-wc-ai-storefront-authored-seo.php
+          message: '#Jetpack#'
