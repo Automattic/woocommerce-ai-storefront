@@ -53,6 +53,10 @@ While both plugins are active, this plugin **always emits** on commerce pages �
 - **`<title>`** — this plugin hooks `document_title_parts` at a late priority, so it wins. There is only one title tag, so there is no duplication. On single products it appends the brand (`{name} | {brand}`), but suppresses that append when it would be redundant — case-insensitively, when the brand equals the store name (core already appends the site segment) or the product name already contains the brand. So an in-house-label store (`Camp Shirt` on the `Saltwarp` brand of the `Saltwarp` store) reads `Camp Shirt – Saltwarp`, not `Camp Shirt | Saltwarp – Saltwarp`. The brand still appears when it adds information (`Field Boot | Thornwick – Saltwarp`).
 - **Meta description, Open Graph, Twitter, robots** — these are additive `<head>` tags. Until the SEO plugin is deactivated, the page carries two of each. Search engines tolerate this (they pick one); validators flag it. The duplication is your cue to act — and the admin notice tells you so. This plugin does **not** reach into the other plugin to suppress its output.
 
+## Divergence: Jetpack defers, Yoast still overrides
+
+As of the authored-intent-wins fix, this plugin treats Jetpack SEO Tools the opposite way it treats Yoast: on product, category, and shop pages, an authored `jetpack_seo_html_title` or `advanced_seo_description` wins outright, with no duplicate tag, and this plugin only generates its own copy where those fields are left blank. Yoast is unchanged — this plugin still wins the title via late filter priority and still emits an additive, duplicate meta description until Yoast is deactivated. That inconsistency is deliberate for now, not resolved: extending authored-intent-wins to Yoast, Rank Math, SEOPress, and AIOSEO needs its own detector per plugin, and is tracked as issue #669.
+
 ## Pre-flight checklist — before deactivating your SEO plugin
 
 Deactivating an SEO plugin removes more than the overlapping tags. Check these first:
