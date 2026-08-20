@@ -1164,8 +1164,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Zero-results inline guidance. Agents that skip llms.txt and hit
 		// the endpoint cold get a recovery recipe at the moment they need it,
 		// without requiring a prior discovery-document read.
-		$total_count = $body['pagination']['total_count'] ?? null;
-		if ( 0 === count( $translated['products'] ) && ( null === $total_count || 0 === (int) $total_count ) ) {
+		//
+		// Gated on the emitted product count alone, NOT on total_count.
+		// total_count is read from Store API's X-WP-Total header, which
+		// is computed BEFORE #658 unpriced-product suppression runs. A
+		// page can come back with zero products (all suppressed) while
+		// total_count still reports the full pre-suppression figure —
+		// e.g. a CSV import landing 40 unpriced products that sort
+		// first. Requiring total_count to also be zero would leave that
+		// agent with `products: []` and no recovery recipe at all.
+		if ( 0 === count( $translated['products'] ) ) {
 			$body['hints'] = array(
 				'zero_results'   => true,
 				'recovery_steps' => array(
@@ -1657,6 +1665,26 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
 			}
+
+			// Drop products WooCommerce has no configured price for (#658).
+			// The only price we could emit is 0, and UCP defines that as
+			// "free" — so syndicating one tells an agent the item costs
+			// nothing. Checkout already refuses these with
+			// `item_unpurchasable`, so surfacing them can only ever end in
+			// a dead cart. Silent by design: same call as #373's
+			// unpurchasable-variation filter in `fetch_variations_for()`,
+			// where an intentional exclusion is logged for the merchant
+			// rather than warned to the agent.
+			if ( self::product_has_no_configured_price( $wc_product ) ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP catalog/search: suppressed product %d — no price configured in WooCommerce',
+						(int) ( $wc_product['id'] ?? 0 )
+					)
+				);
+				continue;
+			}
+
 			$variation_fetch = $this->fetch_variations_for( $wc_product );
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$variant_messages[] = self::partial_variants_message(
@@ -2458,6 +2486,17 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			$wc_product = $this->fetch_store_api_product( $wc_id );
 			if ( null === $wc_product ) {
 				$messages[] = self::not_found_message( $raw_index, $id_echo );
+				continue;
+			}
+
+			// Decline to syndicate products WooCommerce has no configured
+			// price for (#658). The only price we could emit is 0, which
+			// UCP defines as "free". Unlike catalog/search — where an
+			// intentional exclusion is silent — the agent named this ID,
+			// so it gets an explanation under the same code checkout uses
+			// for the same condition.
+			if ( self::product_has_no_configured_price( $wc_product ) ) {
+				$messages[] = self::unpriced_message( $raw_index, $id_echo );
 				continue;
 			}
 
@@ -4390,6 +4429,82 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
+	 * Whether WooCommerce has no configured price for this product.
+	 *
+	 * The Store API cannot express "price unknown". Its money formatter
+	 * runs `floatval()` over the raw value, so a product with no price
+	 * (`'' === $product->get_price()`) and a product genuinely priced at
+	 * zero BOTH emit `prices.price === "0"`. UCP has no way to express it
+	 * either: `price` is required on `variant.json`, `price_range` and a
+	 * minItems-1 `variants[]` are required on `product.json`, and
+	 * `common/types/price.json` documents `amount` as "Use 0 for free
+	 * items". Emitting 0 for an unpriced product is therefore not a vague
+	 * placeholder — it is an affirmative claim that the item is free.
+	 *
+	 * `price_html` is the discriminator. `WC_Product::get_price_html()`
+	 * short-circuits to `apply_filters( 'woocommerce_empty_price_html',
+	 * '', $this )` when the price is unset, and renders real markup for
+	 * genuinely-free, external and out-of-stock products alike.
+	 *
+	 * Two conditions, both required:
+	 *
+	 *   1. The price we would emit is 0 — the harm precondition. We never
+	 *      suppress a product we would have quoted honestly.
+	 *   2. `price_html` is present and renders empty — positive evidence
+	 *      that no price was configured.
+	 *
+	 * Condition 2 alone would be dangerous: "catalog mode" / "hide price"
+	 * plugins filter `woocommerce_get_price_html` to '' across an entire
+	 * store while leaving `prices.price` intact. Requiring condition 1
+	 * bounds the worst case on such a store to suppressing products whose
+	 * lowest price is zero rather than the whole catalog.
+	 *
+	 * A payload with no `price_html` key at all is absence of evidence,
+	 * not evidence of absence — it returns false and the product is
+	 * syndicated as before.
+	 *
+	 * Deliberately NOT keyed on `is_purchasable`: external / affiliate
+	 * products read `false` there while carrying a real price, and
+	 * `woocommerce_is_purchasable` is a public filter that wholesale and
+	 * B2B plugins flip false store-wide. See the matching note in
+	 * `WC_AI_Storefront_UCP_Variant_Translator::extract_availability()`.
+	 *
+	 * @since 0.39.0
+	 *
+	 * @param array<string, mixed> $wc_product Normalized Store API product response.
+	 * @return bool True when the product must not be syndicated.
+	 */
+	private static function product_has_no_configured_price( array $wc_product ): bool {
+		if ( ! array_key_exists( 'price_html', $wc_product ) ) {
+			return false;
+		}
+
+		$prices = $wc_product['prices'] ?? array();
+		if ( ! is_array( $prices ) ) {
+			return false;
+		}
+
+		// Mirrors `UCP_Product_Translator::extract_price_range()`: a
+		// missing `prices.price` already resolves to 0 downstream, so it
+		// satisfies the harm precondition the same way an explicit "0" does.
+		if ( 0 !== (int) ( $prices['price'] ?? 0 ) ) {
+			return false;
+		}
+
+		$price_html = $wc_product['price_html'];
+		if ( ! is_string( $price_html ) ) {
+			return false;
+		}
+
+		// `wp_strip_all_tags()` over native strip_tags(): it also removes
+		// the CONTENT of <script>/<style> and trims. An empty wrapper
+		// element (`<span class="price"></span>`) is what a
+		// `woocommerce_empty_price_html` callback typically returns, and
+		// it must read the same as a bare empty string.
+		return '' === trim( wp_strip_all_tags( $price_html ) );
+	}
+
+	/**
 	 * For variable products, fetch all variations via per-ID Store API
 	 * requests and reassemble in the source order WC declared. Simple
 	 * products return empty.
@@ -4574,6 +4689,46 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		return array(
 			'type'     => 'error',
 			'code'     => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
+			'content'  => $content,
+			'path'     => '$.ids[' . $raw_index . ']',
+			'severity' => 'unrecoverable',
+		);
+	}
+
+	/**
+	 * Build an `item_unpurchasable` message for a looked-up product that
+	 * WooCommerce has no configured price for.
+	 *
+	 * Distinct from `not_found_message()`: that one means "no such ID".
+	 * This one means "the ID resolves, but the store cannot sell it" —
+	 * the same condition checkout rejects in `process_line_item()`, under
+	 * the same code, so an agent hitting it at either surface reads one
+	 * consistent answer.
+	 *
+	 * `severity: unrecoverable` because retrying cannot help: only the
+	 * merchant setting a price changes the outcome.
+	 *
+	 * @since 0.39.0
+	 *
+	 * @param int    $raw_index Raw request-body index of the ID (first
+	 *                          occurrence for duplicates), matching the
+	 *                          rule `not_found_message()` follows.
+	 * @param string $id_echo   The ID string the agent submitted.
+	 * @return array<string, string>
+	 */
+	private static function unpriced_message( int $raw_index, string $id_echo = '' ): array {
+		$safe_echo = self::sanitize_reflected_value( $id_echo );
+		$content   = '' !== $safe_echo
+			? sprintf(
+				/* translators: %s: the input ID the agent submitted. */
+				__( 'Product "%s" has no price set in the store and is not available through this catalog.', 'woocommerce-ai-storefront' ),
+				$safe_echo
+			)
+			: __( 'A requested product has no price set in the store and is not available through this catalog.', 'woocommerce-ai-storefront' );
+
+		return array(
+			'type'     => 'error',
+			'code'     => WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE,
 			'content'  => $content,
 			'path'     => '$.ids[' . $raw_index . ']',
 			'severity' => 'unrecoverable',

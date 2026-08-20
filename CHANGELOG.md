@@ -14,6 +14,11 @@
   - WooCommerce tracks stock in two places, and for some products they disagree. A variable product whose every option is unavailable still reports "in stock" internally, while your storefront correctly shows shoppers "Out of stock".
   - Your store was sending assistants the internal answer. An assistant could recommend something a shopper then couldn't buy.
   - Availability now follows what your product page shows. Products you sell through an external link are unaffected — they stay available, because they can still be bought, just not on your site.
+- **Products with no price were offered to AI assistants as free (#658).**
+  - A product you never set a price on was sent to assistants quoted at $0.00. The commerce standard treats a price of zero as a genuine "this is free", so an assistant reading it would tell a shopper the item costs nothing.
+  - WooCommerce reports "no price set" and "priced at zero" identically to the API, so there was no way to tell the two apart — and no way for a response to say "price unknown" at all.
+  - Products with no price are now left out of your store's commerce-standard catalog and MCP connection, not every surface that lists your products. Search skips them; a direct lookup gets an explanation instead of a price. Products you have genuinely priced at zero are unaffected.
+  - Set a price on the product and it reappears for assistants immediately. Nothing else about your store changes.
 - **The plugin listing said it had no MCP support, while shipping an MCP server that's on by default (#653).**
   - The FAQ answered "Not currently" and explained why a plugin couldn't run one. The plugin has run a public MCP server for shopping agents for several releases.
   - Merchants reading the listing had no way to know the feature existed, or that it was already switched on.

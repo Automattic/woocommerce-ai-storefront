@@ -490,10 +490,18 @@ class WC_AI_Storefront_MCP_Tools {
 	public static function summarize_search( array $body ): string {
 		$products = self::products_of( $body );
 		if ( empty( $products ) ) {
-			return self::with_unknown_params_note(
-				__( 'No products matched.', 'woocommerce-ai-storefront' ),
-				$body
-			);
+			$pagination = is_array( $body['pagination'] ?? null ) ? $body['pagination'] : array();
+			$text       = __( 'No products matched.', 'woocommerce-ai-storefront' );
+
+			// A page can come back empty because every product on it was
+			// suppressed (#658 unpriced-product filtering), not because the
+			// store has nothing — has_next_page still says whether later
+			// pages are worth trying before the model gives up on the query.
+			if ( ! empty( $pagination['has_next_page'] ) ) {
+				$text .= ' ' . __( 'More available. Pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
+			}
+
+			return self::with_unknown_params_note( $text, $body );
 		}
 
 		$count      = count( $products );
@@ -512,7 +520,7 @@ class WC_AI_Storefront_MCP_Tools {
 		$text = $head . ' — ' . implode( '; ', self::product_lines( $products ) ) . '.';
 
 		if ( ! empty( $pagination['has_next_page'] ) ) {
-			$text .= ' ' . __( 'More available — pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
+			$text .= ' ' . __( 'More available. Pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
 		}
 
 		return self::with_unknown_params_note( $text, $body );
@@ -552,27 +560,71 @@ class WC_AI_Storefront_MCP_Tools {
 	/**
 	 * Build the `content` text for a successful lookup_catalog result.
 	 *
+	 * The "some ids were not found" wording is only honest when every
+	 * message actually carries the `not_found` code. A message can also
+	 * carry `item_unpurchasable` (#658 unpriced-product suppression) —
+	 * that ID resolved to a real product the store is declining to
+	 * syndicate, the opposite of "not found". Telling the model the
+	 * product doesn't exist would be exactly the lie that code was
+	 * introduced to avoid, so the wording branches on the codes present
+	 * rather than only on whether any messages exist.
+	 *
 	 * @param array $body Lookup response body (`products`, optional `messages`).
 	 * @return string
 	 */
 	public static function summarize_lookup( array $body ): string {
-		$products     = self::products_of( $body );
-		$has_messages = ! empty( $body['messages'] ) && is_array( $body['messages'] );
+		$products      = self::products_of( $body );
+		$messages      = is_array( $body['messages'] ?? null ) ? $body['messages'] : array();
+		$has_messages  = ! empty( $messages );
+		$all_not_found = self::messages_are_all_not_found( $messages );
 
 		if ( empty( $products ) ) {
-			return $has_messages
+			if ( ! $has_messages ) {
+				return __( 'No products found for the given ids.', 'woocommerce-ai-storefront' );
+			}
+			return $all_not_found
 				? __( 'No products found for the given ids (see messages).', 'woocommerce-ai-storefront' )
-				: __( 'No products found for the given ids.', 'woocommerce-ai-storefront' );
+				: __( 'No products could be returned for the given ids (see messages).', 'woocommerce-ai-storefront' );
 		}
 
 		$text = self::product_count_label( count( $products ) )
 			. ' — ' . implode( '; ', self::product_lines( $products ) ) . '.';
 
 		if ( $has_messages ) {
-			$text .= ' ' . __( 'Note: some ids were not found (see messages).', 'woocommerce-ai-storefront' );
+			$text .= ' ' . ( $all_not_found
+				? __( 'Note: some ids were not found (see messages).', 'woocommerce-ai-storefront' )
+				: __( 'Note: some ids could not be returned (see messages).', 'woocommerce-ai-storefront' ) );
 		}
 
 		return $text;
+	}
+
+	/**
+	 * Whether every message in `messages[]` carries the `not_found` code.
+	 *
+	 * Distinguishes "every missing id genuinely doesn't exist" from "at
+	 * least one id exists but the store is withholding it" (e.g. the
+	 * #658 `item_unpurchasable` code) — see the summarize_lookup()
+	 * docblock for why that distinction matters to the wording.
+	 *
+	 * @param array $messages Response `messages[]` array.
+	 * @return bool True when non-empty and every entry's code is not_found.
+	 */
+	private static function messages_are_all_not_found( array $messages ): bool {
+		if ( empty( $messages ) ) {
+			return false;
+		}
+
+		foreach ( $messages as $message ) {
+			if ( ! is_array( $message ) ) {
+				return false;
+			}
+			if ( WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND !== ( $message['code'] ?? '' ) ) {
+				return false;
+			}
+		}
+
+		return true;
 	}
 
 	/**
