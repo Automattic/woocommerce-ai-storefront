@@ -688,20 +688,62 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		//      hostname. RFC 8941 Dictionary fields are
 		//      comma-separated, so requiring a separator before the
 		//      key is the right defensive boundary.
-		//   2. The value must be quoted. RFC 8941 Dictionary strings
-		//      require quotes; accepting unquoted values would let
-		//      non-compliant agents look compliant.
-		//   3. We use an explicit `(?:^|[\s,;])` prefix guard rather
+		//   2. We use an explicit `(?:^|[\s,;])` prefix guard rather
 		//      than relying on a regex word-boundary, keeping the
 		//      match aligned with RFC 8941 separators (comma is the
 		//      canonical Dictionary separator; whitespace and
 		//      semicolon are tolerated for real-world variants).
-		if ( ! preg_match( '/(?:^|[\s,;])profile="([^"]+)"/', $header_value, $matches ) ) {
-			return '';
+		//
+		// Three spellings of the value are accepted, in this order.
+		// `profile="URL"` is the RFC 8941 Dictionary string form, the
+		// only one the spec defines and the only one we document.
+		// `profile=:URL:` and bare `profile=URL` are near-misses that
+		// name the agent just as unambiguously.
+		//
+		// This used to accept the quoted form alone, on the reasoning
+		// that "accepting unquoted values would let non-compliant
+		// agents look compliant". That reasoning does not hold: the
+		// header is self-asserted and nothing verifies it, so anyone
+		// can send `profile="https://chatgpt.com"` and be believed.
+		// Strictness therefore stops no spoofing — it only drops
+		// honest agents into `ucp_unknown`, which ALSO means the
+		// merchant's per-brand `allowed_crawlers` decision never gets
+		// applied to them. Bad punctuation was an accidental way
+		// around the merchant's own settings. Observed on a live
+		// store: an agent tried a bare URL and a `.well-known` path,
+		// was bucketed unknown both times, and gave up on the
+		// format (#655).
+		$patterns = array(
+			'/(?:^|[\s,;])profile="([^"]+)"/',   // RFC 8941 quoted form.
+			'/(?:^|[\s,;])profile=:([^:\s,;]+(?::[^:\s,;]*)*?):(?=[\s,;]|$)/', // Colon-delimited.
+			'/(?:^|[\s,;])profile=([^"\s,;][^\s,;]*)/', // Unquoted.
+		);
+
+		$profile_url = '';
+		foreach ( $patterns as $pattern ) {
+			if ( preg_match( $pattern, $header_value, $matches ) ) {
+				$profile_url = $matches[1];
+				break;
+			}
 		}
 
-		$profile_url = $matches[1];
-		$host        = wp_parse_url( $profile_url, PHP_URL_HOST );
+		// Bare URL, e.g. `https://claude.ai/.well-known/agent`. Only
+		// when the WHOLE header is that URL — User-Agent-style strings
+		// routinely carry a URL in parentheses
+		// (`SomeBot/1.0 (+https://example/bot)`), and extracting from
+		// those would attribute traffic to whatever host a crawler
+		// happens to advertise.
+		if ( '' === $profile_url ) {
+			$trimmed = trim( $header_value );
+			if ( 1 === preg_match( '#^https?://[^\s]+$#i', $trimmed ) ) {
+				$profile_url = $trimmed;
+			}
+		}
+
+		if ( '' === $profile_url ) {
+			return '';
+		}
+		$host = wp_parse_url( $profile_url, PHP_URL_HOST );
 
 		// `wp_parse_url` returns `null` for malformed URLs. Coerce to
 		// empty string so callers get a predictable type and don't
