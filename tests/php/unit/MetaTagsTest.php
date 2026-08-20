@@ -46,20 +46,20 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * Reset the Jetpack, Jetpack_SEO_Posts and Jetpack_SEO_Utils test doubles
-	 * declared in AuthoredSeoTest.php. phpunit.xml.dist sets no
-	 * processIsolation, so every test file in the suite shares one PHP
-	 * process, and these doubles' static properties persist across files
-	 * once that file has loaded. Called from both setUp() and tearDown() so
+	 * loaded from tests/php/stubs-jetpack.php via the shared bootstrap.
+	 * phpunit.xml.dist sets no processIsolation, so every test file in the
+	 * suite shares one PHP process, and these doubles' static properties
+	 * persist across files. Called from both setUp() and tearDown() so
 	 * fixtures set by one test never leak into another test in this file, or
-	 * into AuthoredSeoTest.php itself.
+	 * into AuthoredSeoTest.php.
 	 */
 	private function reset_jetpack_seo_doubles(): void {
 		if ( class_exists( 'Jetpack' ) ) {
 			Jetpack::$active_modules = array();
 		}
 		if ( class_exists( 'Jetpack_SEO_Posts' ) ) {
-			Jetpack_SEO_Posts::$description = '';
-			Jetpack_SEO_Posts::$title       = '';
+			Jetpack_SEO_Posts::$descriptions = array();
+			Jetpack_SEO_Posts::$titles       = array();
 		}
 		if ( class_exists( 'Jetpack_SEO_Utils' ) ) {
 			Jetpack_SEO_Utils::$front_page_description = '';
@@ -914,18 +914,19 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * Make WC_AI_Storefront_Authored_SEO::post_description() answer $description
-	 * for $post_id, as it would when Jetpack SEO Tools carries authored copy.
-	 * Activates the seo-tools module so is_available() is true.
+	 * Make WC_AI_Storefront_Authored_SEO::post_description() answer
+	 * $description for $post_id specifically, as it would when Jetpack SEO
+	 * Tools carries authored copy for that post. Activates the seo-tools
+	 * module so is_available() is true. The double keys its stored value by
+	 * $post_id, so a test can tell a correct implementation (reads the right
+	 * post) from one that reads the wrong one.
 	 *
-	 * @param int    $post_id     Unused by the underlying double (it answers the
-	 *                            same value for any post), kept in the signature
-	 *                            to mirror the production call and document intent.
+	 * @param int    $post_id     Post the description belongs to.
 	 * @param string $description Authored description, '' for "none set".
 	 */
 	private function set_authored_description( int $post_id, string $description ): void {
-		Jetpack::$active_modules        = array( 'seo-tools' );
-		Jetpack_SEO_Posts::$description = $description;
+		Jetpack::$active_modules                     = array( 'seo-tools' );
+		Jetpack_SEO_Posts::$descriptions[ $post_id ] = $description;
 	}
 
 	/**

@@ -16,6 +16,13 @@ if ( ! defined( 'WC_AI_STOREFRONT_TESTING' ) ) {
 // WordPress stubs (WP_Error, WP_REST_Request, etc.).
 require_once __DIR__ . '/stubs.php';
 
+// Jetpack SEO Tools test doubles (#668). Shared here rather than declared
+// inside a single test file so any test file — including one run in
+// isolation on the command line — can drive them without depending on
+// PHPUnit's file discovery order. See the file for why they're keyed by
+// post ID.
+require_once __DIR__ . '/stubs-jetpack.php';
+
 // WooCommerce version the suite pretends to run against. The shipping-policy
 // and JSON-LD zone readers gate on this because
 // WC_Shipping_Zones::get_shipping_zones() only exists in WC 10.3+, and the

@@ -2,20 +2,17 @@
 /**
  * Tests for WC_AI_Storefront_Authored_SEO.
  *
- * The Jetpack, Jetpack_SEO_Posts and Jetpack_SEO_Utils doubles at the
- * bottom of this file carry the real Jetpack class names, not "Fake*"
- * aliases. WC_AI_Storefront_Authored_SEO reaches Jetpack only through
+ * The Jetpack, Jetpack_SEO_Posts and Jetpack_SEO_Utils doubles this class
+ * drives live in tests/php/stubs-jetpack.php, loaded once from
+ * tests/php/bootstrap.php, not in this file — see that file's docblock for
+ * why. They carry the real Jetpack class names, not "Fake*" aliases, since
+ * WC_AI_Storefront_Authored_SEO reaches Jetpack only through
  * class_exists( 'Jetpack' ) / class_exists( 'Jetpack_SEO_Posts' ) /
- * class_exists( 'Jetpack_SEO_Utils' ), so a differently-named double would
- * never be found and the guarded paths would go untested. Each double is
- * declared inside a class_exists() guard so it can never collide with a
- * real Jetpack install running in the same process.
+ * class_exists( 'Jetpack_SEO_Utils' ).
  *
- * phpunit.xml.dist sets no processIsolation, so every test file in this
- * suite shares one PHP process and these doubles, once loaded, stay loaded
- * for the rest of the run. That also means "Jetpack is not loaded at all"
- * is not an observable state from within this file; see the class-presence
- * test below for how that guarantee is covered instead.
+ * Because the bootstrap loads them unconditionally, "Jetpack is not loaded
+ * at all" is not an observable state from within this file; see the
+ * class-presence test below for how that guarantee is covered instead.
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -24,9 +21,9 @@ class AuthoredSeoTest extends \PHPUnit\Framework\TestCase {
 
 	protected function setUp(): void {
 		parent::setUp();
-		Jetpack::$active_modules          = array();
-		Jetpack_SEO_Posts::$description   = '';
-		Jetpack_SEO_Posts::$title         = '';
+		Jetpack::$active_modules                   = array();
+		Jetpack_SEO_Posts::$descriptions           = array();
+		Jetpack_SEO_Posts::$titles                 = array();
 		Jetpack_SEO_Utils::$front_page_description = '';
 	}
 
@@ -56,22 +53,36 @@ class AuthoredSeoTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_post_description_returns_empty_when_module_is_off(): void {
-		Jetpack::$active_modules        = array( 'stats' );
-		Jetpack_SEO_Posts::$description = 'Authored copy';
+		Jetpack::$active_modules             = array( 'stats' );
+		Jetpack_SEO_Posts::$descriptions[42] = 'Authored copy';
 
 		$this->assertSame( '', WC_AI_Storefront_Authored_SEO::post_description( 42 ) );
 	}
 
 	public function test_post_description_returns_authored_copy_when_available(): void {
-		Jetpack::$active_modules        = array( 'seo-tools' );
-		Jetpack_SEO_Posts::$description = 'Authored copy';
+		Jetpack::$active_modules             = array( 'seo-tools' );
+		Jetpack_SEO_Posts::$descriptions[42] = 'Authored copy';
 
 		$this->assertSame( 'Authored copy', WC_AI_Storefront_Authored_SEO::post_description( 42 ) );
 	}
 
+	public function test_post_description_is_specific_to_the_requested_post(): void {
+		// The double keys by post ID, not a single flat value, because
+		// production code chooses which post to read based on page type
+		// (#668). A test fixture that answered the same value for any post
+		// ID could never catch a routing bug that read the wrong post.
+		Jetpack::$active_modules             = array( 'seo-tools' );
+		Jetpack_SEO_Posts::$descriptions[42] = 'Authored copy for 42';
+		Jetpack_SEO_Posts::$descriptions[43] = 'Authored copy for 43';
+
+		$this->assertSame( 'Authored copy for 42', WC_AI_Storefront_Authored_SEO::post_description( 42 ) );
+		$this->assertSame( 'Authored copy for 43', WC_AI_Storefront_Authored_SEO::post_description( 43 ) );
+		$this->assertSame( '', WC_AI_Storefront_Authored_SEO::post_description( 44 ) );
+	}
+
 	public function test_post_title_returns_authored_title_when_available(): void {
-		Jetpack::$active_modules  = array( 'seo-tools' );
-		Jetpack_SEO_Posts::$title = 'Authored headline';
+		Jetpack::$active_modules       = array( 'seo-tools' );
+		Jetpack_SEO_Posts::$titles[42] = 'Authored headline';
 
 		$this->assertSame( 'Authored headline', WC_AI_Storefront_Authored_SEO::post_title( 42 ) );
 	}
@@ -86,102 +97,9 @@ class AuthoredSeoTest extends \PHPUnit\Framework\TestCase {
 	public function test_non_string_return_from_jetpack_is_coerced(): void {
 		// Third-party filters can hook Jetpack's accessors. A non-string
 		// must not propagate into a template tag.
-		Jetpack::$active_modules        = array( 'seo-tools' );
-		Jetpack_SEO_Posts::$description = null;
+		Jetpack::$active_modules             = array( 'seo-tools' );
+		Jetpack_SEO_Posts::$descriptions[42] = null;
 
 		$this->assertSame( '', WC_AI_Storefront_Authored_SEO::post_description( 42 ) );
-	}
-}
-
-if ( ! class_exists( 'Jetpack' ) ) {
-	/**
-	 * Test double for the real Jetpack class.
-	 *
-	 * Named to match production so WC_AI_Storefront_Authored_SEO's
-	 * class_exists( 'Jetpack' ) checks find it.
-	 */
-	class Jetpack {
-
-		/**
-		 * Modules the double reports as active.
-		 *
-		 * @var string[]
-		 */
-		public static $active_modules = array();
-
-		/**
-		 * Mirrors Jetpack::is_module_active().
-		 *
-		 * @param string $module Module slug.
-		 */
-		public static function is_module_active( string $module ): bool {
-			return in_array( $module, self::$active_modules, true );
-		}
-	}
-}
-
-if ( ! class_exists( 'Jetpack_SEO_Posts' ) ) {
-	/**
-	 * Test double for the real Jetpack_SEO_Posts class.
-	 */
-	class Jetpack_SEO_Posts {
-
-		/**
-		 * Value returned by get_post_custom_description().
-		 *
-		 * @var mixed
-		 */
-		public static $description = '';
-
-		/**
-		 * Value returned by get_post_custom_html_title().
-		 *
-		 * @var mixed
-		 */
-		public static $title = '';
-
-		/**
-		 * Mirrors Jetpack_SEO_Posts::get_post_custom_description().
-		 *
-		 * @param mixed $post Unused by the double.
-		 * @return mixed
-		 */
-		public static function get_post_custom_description( $post = null ) {
-			return self::$description;
-		}
-
-		/**
-		 * Mirrors Jetpack_SEO_Posts::get_post_custom_html_title().
-		 *
-		 * @param mixed $post Unused by the double.
-		 * @return mixed
-		 */
-		public static function get_post_custom_html_title( $post = null ) {
-			return self::$title;
-		}
-	}
-}
-
-if ( ! class_exists( 'Jetpack_SEO_Utils' ) ) {
-	/**
-	 * Test double for the real Jetpack_SEO_Utils class.
-	 */
-	class Jetpack_SEO_Utils {
-
-		/**
-		 * Value returned by get_front_page_meta_description().
-		 *
-		 * @var mixed
-		 */
-		public static $front_page_description = '';
-
-		/**
-		 * Mirrors Jetpack_SEO_Utils::get_front_page_meta_description().
-		 *
-		 * @return mixed
-		 */
-		public static function get_front_page_meta_description() {
-			return self::$front_page_description;
-		}
 	}
 }
