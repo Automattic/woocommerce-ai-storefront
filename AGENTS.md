@@ -187,6 +187,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | Code path | Update these docs |
 |-----------|-------------------|
 | `includes/ai-storefront/ucp-rest/**` | API-REFERENCE.md, UCP-BUY-FLOW.md, CART-MODELS.md, ARCHITECTURE.md |
+| `includes/ai-storefront/ucp-mcp/**` | ARCHITECTURE.md, API-REFERENCE.md, UCP-BUY-FLOW.md, DATA-MODEL.md, USER-GUIDE.md |
 | `includes/admin/class-wc-ai-storefront-admin-controller.php` | API-REFERENCE.md, ARCHITECTURE.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-attribution.php` | DATA-MODEL.md, UCP-BUY-FLOW.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-ucp.php` | API-REFERENCE.md, UCP-BUY-FLOW.md, CART-MODELS.md |
