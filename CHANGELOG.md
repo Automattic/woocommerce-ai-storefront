@@ -3,7 +3,7 @@
 ### Fixed
 - **SEO titles and descriptions you wrote yourself were being thrown away on shop pages (#668).**
   - If you filled in the SEO fields on a product or on your Shop page, your store ignored them and published its own generated text instead. The fields looked live in the editor and did nothing.
-  - Your own words now win wherever you wrote them, on products and on the Shop page. Where you left them blank, your store generates a description as before.
+  - Your own words now win wherever you wrote them, on products and on the Shop page. Where you left them blank, your store generates a description as before. Titles are used exactly as written; a description longer than search engines display is shortened, the same length limit your store already applied to generated descriptions.
   - Your Shop page is the case that was most stuck: WooCommerce shows your product listing at that address, so the SEO fields on the page itself were never reachable. They work now.
   - On a product where you wrote your own title, your store no longer appends the brand name to it. The brand is still published separately in the structured data assistants and search engines read.
 - **Most AI traffic was recorded as "unknown" (#655).**
