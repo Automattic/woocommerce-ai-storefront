@@ -1,10 +1,11 @@
 ## [Unreleased]
 
 ### Fixed
-- **SEO titles and descriptions you wrote yourself were being thrown away on shop pages (#668).**
+- **SEO titles and descriptions you wrote yourself were being thrown away on products and shop pages (#668).**
   - If you filled in the SEO fields on a product or on your Shop page, your store ignored them and published its own generated text instead. The fields looked live in the editor and did nothing.
-  - Your own words now win wherever you wrote them, on products and on the Shop page. Where you left them blank, your store generates a description as before. Titles are used exactly as written; a description longer than search engines display is shortened, the same length limit your store already applied to generated descriptions.
-  - Your Shop page is the case that was most stuck: WooCommerce shows your product listing at that address, so the SEO fields on the page itself were never reachable. They work now.
+  - Your own words now win wherever you wrote them, on products and on the Shop page. Where you left them blank, your store generates a description as before. A description longer than search engines display is shortened, the same length limit your store already applied to generated descriptions.
+  - Titles are published as you wrote them, with two small exceptions. Any HTML you typed is shown as plain text rather than treated as markup, which is what keeps a stray tag from breaking the page. And on page two and beyond of your Shop listing, the page number is added at the end, exactly as WordPress does it, so each page has a distinct title.
+  - Your Shop page is the case that was most stuck: WooCommerce shows your product listing at that address, so the title and description on the page itself were never reachable. They work now. The share preview when someone posts your Shop page on social was already reading that page's description, which is why the problem was easy to miss.
   - On a product where you wrote your own title, your store no longer appends the brand name to it. The brand is still published separately in the structured data assistants and search engines read.
 - **Most AI traffic was recorded as "unknown" (#655).**
   - Assistants tell your store who they are with a header, and your store's own instructions showed the wrong spelling for it. Assistants that followed those instructions were filed as unknown, so your order attribution under-counted the ones behaving best.
