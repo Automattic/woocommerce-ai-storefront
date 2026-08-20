@@ -2,20 +2,25 @@
 /**
  * Merchant-authored SEO metadata, read from Jetpack when it is present.
  *
- * The only file in the plugin that names a Jetpack symbol. Everything here
- * degrades to an empty string when Jetpack is absent, deactivated, or has
- * its SEO Tools module switched off, so callers never guard.
+ * The only file in the plugin that reads Jetpack's SEO Tools classes. Other
+ * files do name Jetpack — the JSON-LD builder reads Publicize connections,
+ * the SEO-plugin detector checks `JETPACK__VERSION`, and the meta-tags
+ * emitter removes Jetpack's `jetpack_og_tags` action — but none of them touch
+ * `Jetpack_SEO_*`. Everything here degrades to an empty string when Jetpack is
+ * absent, deactivated, or has its SEO Tools module switched off, so a caller
+ * can read any field unguarded and get '' rather than a fatal.
  *
  * Two conditions gate every read, not one. Jetpack's own accessors check
  * `Jetpack_SEO_Utils::is_enabled_jetpack_seo()`, which returns true on any
- * self-hosted or Atomic site — it consults a plan feature only under
- * `IS_WPCOM`. It does NOT check whether the seo-tools module is active. A
+ * self-hosted or Atomic site unless `jetpack_disable_seo_tools` is filtered
+ * true (`class-jetpack-seo-utils.php:38-40`) — it consults a plan feature only
+ * under `IS_WPCOM`. It does NOT check whether the seo-tools module is active. A
  * merchant who switched SEO Tools off has stopped seeing Jetpack emit this
  * metadata, and reviving it here would surprise them, so `is_available()`
  * adds the module check. (#668)
  *
  * @package WooCommerce_AI_Storefront
- * @since   0.39.0
+ * @since   0.38.2
  */
 
 defined( 'ABSPATH' ) || exit;

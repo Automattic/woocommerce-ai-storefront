@@ -237,9 +237,16 @@ class WC_AI_Storefront_Meta_Tags {
 	 * `document_title_parts` callback — enrich the product title with its brand.
 	 *
 	 * Hooked at a late priority so we win over an active SEO plugin (there is
-	 * only one <title>, so this never duplicates). Non-product commerce pages
-	 * keep core's title (it already supplies the term/shop name); we only add
-	 * the brand on single products.
+	 * only one <title>, so this never duplicates). This callback only ever
+	 * appends the brand, and only on single products; it never claims a title
+	 * for a category, the shop archive, or a product search.
+	 *
+	 * That is not the whole title story. {@see filter_document_title()} claims
+	 * `pre_get_document_title` on the shop archive and on single products
+	 * whenever the merchant authored a headline, which short-circuits
+	 * `wp_get_document_title()` before `document_title_parts` ever fires. So a
+	 * commerce page keeps core's assembled title only when nothing is authored
+	 * for it — on a category or a product search, always.
 	 *
 	 * @param array $parts Title parts (keys: title, page, tagline, site).
 	 * @return array
@@ -346,7 +353,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * on both branches, since a product split with `<!--nextpage-->` carries
 	 * the same segment.
 	 *
-	 * @since 0.39.0
+	 * @since 0.38.2
 	 *
 	 * @param mixed $title Title resolved so far ('' when nothing has claimed it).
 	 * @return mixed Authored title, or the input unchanged.
@@ -381,33 +388,38 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Ready a merchant-authored title for direct emission into `<title>`.
 	 *
-	 * @since 0.39.0
+	 * @since 0.38.2
 	 *
 	 * @param string $authored Raw authored title (caller guarantees non-empty).
 	 * @return string Escaped title, with core's page-number suffix when paginated.
 	 */
 	private function prepare_authored_title( string $authored ): string {
 		// Escape: this value is merchant-authored post meta
-		// (`jetpack_seo_html_title`), and Jetpack registers that meta with
-		// no `sanitize_callback` (`Jetpack_SEO_Titles::register_post_meta()`),
-		// so it can carry raw markup — Jetpack's own reader escapes it
-		// (`esc_html( $custom_title )` in `Jetpack_SEO_Titles::get_post_title()`)
-		// before use. A non-empty return from this filter short-circuits
-		// `wp_get_document_title()` (wp-includes/general-template.php,
-		// ~1192-1195) straight into `_wp_render_title_tag()`'s
+		// (`jetpack_seo_html_title`), and Jetpack registers that meta with no
+		// `sanitize_callback` (`Jetpack_SEO_Posts::register_post_meta()`,
+		// modules/seo-tools/class-jetpack-seo-posts.php:159), so it can carry
+		// raw markup — Jetpack's own reader escapes it on the way out
+		// (`esc_html( $custom_title )` in `Jetpack_SEO_Titles::get_custom_title()`,
+		// class-jetpack-seo-titles.php:113 and :136). A non-empty return from
+		// this filter short-circuits `wp_get_document_title()`
+		// (wp-includes/general-template.php, ~1192-1195) straight into
+		// `_wp_render_title_tag()`'s
 		// `echo '<title>' . wp_get_document_title() . '</title>'` (~1315),
 		// which does not escape. `<title>` is RCDATA, so an unescaped value
 		// here can break out with `</title><script>...`. Do not remove this
-		// call; it is the only thing standing between merchant-authored
-		// post meta and the page's <head>. (#668)
+		// call; it is the only escaping the merchant-authored value gets
+		// before it reaches the page's <head>. (The page-number suffix
+		// appended below is not post meta: it is a translated core-shaped
+		// string plus a separator from `document_title_separator`.) (#668)
 		$authored = esc_html( $authored );
 
-		// Both query vars, like core (wp-includes/general-template.php, "Add
-		// a page number if necessary"): on a shop-as-front-page,
-		// WC_Query::is_query_var_valid_on_front_page() whitelists `page` as
-		// the pagination var WordPress resolves there instead of `paged`, so
-		// reading `paged` alone misses it and `/`, `/page/2/`, `/page/3/`
-		// would all emit the same title (#668).
+		// Both query vars, like core: `wp_get_document_title()` reads the
+		// `$page` and `$paged` globals and suffixes on `max( $paged, $page )`
+		// (wp-includes/general-template.php, `global $page, $paged;` then
+		// "Add a page number if necessary"). Which of the two carries the
+		// number depends on the request — on a shop-as-front-page it is
+		// `page`, so reading `paged` alone would make `/`, `/page/2/` and
+		// `/page/3/` all emit the same title (#668).
 		$paged_raw = get_query_var( 'paged' );
 		$paged     = $paged_raw ? (int) $paged_raw : 1;
 		$page_raw  = get_query_var( 'page' );
@@ -666,7 +678,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * the authored term description is already preferred by
 	 * build_archive_description().
 	 *
-	 * @since 0.39.0
+	 * @since 0.38.2
 	 *
 	 * @param int $post_id Post whose authored description to read. 0 (the
 	 *                     default) resolves from the current page type.
