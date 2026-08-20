@@ -560,11 +560,32 @@ class WC_AI_Storefront_UCP_Store_API_Filter {
 	 * @return string[] Taxonomy name strings.
 	 */
 	private static function get_product_taxonomy_names(): array {
-		/** @var array<string, string> $raw_taxonomies */
-		$raw_taxonomies = (array) get_taxonomies( array( 'object_type' => array( 'product' ) ), 'names' );
+		// `get_object_taxonomies()`, NOT `get_taxonomies( array( 'object_type'
+		// => array( 'product' ) ) )`. The latter routes through
+		// `wp_filter_object_list()`, which compares `object_type` by EXACT
+		// array equality — so the moment any plugin calls
+		// `register_taxonomy_for_object_type()` on one of these, its
+		// `object_type` stops being exactly `array( 'product' )` and the
+		// taxonomy silently disappears from free-text search. It still
+		// belongs to products; it just also belongs to something else.
+		//
+		// Measured on a live store running several extensions: tags and
+		// `pa_*` attributes resolved normally while every category returned
+		// zero results, with no error anywhere (#660). The explicit
+		// `filters.categories` path kept working throughout, because it names
+		// `product_cat` directly instead of discovering it — which is what
+		// made the failure so hard to see.
+		//
+		// `get_object_taxonomies()` does the containment check (`array_intersect`)
+		// this code always assumed it was getting. Note it returns a plain
+		// LIST, where `get_taxonomies( …, 'names' )` returns a name-keyed map;
+		// the filter below consumes values, so there is deliberately no
+		// `array_keys()` here.
+		/** @var string[] $raw_taxonomies */
+		$raw_taxonomies = (array) get_object_taxonomies( 'product', 'names' );
 		return array_values(
 			array_filter(
-				array_keys( $raw_taxonomies ),
+				$raw_taxonomies,
 				static function ( string $t ) {
 					return in_array( $t, array( 'product_cat', 'product_tag', 'product_brand' ), true )
 						|| str_starts_with( $t, 'pa_' );

@@ -21,8 +21,8 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		\WC_AI_Storefront_UCP_Store_API_Filter::enter_ucp_dispatch();
 
 		// Default: no product taxonomies registered. Tests that need
-		// taxonomy matching override get_taxonomies / get_terms inline.
-		Functions\when( 'get_taxonomies' )->justReturn( array() );
+		// taxonomy matching override get_object_taxonomies / get_terms inline.
+		Functions\when( 'get_object_taxonomies' )->justReturn( array() );
 		Functions\when( 'get_terms' )->justReturn( array() );
 		// is_wp_error() is defined in stubs.php before Patchwork loads,
 		// so it cannot be stubbed — use the real implementation instead.
@@ -158,13 +158,13 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	// ---------------------------------------------------------------
 
 	public function test_resolve_returns_empty_when_no_taxonomies(): void {
-		// get_taxonomies already stubbed to return [] in setUp.
+		// get_object_taxonomies already stubbed to return [] in setUp.
 		$result = \WC_AI_Storefront_UCP_Store_API_Filter::resolve_taxonomy_terms( array( 'hoodie' ) );
 		$this->assertEmpty( $result );
 	}
 
 	public function test_resolve_exact_name_match(): void {
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 5, 'Hoodies', 'product_cat' ),
@@ -179,7 +179,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_plural_to_singular(): void {
 		// Signal term "hoodies" should match category named "Hoodie".
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 5, 'Hoodie', 'product_cat' ),
@@ -194,7 +194,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_singular_to_plural(): void {
 		// Signal term "shoe" should match category named "Shoes".
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 3, 'Shoes', 'product_cat' ),
@@ -208,7 +208,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_resolve_unmatched_term_absent_from_result(): void {
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 5, 'Hoodies', 'product_cat' ),
@@ -221,10 +221,10 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_resolve_matches_across_multiple_taxonomies(): void {
-		Functions\when( 'get_taxonomies' )->justReturn(
+		Functions\when( 'get_object_taxonomies' )->justReturn(
 			array(
-				'product_cat' => 'product_cat',
-				'product_tag' => 'product_tag',
+				'product_cat',
+				'product_tag',
 			)
 		);
 		Functions\when( 'get_terms' )->justReturn(
@@ -244,7 +244,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_ches_es_to_ch(): void {
 		// "watches" → "watch" via {ch}es → ch rule.
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 8, 'Watch', 'product_cat' ),
@@ -259,7 +259,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_ies_to_y(): void {
 		// "accessories" → "accessory" via ies → y rule.
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 9, 'Accessory', 'product_cat' ),
@@ -274,7 +274,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_y_to_ies(): void {
 		// "accessory" → "accessories" via y → ies rule (singular query, plural category).
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 9, 'Accessories', 'product_cat' ),
@@ -289,7 +289,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_matches_by_slug(): void {
 		// slug "hooded-jacket" → lookup indexes by slug; "hooded-jacket" signal matches.
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_tag' => 'product_tag' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_tag' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 20, 'Hooded Jacket', 'product_tag' ),
@@ -309,7 +309,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// because name__in candidates ('womens', 'women', 'womenss') won't
 		// match the literal name "Women's". Locks the two-query
 		// (name__in + slug__in) approach in resolve_taxonomy_terms().
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 
 		$term           = new \stdClass();
 		$term->term_id  = 50;
@@ -358,7 +358,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// product_brand is registered when WC 9.5+ or a brand plugin is active.
 		// Locks the contract in get_product_taxonomy_names() so a regression
 		// dropping 'product_brand' from the allowlist fails this test.
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_brand' => 'product_brand' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_brand' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 40, 'Nike', 'product_brand' ),
@@ -373,7 +373,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_resolve_includes_pa_attribute_taxonomy(): void {
 		// pa_color is a product attribute taxonomy — should be included in resolution.
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'pa_color' => 'pa_color' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'pa_color' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 30, 'Blue', 'pa_color' ),
@@ -387,7 +387,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_resolve_returns_empty_on_wp_error(): void {
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		// Return a real WP_Error instance; the real is_wp_error() stub detects it.
 		Functions\when( 'get_terms' )->justReturn( new \WP_Error() );
 
@@ -532,7 +532,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_taxonomy_matched_term_emits_exists_subquery(): void {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 5, 'Hoodies', 'product_cat' ),
@@ -564,7 +564,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 	public function test_taxonomy_clause_ored_with_title_like(): void {
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 7, 'Running', 'product_cat' ),
@@ -776,7 +776,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// category's products are returned independently.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 10, 'Hoodies', 'product_cat' ),
@@ -807,7 +807,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// taxonomy term, so $all_taxonomy_matched is false and AND is kept.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 12, 'Hats', 'product_cat' ),
@@ -843,7 +843,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// "Hoodies AND Belts" — the /i flag on the regex must handle uppercase connectors.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 13, 'Hoodies', 'product_cat' ),
@@ -874,7 +874,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// resolve to taxonomy → OR so each category's products are returned independently.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 15, 'Hoodies', 'product_cat' ),
@@ -905,7 +905,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// even though a comma connector is present.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 20, 'Hats', 'product_cat' ),
@@ -935,7 +935,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// into ["hoodies", "belts"] and both resolve to taxonomy terms → OR join.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 21, 'Hoodies', 'product_cat' ),
@@ -966,7 +966,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// needing the $all_taxonomy_matched guard.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 23, 'Hats', 'product_cat' ),
@@ -997,7 +997,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// unlike "and", the $all_taxonomy_matched guard does not apply.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 25, 'Shoes', 'product_cat' ),
@@ -1028,7 +1028,7 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 		// producing three EXISTS subqueries joined with OR.
 		$this->make_wpdb();
 		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
-		Functions\when( 'get_taxonomies' )->justReturn( array( 'product_cat' => 'product_cat' ) );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'product_cat' ) );
 		Functions\when( 'get_terms' )->justReturn(
 			array(
 				$this->fake_term( 17, 'Hoodies', 'product_cat' ),
