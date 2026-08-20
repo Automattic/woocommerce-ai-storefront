@@ -427,7 +427,19 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( $paged >= 2 || $page >= 2 ) {
 			/** This filter is documented in wp-includes/general-template.php */
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's own `document_title_separator` filter, so a merchant's separator customization (e.g. via a theme) applies here too, the same way it would to core's own page-number suffix.
-			$sep       = (string) apply_filters( 'document_title_separator', '-' );
+			$sep = (string) apply_filters( 'document_title_separator', '-' );
+			// The number is deliberately NOT passed through
+			// `number_format_i18n()`. Core is inconsistent here:
+			// `paginate_links()` (general-template.php:4787, :4804) and
+			// `blocks/breadcrumbs.php:249` both wrap, and breadcrumbs uses
+			// this same `Page %s` string, but `wp_get_document_title()`
+			// (general-template.php:1254) does not. This suffix extends
+			// that last one, on the same pages, so wrapping would give a
+			// locale with non-Western digits one numeral system in the
+			// title of a paginated shop page carrying an authored title
+			// and another in every other paginated title on the site.
+			// Inheriting core's inconsistency beats creating a new one.
+			// If core:1254 is ever brought in line, follow it. (#674 review)
 			$authored .= ' ' . $sep . ' ' . sprintf(
 				/* translators: %s: Page number. */
 				__( 'Page %s', 'woocommerce-ai-storefront' ),
