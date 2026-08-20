@@ -921,8 +921,17 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// A missing `stock_availability` (older WC, or a payload that omits
 		// it) leaves `$stock_class` empty, so the check falls through to
 		// `is_in_stock` rather than failing the product outright.
+		// `is_array()` before the nested offset. The Store API builds this
+		// field as `(object) array( … )` (ProductSchema), and
+		// `isset( $obj['class'] )` on a stdClass is a fatal, not a false —
+		// unlike a string/int/bool/null, which all return false harmlessly.
+		// `normalize_store_api_data()` converts those objects upstream, and
+		// its own docblock cites this exact fatal, so this is defence in
+		// depth against a payload reaching us by some other route rather
+		// than a live bug. Matches the guarding style in extract_barcodes().
 		$stock_class = '';
-		if ( isset( $wc['stock_availability']['class'] ) && is_string( $wc['stock_availability']['class'] ) ) {
+		if ( isset( $wc['stock_availability'] ) && is_array( $wc['stock_availability'] )
+			&& isset( $wc['stock_availability']['class'] ) && is_string( $wc['stock_availability']['class'] ) ) {
 			$stock_class = $wc['stock_availability']['class'];
 		}
 

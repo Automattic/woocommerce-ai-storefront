@@ -293,6 +293,28 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_translate_survives_object_shaped_stock_availability(): void {
+		// The Store API builds this field as `(object) array( … )`.
+		// `isset( $obj['class'] )` on a stdClass is a FATAL, not a false —
+		// strings, ints, bools and nulls all return false harmlessly, so the
+		// object is the only shape that can take the endpoint down.
+		// `normalize_store_api_data()` converts it upstream today; this pins
+		// the translator itself against a payload arriving another way.
+		$fixture                       = $this->variation_fixture();
+		$fixture['is_in_stock']        = true;
+		$fixture['stock_availability'] = (object) array(
+			'text'  => 'Out of stock',
+			'class' => 'out-of-stock',
+		);
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		// Falls through to is_in_stock rather than fataling. We deliberately
+		// do NOT read the class off an object — normalization is upstream's
+		// job, and silently supporting both shapes here would hide a bug in it.
+		$this->assertTrue( $result['availability']['available'] );
+	}
+
 	public function test_translate_marks_out_of_stock_variant_unavailable(): void {
 		$fixture                = $this->variation_fixture();
 		$fixture['is_in_stock'] = false;
