@@ -3238,4 +3238,54 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 103, $result );
 	}
+
+	public function test_external_product_url_points_at_the_external_seller(): void {
+		// An external/affiliate product is genuinely obtainable, just not from
+		// this store — `is_purchasable` is false and WooCommerce renders a
+		// "Buy on ..." button linking elsewhere. Emitting our own permalink
+		// tells an agent this store sells it, which is wrong, and costs the
+		// shopper a hop through a page that only links onward again (#657).
+		$fixture                = $this->simple_product_fixture();
+		$fixture['type']        = 'external';
+		$fixture['permalink']   = 'https://saltwarp.shop/product/tote/';
+		$fixture['add_to_cart'] = array(
+			'url'  => 'https://mercantile.wordpress.org/product/pennant/',
+			'text' => 'Buy on the WordPress swag store!',
+		);
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
+
+		$this->assertSame(
+			'https://mercantile.wordpress.org/product/pennant/',
+			$result['url'],
+			'External products must point at where they can actually be bought.'
+		);
+	}
+
+	public function test_external_product_without_a_target_keeps_the_permalink(): void {
+		// A merchant can leave the external URL blank. Falling back to our own
+		// product page is deliberate: it is at least a page describing the
+		// item, and emitting an empty `url` would be worse than a redundant
+		// one.
+		$fixture                = $this->simple_product_fixture();
+		$fixture['type']        = 'external';
+		$fixture['permalink']   = 'https://saltwarp.shop/product/tote/';
+		$fixture['add_to_cart'] = array( 'url' => '' );
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
+
+		$this->assertSame( 'https://saltwarp.shop/product/tote/', $result['url'] );
+	}
+
+	public function test_non_external_product_url_is_unchanged(): void {
+		// Guard: every other product type keeps the permalink even when an
+		// `add_to_cart.url` is present, which it is for grouped products.
+		$fixture                = $this->simple_product_fixture();
+		$fixture['permalink']   = 'https://saltwarp.shop/product/tote/';
+		$fixture['add_to_cart'] = array( 'url' => 'https://elsewhere.example/x/' );
+
+		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
+
+		$this->assertSame( 'https://saltwarp.shop/product/tote/', $result['url'] );
+	}
 }

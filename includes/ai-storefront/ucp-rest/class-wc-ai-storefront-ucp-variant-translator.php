@@ -336,12 +336,75 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 		// emission per UCP `variant.json`; the synthesized default
 		// satisfies the schema's minItems-1 requirement and carries
 		// seller alongside any real variant in the same response.
-		if ( null !== $seller && ! empty( $seller ) ) {
-			$variant['seller'] = $seller;
-		}
+		// External products re-point both seller and url; see the helper.
+		$variant = self::apply_external_seller( $variant, $wc_product, $seller );
 
 		return $variant;
 	}
+
+	/**
+	 * Re-point seller and url at the external destination, for `type: external`.
+	 *
+	 * `build_seller()` is store-wide — one value threaded to every variant of
+	 * every product. For an external / affiliate product that value states
+	 * something false: it names this store as the seller of an item this store
+	 * does not sell. WooCommerce marks these `is_purchasable: false` and
+	 * renders a "Buy on ..." button pointing wherever the merchant chose, which
+	 * the Store API surfaces as `add_to_cart.url` (#657).
+	 *
+	 * The seller name becomes the destination HOST. A real business name is not
+	 * derivable from the URL, and the alternatives are worse: keeping the store
+	 * name asserts something untrue, and parsing WooCommerce's button text
+	 * ("Buy on the WordPress swag store!") is merchant-authored prose that
+	 * breaks the moment someone writes "Buy now".
+	 *
+	 * `availability` is deliberately untouched. An external product IS
+	 * obtainable — just elsewhere — and `availability.available` is defined by
+	 * the spec as "whether this can be obtained", so `true` is correct.
+	 *
+	 * @param array      $variant    Variant under construction.
+	 * @param array      $wc_product Store API product payload.
+	 * @param array|null $seller     Store-wide seller from build_seller().
+	 * @return array Variant, re-pointed when external and a destination exists.
+	 */
+	private static function apply_external_seller( array $variant, array $wc_product, ?array $seller ): array {
+		if ( 'external' !== ( $wc_product['type'] ?? '' ) ) {
+			if ( null !== $seller && ! empty( $seller ) ) {
+				$variant['seller'] = $seller;
+			}
+			return $variant;
+		}
+
+		$external_url = trim( (string) ( $wc_product['add_to_cart']['url'] ?? '' ) );
+		$host         = '' !== $external_url ? wp_parse_url( $external_url, PHP_URL_HOST ) : null;
+
+		// No destination configured, or one we cannot parse: fall back to the
+		// store-wide seller rather than emitting a seller with no name. The
+		// product translator makes the matching call for `url`.
+		if ( ! is_string( $host ) || '' === $host ) {
+			if ( null !== $seller && ! empty( $seller ) ) {
+				$variant['seller'] = $seller;
+			}
+			return $variant;
+		}
+
+		$variant['url']    = $external_url;
+		$variant['seller'] = array(
+			'name'  => $host,
+			'links' => array(
+				array(
+					// `link.json` requires {type, url}. No well-known value
+					// covers "where this is actually sold", so a descriptive
+					// type is used rather than forcing an ill-fitting one.
+					'type' => 'seller_product_page',
+					'url'  => $external_url,
+				),
+			),
+		);
+
+		return $variant;
+	}
+
 
 	/**
 	 * Extract a human-readable variant title from the WC response.

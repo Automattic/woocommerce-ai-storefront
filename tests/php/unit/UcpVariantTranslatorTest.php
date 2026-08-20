@@ -1412,4 +1412,60 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertSame( '6 months', $length_option[0]['label'] );
 	}
+
+	public function test_external_product_seller_names_the_destination_host(): void {
+		// `build_seller()` is store-wide — one value threaded to every variant.
+		// For an external product that value is false: it names this store as
+		// the seller of something this store does not sell. We cannot derive a
+		// real business name from the URL, so the host is used: always present,
+		// never wrong, and "sold by mercantile.wordpress.org" is more useful to
+		// a shopper than "sold by Saltwarp" (#657).
+		$fixture                = $this->variation_fixture();
+		$fixture['type']        = 'external';
+		$fixture['add_to_cart'] = array( 'url' => 'https://mercantile.wordpress.org/product/pennant/' );
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
+			$fixture,
+			array( 'name' => 'Saltwarp' )
+		);
+
+		$this->assertSame( 'mercantile.wordpress.org', $result['seller']['name'] );
+		$this->assertSame(
+			'https://mercantile.wordpress.org/product/pennant/',
+			$result['url'],
+			'The variant must carry the destination too — variant.url is a spec field we otherwise never populate.'
+		);
+	}
+
+	public function test_external_product_seller_carries_a_link_to_the_destination(): void {
+		// UCP's seller type is {name, links}, and link.json requires {type, url}.
+		$fixture                = $this->variation_fixture();
+		$fixture['type']        = 'external';
+		$fixture['add_to_cart'] = array( 'url' => 'https://mercantile.wordpress.org/product/pennant/' );
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
+			$fixture,
+			array( 'name' => 'Saltwarp' )
+		);
+
+		$this->assertNotEmpty( $result['seller']['links'] );
+		$link = $result['seller']['links'][0];
+		$this->assertArrayHasKey( 'type', $link );
+		$this->assertSame( 'https://mercantile.wordpress.org/product/pennant/', $link['url'] );
+	}
+
+	public function test_non_external_product_keeps_the_store_seller(): void {
+		// Guard: only `type: external` diverges. Everything else keeps the
+		// store-wide seller and emits no variant url.
+		$fixture = $this->variation_fixture();
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::synthesize_default(
+			$fixture,
+			array( 'name' => 'Saltwarp' )
+		);
+
+		$this->assertSame( 'Saltwarp', $result['seller']['name'] );
+		$this->assertArrayNotHasKey( 'links', $result['seller'] );
+		$this->assertArrayNotHasKey( 'url', $result );
+	}
 }
