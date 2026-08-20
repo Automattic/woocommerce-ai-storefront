@@ -14,7 +14,7 @@ Discovery surfaces (`/llms.txt`, `/agents.md`, `/.well-known/ucp`, `/robots.txt`
 - Errors use `error: { code, message }` plus an HTTP status code matching the failure class.
 - Currency amounts on UCP responses are integers in **minor units** (cents for USD, pence for GBP). No floats. Read currency precision from the response context.
 - Date-times are ISO 8601 UTC.
-- The `UCP-Agent` request header is parsed in two formats: profile-URL (RFC 8941 Dictionary) and Product/Version (RFC 7231 §5.5.3). Either form works; absence is also valid (anonymous).
+- The `UCP-Agent` request header is parsed in two formats: profile-URL (RFC 8941 Dictionary) and Product/Version (RFC 7231 §5.5.3). Either form works; absence is also valid (anonymous). Send the RFC 8941 form, `profile="https://your-agent.example/profile"`. Three near-miss spellings of it are also parsed — colon-delimited `profile=:URL:`, unquoted `profile=URL`, and a bare URL as the entire header value — because the header is unverified and rejecting an unambiguous identity over punctuation only costs attribution.
 
 ## Authentication
 

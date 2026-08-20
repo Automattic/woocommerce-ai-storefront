@@ -89,7 +89,10 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 		// punctuation was an accidental way around the merchant's own
 		// settings.
 		//
-		// RFC 8941 remains what we document. See #655.
+		// RFC 8941 remains what we document. Was
+		// test_returns_empty_for_unquoted_profile_value until #655. Note the
+		// leniency decision is argued in PR #667 — #655 deliberately scoped it
+		// out, so that issue alone will not explain this reversal.
 		$header = 'profile=https://agent.example.com/profile.json';
 
 		$this->assertSame(
@@ -822,7 +825,17 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			'bare URL, whole header'                     => array( 'https://claude.ai', 'claude.ai' ),
 			'bare URL with a path'                       => array( 'https://claude.ai/.well-known/agent', 'claude.ai' ),
 			'bare URL, surrounding whitespace'           => array( '  https://claude.ai  ', 'claude.ai' ),
-			'quoted form still wins among others'        => array( 'foo=bar, profile="https://claude.ai"', 'claude.ai' ),
+			'profile as a later field'                   => array( 'foo=bar, profile="https://claude.ai"', 'claude.ai' ),
+			// Precedence: quoted wins wherever it appears, so the LATER field is
+			// extracted. The loop breaks on first matching PATTERN, not first
+			// occurrence in the string. Deliberate, and previously unpinned.
+			'quoted wins over an earlier unquoted'       => array( 'profile=https://evil.example, profile="https://claude.ai"', 'claude.ai' ),
+			// Userinfo resolves to the HOST, not the user part. Pinned because a
+			// refactor to a hand-rolled `#https?://([^/]+)#` would get it backwards.
+			'userinfo does not become the host'          => array( 'profile="https://claude.ai@evil.example"', 'evil.example' ),
+			// The realistic honest-agent shape: unquoted profile in a composite
+			// header. The charset must stop at the comma.
+			'unquoted in a composite header'             => array( 'profile=https://claude.ai, version="2026-04-08"', 'claude.ai' ),
 		);
 	}
 
@@ -857,6 +870,24 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 			'product token, not a URL'            => array(
 				'Claude/1.0',
 				'Product/Version form is a different parser (extract_agent_product).',
+			),
+			// SECURITY, mutation-verified. Deleting `(?:^|[\s,;])` from the
+			// COLON pattern alone left the whole suite green while
+			// `notprofile=:...:` began yielding an attacker-chosen host into both
+			// attribution and the access gate. Two of three patterns were pinned;
+			// the newest and most intricate was not.
+			'field name merely ending in profile, colon-delimited' => array(
+				'notprofile=:https://evil.example/agent.json:',
+				'All three patterns need their boundary guard pinned, not just two.',
+			),
+			// SECURITY, mutation-verified. Dropping the `$` anchor from the
+			// bare-URL check left the suite green while
+			// `https://claude.ai and then some` returned a host containing spaces.
+			// The UA-style case below does not catch it — that string does not
+			// START with http, so `^` alone rejects it.
+			'bare URL with trailing content'      => array(
+				'https://claude.ai and then some',
+				'A bare URL counts only as the WHOLE header — trailing content, not just leading.',
 			),
 			'gibberish'                           => array( 'gibberish', 'Not a URL and not a profile field.' ),
 			'empty'                               => array( '', 'Nothing to extract.' ),

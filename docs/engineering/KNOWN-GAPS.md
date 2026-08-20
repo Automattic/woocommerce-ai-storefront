@@ -44,7 +44,7 @@ Two structural reasons:
 
 2. **The plugin's identification path is UA-based.** [`detect_crawler_from_ua()`](../../includes/ai-storefront/class-wc-ai-storefront-robots.php) does case-insensitive substring matching against the `AI_CRAWLERS` constant. If the UA contains no listed token, the plugin falls through to whatever signals the request itself carries — primarily the optional `UCP-Agent` header on UCP REST calls, and nothing on Store API calls.
 
-The UCP-Agent header is the protocol's intended attribution channel: a well-behaved agentic shopper sends `UCP-Agent: vendor=openai.com; product=operator` and gets correctly attributed. The real-world gap is that not every agent sets it, especially during the current proliferation phase.
+The UCP-Agent header is the protocol's intended attribution channel: a well-behaved agentic shopper sends `UCP-Agent: profile="https://openai.com"` (RFC 8941 quoted form) or `UCP-Agent: Operator/1.0` (Product/Version form) and gets correctly attributed. Neither `vendor=` nor `product=` is a recognised key — an earlier revision of this paragraph showed `vendor=openai.com; product=operator`, which parses to nothing on both paths. The real-world gap is that not every agent sets it, especially during the current proliferation phase.
 
 ### Impact
 
