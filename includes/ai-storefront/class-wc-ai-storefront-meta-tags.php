@@ -343,16 +343,24 @@ class WC_AI_Storefront_Meta_Tags {
 		// post meta and the page's <head>. (#668)
 		$authored = esc_html( $authored );
 
+		// Both query vars, like core (wp-includes/general-template.php, "Add
+		// a page number if necessary"): on a shop-as-front-page,
+		// WC_Query::is_query_var_valid_on_front_page() whitelists `page` as
+		// the pagination var WordPress resolves there instead of `paged`, so
+		// reading `paged` alone misses it and `/`, `/page/2/`, `/page/3/`
+		// would all emit the same title (#668).
 		$paged_raw = get_query_var( 'paged' );
 		$paged     = $paged_raw ? (int) $paged_raw : 1;
-		if ( $paged >= 2 ) {
+		$page_raw  = get_query_var( 'page' );
+		$page      = $page_raw ? (int) $page_raw : 1;
+		if ( $paged >= 2 || $page >= 2 ) {
 			/** This filter is documented in wp-includes/general-template.php */
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's own `document_title_separator` filter, so a merchant's separator customization (e.g. via a theme) applies here too, the same way it would to core's own page-number suffix.
 			$sep       = (string) apply_filters( 'document_title_separator', '-' );
 			$authored .= ' ' . $sep . ' ' . sprintf(
 				/* translators: %s: Page number. */
 				__( 'Page %s', 'woocommerce-ai-storefront' ),
-				$paged
+				max( $paged, $page )
 			);
 		}
 

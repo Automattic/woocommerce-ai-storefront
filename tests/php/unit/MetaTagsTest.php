@@ -1301,6 +1301,23 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotSame( $page_one, $page_two );
 	}
 
+	public function test_authored_shop_title_page_two_via_page_query_var_when_shop_is_front_page(): void {
+		// On a shop-as-front-page, WC_Query::is_query_var_valid_on_front_page()
+		// whitelists `page`, not `paged`, as the pagination var WordPress
+		// resolves there, so `/page/2/` arrives as `page` => 2 with `paged`
+		// left unset (#668).
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_title( 5, 'Gear for weather that argues back' );
+
+		Functions\when( 'get_query_var' )->alias(
+			static fn( $var ) => 'page' === $var ? 2 : 0
+		);
+		$page_two = ( new WC_AI_Storefront_Meta_Tags() )->filter_document_title( '' );
+
+		$this->assertSame( 'Gear for weather that argues back - Page 2', $page_two );
+	}
+
 	// --- Fix 4 (#668 review): og:description agrees with the authored
 	// meta description on products ---
 
