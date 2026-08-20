@@ -902,22 +902,34 @@ class UcpCatalogLookupTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_unpriced_message_path_uses_raw_request_index(): void {
-		// Agents cross-reference `path` against the body they sent. The
-		// index must be the raw position, not the surviving-product index
-		// — the same rule not_found_message() follows.
+		// Request: [found_A, found_A, unpriced, found_B]
+		// Raw `ids[]` indices:       0,        1,        2,       3
+		// Deduped work list:    [found_A, unpriced, found_B] at deduped
+		// indices 0, 1, 2.
+		//
+		// Agents cross-reference `path` against the body they sent, so
+		// the message must reference the raw request index (2), not the
+		// deduped one (1) — the same rule not_found_message() follows,
+		// exercised for not-found in
+		// test_message_path_points_at_raw_request_index_not_deduped()
+		// above. The duplicate `prod_100` at raw index 1 is what pulls
+		// the unpriced product's raw and deduped indices apart; without
+		// it (as this test originally read) the two coincide and the
+		// assertion below would pass even if the call site used the
+		// deduped index instead of `$raw_index`.
 		$this->seed_simple_product( 100, 'Alpha' );
 		$this->seed_priced_product( 200, 'Unpriced', '0', '' );
 		$this->seed_simple_product( 300, 'Gamma' );
 
 		$body = $this->successful_lookup(
-			array( 'ids' => array( 'prod_100', 'prod_200', 'prod_300' ) )
+			array( 'ids' => array( 'prod_100', 'prod_100', 'prod_200', 'prod_300' ) )
 		);
 
 		$this->assertCount( 2, $body['products'] );
 		$this->assertSame( 'Alpha', $body['products'][0]['title'] );
 		$this->assertSame( 'Gamma', $body['products'][1]['title'] );
 		$this->assertCount( 1, $body['messages'] );
-		$this->assertSame( '$.ids[1]', $body['messages'][0]['path'] );
+		$this->assertSame( '$.ids[2]', $body['messages'][0]['path'] );
 	}
 
 	public function test_genuinely_free_product_resolves_normally(): void {
