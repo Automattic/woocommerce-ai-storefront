@@ -111,15 +111,13 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_storefront_agent` (denormalized for faster queries)
 * `_wc_ai_storefront_session_id` (conversation identifier)
 
-== Frequently Asked Questions ==
-
 = Does this support MCP (Model Context Protocol)? =
 
-Yes. AI Storefront runs a public MCP server for shopping agents at `/wp-json/wc/ucp/v1/mcp`. It is on by default once you switch syndication on, and it offers the same catalog search, product lookup and checkout-handoff operations as the UCP REST API, in the shape MCP clients expect. Nothing extra about your catalog is exposed — the MCP surface respects your Visibility settings like every other endpoint.
+Yes. AI Storefront runs a public MCP server for shopping agents at `/wp-json/wc/ucp/v1/mcp`. It is on by default once you click **Enable AI Storefront**, and it offers the same catalog search, product lookup and checkout-handoff operations as the UCP REST API, in the shape MCP clients expect. Nothing extra about your catalog is exposed. The MCP surface respects your Visibility settings like every other endpoint.
 
-This is a different thing from the MCP integration in WooCommerce core. That one is admin-side: it lets your own AI assistant read and change your store using your credentials. AI Storefront's server is shopper-side and read-only — external shopping agents searching your catalog and starting a checkout handoff, never your admin. The two are easy to confuse and worth keeping straight.
+This is a different thing from the MCP integration in WooCommerce core. That one is admin-side: it lets your own AI assistant read and change your store using your credentials. AI Storefront's server is shopper-side and read-only: external shopping agents searching your catalog and starting a checkout handoff, never your admin. The two are easy to confuse and worth keeping straight.
 
-If you would rather agents used only the REST endpoints, the setting **Enable MCP transport for agents** turns the MCP server off without affecting the rest of your syndication.
+If you would rather agents used only the REST endpoints, the setting **Enable MCP transport for agents** turns the MCP server off while leaving everything else running.
 
 = Will my customer data be shared with AI companies? =
 
