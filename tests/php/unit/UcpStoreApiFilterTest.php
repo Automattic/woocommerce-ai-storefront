@@ -673,7 +673,15 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 
 		$names = $this->discover_taxonomies();
 
-		$this->assertSame( array_values( $names ), $names, 'Expected a list, not a keyed map.' );
+		// Assert the actual names, not just the shape. `assertSame(
+		// array_values( $names ), $names )` is a tautology — the production
+		// code ends in `array_values()`, so it holds whatever the source
+		// returned. And reintroducing `array_keys()` yields integers that the
+		// allow-list closure coerces to "0", "1", … and rejects, leaving an
+		// EMPTY array that a shape-only assertion passes vacuously. Verified
+		// by mutation: with `array_keys()` restored this assertion fails and
+		// the shape-only one did not.
+		$this->assertSame( array( 'product_cat', 'product_tag' ), $names );
 		foreach ( $names as $name ) {
 			$this->assertIsString( $name );
 			$this->assertNotSame( '', $name );
