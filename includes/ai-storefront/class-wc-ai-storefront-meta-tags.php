@@ -684,10 +684,10 @@ class WC_AI_Storefront_Meta_Tags {
 	 *                     default) resolves from the current page type.
 	 */
 	private function authored_description( int $post_id = 0 ): string {
-		if ( ! WC_AI_Storefront_Authored_SEO::is_available() ) {
-			return '';
-		}
-
+		// No `is_available()` guard here: every accessor below self-guards,
+		// so an outer check only duplicates the class/method/module lookups
+		// on the paths that go on to make them anyway. The reader's contract
+		// is that callers never have to guard.
 		if ( $post_id > 0 ) {
 			return WC_AI_Storefront_Authored_SEO::post_description( $post_id );
 		}
