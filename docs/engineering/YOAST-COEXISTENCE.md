@@ -55,7 +55,7 @@ While both plugins are active, this plugin **always emits** on commerce pages �
 
 ## Divergence: Jetpack defers, Yoast still overrides
 
-As of the authored-intent-wins fix, this plugin treats Jetpack SEO Tools the opposite way it treats Yoast: on product, category, and shop pages, an authored `jetpack_seo_html_title` or `advanced_seo_description` wins outright, with no duplicate tag, and this plugin only generates its own copy where those fields are left blank. Yoast is unchanged — this plugin still wins the title via late filter priority and still emits an additive, duplicate meta description until Yoast is deactivated. That inconsistency is deliberate for now, not resolved: extending authored-intent-wins to Yoast, Rank Math, SEOPress, and AIOSEO needs its own detector per plugin, and is tracked as issue #669.
+As of the authored-intent-wins fix, this plugin treats Jetpack SEO Tools the opposite way it treats Yoast: on product and shop pages, an authored `jetpack_seo_html_title` or `advanced_seo_description` wins outright, with no duplicate tag, and this plugin only generates its own copy where those fields are left blank. Category pages are out of scope for this fix — Jetpack's SEO fields are post meta, and a product category is a term, so there is no authored field to honour there. Yoast is unchanged — this plugin still wins the title via late filter priority and still emits an additive, duplicate meta description until Yoast is deactivated. That inconsistency is deliberate for now, not resolved: extending authored-intent-wins to Yoast, Rank Math, SEOPress, and AIOSEO needs its own detector per plugin, and is tracked as issue #669.
 
 ## Pre-flight checklist — before deactivating your SEO plugin
 

@@ -105,5 +105,7 @@ parameters:
         # `alreadyNarrowedType` - the opposite error, same waiver.
         - identifier: function.impossibleType
           path: includes/ai-storefront/class-wc-ai-storefront-authored-seo.php
+          message: '#Jetpack#'
         - identifier: class.notFound
           path: includes/ai-storefront/class-wc-ai-storefront-authored-seo.php
+          message: '#Jetpack#'
