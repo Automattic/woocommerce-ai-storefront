@@ -932,7 +932,14 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			'available' => 'out-of-stock' !== $stock_class && (bool) ( $wc['is_in_stock'] ?? false ),
 		);
 
-		if ( isset( $wc['low_stock_remaining'] ) && is_numeric( $wc['low_stock_remaining'] ) ) {
+		// Gated on `available`. Before the out-of-stock-class check above,
+		// reaching `available: false` required `is_in_stock: false`, which
+		// forces `low_stock_remaining` to 0 and made the `> 0` guard drop the
+		// quantity on its own. The new path keeps `is_in_stock: true`, so a
+		// positive count can survive alongside an unavailable verdict —
+		// `{available: false, quantity: 2}` tells an agent two contradictory
+		// things at once.
+		if ( $availability['available'] && isset( $wc['low_stock_remaining'] ) && is_numeric( $wc['low_stock_remaining'] ) ) {
 			$quantity = (int) $wc['low_stock_remaining'];
 			if ( $quantity > 0 ) {
 				$availability['quantity'] = $quantity;

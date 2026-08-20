@@ -248,6 +248,51 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 	}
 
+	public function test_translate_keeps_backordered_variant_available(): void {
+		// `available-on-backorder` is the one core WooCommerce stock class that
+		// is neither `in-stock` nor `out-of-stock` while the item is genuinely
+		// buyable. The check is written as a denylist for exactly this reason —
+		// an allowlist on `in-stock` would hide every backordered product, and
+		// nothing else in this suite would catch it.
+		$fixture                       = $this->variation_fixture();
+		$fixture['is_in_stock']        = true;
+		$fixture['stock_availability'] = array(
+			'text'  => 'Available on backorder',
+			'class' => 'available-on-backorder',
+		);
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertTrue(
+			$result['availability']['available'],
+			'Backordered products are buyable and must stay available — do not switch this check to an in-stock allowlist.'
+		);
+	}
+
+	public function test_translate_omits_quantity_when_unavailable(): void {
+		// Before the out-of-stock-class check, `available: false` required
+		// `is_in_stock: false`, which forces low_stock_remaining to 0 and made
+		// the `> 0` guard drop the quantity. That path now keeps
+		// `is_in_stock: true`, so a positive count can survive next to an
+		// unavailable verdict. `{available: false, quantity: 2}` is incoherent.
+		$fixture                        = $this->variation_fixture();
+		$fixture['is_in_stock']         = true;
+		$fixture['low_stock_remaining'] = 2;
+		$fixture['stock_availability']  = array(
+			'text'  => 'Out of stock',
+			'class' => 'out-of-stock',
+		);
+
+		$result = WC_AI_Storefront_UCP_Variant_Translator::translate( $fixture );
+
+		$this->assertFalse( $result['availability']['available'] );
+		$this->assertArrayNotHasKey(
+			'quantity',
+			$result['availability'],
+			'An unavailable variant must not advertise a remaining count.'
+		);
+	}
+
 	public function test_translate_marks_out_of_stock_variant_unavailable(): void {
 		$fixture                = $this->variation_fixture();
 		$fixture['is_in_stock'] = false;
