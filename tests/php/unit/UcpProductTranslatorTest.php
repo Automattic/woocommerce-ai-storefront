@@ -3239,12 +3239,14 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 103, $result );
 	}
 
-	public function test_external_product_url_points_at_the_external_seller(): void {
-		// An external/affiliate product is genuinely obtainable, just not from
-		// this store — `is_purchasable` is false and WooCommerce renders a
-		// "Buy on ..." button linking elsewhere. Emitting our own permalink
-		// tells an agent this store sells it, which is wrong, and costs the
-		// shopper a hop through a page that only links onward again (#657).
+	public function test_external_product_url_stays_on_the_merchant_page(): void {
+		// Deliberate, and the opposite of the first attempt at #657. Pointing
+		// `url` at the external seller strips the merchant's referral
+		// click-through — the reason an external product exists — plus their
+		// pageview, their analytics, and the UTM stamping the controller
+		// applies, which only means anything on a domain they own. It would
+		// also append our tracking to a third party's URL. Who really sells
+		// the item is carried on `seller` instead.
 		$fixture                = $this->simple_product_fixture();
 		$fixture['type']        = 'external';
 		$fixture['permalink']   = 'https://saltwarp.shop/product/tote/';
@@ -3252,25 +3254,6 @@ class UcpProductTranslatorTest extends \PHPUnit\Framework\TestCase {
 			'url'  => 'https://mercantile.wordpress.org/product/pennant/',
 			'text' => 'Buy on the WordPress swag store!',
 		);
-
-		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
-
-		$this->assertSame(
-			'https://mercantile.wordpress.org/product/pennant/',
-			$result['url'],
-			'External products must point at where they can actually be bought.'
-		);
-	}
-
-	public function test_external_product_without_a_target_keeps_the_permalink(): void {
-		// A merchant can leave the external URL blank. Falling back to our own
-		// product page is deliberate: it is at least a page describing the
-		// item, and emitting an empty `url` would be worse than a redundant
-		// one.
-		$fixture                = $this->simple_product_fixture();
-		$fixture['type']        = 'external';
-		$fixture['permalink']   = 'https://saltwarp.shop/product/tote/';
-		$fixture['add_to_cart'] = array( 'url' => '' );
 
 		$result = WC_AI_Storefront_UCP_Product_Translator::translate( $fixture, array() );
 

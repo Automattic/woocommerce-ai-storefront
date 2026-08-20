@@ -3,8 +3,9 @@
 ### Fixed
 - **Products you sell through an external link were credited to your store (#657).**
   - If you list a product that is bought somewhere else, assistants were told your store sells it, and were handed your product page rather than the page that completes the sale.
-  - Assistants now get the destination link and see the selling site named as the seller. Nothing about the product's availability changes: it is still buyable, just not from you.
-  - Only affects products of the External/Affiliate type. Everything else is unchanged.
+  - Assistants now see the selling site named as the seller, with a link to it, so they stop telling shoppers you fulfil the order.
+  - The link an assistant hands the shopper is still your product page. That keeps your referral click-through, your pageview and your AI attribution intact, which sending them straight to the other site would lose.
+  - Nothing about the product's availability changes: it is still buyable, just not from you. Only affects products of the External/Affiliate type.
 - **Most AI traffic was recorded as "unknown" (#655).**
   - Assistants tell your store who they are with a header, and your store's own instructions showed the wrong spelling for it. Assistants that followed those instructions were filed as unknown, so your order attribution under-counted the ones behaving best.
   - The instructions now show the exact text to send, both in the API reference and in the manifest assistants read at run time.

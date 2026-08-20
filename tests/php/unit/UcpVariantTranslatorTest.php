@@ -1430,11 +1430,12 @@ class UcpVariantTranslatorTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( 'mercantile.wordpress.org', $result['seller']['name'] );
-		$this->assertSame(
-			'https://mercantile.wordpress.org/product/pennant/',
-			$result['url'],
-			'The variant must carry the destination too — variant.url is a spec field we otherwise never populate.'
-		);
+		// No `url` re-point. Diverting the shopper past the merchant's own
+		// page would strip the referral click-through the external product
+		// exists to earn, along with their pageview and the UTM stamping that
+		// only works on a domain they own. The destination is reachable via
+		// seller.links; the click still goes through the merchant.
+		$this->assertArrayNotHasKey( 'url', $result );
 	}
 
 	public function test_external_product_seller_carries_a_link_to_the_destination(): void {

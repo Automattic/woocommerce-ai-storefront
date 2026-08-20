@@ -173,25 +173,17 @@ class WC_AI_Storefront_UCP_Product_Translator {
 			// this translator a pure function whose output depends only
 			// on its inputs. See the controller's `translate_products_for_search`
 			// and the catalog/lookup handler for the stamping call sites.
+			// Deliberately the store's own permalink even for external /
+			// affiliate products. Sending a shopper straight to the external
+			// seller would strip the merchant's referral click-through — the
+			// reason an external product exists — along with their pageview,
+			// their analytics, and the UTM stamping above, which only means
+			// anything on a domain they own. It would also append our tracking
+			// parameters to a third party's URL, where they are useless at
+			// best and interfere with that site's own attribution at worst.
+			// Who actually sells the item is carried on the variant's
+			// `seller` block instead (#657).
 			$product['url'] = $wc_product['permalink'];
-
-			// External / affiliate products are sold somewhere else. WooCommerce
-			// marks them `is_purchasable: false` and renders a "Buy on ..."
-			// button pointing at the merchant's chosen destination, which the
-			// Store API surfaces as `add_to_cart.url`. Emitting our own
-			// permalink tells an agent THIS store sells the item — false, and it
-			// costs the shopper a hop through a page whose only purchase route
-			// is another link onward (#657).
-			//
-			// A merchant can leave that URL blank. Falling back to the permalink
-			// is deliberate: it is at least a page describing the item, and an
-			// empty `url` would be worse than a redundant one.
-			if ( 'external' === ( $wc_product['type'] ?? '' ) ) {
-				$external_url = (string) ( $wc_product['add_to_cart']['url'] ?? '' );
-				if ( '' !== trim( $external_url ) ) {
-					$product['url'] = $external_url;
-				}
-			}
 		}
 
 		// Taxonomies split (2.0.0+):

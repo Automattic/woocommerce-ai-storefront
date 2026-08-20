@@ -343,7 +343,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	}
 
 	/**
-	 * Re-point seller and url at the external destination, for `type: external`.
+	 * Name the real seller for `type: external`, without diverting the click.
 	 *
 	 * `build_seller()` is store-wide — one value threaded to every variant of
 	 * every product. For an external / affiliate product that value states
@@ -365,7 +365,7 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @param array      $variant    Variant under construction.
 	 * @param array      $wc_product Store API product payload.
 	 * @param array|null $seller     Store-wide seller from build_seller().
-	 * @return array Variant, re-pointed when external and a destination exists.
+	 * @return array Variant, with seller re-pointed when external and a destination exists.
 	 */
 	private static function apply_external_seller( array $variant, array $wc_product, ?array $seller ): array {
 		if ( 'external' !== ( $wc_product['type'] ?? '' ) ) {
@@ -388,7 +388,12 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 			return $variant;
 		}
 
-		$variant['url']    = $external_url;
+		// No `url` override here, for the same reason the product translator
+		// keeps its permalink: diverting the shopper past the merchant's own
+		// page strips the referral click-through the external product exists
+		// to earn. The destination travels in `seller.links` instead, so an
+		// agent can name and reach the real seller without routing around the
+		// merchant.
 		$variant['seller'] = array(
 			'name'  => $host,
 			'links' => array(
