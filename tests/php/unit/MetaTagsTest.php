@@ -1044,4 +1044,63 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'description', $meta );
 		$this->assertStringContainsString( 'name="description"', $this->render_head() );
 	}
+
+	public function test_shop_not_front_page_still_defers_to_jetpacks_front_page_option(): void {
+		// Does Jetpack even emit the front-page option when the shop is NOT
+		// the site's front page? Yes. In Jetpack's own
+		// Jetpack_SEO::meta_tags() (modules/seo-tools/class-jetpack-seo.php):
+		//   - Lines 178-180 seed $meta['description'] unconditionally from
+		//     the front-page option, falling back to the tagline, before
+		//     any page-type conditional runs.
+		//   - The is_front_page() check at line 184 sits INSIDE the
+		//     is_singular() branch, and only decides whether a per-post
+		//     description overrides that seed on a singular front page.
+		//   - The elseif chain that follows (is_author,
+		//     is_tag/is_category/is_tax, is_date) closes at line 281 with no
+		//     post-type-archive branch, so on is_shop() the seed reaches the
+		//     jetpack_seo_meta_tags filter at line 283 untouched.
+		// So with the Shop page's own post carrying no authored description,
+		// Jetpack still emits the front-page option here even though this
+		// shop is not the front page — we must defer to it rather than
+		// print our own generated fallback, or the page ends up with two
+		// tags (this one, plus Jetpack's).
+		$this->fake_page( 'shop' );
+		Functions\when( 'is_front_page' )->justReturn( false );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_description( 5, '' );
+		$this->set_front_page_description( 'Authored front page copy.' );
+
+		$meta = ( new WC_AI_Storefront_Meta_Tags() )->suppress_jetpack_description(
+			array( 'description' => 'Authored front page copy.' )
+		);
+
+		$this->assertSame( 'Authored front page copy.', $meta['description'] );
+		$this->assertStringNotContainsString( 'name="description"', $this->render_head() );
+	}
+
+	public function test_authored_description_is_memoized_within_one_request(): void {
+		// authored_description() is called up to three times per render
+		// (jetpack_emits_authored_description(), build_archive_description(),
+		// and its own branches), each of which would otherwise re-enter
+		// WC_AI_Storefront_Authored_SEO::is_available()'s class_exists()/
+		// method_exists() checks (#668). Prove it resolves once per request:
+		// change the underlying Jetpack double AFTER the first call and
+		// confirm a later call in the same render still reflects the value
+		// seen the first time, not the changed one.
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_description( 5, 'First shop copy.' );
+
+		// First resolution: reached via suppress_jetpack_description().
+		$this->meta->suppress_jetpack_description( array( 'description' => 'placeholder' ) );
+
+		// If authored_description() re-resolved on its next call instead of
+		// returning the memo, this is the value it would pick up.
+		Jetpack_SEO_Posts::$descriptions[5] = 'Changed shop copy.';
+
+		$html = $this->render_head();
+
+		$this->assertStringContainsString( 'First shop copy.', $html );
+		$this->assertStringNotContainsString( 'Changed shop copy.', $html );
+	}
 }

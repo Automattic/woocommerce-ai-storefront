@@ -24,6 +24,20 @@ class WC_AI_Storefront_Meta_Tags {
 	private const DESCRIPTION_MAX = 155;
 
 	/**
+	 * Memo for authored_description(), resolved at most once per instance.
+	 *
+	 * `null` means "not yet resolved this request"; any string, including
+	 * `''`, means "resolved" and is returned as-is. A plain `''` sentinel
+	 * would be indistinguishable from a resolved-but-empty result and would
+	 * recompute on every call, defeating the memo. A request renders exactly
+	 * one page through exactly one instance of this class, so there is
+	 * nothing to invalidate once set.
+	 *
+	 * @var string|null
+	 */
+	private $authored_description_memo = null;
+
+	/**
 	 * Whether to emit metadata for the current request.
 	 *
 	 * NOT gated on SEO-plugin presence — per the assert-and-warn design we
@@ -448,6 +462,27 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * The merchant's authored meta description for this request, or ''.
 	 *
+	 * Memoized: called up to three times in a single render
+	 * (jetpack_emits_authored_description(), build_archive_description(),
+	 * and this method's own branches), and each unmemoized call would
+	 * re-enter WC_AI_Storefront_Authored_SEO::is_available()'s
+	 * class_exists()/method_exists() checks on the product path, which runs
+	 * on every product render (#668). See $authored_description_memo for
+	 * why the "not yet resolved" sentinel is `null`, not `''`.
+	 *
+	 * @since 0.39.0
+	 */
+	private function authored_description(): string {
+		if ( null === $this->authored_description_memo ) {
+			$this->authored_description_memo = $this->resolve_authored_description();
+		}
+		return $this->authored_description_memo;
+	}
+
+	/**
+	 * Resolves authored_description(); see that method for the memoization
+	 * this backs.
+	 *
 	 * Resolution differs by page type because Jetpack's own reach does:
 	 * `Jetpack_SEO::meta_tags()` only consults per-post description when
 	 * `is_singular()`, so on the shop archive it never sees the Shop page's
@@ -461,10 +496,8 @@ class WC_AI_Storefront_Meta_Tags {
 	 *   - Product category: none — terms carry no Jetpack post meta, and the
 	 *     authored term description is already preferred by
 	 *     `build_archive_description()`.
-	 *
-	 * @since 0.39.0
 	 */
-	private function authored_description(): string {
+	private function resolve_authored_description(): string {
 		if ( ! WC_AI_Storefront_Authored_SEO::is_available() ) {
 			return '';
 		}
@@ -491,9 +524,24 @@ class WC_AI_Storefront_Meta_Tags {
 	 *
 	 * True on a single product with an authored description (Jetpack reaches
 	 * per-post meta whenever `is_singular()`), and on the shop page when the
-	 * only authored source is Jetpack's site-wide front-page option, which it
-	 * emits regardless of what is queried. False when the authored value is
-	 * the Shop page post's, because Jetpack cannot reach that one.
+	 * only authored source is Jetpack's site-wide front-page option. False
+	 * when the authored value is the Shop page post's, because Jetpack
+	 * cannot reach that one.
+	 *
+	 * The front-page-option case holds on *any* shop page, not only when the
+	 * shop happens to be the site's front page. In Jetpack's own
+	 * `Jetpack_SEO::meta_tags()` (`modules/seo-tools/class-jetpack-seo.php`):
+	 * the option seeds `$meta['description']` unconditionally at lines
+	 * 178-180, falling back to the site tagline, before any conditional on
+	 * the current page runs. `is_front_page()` is checked only afterwards,
+	 * at line 184, and only inside the `is_singular()` branch — there it
+	 * decides whether a per-post description overrides that seed on a
+	 * singular front page, nothing more. The `elseif` chain that follows
+	 * (`is_author`, `is_tag`/`is_category`/`is_tax`, `is_date`) closes at
+	 * line 281 with no post-type-archive branch, so on `is_shop()` the seed
+	 * reaches the `jetpack_seo_meta_tags` filter at line 283 untouched:
+	 * Jetpack emits the front-page option regardless of what page is
+	 * queried, shop-as-front-page or not.
 	 *
 	 * @since 0.39.0
 	 */
