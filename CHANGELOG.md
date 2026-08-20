@@ -1,6 +1,10 @@
 ## [Unreleased]
 
 ### Fixed
+- **Searching by category returned nothing on stores with extensions installed (#660).**
+  - A shopper's assistant asking for a "bag" was told the store had none, even with a bag sitting in your Bags category. Asking for the product by name still worked, so search looked healthy.
+  - Your store asked WordPress for the label sets belonging to products, but asked in a way that only accepted an exact answer. Once another plugin attached one of those sets to anything else, it dropped out of search silently.
+  - Any of categories, tags, brands or attributes like size and colour can be affected. Which ones break depends on what else you have installed. Filtering by category from the API kept working throughout, which is why this was easy to miss.
 - **Out-of-stock products were offered to AI assistants as available (#658).**
   - WooCommerce tracks stock in two places, and for some products they disagree. A variable product whose every option is unavailable still reports "in stock" internally, while your storefront correctly shows shoppers "Out of stock".
   - Your store was sending assistants the internal answer. An assistant could recommend something a shopper then couldn't buy.

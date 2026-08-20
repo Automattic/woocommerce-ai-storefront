@@ -625,4 +625,94 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertArrayNotHasKey( 'tax_query', $result );
 	}
+
+	/**
+	 * Invoke the private taxonomy-discovery helper.
+	 *
+	 * @return string[]
+	 */
+	private function discover_taxonomies(): array {
+		$m = new \ReflectionMethod( WC_AI_Storefront_UCP_Store_API_Filter::class, 'get_product_taxonomy_names' );
+		$m->setAccessible( true );
+		return $m->invoke( null );
+	}
+
+	public function test_taxonomy_discovery_keeps_a_taxonomy_another_plugin_extended(): void {
+		// WordPress registers `product_cat` against `product` alone. A plugin
+		// calling register_taxonomy_for_object_type() appends to that list, so
+		// the taxonomy still belongs to products — it simply also belongs to
+		// something else.
+		//
+		// get_taxonomies( array( 'object_type' => array( 'product' ) ) ) compares
+		// object_type by EXACT array equality, so an extended taxonomy stops
+		// matching and vanishes from search with no error. Measured on a live
+		// store: tags and pa_* attributes resolved, every category returned zero
+		// (#660). get_object_taxonomies() does the containment check the code
+		// has always assumed it was getting.
+		// `expect()` with `->with()`, not `when()`: `justReturn` ignores
+		// arguments, so a change to `get_object_taxonomies( 'product' )` or
+		// `get_object_taxonomies( 'product_variation', 'names' )` would slip
+		// through unnoticed. This is the only unit-level assertion that pins
+		// which WordPress API this code calls and how.
+		\Brain\Monkey\Functions\expect( 'get_object_taxonomies' )
+			->once()
+			->with( 'product', 'names' )
+			->andReturn( array( 'product_cat', 'product_tag', 'product_brand', 'pa_color', 'product_type' ) );
+
+		$names = $this->discover_taxonomies();
+
+		$this->assertContains(
+			'product_cat',
+			$names,
+			'A taxonomy another plugin extended must still be searchable — see #660.'
+		);
+	}
+
+	public function test_taxonomy_discovery_returns_a_plain_list_of_names(): void {
+		// get_taxonomies() returns a name-keyed map; get_object_taxonomies()
+		// returns a plain list. The caller filters VALUES, so swapping the
+		// source without dropping an array_keys() call would hand the filter
+		// integers 0,1,2 — and its closure is typed `string`.
+		// `product_type` sits BETWEEN the two survivors on purpose. Without a
+		// mid-list rejection, `array_filter` returns already-sequential keys
+		// and dropping the surrounding `array_values()` would go unnoticed.
+		\Brain\Monkey\Functions\when( 'get_object_taxonomies' )->justReturn(
+			array( 'product_cat', 'product_type', 'product_tag' )
+		);
+
+		$names = $this->discover_taxonomies();
+
+		// Assert the actual names, not just the shape. `assertSame(
+		// array_values( $names ), $names )` is a tautology — the production
+		// code ends in `array_values()`, so it holds whatever the source
+		// returned. And reintroducing `array_keys()` yields integers that the
+		// allow-list closure coerces to "0", "1", … and rejects, leaving an
+		// EMPTY array that a shape-only assertion passes vacuously. Verified
+		// by mutation: with `array_keys()` restored this assertion fails and
+		// the shape-only one did not.
+		$this->assertSame( array( 'product_cat', 'product_tag' ), $names );
+	}
+
+	public function test_taxonomy_discovery_allow_list_is_unchanged(): void {
+		// The allow-list is the reason `product_type` — registered against
+		// products, but an internal WooCommerce implementation detail rather
+		// than something a shopper would ever say — stays out of free-text
+		// search. Swapping the discovery source must not widen it.
+		\Brain\Monkey\Functions\when( 'get_object_taxonomies' )->justReturn(
+			// `spa_treatment` is the sentinel for `str_starts_with` vs
+			// `str_contains` — it contains `pa_` but does not start with it.
+			// `product_type` and `product_visibility` are real WooCommerce
+			// taxonomies registered against `product`, so they appear in a
+			// live result and must stay out of shopper-facing search.
+			array( 'product_cat', 'product_tag', 'product_brand', 'pa_color', 'pa_size', 'spa_treatment', 'product_type', 'product_visibility', 'category' )
+		);
+
+		$names = $this->discover_taxonomies();
+
+		sort( $names );
+		$this->assertSame(
+			array( 'pa_color', 'pa_size', 'product_brand', 'product_cat', 'product_tag' ),
+			$names
+		);
+	}
 }
