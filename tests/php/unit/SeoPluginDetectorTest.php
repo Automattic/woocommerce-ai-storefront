@@ -85,6 +85,9 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 		// free Yoast core (WPSEO_VERSION) is not itself defined.
 		$yoast = $found[ array_search( 'yoast', $slugs, true ) ];
 		$this->assertSame( 'Yoast WooCommerce SEO', $yoast['label'] );
+		// The paid addon is the most complete overlap this detector knows
+		// about, so its row must stay deactivate-able, not silently handled.
+		$this->assertTrue( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
 	}
 
 	/**
@@ -128,6 +131,9 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertCount( 1, $yoast );
 		$this->assertSame( 'Yoast WooCommerce SEO', $yoast[0]['label'] );
+		// The merged row still carries the addon's overlap, so it must
+		// remain deactivate-able rather than falling out silently.
+		$this->assertTrue( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
 	}
 
 	/**
@@ -149,11 +155,14 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 	 * @preserveGlobalState disabled
 	 */
 	public function test_deactivatable_excludes_handled_but_keeps_real_conflicts(): void {
-		// Jetpack (handled) + Rank Math (deactivate-able) both present.
+		// Jetpack (handled) + Rank Math + SEOPress (both deactivate-able,
+		// the latter a row this PR introduced) all present.
 		define( 'JETPACK__VERSION', '13.0-test' );
 		define( 'RANK_MATH_VERSION', '1.0.0-test' );
+		define( 'SEOPRESS_VERSION', '7.0-test' );
 		$slugs = array_column( WC_AI_Storefront_Seo_Plugin_Detector::deactivatable(), 'slug' );
 		$this->assertContains( 'rankmath', $slugs );
+		$this->assertContains( 'seopress', $slugs );
 		$this->assertNotContains( 'jetpack', $slugs );
 		// A real deactivate-able conflict still exists.
 		$this->assertTrue( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
