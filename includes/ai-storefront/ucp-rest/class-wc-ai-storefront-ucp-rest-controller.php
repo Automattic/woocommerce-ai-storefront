@@ -1164,8 +1164,16 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		// Zero-results inline guidance. Agents that skip llms.txt and hit
 		// the endpoint cold get a recovery recipe at the moment they need it,
 		// without requiring a prior discovery-document read.
-		$total_count = $body['pagination']['total_count'] ?? null;
-		if ( 0 === count( $translated['products'] ) && ( null === $total_count || 0 === (int) $total_count ) ) {
+		//
+		// Gated on the emitted product count alone, NOT on total_count.
+		// total_count is read from Store API's X-WP-Total header, which
+		// is computed BEFORE #658 unpriced-product suppression runs. A
+		// page can come back with zero products (all suppressed) while
+		// total_count still reports the full pre-suppression figure —
+		// e.g. a CSV import landing 40 unpriced products that sort
+		// first. Requiring total_count to also be zero would leave that
+		// agent with `products: []` and no recovery recipe at all.
+		if ( 0 === count( $translated['products'] ) ) {
 			$body['hints'] = array(
 				'zero_results'   => true,
 				'recovery_steps' => array(
@@ -4448,8 +4456,8 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	 * Condition 2 alone would be dangerous: "catalog mode" / "hide price"
 	 * plugins filter `woocommerce_get_price_html` to '' across an entire
 	 * store while leaving `prices.price` intact. Requiring condition 1
-	 * bounds the worst case on such a store to suppressing genuinely-free
-	 * products rather than the whole catalog.
+	 * bounds the worst case on such a store to suppressing products whose
+	 * lowest price is zero rather than the whole catalog.
 	 *
 	 * A payload with no `price_html` key at all is absence of evidence,
 	 * not evidence of absence — it returns false and the product is
@@ -4713,10 +4721,10 @@ class WC_AI_Storefront_UCP_REST_Controller {
 		$content   = '' !== $safe_echo
 			? sprintf(
 				/* translators: %s: the input ID the agent submitted. */
-				__( 'Product "%s" has no price set in the store and cannot be purchased.', 'woocommerce-ai-storefront' ),
+				__( 'Product "%s" has no price set in the store and is not available through this catalog.', 'woocommerce-ai-storefront' ),
 				$safe_echo
 			)
-			: __( 'A requested product has no price set in the store and cannot be purchased.', 'woocommerce-ai-storefront' );
+			: __( 'A requested product has no price set in the store and is not available through this catalog.', 'woocommerce-ai-storefront' );
 
 		return array(
 			'type'     => 'error',

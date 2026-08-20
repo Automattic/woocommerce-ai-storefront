@@ -3801,4 +3801,28 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( array(), $body['products'] );
 	}
+
+	public function test_hints_appear_when_every_product_on_the_page_is_suppressed(): void {
+		// `X-WP-Total` is read by Store API BEFORE #658 suppression runs,
+		// so a page can land here with total_count > 0 even though every
+		// product on it got filtered out (e.g. a CSV import landing 40
+		// unpriced products that sort first). Gating hints on total_count
+		// being zero would leave that agent with `products: []` and no
+		// `hints` — no products, no recovery recipe, no paging signal.
+		$this->fake_product_list = array(
+			$this->make_priced_product( 1, 'Unpriced A', '0', '' ),
+			$this->make_priced_product( 2, 'Unpriced B', '0', '' ),
+		);
+		$this->fake_list_headers = array(
+			'X-WP-Total'      => '40',
+			'X-WP-TotalPages' => '4',
+		);
+
+		$body = $this->successful_search( array() );
+
+		$this->assertSame( array(), $body['products'] );
+		$this->assertSame( 40, $body['pagination']['total_count'] );
+		$this->assertArrayHasKey( 'hints', $body );
+		$this->assertTrue( $body['hints']['zero_results'] );
+	}
 }

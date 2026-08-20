@@ -472,6 +472,33 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'No products matched', $text );
 	}
 
+	public function test_summarize_search_empty_page_with_next_page_hints_at_paging(): void {
+		// A page can come back empty because every product on it was
+		// suppressed (#658), not because the store has nothing. Without
+		// this hint the model has no reason to try pagination.cursor and
+		// concludes the query matched nothing at all.
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			array(
+				'products'   => array(),
+				'pagination' => array( 'has_next_page' => true ),
+			)
+		);
+
+		$this->assertStringContainsString( 'No products matched', $text );
+		$this->assertStringContainsString( 'pagination.cursor', $text );
+	}
+
+	public function test_summarize_search_empty_page_without_next_page_omits_paging_hint(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_search(
+			array(
+				'products'   => array(),
+				'pagination' => array( 'has_next_page' => false ),
+			)
+		);
+
+		$this->assertStringNotContainsString( 'pagination.cursor', $text );
+	}
+
 	public function test_summarize_search_caps_long_lists_with_overflow_note(): void {
 		$products = array();
 		for ( $i = 0; $i < 15; $i++ ) {
@@ -528,6 +555,72 @@ class McpToolsTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertStringContainsString( 'No products found', $text );
+	}
+
+	public function test_summarize_lookup_with_unpurchasable_item_does_not_claim_not_found(): void {
+		// item_unpurchasable (#658) means the id resolved to a real
+		// product the store is declining to syndicate — the opposite of
+		// "not found". The summary must not tell the model the product
+		// doesn't exist.
+		$text = WC_AI_Storefront_MCP_Tools::summarize_lookup(
+			array(
+				'products' => array( $this->product( 'prod_22', 'Day Hoodie', 4800 ) ),
+				'messages' => array(
+					array(
+						'type'    => 'error',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE,
+						'content' => 'prod_999 has no price.',
+					),
+				),
+			)
+		);
+
+		$this->assertStringContainsString( '1 product', $text );
+		$this->assertStringNotContainsString( 'not found', $text );
+		$this->assertStringContainsString( 'could not be returned', $text );
+	}
+
+	public function test_summarize_lookup_empty_with_only_unpurchasable_messages_does_not_claim_not_found(): void {
+		$text = WC_AI_Storefront_MCP_Tools::summarize_lookup(
+			array(
+				'products' => array(),
+				'messages' => array(
+					array(
+						'type'    => 'error',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE,
+						'content' => 'prod_999 has no price.',
+					),
+				),
+			)
+		);
+
+		$this->assertStringNotContainsString( 'No products found', $text );
+		$this->assertStringContainsString( 'No products could be returned', $text );
+	}
+
+	public function test_summarize_lookup_with_mixed_codes_does_not_claim_not_found(): void {
+		// A single non-not_found message among several is enough to make
+		// blanket "were not found" wording false for at least one id.
+		$text = WC_AI_Storefront_MCP_Tools::summarize_lookup(
+			array(
+				'products' => array( $this->product( 'prod_22', 'Day Hoodie', 4800 ) ),
+				'messages' => array(
+					array(
+						'type'    => 'error',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::NOT_FOUND,
+						'content' => 'prod_998 missing.',
+					),
+					array(
+						'type'    => 'error',
+						'code'    => WC_AI_Storefront_UCP_Error_Codes::ITEM_UNPURCHASABLE,
+						'content' => 'prod_999 has no price.',
+					),
+				),
+			)
+		);
+
+		$this->assertStringNotContainsString( 'were not found', $text );
+		$this->assertStringContainsString( 'could not be returned', $text );
 	}
 
 	public function test_summarize_checkout_includes_item_count_and_url(): void {
