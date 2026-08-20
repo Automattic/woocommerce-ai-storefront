@@ -111,13 +111,13 @@ In the standard WooCommerce orders list. Every AI-referred order is a normal WC 
 * `_wc_ai_storefront_agent` (denormalized for faster queries)
 * `_wc_ai_storefront_session_id` (conversation identifier)
 
-== Frequently Asked Questions ==
-
 = Does this support MCP (Model Context Protocol)? =
 
-Not currently. MCP's tool and resource exposure pattern requires running a server surface reachable by external, non-admin clients, which neither WordPress core nor WooCommerce scaffold today. There is no first-class MCP entry point for a plugin to hook into, and running one alongside the WP stack would require auth, transport, and capability-routing infrastructure outside this plugin's scope.
+Yes. AI Storefront runs a public MCP server for shopping agents at `/wp-json/wc/ucp/v1/mcp`. It is on by default once you click **Enable AI Storefront**, and it offers the same catalog search, product lookup and checkout-handoff operations as the UCP REST API, in the shape MCP clients expect. Nothing extra about your catalog is exposed. The MCP surface respects your Visibility settings like every other endpoint.
 
-AI Storefront targets the Universal Commerce Protocol (UCP) instead, which works with the HTTP/REST surfaces WordPress and WooCommerce already expose to public clients. UCP gives AI shopping agents a stable, spec-conforming way to discover and transact against your catalog. MCP support will be evaluated if and when WP/WC grow native MCP-server primitives.
+This is a different thing from the MCP integration in WooCommerce core. That one is admin-side: it lets your own AI assistant read and change your store using your credentials. AI Storefront's server is shopper-side and read-only: external shopping agents searching your catalog and starting a checkout handoff, never your admin. The two are easy to confuse and worth keeping straight.
+
+If you would rather agents used only the REST endpoints, the setting **Enable MCP transport for agents** turns the MCP server off while leaving everything else running.
 
 = Will my customer data be shared with AI companies? =
 
