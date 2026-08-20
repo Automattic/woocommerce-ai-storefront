@@ -875,7 +875,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		if ( 'product' === $type ) {
 			Functions\when( 'get_queried_object_id' )->justReturn( $post_id );
-			$product = $this->og_product();
+			$product = $this->og_product( array( 'name' => 'Storm Jacket' ) );
 			$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
 			Functions\when( 'wc_get_product' )->justReturn( $product );
 			Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/x/' );
@@ -938,6 +938,37 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	private function set_front_page_description( string $description ): void {
 		Jetpack::$active_modules                   = array( 'seo-tools' );
 		Jetpack_SEO_Utils::$front_page_description = $description;
+	}
+
+	/**
+	 * Make WC_AI_Storefront_Authored_SEO::post_title() answer $title for
+	 * $post_id specifically, as it would when Jetpack SEO Tools carries an
+	 * authored HTML title for that post. Activates the seo-tools module so
+	 * is_available() is true. The double keys its stored value by $post_id,
+	 * so a test can tell a correct implementation (reads the right post)
+	 * from one that reads the wrong one.
+	 *
+	 * @param int    $post_id Post the title belongs to.
+	 * @param string $title   Authored HTML title, '' for "none set".
+	 */
+	private function set_authored_title( int $post_id, string $title ): void {
+		Jetpack::$active_modules               = array( 'seo-tools' );
+		Jetpack_SEO_Posts::$titles[ $post_id ] = $title;
+	}
+
+	/**
+	 * Make get_the_terms() answer a single `product_brand` term named
+	 * $brand for the current product. $post_id is accepted for symmetry
+	 * with set_authored_title() (the production brand lookup does not key
+	 * off it: get_brand_name() reads get_the_terms() unconditionally).
+	 *
+	 * @param int    $post_id Product ID (accepted for symmetry; unused).
+	 * @param string $brand   Brand name.
+	 */
+	private function set_product_brand( int $post_id, string $brand ): void {
+		Functions\when( 'get_the_terms' )->justReturn(
+			array( (object) array( 'name' => $brand ) )
+		);
 	}
 
 	/**
@@ -1102,5 +1133,85 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringContainsString( 'First shop copy.', $html );
 		$this->assertStringNotContainsString( 'Changed shop copy.', $html );
+	}
+
+	public function test_authored_product_title_suppresses_brand_enrichment(): void {
+		// filter_title_parts() exists to append the brand. An authored title
+		// is the merchant's finished headline; appending to it overrides
+		// their intent. The brand still ships as a discrete `brand` field in
+		// the product JSON-LD.
+		$this->fake_page( 'product', 77 );
+		$this->set_authored_title( 77, 'The Only Jacket You Need' );
+
+		$parts = ( new WC_AI_Storefront_Meta_Tags() )->filter_title_parts(
+			array(
+				'title' => 'Storm Jacket',
+				'site'  => 'Saltwarp',
+			)
+		);
+
+		$this->assertSame( 'Storm Jacket', $parts['title'] );
+	}
+
+	public function test_unauthored_product_title_still_gets_the_brand(): void {
+		$this->fake_page( 'product', 77 );
+		$this->set_authored_title( 77, '' );
+		$this->set_product_brand( 77, 'Northmoor' );
+
+		$parts = ( new WC_AI_Storefront_Meta_Tags() )->filter_title_parts(
+			array(
+				'title' => 'Storm Jacket',
+				'site'  => 'Saltwarp',
+			)
+		);
+
+		$this->assertSame( 'Storm Jacket | Northmoor', $parts['title'] );
+	}
+
+	public function test_authored_shop_title_is_applied_verbatim(): void {
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_title( 5, 'Gear for weather that argues back' );
+
+		$this->assertSame(
+			'Gear for weather that argues back',
+			( new WC_AI_Storefront_Meta_Tags() )->filter_document_title( '' )
+		);
+	}
+
+	public function test_authored_shop_title_beats_a_title_jetpack_resolved(): void {
+		// On a shop-as-front-page Jetpack reads get_post(), which WP has set
+		// to the first PRODUCT in the archive loop, so a product's SEO
+		// title can arrive here as the incoming value. Deferring to it would
+		// honour the wrong author.
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_title( 5, 'Gear for weather that argues back' );
+
+		$this->assertSame(
+			'Gear for weather that argues back',
+			( new WC_AI_Storefront_Meta_Tags() )->filter_document_title( 'Storm Jacket' )
+		);
+	}
+
+	public function test_unauthored_shop_title_is_left_alone(): void {
+		// We do not own title emission on this page and must not start.
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_title( 5, '' );
+
+		$this->assertSame(
+			'Whatever WordPress Chose',
+			( new WC_AI_Storefront_Meta_Tags() )->filter_document_title( 'Whatever WordPress Chose' )
+		);
+	}
+
+	public function test_document_title_untouched_off_commerce_pages(): void {
+		$this->fake_page( 'blog_post' );
+
+		$this->assertSame(
+			'A Blog Post',
+			( new WC_AI_Storefront_Meta_Tags() )->filter_document_title( 'A Blog Post' )
+		);
 	}
 }

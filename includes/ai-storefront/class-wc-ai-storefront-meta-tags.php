@@ -224,6 +224,19 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( function_exists( 'is_product' ) && is_product() ) {
 			$product = function_exists( 'wc_get_product' ) ? wc_get_product( get_queried_object_id() ) : null;
 			if ( $product ) {
+				// Authored intent wins (#668). Our job here is appending the
+				// brand; a merchant who wrote their own headline has already
+				// said what they want, and Jetpack applies that headline
+				// itself on singular pages. The brand still travels as a
+				// discrete `brand` field in the product JSON-LD, which is
+				// where it does the machine-readable work.
+				if ( '' !== WC_AI_Storefront_Authored_SEO::post_title( (int) get_queried_object_id() ) ) {
+					// Skips the wc_ai_storefront_meta_title_parts filter below;
+					// that filter documents itself as running "after our
+					// enrichment", and on this path there is none.
+					return $parts;
+				}
+
 				$title = $product->get_name();
 				$brand = $this->get_brand_name( $product );
 				if ( '' !== $brand ) {
@@ -242,6 +255,48 @@ class WC_AI_Storefront_Meta_Tags {
 		 * @param array $parts Title parts.
 		 */
 		return (array) apply_filters( 'wc_ai_storefront_meta_title_parts', $parts );
+	}
+
+	/**
+	 * `pre_get_document_title` callback — apply the Shop page's authored title.
+	 *
+	 * Only the shop archive is handled. WooCommerce renders the product
+	 * archive at the Shop page's URL, so the Shop page post is never what
+	 * WordPress or Jetpack resolves from the query, and the SEO title a
+	 * merchant typed into that page does nothing. We resolve it explicitly
+	 * through `wc_get_page_id( 'shop' )`.
+	 *
+	 * This overrides a title Jetpack already produced rather than only
+	 * filling an empty slot, because on a shop-as-front-page Jetpack DOES
+	 * reach its per-post branch, and reads the wrong post. WordPress sets
+	 * the global post to the first item in the loop on a non-singular query
+	 * (`WP::register_globals()` -> `WP_Query::$post` -> `reset( $this->posts )`),
+	 * which on the product archive is a product. Deferring would honour a
+	 * product's SEO title on the shop page. With nothing authored on the Shop
+	 * page we return the incoming value untouched. (#668)
+	 *
+	 * `pre_get_document_title` rather than `document_title_parts`: this
+	 * short-circuits `wp_get_document_title()` and emits the authored string
+	 * verbatim, where the parts filter would append the site name to a
+	 * headline the merchant had already finished.
+	 *
+	 * @since 0.39.0
+	 *
+	 * @param mixed $title Title resolved so far ('' when nothing has claimed it).
+	 * @return mixed Authored title, or the input unchanged.
+	 */
+	public function filter_document_title( $title ) {
+		if ( ! $this->should_emit() ) {
+			return $title;
+		}
+		if ( ! ( function_exists( 'is_shop' ) && is_shop() ) ) {
+			return $title;
+		}
+
+		$shop_id  = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+		$authored = WC_AI_Storefront_Authored_SEO::post_title( $shop_id );
+
+		return '' !== $authored ? $authored : $title;
 	}
 
 	/**
@@ -425,6 +480,9 @@ class WC_AI_Storefront_Meta_Tags {
 		// Late priority so our product-title enrichment wins over an active
 		// SEO plugin (single <title>, never duplicated).
 		add_filter( 'document_title_parts', array( $this, 'filter_title_parts' ), 99 );
+		// Priority 11 so we run after Jetpack's default-priority
+		// `pre_get_document_title` callback and can see what it produced.
+		add_filter( 'pre_get_document_title', array( $this, 'filter_document_title' ), 11 );
 		// Early in <head> so the description/OG/robots sit near the top.
 		add_action( 'wp_head', array( $this, 'render_head_tags' ), 5 );
 		// Avoid duplicate / conflicting tags from Jetpack on the commerce pages
