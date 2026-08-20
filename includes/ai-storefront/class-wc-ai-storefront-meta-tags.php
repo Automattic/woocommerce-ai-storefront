@@ -24,20 +24,6 @@ class WC_AI_Storefront_Meta_Tags {
 	private const DESCRIPTION_MAX = 155;
 
 	/**
-	 * Memo for authored_description(), resolved at most once per instance.
-	 *
-	 * `null` means "not yet resolved this request"; any string, including
-	 * `''`, means "resolved" and is returned as-is. A plain `''` sentinel
-	 * would be indistinguishable from a resolved-but-empty result and would
-	 * recompute on every call, defeating the memo. A request renders exactly
-	 * one page through exactly one instance of this class, so there is
-	 * nothing to invalidate once set.
-	 *
-	 * @var string|null
-	 */
-	private $authored_description_memo = null;
-
-	/**
 	 * Whether to emit metadata for the current request.
 	 *
 	 * NOT gated on SEO-plugin presence — per the assert-and-warn design we
@@ -78,24 +64,23 @@ class WC_AI_Storefront_Meta_Tags {
 	 * Jetpack's own tag on commerce pages (see its docblock), so whatever
 	 * this method returns is always the description that gets printed.
 	 *
+	 * The authored lookup is keyed on `$product->get_id()`, not on the
+	 * queried object, so this method describes the product it was handed
+	 * rather than whatever page happens to be rendering (#668 review). Both
+	 * this method and build_og_tags() are public on a non-final class, so
+	 * callers may legitimately pass a product other than the queried one.
+	 *
 	 * @param WC_Product $product Product to derive from.
 	 * @return string Cleaned, truncated description (non-empty when the product has a name).
 	 */
 	public function build_description( $product ): string {
-		$candidates = array(
-			$this->authored_description(),
-			(string) $product->get_short_description(),
-			(string) $product->get_description(),
+		$description = $this->first_usable_candidate(
+			array(
+				$this->authored_description( (int) $product->get_id() ),
+				(string) $product->get_short_description(),
+				(string) $product->get_description(),
+			)
 		);
-
-		$description = '';
-		foreach ( $candidates as $raw ) {
-			$text = $this->clean_text( $raw );
-			if ( '' !== $text ) {
-				$description = $this->truncate( $text, self::DESCRIPTION_MAX );
-				break;
-			}
-		}
 
 		if ( '' === $description ) {
 			// No authored SEO description, short description, or long
@@ -128,6 +113,40 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * First candidate that still has text after cleaning, cleaned and truncated.
+	 *
+	 * Emptiness is judged on the CLEANED value, never on the raw one (#668
+	 * review). A candidate can be non-empty raw and empty once cleaned — a
+	 * Shop page whose content is a product-collection block and no prose is
+	 * the realistic case, since `wp_strip_all_tags()` reduces
+	 * `<!-- wp:woocommerce/product-collection /-->` to nothing. Testing the
+	 * raw value would let such a candidate consume the chain and leave the
+	 * page with no description at all, because
+	 * suppress_jetpack_description() has already removed Jetpack's.
+	 *
+	 * @param string[] $candidates Raw candidate strings, best first.
+	 * @return string Cleaned, truncated text, or '' when none has any.
+	 */
+	private function first_usable_candidate( array $candidates ): string {
+		foreach ( $candidates as $raw ) {
+			$raw  = (string) $raw;
+			$text = $this->clean_text( $raw );
+			if ( '' !== $text ) {
+				return $this->truncate( $text, self::DESCRIPTION_MAX );
+			}
+			if ( '' !== trim( $raw ) ) {
+				// Merchant content existed and we discarded it: markup or
+				// shortcodes with no readable prose. Worth a breadcrumb when
+				// a merchant asks why their copy is not in the SERP snippet.
+				WC_AI_Storefront_Logger::debug(
+					'meta description candidate had content but cleaned to empty; trying the next one'
+				);
+			}
+		}
+		return '';
+	}
+
+	/**
 	 * Strip shortcodes + HTML and collapse whitespace.
 	 */
 	private function clean_text( string $raw ): string {
@@ -155,28 +174,32 @@ class WC_AI_Storefront_Meta_Tags {
 	 * Build the meta description for the current archive (category or shop).
 	 *
 	 * Category → the term's description, falling back to a generated
-	 * "Shop {category} at {store}". Shop → the shop page content, falling back
-	 * to the store tagline. Cleaned/truncated like the product path.
+	 * "Shop {category} at {store}". Shop → the authored description, then the
+	 * shop page content, falling back to the store tagline. Cleaned/truncated
+	 * like the product path.
+	 *
+	 * Every candidate is judged after cleaning, not before — see
+	 * first_usable_candidate() for why that distinction is load-bearing.
 	 *
 	 * @return string Cleaned, truncated description (non-empty on category/shop pages).
 	 */
 	public function build_archive_description(): string {
-		$raw    = '';
-		$source = null;
+		$candidates = array();
+		$source     = null;
 
 		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
 			$term   = get_queried_object();
 			$source = $term;
 			if ( is_object( $term ) && isset( $term->description ) ) {
-				$raw = (string) $term->description;
+				$candidates[] = (string) $term->description;
 			}
-			if ( '' === trim( $raw ) && is_object( $term ) && isset( $term->name ) ) {
-				// No authored term description: emit a category-specific
-				// fallback so the page always carries one. Required because we
-				// suppress Jetpack's description on commerce pages (see
-				// suppress_jetpack_description()) and would otherwise leave none.
-				$store = (string) get_bloginfo( 'name' );
-				$raw   = '' !== $store
+			if ( is_object( $term ) && isset( $term->name ) ) {
+				// Category-specific fallback so the page always carries a
+				// description. Required because we suppress Jetpack's on
+				// commerce pages (see suppress_jetpack_description()) and
+				// would otherwise leave none.
+				$store        = (string) get_bloginfo( 'name' );
+				$candidates[] = '' !== $store
 					? sprintf(
 						/* translators: 1: product category name, 2: store name. */
 						__( 'Shop %1$s at %2$s.', 'woocommerce-ai-storefront' ),
@@ -193,23 +216,18 @@ class WC_AI_Storefront_Meta_Tags {
 			// Authored intent wins (#668). Jetpack cannot emit this one
 			// itself — `Jetpack_SEO::meta_tags()` gates per-post description
 			// on `is_singular()`, false on the product archive — so we carry
-			// it. Precedence: authored post field, then Jetpack's site-wide
-			// front-page option, then shop content, then tagline.
-			$raw = $this->authored_description();
+			// it. Precedence: authored fields (see authored_description()),
+			// then shop content, then tagline.
+			$candidates[] = $this->authored_description();
 
-			if ( '' === trim( $raw ) ) {
-				$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
-				if ( $shop_id > 0 ) {
-					$raw = (string) get_post_field( 'post_content', $shop_id );
-				}
+			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			if ( $shop_id > 0 ) {
+				$candidates[] = (string) get_post_field( 'post_content', $shop_id );
 			}
-			if ( '' === trim( $raw ) ) {
-				$raw = (string) get_bloginfo( 'description' ); // store tagline
-			}
+			$candidates[] = (string) get_bloginfo( 'description' ); // store tagline
 		}
 
-		$text        = $this->clean_text( $raw );
-		$description = '' !== $text ? $this->truncate( $text, self::DESCRIPTION_MAX ) : '';
+		$description = $this->first_usable_candidate( $candidates );
 
 		/** This filter is documented in build_description(). */
 		return (string) apply_filters( 'wc_ai_storefront_meta_description', $description, $source );
@@ -235,10 +253,17 @@ class WC_AI_Storefront_Meta_Tags {
 			if ( $product ) {
 				// Authored intent wins (#668). Our job here is appending the
 				// brand; a merchant who wrote their own headline has already
-				// said what they want, and Jetpack applies that headline
-				// itself on singular pages. The brand still travels as a
-				// discrete `brand` field in the product JSON-LD, which is
-				// where it does the machine-readable work.
+				// said what they want, so we leave the parts untouched and
+				// emit that headline ourselves from filter_document_title().
+				// The brand still travels as a discrete `brand` field in the
+				// product JSON-LD, which is where it does the
+				// machine-readable work.
+				//
+				// This is normally unreachable on an authored product,
+				// because filter_document_title() short-circuits
+				// wp_get_document_title() before `document_title_parts`
+				// fires. It stays as the guard for anything else that
+				// assembles a title from the parts filter directly.
 				if ( '' !== WC_AI_Storefront_Authored_SEO::post_title( (int) get_queried_object_id() ) ) {
 					// Skips the wc_ai_storefront_meta_title_parts filter below;
 					// that filter documents itself as running "after our
@@ -267,13 +292,27 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
-	 * `pre_get_document_title` callback — apply the Shop page's authored title.
+	 * `pre_get_document_title` callback — apply the merchant's authored title.
 	 *
-	 * Only the shop archive is handled. WooCommerce renders the product
-	 * archive at the Shop page's URL, so the Shop page post is never what
-	 * WordPress or Jetpack resolves from the query, and the SEO title a
-	 * merchant typed into that page does nothing. We resolve it explicitly
-	 * through `wc_get_page_id( 'shop' )`.
+	 * Two page types are handled, the shop archive and single products.
+	 *
+	 * Shop: WooCommerce renders the product archive at the Shop page's URL,
+	 * so the Shop page post is never what WordPress or Jetpack resolves from
+	 * the query, and the SEO title a merchant typed into that page does
+	 * nothing. We resolve it explicitly through `wc_get_page_id( 'shop' )`.
+	 *
+	 * Products: we emit the authored headline ourselves rather than assuming
+	 * Jetpack will (#668 review). That assumption failed in both directions.
+	 * When Jetpack does apply it, its own `pre_get_document_title` callback
+	 * short-circuits `wp_get_document_title()` and `document_title_parts`
+	 * never fires, so standing down there achieved nothing. When Jetpack does
+	 * not — `jetpack_seo_custom_titles` filtered false, or a theme listed by
+	 * `Jetpack_SEO_Titles::is_conflicted_theme()` — standing down left the
+	 * merchant with neither their authored title nor the brand suffix they
+	 * had before. This is the same prediction suppress_jetpack_description()
+	 * deliberately stopped making; see its docblock. Running at priority 11
+	 * we see and replace whatever Jetpack produced, which is the same string
+	 * when Jetpack did apply it, so there is never a second `<title>`.
 	 *
 	 * This overrides a title Jetpack already produced rather than only
 	 * filling an empty slot, because on a shop-as-front-page Jetpack DOES
@@ -301,9 +340,11 @@ class WC_AI_Storefront_Meta_Tags {
 	 * the `$title['page']` segment `wp_get_document_title()` would otherwise
 	 * have assembled (wp-includes/general-template.php, "Add a page number
 	 * if necessary"), so `/shop/`, `/shop/page/2/`, `/shop/page/3/` would
-	 * otherwise all emit an identical `<title>`. We append a page suffix in
-	 * the same "$title $sep Page $n" shape core uses, on the same
-	 * `document_title_separator` filter, when paginated.
+	 * otherwise all emit an identical `<title>`. prepare_authored_title()
+	 * appends a page suffix in the same "$title $sep Page $n" shape core
+	 * uses, on the same `document_title_separator` filter, when paginated —
+	 * on both branches, since a product split with `<!--nextpage-->` carries
+	 * the same segment.
 	 *
 	 * @since 0.39.0
 	 *
@@ -314,10 +355,16 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( ! $this->should_emit() ) {
 			return $title;
 		}
+
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			$authored = WC_AI_Storefront_Authored_SEO::post_title( (int) get_queried_object_id() );
+			return '' === $authored ? $title : $this->prepare_authored_title( $authored );
+		}
+
 		if ( ! ( function_exists( 'is_shop' ) && is_shop() ) ) {
 			return $title;
 		}
-		if ( function_exists( 'is_search' ) && is_search() ) {
+		if ( $this->is_product_search() ) {
 			return $title;
 		}
 
@@ -328,6 +375,18 @@ class WC_AI_Storefront_Meta_Tags {
 			return $title;
 		}
 
+		return $this->prepare_authored_title( $authored );
+	}
+
+	/**
+	 * Ready a merchant-authored title for direct emission into `<title>`.
+	 *
+	 * @since 0.39.0
+	 *
+	 * @param string $authored Raw authored title (caller guarantees non-empty).
+	 * @return string Escaped title, with core's page-number suffix when paginated.
+	 */
+	private function prepare_authored_title( string $authored ): string {
 		// Escape: this value is merchant-authored post meta
 		// (`jetpack_seo_html_title`), and Jetpack registers that meta with
 		// no `sanitize_callback` (`Jetpack_SEO_Titles::register_post_meta()`),
@@ -586,62 +645,73 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
-	 * The merchant's authored meta description for this request, or ''.
+	 * The merchant's authored meta description, or ''.
 	 *
-	 * Memoized: consulted from build_description() on the product path and
-	 * from build_archive_description() on the shop path (and, transitively,
-	 * from build_og_tags()'s description fallback), so a single render can
-	 * reach it more than once. An unmemoized call would re-enter
-	 * WC_AI_Storefront_Authored_SEO::is_available()'s class_exists()/
-	 * method_exists() checks each time (#668). See $authored_description_memo
-	 * for why the "not yet resolved" sentinel is `null`, not `''`.
+	 * Pass a post ID to read that post's authored field directly; that is
+	 * what the product path does, keyed on the product it was handed rather
+	 * than on the queried object (#668 review). With no ID the lookup is
+	 * resolved from the current page type instead, which is what the shop
+	 * archive needs: WooCommerce renders it at the Shop page's URL, so the
+	 * Shop page post is never what the query resolves to, and Jetpack's own
+	 * `meta_tags()` gates its per-post description on `is_singular()` and so
+	 * never sees the field the merchant filled in.
+	 *
+	 * Shop precedence: the Shop page post's authored description, then
+	 * Jetpack's site-wide front-page option BUT only when the shop actually
+	 * is the front page (#668 review). That option describes the homepage;
+	 * on a `/shop/` that is not the front page it would displace the Shop
+	 * page's own body copy with copy written about a different page.
+	 *
+	 * Product categories resolve to '': terms carry no Jetpack post meta, and
+	 * the authored term description is already preferred by
+	 * build_archive_description().
 	 *
 	 * @since 0.39.0
-	 */
-	private function authored_description(): string {
-		if ( null === $this->authored_description_memo ) {
-			$this->authored_description_memo = $this->resolve_authored_description();
-		}
-		return $this->authored_description_memo;
-	}
-
-	/**
-	 * Resolves authored_description(); see that method for the memoization
-	 * this backs.
 	 *
-	 * Resolution differs by page type because Jetpack's own reach does:
-	 * `Jetpack_SEO::meta_tags()` only consults per-post description when
-	 * `is_singular()`, so on the shop archive it never sees the Shop page's
-	 * field even though the merchant filled it in.
-	 *
-	 *   - Single product: the queried post's authored description.
-	 *   - Shop: the Shop page post's authored description, then Jetpack's
-	 *     site-wide front-page option. Resolved through
-	 *     `wc_get_page_id( 'shop' )` rather than `get_post()`, which on an
-	 *     archive returns the first product in the loop, not the Shop page.
-	 *   - Product category: none — terms carry no Jetpack post meta, and the
-	 *     authored term description is already preferred by
-	 *     `build_archive_description()`.
+	 * @param int $post_id Post whose authored description to read. 0 (the
+	 *                     default) resolves from the current page type.
 	 */
-	private function resolve_authored_description(): string {
+	private function authored_description( int $post_id = 0 ): string {
 		if ( ! WC_AI_Storefront_Authored_SEO::is_available() ) {
 			return '';
 		}
 
-		if ( function_exists( 'is_product' ) && is_product() ) {
-			return WC_AI_Storefront_Authored_SEO::post_description( (int) get_queried_object_id() );
+		if ( $post_id > 0 ) {
+			return WC_AI_Storefront_Authored_SEO::post_description( $post_id );
 		}
 
-		if ( function_exists( 'is_shop' ) && is_shop() ) {
+		if ( function_exists( 'is_shop' ) && is_shop() && ! $this->is_product_search() ) {
 			$shop_id  = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
 			$authored = WC_AI_Storefront_Authored_SEO::post_description( $shop_id );
 			if ( '' !== $authored ) {
 				return $authored;
 			}
-			return WC_AI_Storefront_Authored_SEO::front_page_description();
+			if ( function_exists( 'is_front_page' ) && is_front_page() ) {
+				return WC_AI_Storefront_Authored_SEO::front_page_description();
+			}
 		}
 
 		return '';
+	}
+
+	/**
+	 * Whether this request is a product-search results page.
+	 *
+	 * WooCommerce defines `is_shop()` as
+	 * `is_post_type_archive( 'product' ) || is_page( wc_get_page_id( 'shop' ) )`,
+	 * and `WP_Query::parse_query()` sets `is_post_type_archive` for
+	 * `?s=…&post_type=product` without gating on `is_search`. So `is_shop()`
+	 * is true on a product search as well, and every shop-scoped branch has
+	 * to exclude it explicitly or the Shop page's own metadata lands on a
+	 * search-results page (#668 review).
+	 *
+	 * Tests `is_search()` alone rather than re-testing the `post_type` query
+	 * var: every caller sits behind should_emit(), which has already narrowed
+	 * the request to a commerce page, and the only searching commerce page is
+	 * the product search.
+	 */
+	private function is_product_search(): bool {
+		return function_exists( 'is_search' ) && is_search();
 	}
 
 	/**
@@ -698,13 +768,18 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			$description = $this->build_description( $product );
 			$og          = $this->build_og_tags( $product, $description );
-		} elseif ( ( function_exists( 'is_product_category' ) && is_product_category() )
-			|| ( function_exists( 'is_shop' ) && is_shop() ) ) {
+		} elseif ( ! $this->is_product_search()
+			&& ( ( function_exists( 'is_product_category' ) && is_product_category() )
+				|| ( function_exists( 'is_shop' ) && is_shop() ) ) ) {
 			$description = $this->build_archive_description();
 			$og          = $this->build_archive_og_tags( $description );
 		} else {
 			// Product-search results: robots noindex only (emitted above);
-			// there is no single product or term to describe.
+			// there is no single product or term to describe. Reachable only
+			// because of the is_product_search() guard above: `is_shop()` is
+			// true on a product search too, so without it this branch was
+			// dead code and a search page shipped the Shop page's authored
+			// description plus a full OG/Twitter card (#668 review).
 			return;
 		}
 
