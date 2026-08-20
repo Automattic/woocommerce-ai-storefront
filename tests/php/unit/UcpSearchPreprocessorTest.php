@@ -554,11 +554,49 @@ class UcpSearchPreprocessorTest extends \PHPUnit\Framework\TestCase {
 
 		$result = $filter->on_posts_clauses_search( $args, $wp_query );
 
-		// EXISTS subquery should reference term_id 5.
+		// EXISTS subquery should reference term_id 5. Assert the full clause,
+		// not a bare '5' — that matched any stray digit anywhere in the SQL.
 		$this->assertStringContainsString( 'EXISTS', $result['where'] );
-		$this->assertStringContainsString( '5', $result['where'] );
+		$this->assertStringContainsString( 'ucp_tt.term_id IN (5)', $result['where'] );
+		// The taxonomy constraint is built from get_product_taxonomy_names().
+		// Nothing else asserts that a discovered name reaches this SQL, and a
+		// name missing here produces zero rows with no error — #660's exact
+		// failure shape, on the call site that had no coverage.
+		$this->assertStringContainsString( "ucp_tt.taxonomy IN ('product_cat')", $result['where'] );
 		// The unmatched signal term still gets a title LIKE.
 		$this->assertStringContainsString( '%logo%', $result['where'] );
+	}
+
+	public function test_attribute_taxonomy_reaches_the_exists_subquery(): void {
+		// Companion to the category case above, for a `pa_*` attribute. On the
+		// live store in #660 attributes kept resolving while categories did
+		// not, so the allow-list's `pa_` branch is load-bearing and until now
+		// no test proved an attribute name survives all the way into the SQL.
+		$this->make_wpdb();
+		Functions\when( 'wc_product_sku_enabled' )->justReturn( false );
+		Functions\when( 'get_object_taxonomies' )->justReturn( array( 'pa_color' ) );
+		Functions\when( 'get_terms' )->justReturn(
+			array(
+				$this->fake_term( 30, 'Blue', 'pa_color' ),
+			)
+		);
+
+		$filter   = new \WC_AI_Storefront_UCP_Store_API_Filter();
+		$wp_query = new WP_Query(
+			array(
+				'post_type' => 'product',
+				'search'    => 'blue',
+			)
+		);
+		$args     = array(
+			'where' => '',
+			'join'  => '',
+		);
+
+		$result = $filter->on_posts_clauses_search( $args, $wp_query );
+
+		$this->assertStringContainsString( "ucp_tt.taxonomy IN ('pa_color')", $result['where'] );
+		$this->assertStringContainsString( 'ucp_tt.term_id IN (30)', $result['where'] );
 	}
 
 	public function test_taxonomy_clause_ored_with_title_like(): void {

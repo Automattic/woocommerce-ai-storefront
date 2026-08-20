@@ -649,9 +649,15 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// store: tags and pa_* attributes resolved, every category returned zero
 		// (#660). get_object_taxonomies() does the containment check the code
 		// has always assumed it was getting.
-		\Brain\Monkey\Functions\when( 'get_object_taxonomies' )->justReturn(
-			array( 'product_cat', 'product_tag', 'product_brand', 'pa_color', 'product_type' )
-		);
+		// `expect()` with `->with()`, not `when()`: `justReturn` ignores
+		// arguments, so a change to `get_object_taxonomies( 'product' )` or
+		// `get_object_taxonomies( 'product_variation', 'names' )` would slip
+		// through unnoticed. This is the only unit-level assertion that pins
+		// which WordPress API this code calls and how.
+		\Brain\Monkey\Functions\expect( 'get_object_taxonomies' )
+			->once()
+			->with( 'product', 'names' )
+			->andReturn( array( 'product_cat', 'product_tag', 'product_brand', 'pa_color', 'product_type' ) );
 
 		$names = $this->discover_taxonomies();
 
@@ -667,8 +673,11 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// returns a plain list. The caller filters VALUES, so swapping the
 		// source without dropping an array_keys() call would hand the filter
 		// integers 0,1,2 — and its closure is typed `string`.
+		// `product_type` sits BETWEEN the two survivors on purpose. Without a
+		// mid-list rejection, `array_filter` returns already-sequential keys
+		// and dropping the surrounding `array_values()` would go unnoticed.
 		\Brain\Monkey\Functions\when( 'get_object_taxonomies' )->justReturn(
-			array( 'product_cat', 'product_tag' )
+			array( 'product_cat', 'product_type', 'product_tag' )
 		);
 
 		$names = $this->discover_taxonomies();
@@ -682,10 +691,6 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// by mutation: with `array_keys()` restored this assertion fails and
 		// the shape-only one did not.
 		$this->assertSame( array( 'product_cat', 'product_tag' ), $names );
-		foreach ( $names as $name ) {
-			$this->assertIsString( $name );
-			$this->assertNotSame( '', $name );
-		}
 	}
 
 	public function test_taxonomy_discovery_allow_list_is_unchanged(): void {
@@ -694,7 +699,12 @@ class UcpStoreApiFilterTest extends \PHPUnit\Framework\TestCase {
 		// than something a shopper would ever say — stays out of free-text
 		// search. Swapping the discovery source must not widen it.
 		\Brain\Monkey\Functions\when( 'get_object_taxonomies' )->justReturn(
-			array( 'product_cat', 'product_tag', 'product_brand', 'pa_color', 'pa_size', 'product_type', 'product_visibility', 'category' )
+			// `spa_treatment` is the sentinel for `str_starts_with` vs
+			// `str_contains` — it contains `pa_` but does not start with it.
+			// `product_type` and `product_visibility` are real WooCommerce
+			// taxonomies registered against `product`, so they appear in a
+			// live result and must stay out of shopper-facing search.
+			array( 'product_cat', 'product_tag', 'product_brand', 'pa_color', 'pa_size', 'spa_treatment', 'product_type', 'product_visibility', 'category' )
 		);
 
 		$names = $this->discover_taxonomies();
