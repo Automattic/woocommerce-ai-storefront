@@ -1657,6 +1657,26 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			if ( ! is_array( $wc_product ) ) {
 				continue;
 			}
+
+			// Drop products WooCommerce has no configured price for (#658).
+			// The only price we could emit is 0, and UCP defines that as
+			// "free" — so syndicating one tells an agent the item costs
+			// nothing. Checkout already refuses these with
+			// `item_unpurchasable`, so surfacing them can only ever end in
+			// a dead cart. Silent by design: same call as #373's
+			// unpurchasable-variation filter in `fetch_variations_for()`,
+			// where an intentional exclusion is logged for the merchant
+			// rather than warned to the agent.
+			if ( self::product_has_no_configured_price( $wc_product ) ) {
+				WC_AI_Storefront_Logger::debug(
+					sprintf(
+						'UCP catalog/search: suppressed product %d — no price configured in WooCommerce',
+						(int) ( $wc_product['id'] ?? 0 )
+					)
+				);
+				continue;
+			}
+
 			$variation_fetch = $this->fetch_variations_for( $wc_product );
 			if ( $variation_fetch['skipped'] > 0 ) {
 				$variant_messages[] = self::partial_variants_message(
