@@ -167,9 +167,18 @@ class WC_AI_Storefront_Meta_Tags {
 					);
 			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
-			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
-			if ( $shop_id > 0 ) {
-				$raw = (string) get_post_field( 'post_content', $shop_id );
+			// Authored intent wins (#668). Jetpack cannot emit this one
+			// itself — `Jetpack_SEO::meta_tags()` gates per-post description
+			// on `is_singular()`, false on the product archive — so we carry
+			// it. Precedence: authored post field, then Jetpack's site-wide
+			// front-page option, then shop content, then tagline.
+			$raw = $this->authored_description();
+
+			if ( '' === trim( $raw ) ) {
+				$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+				if ( $shop_id > 0 ) {
+					$raw = (string) get_post_field( 'post_content', $shop_id );
+				}
 			}
 			if ( '' === trim( $raw ) ) {
 				$raw = (string) get_bloginfo( 'description' ); // store tagline
@@ -437,6 +446,75 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * The merchant's authored meta description for this request, or ''.
+	 *
+	 * Resolution differs by page type because Jetpack's own reach does:
+	 * `Jetpack_SEO::meta_tags()` only consults per-post description when
+	 * `is_singular()`, so on the shop archive it never sees the Shop page's
+	 * field even though the merchant filled it in.
+	 *
+	 *   - Single product: the queried post's authored description.
+	 *   - Shop: the Shop page post's authored description, then Jetpack's
+	 *     site-wide front-page option. Resolved through
+	 *     `wc_get_page_id( 'shop' )` rather than `get_post()`, which on an
+	 *     archive returns the first product in the loop, not the Shop page.
+	 *   - Product category: none — terms carry no Jetpack post meta, and the
+	 *     authored term description is already preferred by
+	 *     `build_archive_description()`.
+	 *
+	 * @since 0.39.0
+	 */
+	private function authored_description(): string {
+		if ( ! WC_AI_Storefront_Authored_SEO::is_available() ) {
+			return '';
+		}
+
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			return WC_AI_Storefront_Authored_SEO::post_description( (int) get_queried_object_id() );
+		}
+
+		if ( function_exists( 'is_shop' ) && is_shop() ) {
+			$shop_id  = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			$authored = WC_AI_Storefront_Authored_SEO::post_description( $shop_id );
+			if ( '' !== $authored ) {
+				return $authored;
+			}
+			return WC_AI_Storefront_Authored_SEO::front_page_description();
+		}
+
+		return '';
+	}
+
+	/**
+	 * Whether Jetpack itself will emit the authored description for this
+	 * request, meaning we must stand down rather than emit our own.
+	 *
+	 * True on a single product with an authored description (Jetpack reaches
+	 * per-post meta whenever `is_singular()`), and on the shop page when the
+	 * only authored source is Jetpack's site-wide front-page option, which it
+	 * emits regardless of what is queried. False when the authored value is
+	 * the Shop page post's, because Jetpack cannot reach that one.
+	 *
+	 * @since 0.39.0
+	 */
+	private function jetpack_emits_authored_description(): bool {
+		if ( '' === $this->authored_description() ) {
+			return false;
+		}
+
+		if ( function_exists( 'is_product' ) && is_product() ) {
+			return true;
+		}
+
+		if ( function_exists( 'is_shop' ) && is_shop() ) {
+			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			return '' === WC_AI_Storefront_Authored_SEO::post_description( $shop_id );
+		}
+
+		return false;
+	}
+
+	/**
 	 * Drop Jetpack SEO Tools' meta description on commerce pages where we emit
 	 * our own. Only the `description` key is removed; any other entry Jetpack
 	 * puts in this map (e.g. `robots` => `noindex`) is left untouched. Jetpack's
@@ -449,9 +527,21 @@ class WC_AI_Storefront_Meta_Tags {
 	 * @return mixed Filtered map.
 	 */
 	public function suppress_jetpack_description( $meta ) {
-		if ( is_array( $meta ) && $this->should_emit() ) {
-			unset( $meta['description'] );
+		if ( ! is_array( $meta ) || ! $this->should_emit() ) {
+			return $meta;
 		}
+
+		// Authored intent wins (#668). When Jetpack is the one that will
+		// carry the merchant's own words, leave its description in place and
+		// stand our own down in render_head_tags(). Suppressing here while
+		// still emitting there — or the reverse — puts two
+		// `<meta name="description">` tags on the page, since we print at
+		// wp_head:5 and Jetpack at the default 10.
+		if ( $this->jetpack_emits_authored_description() ) {
+			return $meta;
+		}
+
+		unset( $meta['description'] );
 		return $meta;
 	}
 
@@ -466,6 +556,10 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( $this->should_noindex() ) {
 			$this->print_meta( 'name', 'robots', 'noindex,follow' );
 		}
+
+		// Counterpart to suppress_jetpack_description() — see its comment for
+		// why these two must move together.
+		$defer_description = $this->jetpack_emits_authored_description();
 
 		if ( function_exists( 'is_product' ) && is_product() ) {
 			$product = function_exists( 'wc_get_product' ) ? wc_get_product( get_queried_object_id() ) : null;
@@ -484,7 +578,7 @@ class WC_AI_Storefront_Meta_Tags {
 			return;
 		}
 
-		if ( '' !== $description ) {
+		if ( '' !== $description && ! $defer_description ) {
 			$this->print_meta( 'name', 'description', $description );
 		}
 		$this->print_og_and_twitter( $og );

@@ -33,13 +33,37 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'get_theme_mod' )->justReturn( 0 );
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		$this->reset_jetpack_seo_doubles();
 		$this->meta = new WC_AI_Storefront_Meta_Tags();
 	}
 
 	protected function tearDown(): void {
 		WC_AI_Storefront::$test_settings = array();
+		$this->reset_jetpack_seo_doubles();
 		Monkey\tearDown();
 		parent::tearDown();
+	}
+
+	/**
+	 * Reset the Jetpack, Jetpack_SEO_Posts and Jetpack_SEO_Utils test doubles
+	 * declared in AuthoredSeoTest.php. phpunit.xml.dist sets no
+	 * processIsolation, so every test file in the suite shares one PHP
+	 * process, and these doubles' static properties persist across files
+	 * once that file has loaded. Called from both setUp() and tearDown() so
+	 * fixtures set by one test never leak into another test in this file, or
+	 * into AuthoredSeoTest.php itself.
+	 */
+	private function reset_jetpack_seo_doubles(): void {
+		if ( class_exists( 'Jetpack' ) ) {
+			Jetpack::$active_modules = array();
+		}
+		if ( class_exists( 'Jetpack_SEO_Posts' ) ) {
+			Jetpack_SEO_Posts::$description = '';
+			Jetpack_SEO_Posts::$title       = '';
+		}
+		if ( class_exists( 'Jetpack_SEO_Utils' ) ) {
+			Jetpack_SEO_Utils::$front_page_description = '';
+		}
 	}
 
 	public function test_should_emit_true_on_product_when_enabled(): void {
@@ -825,5 +849,198 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertNotSame( '', $desc );
 		$this->assertStringContainsString( 'Canvas Belt', $desc );
 		$this->assertStringContainsString( 'Saltwarp', $desc );
+	}
+
+	// ------------------------------------------------------------------
+	// Authored SEO metadata wins (#668)
+	// ------------------------------------------------------------------
+
+	/**
+	 * Stub the page-type conditionals plus whatever WP/WC functions
+	 * render_head_tags() needs to complete without error for that page
+	 * type, so callers only add the specifics a given test cares about
+	 * (e.g. set_shop_page_id(), set_authored_description()).
+	 *
+	 * @param string $type    'product' | 'shop' | 'product_category'.
+	 * @param int    $post_id Queried product ID. Only meaningful for
+	 *                        'product'; the Shop page ID is set separately
+	 *                        via set_shop_page_id().
+	 */
+	private function fake_page( string $type, int $post_id = 0 ): void {
+		$this->stub_escapers();
+		Functions\when( 'is_product' )->justReturn( 'product' === $type );
+		Functions\when( 'is_shop' )->justReturn( 'shop' === $type );
+		Functions\when( 'is_product_category' )->justReturn( 'product_category' === $type );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+
+		if ( 'product' === $type ) {
+			Functions\when( 'get_queried_object_id' )->justReturn( $post_id );
+			$product = $this->og_product();
+			$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+			Functions\when( 'wc_get_product' )->justReturn( $product );
+			Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/x/' );
+			Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false );
+			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		} elseif ( 'shop' === $type ) {
+			// No Shop page by default; set_shop_page_id() overrides this.
+			Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+			Functions\when( 'get_post_field' )->justReturn( '' );
+			Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+			Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+			// build_archive_og_tags() falls back to home_url() for og:url when
+			// shop_id is 0 (no Shop page resolved); some other test file in
+			// this shared process stubs home_url() too, which makes
+			// function_exists( 'home_url' ) true here even without this line,
+			// so an unstubbed call would error rather than silently no-op.
+			Functions\when( 'home_url' )->justReturn( 'https://shop.test/' );
+		} elseif ( 'product_category' === $type ) {
+			Functions\when( 'get_queried_object' )->justReturn(
+				(object) array(
+					'term_id'     => 9,
+					'name'        => 'Belts',
+					'description' => 'Leather belts.',
+				)
+			);
+			Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
+			Functions\when( 'get_term_meta' )->justReturn( 0 );
+		}
+	}
+
+	/**
+	 * Make wc_get_page_id( 'shop' ) resolve to the given Shop page post ID.
+	 */
+	private function set_shop_page_id( int $id ): void {
+		Functions\when( 'wc_get_page_id' )->justReturn( $id );
+	}
+
+	/**
+	 * Make WC_AI_Storefront_Authored_SEO::post_description() answer $description
+	 * for $post_id, as it would when Jetpack SEO Tools carries authored copy.
+	 * Activates the seo-tools module so is_available() is true.
+	 *
+	 * @param int    $post_id     Unused by the underlying double (it answers the
+	 *                            same value for any post), kept in the signature
+	 *                            to mirror the production call and document intent.
+	 * @param string $description Authored description, '' for "none set".
+	 */
+	private function set_authored_description( int $post_id, string $description ): void {
+		Jetpack::$active_modules        = array( 'seo-tools' );
+		Jetpack_SEO_Posts::$description = $description;
+	}
+
+	/**
+	 * Make WC_AI_Storefront_Authored_SEO::front_page_description() answer
+	 * $description, as it would when the merchant filled in Jetpack's
+	 * site-wide front-page meta description. Activates the seo-tools module
+	 * so is_available() is true.
+	 */
+	private function set_front_page_description( string $description ): void {
+		Jetpack::$active_modules                   = array( 'seo-tools' );
+		Jetpack_SEO_Utils::$front_page_description = $description;
+	}
+
+	/**
+	 * Capture render_head_tags() output.
+	 */
+	private function render_head(): string {
+		ob_start();
+		$this->meta->render_head_tags();
+		return (string) ob_get_clean();
+	}
+
+	public function test_authored_product_description_is_left_to_jetpack(): void {
+		// Jetpack emits the per-post description itself on singular pages.
+		// We must stop suppressing it AND stop emitting ours, or the page
+		// carries two <meta name="description"> tags.
+		$this->fake_page( 'product', 77 );
+		$this->set_authored_description( 77, 'Hand-written product copy.' );
+
+		$meta = ( new WC_AI_Storefront_Meta_Tags() )->suppress_jetpack_description(
+			array( 'description' => 'Hand-written product copy.' )
+		);
+
+		$this->assertSame( 'Hand-written product copy.', $meta['description'] );
+		$this->assertStringNotContainsString(
+			'name="description"',
+			$this->render_head()
+		);
+	}
+
+	public function test_unauthored_product_keeps_todays_behaviour(): void {
+		$this->fake_page( 'product', 77 );
+		$this->set_authored_description( 77, '' );
+
+		$meta = ( new WC_AI_Storefront_Meta_Tags() )->suppress_jetpack_description(
+			array( 'description' => 'Jetpack generated.' )
+		);
+
+		$this->assertArrayNotHasKey( 'description', $meta );
+		$this->assertStringContainsString( 'name="description"', $this->render_head() );
+	}
+
+	public function test_authored_shop_description_is_emitted_by_us(): void {
+		// Jetpack gates its per-post description on is_singular(), which is
+		// false on the product archive, so it can never emit this one. We
+		// read the Shop page post directly via wc_get_page_id( 'shop' ).
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_description( 5, 'Authored shop copy.' );
+
+		$meta = ( new WC_AI_Storefront_Meta_Tags() )->suppress_jetpack_description(
+			array( 'description' => 'Site tagline.' )
+		);
+
+		$this->assertArrayNotHasKey( 'description', $meta );
+		$this->assertStringContainsString( 'Authored shop copy.', $this->render_head() );
+	}
+
+	public function test_jetpack_front_page_description_outranks_our_fallbacks(): void {
+		// The site-wide front-page meta description is authored too, and
+		// more specific than the shop page's post_content or the tagline.
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_description( 5, '' );
+		$this->set_front_page_description( 'Authored front page copy.' );
+
+		$meta = ( new WC_AI_Storefront_Meta_Tags() )->suppress_jetpack_description(
+			array( 'description' => 'Authored front page copy.' )
+		);
+
+		$this->assertSame( 'Authored front page copy.', $meta['description'] );
+		$this->assertStringNotContainsString( 'name="description"', $this->render_head() );
+	}
+
+	public function test_shop_page_post_description_outranks_the_front_page_option(): void {
+		$this->fake_page( 'shop' );
+		$this->set_shop_page_id( 5 );
+		$this->set_authored_description( 5, 'Authored shop copy.' );
+		$this->set_front_page_description( 'Authored front page copy.' );
+
+		$this->assertStringContainsString( 'Authored shop copy.', $this->render_head() );
+	}
+
+	public function test_category_page_is_untouched_by_this_change(): void {
+		// Terms carry no Jetpack post meta. Behaviour must not drift.
+		$this->fake_page( 'product_category' );
+
+		$meta = ( new WC_AI_Storefront_Meta_Tags() )->suppress_jetpack_description(
+			array( 'description' => 'Site tagline.' )
+		);
+
+		$this->assertArrayNotHasKey( 'description', $meta );
+		$this->assertStringContainsString( 'name="description"', $this->render_head() );
+	}
+
+	public function test_without_jetpack_every_page_behaves_as_before(): void {
+		// Zero-runtime-dependency guarantee. With no Jetpack modules active
+		// the adapter answers '' everywhere and the old paths are unchanged.
+		$this->fake_page( 'shop' );
+
+		$meta = ( new WC_AI_Storefront_Meta_Tags() )->suppress_jetpack_description(
+			array( 'description' => 'Site tagline.' )
+		);
+
+		$this->assertArrayNotHasKey( 'description', $meta );
+		$this->assertStringContainsString( 'name="description"', $this->render_head() );
 	}
 }
