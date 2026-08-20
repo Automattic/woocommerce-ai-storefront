@@ -404,6 +404,31 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * Build a Store API product fixture with explicit price + price_html.
+	 *
+	 * `price_html` is what distinguishes "no price configured" (empty)
+	 * from "genuinely free" ($0.00 markup) — the Store API's money
+	 * formatter flattens both to `prices.price === "0"`.
+	 *
+	 * @param string|null $price_html Null omits the key entirely, matching
+	 *                                a payload where a plugin stripped it.
+	 * @return array<string, mixed>
+	 */
+	private function make_priced_product(
+		int $id,
+		string $name,
+		string $price,
+		?string $price_html
+	): array {
+		$product                    = $this->make_simple_product( $id, $name );
+		$product['prices']['price'] = $price;
+		if ( null !== $price_html ) {
+			$product['price_html'] = $price_html;
+		}
+		return $product;
+	}
+
+	/**
 	 * Register a fake product_cat term that `get_terms` batch lookups
 	 * will resolve. Un-namespaced keys preserved for back-compat with
 	 * the original pre-1.8 tests.
@@ -3704,5 +3729,76 @@ class UcpCatalogSearchTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertIsArray( $this->unknown_params_warning( $result ) );
 		$this->assertStringContainsString( 'filters.colour', $result['content'][0]['text'] );
+	}
+
+	// ------------------------------------------------------------------
+	// Unpriced-product suppression (#658)
+	// ------------------------------------------------------------------
+
+	public function test_product_with_no_configured_price_is_suppressed(): void {
+		// WooCommerce renders an empty price_html exactly when no price
+		// was ever set. Quoting such a product at 0 tells an agent it is
+		// free — UCP price.json documents `amount: 0` as "Use 0 for free
+		// items" — so the product must not be syndicated at all.
+		$this->fake_product_list = array(
+			$this->make_priced_product( 1, 'Unpriced', '0', '' ),
+			$this->make_priced_product( 2, 'Priced', '2500', '<span>$25.00</span>' ),
+		);
+
+		$body = $this->successful_search( array() );
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertSame( 'prod_2', $body['products'][0]['id'] );
+	}
+
+	public function test_genuinely_free_product_is_kept(): void {
+		// price 0 WITH rendered price_html means the merchant really did
+		// price this at zero. Suppressing it would hide real inventory.
+		$this->fake_product_list = array(
+			$this->make_priced_product( 1, 'Freebie', '0', '<span>$0.00</span>' ),
+		);
+
+		$body = $this->successful_search( array() );
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertSame( 0, $body['products'][0]['variants'][0]['price']['amount'] );
+	}
+
+	public function test_priced_product_with_empty_price_html_is_kept(): void {
+		// "Catalog mode" plugins blank price_html store-wide while leaving
+		// prices.price intact. Gating on price_html alone would empty the
+		// whole catalog on those stores, so a non-zero price wins.
+		$this->fake_product_list = array(
+			$this->make_priced_product( 1, 'Hidden Price', '2500', '' ),
+		);
+
+		$body = $this->successful_search( array() );
+
+		$this->assertCount( 1, $body['products'] );
+		$this->assertSame( 2500, $body['products'][0]['variants'][0]['price']['amount'] );
+	}
+
+	public function test_missing_price_html_key_does_not_suppress(): void {
+		// No price_html in the payload is absence of evidence, not
+		// evidence of absence. Suppression requires a positive signal.
+		$this->fake_product_list = array(
+			$this->make_priced_product( 1, 'No Evidence', '0', null ),
+		);
+
+		$body = $this->successful_search( array() );
+
+		$this->assertCount( 1, $body['products'] );
+	}
+
+	public function test_whitespace_only_price_html_counts_as_unpriced(): void {
+		// `woocommerce_empty_price_html` callbacks commonly return an
+		// empty wrapper element rather than a bare empty string.
+		$this->fake_product_list = array(
+			$this->make_priced_product( 1, 'Empty Span', '0', '<span class="price"> </span>' ),
+		);
+
+		$body = $this->successful_search( array() );
+
+		$this->assertSame( array(), $body['products'] );
 	}
 }

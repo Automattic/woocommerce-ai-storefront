@@ -4390,6 +4390,82 @@ class WC_AI_Storefront_UCP_REST_Controller {
 	}
 
 	/**
+	 * Whether WooCommerce has no configured price for this product.
+	 *
+	 * The Store API cannot express "price unknown". Its money formatter
+	 * runs `floatval()` over the raw value, so a product with no price
+	 * (`'' === $product->get_price()`) and a product genuinely priced at
+	 * zero BOTH emit `prices.price === "0"`. UCP has no way to express it
+	 * either: `price` is required on `variant.json`, `price_range` and a
+	 * minItems-1 `variants[]` are required on `product.json`, and
+	 * `common/types/price.json` documents `amount` as "Use 0 for free
+	 * items". Emitting 0 for an unpriced product is therefore not a vague
+	 * placeholder — it is an affirmative claim that the item is free.
+	 *
+	 * `price_html` is the discriminator. `WC_Product::get_price_html()`
+	 * short-circuits to `apply_filters( 'woocommerce_empty_price_html',
+	 * '', $this )` when the price is unset, and renders real markup for
+	 * genuinely-free, external and out-of-stock products alike.
+	 *
+	 * Two conditions, both required:
+	 *
+	 *   1. The price we would emit is 0 — the harm precondition. We never
+	 *      suppress a product we would have quoted honestly.
+	 *   2. `price_html` is present and renders empty — positive evidence
+	 *      that no price was configured.
+	 *
+	 * Condition 2 alone would be dangerous: "catalog mode" / "hide price"
+	 * plugins filter `woocommerce_get_price_html` to '' across an entire
+	 * store while leaving `prices.price` intact. Requiring condition 1
+	 * bounds the worst case on such a store to suppressing genuinely-free
+	 * products rather than the whole catalog.
+	 *
+	 * A payload with no `price_html` key at all is absence of evidence,
+	 * not evidence of absence — it returns false and the product is
+	 * syndicated as before.
+	 *
+	 * Deliberately NOT keyed on `is_purchasable`: external / affiliate
+	 * products read `false` there while carrying a real price, and
+	 * `woocommerce_is_purchasable` is a public filter that wholesale and
+	 * B2B plugins flip false store-wide. See the matching note in
+	 * `WC_AI_Storefront_UCP_Variant_Translator::extract_availability()`.
+	 *
+	 * @since 0.39.0
+	 *
+	 * @param array<string, mixed> $wc_product Normalized Store API product response.
+	 * @return bool True when the product must not be syndicated.
+	 */
+	private static function product_has_no_configured_price( array $wc_product ): bool {
+		if ( ! array_key_exists( 'price_html', $wc_product ) ) {
+			return false;
+		}
+
+		$prices = $wc_product['prices'] ?? array();
+		if ( ! is_array( $prices ) ) {
+			return false;
+		}
+
+		// Mirrors `UCP_Product_Translator::extract_price_range()`: a
+		// missing `prices.price` already resolves to 0 downstream, so it
+		// satisfies the harm precondition the same way an explicit "0" does.
+		if ( 0 !== (int) ( $prices['price'] ?? 0 ) ) {
+			return false;
+		}
+
+		$price_html = $wc_product['price_html'];
+		if ( ! is_string( $price_html ) ) {
+			return false;
+		}
+
+		// `wp_strip_all_tags()` over native strip_tags(): it also removes
+		// the CONTENT of <script>/<style> and trims. An empty wrapper
+		// element (`<span class="price"></span>`) is what a
+		// `woocommerce_empty_price_html` callback typically returns, and
+		// it must read the same as a bare empty string.
+		return '' === trim( wp_strip_all_tags( $price_html ) );
+	}
+
+	/**
 	 * For variable products, fetch all variations via per-ID Store API
 	 * requests and reassemble in the source order WC declared. Simple
 	 * products return empty.
