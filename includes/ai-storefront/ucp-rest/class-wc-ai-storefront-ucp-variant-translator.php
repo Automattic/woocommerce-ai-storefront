@@ -902,11 +902,53 @@ class WC_AI_Storefront_UCP_Variant_Translator {
 	 * @return array{available: bool, quantity?: int}
 	 */
 	private static function extract_availability( array $wc ): array {
+		// Two WooCommerce signals answer "can this be had", and they can
+		// disagree. `is_in_stock` is a boolean that aggregates optimistically
+		// on a variable parent — it reads `true` even when every variation is
+		// unpurchasable — while `stock_availability.class` carries what the
+		// shopper is actually shown on the product page. Observed live: a
+		// variable parent reporting `is_in_stock: true` alongside
+		// `stock_availability.class: 'out-of-stock'`, syndicated to agents as
+		// available while the storefront told shoppers otherwise (#658).
+		// When the two conflict, the shopper-facing one is the honest answer.
+		//
+		// Deliberately NOT gating on `is_purchasable`: external / affiliate
+		// products read `false` there because they cannot enter THIS store's
+		// cart, but the UCP spec defines `available` as "whether this can be
+		// obtained" — and they can be, from the seller they link out to
+		// (#657). Gating on it would hide real inventory.
+		//
+		// A missing `stock_availability` (older WC, or a payload that omits
+		// it) leaves `$stock_class` empty, so the check falls through to
+		// `is_in_stock` rather than failing the product outright.
+		// `is_array()` before the nested offset. The Store API builds this
+		// field as `(object) array( … )` (ProductSchema), and
+		// `isset( $obj['class'] )` on a stdClass is a fatal, not a false —
+		// unlike a string/int/bool/null, which all return false harmlessly.
+		// `normalize_store_api_data()` converts those objects upstream, and
+		// its own docblock cites this exact fatal, so this is defence in
+		// depth against a payload reaching us by some other route rather
+		// than a live bug. Matches the guarding style in extract_barcodes().
+		$stock_class = '';
+		if ( isset( $wc['stock_availability'] ) && is_array( $wc['stock_availability'] )
+			&& isset( $wc['stock_availability']['class'] ) && is_string( $wc['stock_availability']['class'] ) ) {
+			$stock_class = $wc['stock_availability']['class'];
+		}
+
+		// Both defaults fail closed. `?? true` previously advertised a product
+		// as buyable when the payload carried no stock evidence at all.
 		$availability = array(
-			'available' => (bool) ( $wc['is_in_stock'] ?? true ),
+			'available' => 'out-of-stock' !== $stock_class && (bool) ( $wc['is_in_stock'] ?? false ),
 		);
 
-		if ( isset( $wc['low_stock_remaining'] ) && is_numeric( $wc['low_stock_remaining'] ) ) {
+		// Gated on `available`. Before the out-of-stock-class check above,
+		// reaching `available: false` required `is_in_stock: false`, which
+		// forces `low_stock_remaining` to 0 and made the `> 0` guard drop the
+		// quantity on its own. The new path keeps `is_in_stock: true`, so a
+		// positive count can survive alongside an unavailable verdict —
+		// `{available: false, quantity: 2}` tells an agent two contradictory
+		// things at once.
+		if ( $availability['available'] && isset( $wc['low_stock_remaining'] ) && is_numeric( $wc['low_stock_remaining'] ) ) {
 			$quantity = (int) $wc['low_stock_remaining'];
 			if ( $quantity > 0 ) {
 				$availability['quantity'] = $quantity;
