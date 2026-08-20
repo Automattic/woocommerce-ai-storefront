@@ -62,6 +62,7 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-crawl-logger.p
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-return-policy.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-llms-txt.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-meta-tags.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-authored-seo.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-products-feed.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-ucp.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';
