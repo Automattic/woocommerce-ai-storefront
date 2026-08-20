@@ -51,7 +51,7 @@ jobs:
           # patterns, the LLM won't see it as impact.
           declare -A MAP=(
             ["includes/ai-storefront/ucp-rest/"]="docs/engineering/API-REFERENCE.md docs/engineering/UCP-BUY-FLOW.md docs/engineering/CART-MODELS.md docs/engineering/ARCHITECTURE.md"
-            ["includes/ai-storefront/ucp-mcp/"]="docs/engineering/ARCHITECTURE.md docs/engineering/API-REFERENCE.md docs/engineering/UCP-BUY-FLOW.md"
+            ["includes/ai-storefront/ucp-mcp/"]="docs/engineering/ARCHITECTURE.md docs/engineering/API-REFERENCE.md docs/engineering/UCP-BUY-FLOW.md docs/engineering/DATA-MODEL.md docs/user-guide/USER-GUIDE.md"
             ["includes/admin/class-wc-ai-storefront-admin-controller.php"]="docs/engineering/API-REFERENCE.md docs/engineering/ARCHITECTURE.md docs/user-guide/USER-GUIDE.md"
             ["includes/ai-storefront/class-wc-ai-storefront-attribution.php"]="docs/engineering/DATA-MODEL.md docs/engineering/UCP-BUY-FLOW.md docs/user-guide/USER-GUIDE.md"
             ["includes/ai-storefront/class-wc-ai-storefront-ucp.php"]="docs/engineering/API-REFERENCE.md docs/engineering/UCP-BUY-FLOW.md docs/engineering/CART-MODELS.md"
