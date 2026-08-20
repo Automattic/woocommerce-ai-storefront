@@ -3,8 +3,10 @@
  * SEO-plugin conflict detector.
  *
  * Presence-based detection of the SEO plugins (Yoast, Rank Math, All in
- * One SEO, SEOPress) that emit their own WooCommerce Product schema and
- * human-SERP <head> metadata. Used ONLY by the migration nudge
+ * One SEO, SEOPress) that emit their own human-SERP <head> metadata.
+ * Rank Math, All in One SEO, and the paid Yoast WooCommerce SEO addon
+ * also emit their own WooCommerce Product schema; free Yoast core and
+ * SEOPress do not. Used ONLY by the migration nudge
  * ({@see WC_AI_Storefront_Schema_Conflict_Notice}) to tell the merchant
  * they can deactivate the other plugin — it does NOT gate metadata
  * emission (we always emit on commerce pages; see
