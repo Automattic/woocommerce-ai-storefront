@@ -852,7 +852,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	 * type, so callers only add the specifics a given test cares about
 	 * (e.g. set_shop_page_id(), set_authored_description()).
 	 *
-	 * @param string $type    'product' | 'shop' | 'product_category'.
+	 * @param string $type    'product' | 'shop' | 'product_category', or any
+	 *                        other string for a non-commerce page: every
+	 *                        page-type conditional then stubs false, which is
+	 *                        how tests assert we stand down off commerce pages
+	 *                        (see the 'blog_post' caller).
 	 * @param int    $post_id Queried product ID. Only meaningful for
 	 *                        'product'; the Shop page ID is set separately
 	 *                        via set_shop_page_id().
@@ -965,14 +969,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	/**
 	 * Make get_the_terms() answer a single `product_brand` term named
-	 * $brand for the current product. $post_id is accepted for symmetry
-	 * with set_authored_title() (the production brand lookup does not key
-	 * off it: get_brand_name() reads get_the_terms() unconditionally).
+	 * $brand for the current product. No post ID is needed: the production
+	 * brand lookup does not key off one — get_brand_name() stubs
+	 * get_the_terms() unconditionally.
 	 *
-	 * @param int    $post_id Product ID (accepted for symmetry; unused).
-	 * @param string $brand   Brand name.
+	 * @param string $brand Brand name.
 	 */
-	private function set_product_brand( int $post_id, string $brand ): void {
+	private function set_product_brand( string $brand ): void {
 		Functions\when( 'get_the_terms' )->justReturn(
 			array( (object) array( 'name' => $brand ) )
 		);
@@ -1156,7 +1159,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// would hold whether or not the guard existed.
 		$this->fake_page( 'product', 77 );
 		$this->set_authored_title( 77, 'The Only Jacket You Need' );
-		$this->set_product_brand( 77, 'Northmoor' );
+		$this->set_product_brand( 'Northmoor' );
 
 		$parts = ( new WC_AI_Storefront_Meta_Tags() )->filter_title_parts(
 			array(
@@ -1171,7 +1174,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_unauthored_product_title_still_gets_the_brand(): void {
 		$this->fake_page( 'product', 77 );
 		$this->set_authored_title( 77, '' );
-		$this->set_product_brand( 77, 'Northmoor' );
+		$this->set_product_brand( 'Northmoor' );
 
 		$parts = ( new WC_AI_Storefront_Meta_Tags() )->filter_title_parts(
 			array(
