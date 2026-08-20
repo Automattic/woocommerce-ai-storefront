@@ -63,12 +63,71 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 	 * @runInSeparateProcess
 	 * @preserveGlobalState disabled
 	 */
+	public function test_detect_reports_seopress_when_constant_defined(): void {
+		define( 'SEOPRESS_VERSION', '7.0-test' );
+		$slugs = array_column( WC_AI_Storefront_Seo_Plugin_Detector::detect(), 'slug' );
+		$this->assertContains( 'seopress', $slugs );
+		$this->assertTrue( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
 	public function test_detect_reports_yoast_when_class_present(): void {
 		// Alias a USER-DEFINED stub (not an internal class like stdClass,
 		// which class_alias() rejects on PHP 8.1-8.3).
 		class_alias( 'WC_AI_Storefront_Yoast_WC_SEO_Test_Double', 'Yoast_WooCommerce_SEO' );
-		$slugs = array_column( WC_AI_Storefront_Seo_Plugin_Detector::detect(), 'slug' );
+		$found = WC_AI_Storefront_Seo_Plugin_Detector::detect();
+		$slugs = array_column( $found, 'slug' );
 		$this->assertContains( 'yoast', $slugs );
+		// The addon is the more specific product; its label wins even when
+		// free Yoast core (WPSEO_VERSION) is not itself defined.
+		$yoast = $found[ array_search( 'yoast', $slugs, true ) ];
+		$this->assertSame( 'Yoast WooCommerce SEO', $yoast['label'] );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_detect_reports_yoast_seo_when_only_core_present(): void {
+		// Free Yoast core only, no paid WooCommerce SEO addon class loaded.
+		// This is the common case: most stores run free Yoast, not the addon.
+		define( 'WPSEO_VERSION', '22.0-test' );
+		$found = WC_AI_Storefront_Seo_Plugin_Detector::detect();
+		$slugs = array_column( $found, 'slug' );
+		$this->assertContains( 'yoast', $slugs );
+		$yoast = $found[ array_search( 'yoast', $slugs, true ) ];
+		$this->assertSame( 'Yoast SEO', $yoast['label'] );
+		$this->assertTrue( WC_AI_Storefront_Seo_Plugin_Detector::has_conflict() );
+	}
+
+	/**
+	 * @runInSeparateProcess
+	 * @preserveGlobalState disabled
+	 */
+	public function test_detect_reports_single_yoast_row_when_core_and_addon_both_present(): void {
+		// Normal real-world state: the paid addon requires free core, so
+		// both are active together. This must not surface as two vendor
+		// rows - WC_AI_Storefront_Schema_Conflict_Notice::maybe_render()
+		// joins every label into one sentence ("X is also emitting
+		// these..."), which reads wrong (and grammatically singular-vs-
+		// plural broken) if the same vendor appears twice.
+		define( 'WPSEO_VERSION', '22.0-test' );
+		class_alias( 'WC_AI_Storefront_Yoast_WC_SEO_Test_Double', 'Yoast_WooCommerce_SEO' );
+		$found = WC_AI_Storefront_Seo_Plugin_Detector::detect();
+		// Match on label content, not slug: the risk this guards against is
+		// two rows naming Yoast (whatever their slugs), since the notice
+		// renders by label, not slug.
+		$yoast = array_values(
+			array_filter(
+				$found,
+				static fn( $p ) => false !== stripos( $p['label'], 'yoast' )
+			)
+		);
+		$this->assertCount( 1, $yoast );
+		$this->assertSame( 'Yoast WooCommerce SEO', $yoast[0]['label'] );
 	}
 
 	/**

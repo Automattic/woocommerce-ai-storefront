@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-20T21:24:31+00:00\n"
+"POT-Creation-Date: 2026-08-20T21:37:58+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -183,19 +183,27 @@ msgstr ""
 msgid "Page %s"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:39
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:47
 msgid "Yoast WooCommerce SEO"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:46
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:48
+msgid "Yoast SEO"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:55
 msgid "Rank Math SEO"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:53
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:62
 msgid "All in One SEO"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:64
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:69
+msgid "SEOPress"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:80
 msgid "Jetpack"
 msgstr ""
 

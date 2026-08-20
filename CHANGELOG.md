@@ -1,6 +1,11 @@
 ## [Unreleased]
 
 ### Fixed
+- **The notice about overlapping SEO plugins never fired for free Yoast SEO or SEOPress (#669).**
+  - It only recognized the paid Yoast WooCommerce SEO add-on, not the free Yoast plugin most stores actually run. Free Yoast produces the same duplicate tags, but never triggered the notice.
+  - SEOPress was not recognized at all, so stores running it never saw the notice either.
+  - The notice now covers free Yoast SEO and SEOPress, alongside Rank Math, All in One SEO, and the paid Yoast add-on it already covered.
+  - Free Yoast and its paid add-on are normally both active together, since the add-on requires the free plugin. You still see one notice naming Yoast, not two.
 - **SEO titles and descriptions you wrote yourself were being thrown away on products and shop pages (#668).**
   - If you filled in the SEO fields on a product or on your Shop page, your store ignored them and published its own generated text instead. The fields looked live in the editor and did nothing.
   - Your own words now win wherever you wrote them, on products and on the Shop page. Where you left them blank, your store generates a description as before. A description longer than search engines display is shortened, the same length limit your store already applied to generated descriptions.
