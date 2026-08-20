@@ -20,7 +20,7 @@
  * adds the module check. (#668)
  *
  * @package WooCommerce_AI_Storefront
- * @since   0.38.2
+ * @since   0.39.0
  */
 
 defined( 'ABSPATH' ) || exit;

@@ -353,7 +353,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * on both branches, since a product split with `<!--nextpage-->` carries
 	 * the same segment.
 	 *
-	 * @since 0.38.2
+	 * @since 0.39.0
 	 *
 	 * @param mixed $title Title resolved so far ('' when nothing has claimed it).
 	 * @return mixed Authored title, or the input unchanged.
@@ -388,7 +388,7 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Ready a merchant-authored title for direct emission into `<title>`.
 	 *
-	 * @since 0.38.2
+	 * @since 0.39.0
 	 *
 	 * @param string $authored Raw authored title (caller guarantees non-empty).
 	 * @return string Escaped title, with core's page-number suffix when paginated.
@@ -678,7 +678,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * the authored term description is already preferred by
 	 * build_archive_description().
 	 *
-	 * @since 0.38.2
+	 * @since 0.39.0
 	 *
 	 * @param int $post_id Post whose authored description to read. 0 (the
 	 *                     default) resolves from the current page type.
