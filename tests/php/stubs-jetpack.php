@@ -87,7 +87,12 @@ if ( ! class_exists( 'Jetpack_SEO_Posts' ) ) {
 		 * @return mixed
 		 */
 		public static function get_post_custom_description( $post = null ) {
-			return self::$descriptions[ self::post_id( $post ) ] ?? '';
+			// array_key_exists(), not `?? ''`: a stored `null` is a value
+			// this double must hand back verbatim, so the coercion in
+			// WC_AI_Storefront_Authored_SEO is the thing under test rather
+			// than the double's own null-collapsing (#668 review).
+			$id = self::post_id( $post );
+			return array_key_exists( $id, self::$descriptions ) ? self::$descriptions[ $id ] : '';
 		}
 
 		/**
@@ -97,7 +102,9 @@ if ( ! class_exists( 'Jetpack_SEO_Posts' ) ) {
 		 * @return mixed
 		 */
 		public static function get_post_custom_html_title( $post = null ) {
-			return self::$titles[ self::post_id( $post ) ] ?? '';
+			// See get_post_custom_description() for why this is not `?? ''`.
+			$id = self::post_id( $post );
+			return array_key_exists( $id, self::$titles ) ? self::$titles[ $id ] : '';
 		}
 
 		/**
@@ -135,6 +142,33 @@ if ( ! class_exists( 'Jetpack_SEO_Utils' ) ) {
 		 */
 		public static function get_front_page_meta_description() {
 			return self::$front_page_description;
+		}
+	}
+}
+
+if ( ! function_exists( 'wc_ai_storefront_reset_jetpack_seo_doubles' ) ) {
+	/**
+	 * Reset every Jetpack SEO double above to its "nothing authored,
+	 * no modules active" state.
+	 *
+	 * phpunit.xml.dist sets no processIsolation, so the whole suite shares
+	 * one PHP process and these static properties outlive the test that set
+	 * them. Every test file that drives the doubles must call this from both
+	 * setUp() and tearDown(), so a fixture never leaks into a later test in
+	 * the same file or into another file. Shared here rather than duplicated
+	 * per file so there is one definition to keep correct as the doubles
+	 * grow (#668 review).
+	 */
+	function wc_ai_storefront_reset_jetpack_seo_doubles(): void {
+		if ( class_exists( 'Jetpack' ) ) {
+			Jetpack::$active_modules = array();
+		}
+		if ( class_exists( 'Jetpack_SEO_Posts' ) ) {
+			Jetpack_SEO_Posts::$descriptions = array();
+			Jetpack_SEO_Posts::$titles       = array();
+		}
+		if ( class_exists( 'Jetpack_SEO_Utils' ) ) {
+			Jetpack_SEO_Utils::$front_page_description = '';
 		}
 	}
 }
