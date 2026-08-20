@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-20T02:05:39+00:00\n"
+"POT-Creation-Date: 2026-08-20T02:49:16+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -205,7 +205,7 @@ msgstr ""
 
 #. translators: This string is injected verbatim into LLM system prompts via the UCP manifest. Translate the natural-language prose, but DO NOT translate the technical identifiers (`requires_escalation`, `continue_url`, `/checkout-sessions`, `unsupported_operation`, `UCP-Agent`, `Product/Version`, `Other AI`) or HTTP methods (POST, GET, PUT, PATCH, DELETE) — agents must see these tokens exactly.
 #: includes/ai-storefront/class-wc-ai-storefront-ucp.php:716
-msgid "This store uses requires_escalation checkout: agents do not place orders directly. POST /checkout-sessions returns a continue_url with attribution UTMs already attached; redirect the user to that URL to complete the purchase on the merchant site. The /checkout-sessions/{id} URL is stateless — GET, PUT, PATCH, and DELETE all return HTTP 405 with code \"unsupported_operation\" because there is no persistent session to act on. Send your agent identity via the UCP-Agent header (profile URL form preferred, Product/Version form also accepted) so attribution canonicalizes to your brand rather than bucketing as \"Other AI\"."
+msgid "This store uses requires_escalation checkout: agents do not place orders directly. POST /checkout-sessions returns a continue_url with attribution UTMs already attached; redirect the user to that URL to complete the purchase on the merchant site. The /checkout-sessions/{id} URL is stateless — GET, PUT, PATCH, and DELETE all return HTTP 405 with code \"unsupported_operation\" because there is no persistent session to act on. Send your agent identity via the UCP-Agent header so attribution canonicalizes to your brand rather than bucketing as \"Other AI\". Preferred form, per RFC 8941: UCP-Agent: profile=\"https://your-agent.example/profile\". Product/Version form (UCP-Agent: YourAgent/1.0) is also accepted. Near-miss spellings of the profile form — colon-delimited, unquoted, or a bare URL as the whole header value — are parsed too, but the quoted form is the one to send."
 msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:115

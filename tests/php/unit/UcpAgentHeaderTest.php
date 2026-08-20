@@ -74,15 +74,26 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 	// Malformed inputs — parser must not crash or return garbage
 	// ------------------------------------------------------------------
 
-	public function test_returns_empty_for_unquoted_profile_value(): void {
-		// RFC 8941 Dictionary Structured Fields require quoted strings
-		// for string values. `profile=https://...` (without quotes) is
-		// malformed. Accepting it would mean accepting a non-compliant
-		// agent as compliant; better to return empty.
+	public function test_unquoted_profile_value_is_now_accepted(): void {
+		// REVERSAL, recorded deliberately. This test previously asserted the
+		// opposite, on the reasoning that "accepting it would mean accepting a
+		// non-compliant agent as compliant".
+		//
+		// That reasoning does not survive contact with the threat model. The
+		// header is self-asserted and nothing verifies it, so a non-compliant
+		// agent that wants to look compliant simply adds the quotes. Strict
+		// parsing never stopped that. What it did stop was counting honest
+		// agents — and, because an unparsed identity buckets as
+		// `ucp_unknown`, it also stopped the merchant's per-brand
+		// `allowed_crawlers` decision from being applied to them. Bad
+		// punctuation was an accidental way around the merchant's own
+		// settings.
+		//
+		// RFC 8941 remains what we document. See #655.
 		$header = 'profile=https://agent.example.com/profile.json';
 
-		$this->assertEquals(
-			'',
+		$this->assertSame(
+			'agent.example.com',
 			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
 		);
 	}
@@ -780,6 +791,75 @@ class UcpAgentHeaderTest extends \PHPUnit\Framework\TestCase {
 				count( $missing_hostname ),
 				implode( ', ', $missing_hostname )
 			)
+		);
+	}
+
+	/**
+	 * @dataProvider near_miss_header_provider
+	 */
+	public function test_extract_profile_hostname_accepts_near_miss_spellings( string $header, string $expected ): void {
+		// The header is self-asserted and unverified — anyone can claim to be
+		// chatgpt.com and be believed. Strict parsing therefore stops nobody
+		// from spoofing; it only stops honest agents from being counted, and
+		// bucketing them as `ucp_unknown` also means the merchant's per-brand
+		// allow-list decision never gets applied to them. Observed: an agent
+		// shopping a live store tried a bare URL and a `.well-known` path,
+		// was bucketed unknown both times, and abandoned the format (#655).
+		$this->assertSame(
+			$expected,
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header )
+		);
+	}
+
+	/**
+	 * @return array<string, array{0: string, 1: string}>
+	 */
+	public static function near_miss_header_provider(): array {
+		return array(
+			'RFC 8941 quoted (the documented form)'      => array( 'profile="https://claude.ai"', 'claude.ai' ),
+			'colon-delimited (our own docs showed this)' => array( 'profile=:https://claude.ai:', 'claude.ai' ),
+			'unquoted value'                             => array( 'profile=https://claude.ai', 'claude.ai' ),
+			'bare URL, whole header'                     => array( 'https://claude.ai', 'claude.ai' ),
+			'bare URL with a path'                       => array( 'https://claude.ai/.well-known/agent', 'claude.ai' ),
+			'bare URL, surrounding whitespace'           => array( '  https://claude.ai  ', 'claude.ai' ),
+			'quoted form still wins among others'        => array( 'foo=bar, profile="https://claude.ai"', 'claude.ai' ),
+		);
+	}
+
+	/**
+	 * @dataProvider rejected_header_provider
+	 */
+	public function test_extract_profile_hostname_still_rejects( string $header, string $why ): void {
+		$this->assertSame(
+			'',
+			WC_AI_Storefront_UCP_Agent_Header::extract_profile_hostname( $header ),
+			$why
+		);
+	}
+
+	/**
+	 * @return array<string, array{0: string, 1: string}>
+	 */
+	public static function rejected_header_provider(): array {
+		return array(
+			'field name merely ending in profile' => array(
+				'notprofile="https://evil.example/agent.json"',
+				'The boundary guard must survive loosening.',
+			),
+			'field name merely ending in profile, unquoted' => array(
+				'notprofile=https://evil.example/agent.json',
+				'Loosening the quoting must not loosen the boundary guard.',
+			),
+			'URL embedded in a UA-style string'   => array(
+				'SomeBot/1.0 (compatible; +https://evil.example/bot)',
+				'A bare URL counts only when it is the WHOLE header. User-Agent-style strings routinely carry a URL in parentheses, and extracting it would attribute traffic to whatever host a crawler advertises.',
+			),
+			'product token, not a URL'            => array(
+				'Claude/1.0',
+				'Product/Version form is a different parser (extract_agent_product).',
+			),
+			'gibberish'                           => array( 'gibberish', 'Not a URL and not a profile field.' ),
+			'empty'                               => array( '', 'Nothing to extract.' ),
 		);
 	}
 }

@@ -1,6 +1,10 @@
 ## [Unreleased]
 
 ### Fixed
+- **Most AI traffic was recorded as "unknown" (#655).**
+  - Assistants tell your store who they are with a header, and your store's own instructions showed the wrong spelling for it. Assistants that followed those instructions were filed as unknown, so your order attribution under-counted the ones behaving best.
+  - The instructions now show the exact text to send, both in the API reference and in the manifest assistants read at run time.
+  - Your store also now understands near-miss spellings instead of discarding them. Nothing verifies this header, so being strict never stopped anyone pretending to be ChatGPT. It only stopped honest assistants being counted, and meant your per-assistant allowlist choices were never applied to them.
 - **Searching by category returned nothing on stores with extensions installed (#660).**
   - A shopper's assistant asking for a "bag" was told the store had none, even with a bag sitting in your Bags category. Asking for the product by name still worked, so search looked healthy.
   - Your store asked WordPress for the label sets belonging to products, but asked in a way that only accepted an exact answer. Once another plugin attached one of those sets to anything else, it dropped out of search silently.

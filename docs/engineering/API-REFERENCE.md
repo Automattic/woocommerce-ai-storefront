@@ -147,7 +147,7 @@ This gives agents a recovery path at the moment they need it, without requiring 
 ```bash
 curl -X POST https://your-store.com/wp-json/wc/ucp/v1/catalog/search \
   -H 'Content-Type: application/json' \
-  -H 'UCP-Agent: profile=:https://chatgpt.com:' \
+  -H 'UCP-Agent: profile="https://chatgpt.com"' \
   -d '{
     "query": "running shoes",
     "filters": { "price": { "max": 15000 } },
