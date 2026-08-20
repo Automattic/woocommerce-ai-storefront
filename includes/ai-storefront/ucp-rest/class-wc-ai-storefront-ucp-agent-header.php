@@ -714,9 +714,9 @@ class WC_AI_Storefront_UCP_Agent_Header {
 		// was bucketed unknown both times, and gave up on the
 		// format (#655).
 		$patterns = array(
-			'/(?:^|[\s,;])profile="([^"]+)"/',   // profile="URL"
-			'/(?:^|[\s,;])profile=:([^:\s,;]+(?::[^:\s,;]*)*?):(?=[\s,;]|$)/', // profile=:URL:
-			'/(?:^|[\s,;])profile=([^"\s,;][^\s,;]*)/', // profile=URL
+			'/(?:^|[\s,;])profile="([^"]+)"/',   // RFC 8941 quoted form.
+			'/(?:^|[\s,;])profile=:([^:\s,;]+(?::[^:\s,;]*)*?):(?=[\s,;]|$)/', // Colon-delimited.
+			'/(?:^|[\s,;])profile=([^"\s,;][^\s,;]*)/', // Unquoted.
 		);
 
 		$profile_url = '';
