@@ -498,7 +498,7 @@ class WC_AI_Storefront_MCP_Tools {
 			// store has nothing — has_next_page still says whether later
 			// pages are worth trying before the model gives up on the query.
 			if ( ! empty( $pagination['has_next_page'] ) ) {
-				$text .= ' ' . __( 'More available — pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
+				$text .= ' ' . __( 'More available. Pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
 			}
 
 			return self::with_unknown_params_note( $text, $body );
@@ -520,7 +520,7 @@ class WC_AI_Storefront_MCP_Tools {
 		$text = $head . ' — ' . implode( '; ', self::product_lines( $products ) ) . '.';
 
 		if ( ! empty( $pagination['has_next_page'] ) ) {
-			$text .= ' ' . __( 'More available — pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
+			$text .= ' ' . __( 'More available. Pass pagination.cursor for the next page.', 'woocommerce-ai-storefront' );
 		}
 
 		return self::with_unknown_params_note( $text, $body );
