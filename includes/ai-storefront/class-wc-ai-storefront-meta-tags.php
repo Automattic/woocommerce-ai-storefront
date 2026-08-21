@@ -520,9 +520,27 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( $thumbnail_id > 0 ) {
 			$image = wp_get_attachment_image_src( $thumbnail_id, 'full' );
 			if ( is_array( $image ) && ! empty( $image[0] ) ) {
-				$og['og:image']        = (string) $image[0];
-				$og['og:image:width']  = (string) $image[1];
-				$og['og:image:height'] = (string) $image[2];
+				$og['og:image'] = (string) $image[0];
+
+				// image_downsize() (WP core, wp-includes/media.php)
+				// initialises width/height to 0 and only overwrites them
+				// from the attachment's _wp_attachment_metadata. An
+				// attachment with no metadata — media offloaded by a
+				// plugin that clears it, a regeneration that failed on
+				// upload, an import that skipped it — leaves both at 0
+				// while the URL is still perfectly valid. Emit the pair
+				// only when WordPress actually reported a size: a zero
+				// dimension is worse than no dimension, since Facebook's
+				// scraper rejects it and falls back to re-measuring the
+				// image itself, the exact fetch these two properties
+				// exist to avoid. Same omit-rather-than-emit-a-useless-
+				// value shape as og:image:alt below.
+				$width  = (int) $image[1];
+				$height = (int) $image[2];
+				if ( $width > 0 && $height > 0 ) {
+					$og['og:image:width']  = (string) $width;
+					$og['og:image:height'] = (string) $height;
+				}
 
 				// Alt text is frequently empty; omit the key rather than
 				// emitting an empty string, same as og:image itself above.
@@ -616,10 +634,17 @@ class WC_AI_Storefront_Meta_Tags {
 	 * fields, the same ones competing SEO plugins already populate:
 	 * label1/data1 carry price, label2/data2 carry availability. Both pairs
 	 * are gated on the OG key they read being present rather than
-	 * recomputed from a product — this method only ever sees the OG map,
-	 * and gating on it means a `wc_ai_storefront_og_tags` filter consumer
-	 * that adds or removes a key changes Twitter's output too, not just
-	 * Open Graph's.
+	 * recomputed from a product — this method only ever sees the OG map.
+	 * That gate is presence-only, though, not a content mirror: label1/
+	 * data1's *presence* and data1's *value* both come from the OG map
+	 * (via twitter_price_data()), so a `wc_ai_storefront_og_tags` filter
+	 * consumer that changes `product:price:amount` changes data1 too.
+	 * label2/data2's presence is gated the same way, on
+	 * `product:availability`, but data2's value is recomputed from
+	 * `$product` below, not read back from the OG map — a filter that
+	 * rewrites `product:availability` changes only that key, and
+	 * twitter:data2 keeps its own answer, now contradicting it on the
+	 * same page.
 	 *
 	 * Both pairs render as a visible two-column strip under the card, so a
 	 * person reads them; both carry human-readable text, not machine

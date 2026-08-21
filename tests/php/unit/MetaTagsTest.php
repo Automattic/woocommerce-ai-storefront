@@ -494,6 +494,47 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'twitter:image:alt', $tw );
 	}
 
+	public function test_og_tags_omit_dimensions_when_wordpress_reports_zero(): void {
+		// image_downsize() (WP core) initialises width/height to 0 and
+		// only overwrites them from the attachment's metadata. An
+		// attachment with no _wp_attachment_metadata — offloaded media
+		// that clears it, a failed regeneration, an unregenerated import
+		// — leaves both at 0 while the URL is still valid. og:image must
+		// still publish; the dimension pair must not, the same way
+		// og:image:alt is omitted rather than emitted empty.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/img/belt.jpg', 0, 0, false ) );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product() );
+		$this->assertSame( 'https://shop.test/img/belt.jpg', $og['og:image'] );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+	}
+
+	public function test_og_tags_omit_image_when_attachment_lookup_fails(): void {
+		// get_post_thumbnail_id() can return a positive ID for an
+		// orphaned or deleted attachment; wp_get_attachment_image_src()
+		// then returns false rather than an array. No image property
+		// should be emitted at all in that case.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product() );
+		$this->assertArrayNotHasKey( 'og:image', $og );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+		$this->assertArrayNotHasKey( 'og:image:alt', $og );
+	}
+
 	// --- Availability vocabulary (#679 task 2) ---
 
 	public function test_og_tags_availability_instock(): void {
