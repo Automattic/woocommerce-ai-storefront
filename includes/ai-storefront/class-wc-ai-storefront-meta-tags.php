@@ -690,10 +690,17 @@ class WC_AI_Storefront_Meta_Tags {
 	 * @return array<string,string> property => content.
 	 */
 	public function build_twitter_tags( array $og, $product = null ): array {
-		// The card type has to match what we can actually show. X renders
-		// `summary_large_image` as a 2:1 hero, so declaring it with no
-		// twitter:image behind it degrades to a bare link (#683). Product
-		// pages are unaffected: they only reach here with an image.
+		// The card type has to match what we can actually show. The Cards
+		// spec makes twitter:image REQUIRED for summary_large_image, so
+		// declaring that card with no image cannot render as one (#683).
+		//
+		// This reaches product pages too, deliberately. build_og_tags()
+		// sets og:image only when get_post_thumbnail_id() returns an ID
+		// whose attachment resolves, so a product with no featured image
+		// arrives here without one and now asks for the small card. It
+		// previously asked for the large card it had no image for. There
+		// is no image fallback on the product path: archive_image() is
+		// reached only from build_archive_og_tags().
 		$has_image = isset( $og['og:image'] ) && '' !== $og['og:image'];
 		$tw        = array(
 			'twitter:card'        => $has_image ? 'summary_large_image' : 'summary',
@@ -945,9 +952,13 @@ class WC_AI_Storefront_Meta_Tags {
 		$image = $this->archive_image();
 		if ( '' !== $image['url'] ) {
 			$og['og:image'] = $image['url'];
-			// Same gate as the product path: image_downsize() seeds both at 0
-			// and only overwrites them from attachment metadata, so a missing
-			// sizes entry would otherwise publish og:image:width="0".
+			// Same gate as the product path: for 'full', image_downsize()
+			// seeds both at 0 and only overwrites them from the attachment's
+			// _wp_attachment_metadata width/height (not its `sizes` entries,
+			// which 'full' never consults), so an attachment with no metadata
+			// would otherwise publish og:image:width="0". Two of the five
+			// sources never reach image_downsize() at all and report 0
+			// deliberately: the filter branch and the site icon.
 			if ( $image['width'] > 0 && $image['height'] > 0 ) {
 				$og['og:image:width']  = (string) $image['width'];
 				$og['og:image:height'] = (string) $image['height'];
@@ -1234,7 +1245,21 @@ class WC_AI_Storefront_Meta_Tags {
 		 *                    curated product, then the site logo, then the site
 		 *                    icon.
 		 */
-		$configured = (string) apply_filters( 'wc_ai_storefront_og_default_image', '' );
+		$configured = apply_filters( 'wc_ai_storefront_og_default_image', '' );
+		if ( ! is_string( $configured ) ) {
+			// A non-string here is a callback bug, not a merchant choice, and
+			// casting it would turn that bug into a published claim: (string)
+			// on an array yields "Array", which esc_url() then ships as
+			// og:image="http://Array", and on an object with no __toString it
+			// is an uncaught Error mid-wp_head. Returning an attachment array
+			// is the easy mistake, since wp_get_attachment_image_src() (used
+			// three times in this class) returns exactly that.
+			WC_AI_Storefront_Logger::debug(
+				'Open Graph: wc_ai_storefront_og_default_image returned %s, not a string. Ignoring it.',
+				get_debug_type( $configured )
+			);
+			$configured = '';
+		}
 		if ( '' !== $configured ) {
 			// A bare URL carries no dimensions we can vouch for.
 			return array(
@@ -1258,12 +1283,20 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( function_exists( 'get_site_icon_url' ) ) {
 			$icon = (string) get_site_icon_url( 512 );
 			if ( '' !== $icon ) {
-				// WordPress crops the site icon square at the size requested, so
-				// these dimensions are known without an attachment lookup.
+				// No dimensions, for the same reason the filter branch above
+				// reports none: we cannot vouch for them. Core's
+				// get_site_icon_url() takes the `$size >= 512` branch and asks
+				// for 'full', i.e. the site-icon attachment at whatever size it
+				// was stored, NOT a 512 crop (wp-includes/general-template.php).
+				// The Customizer usually does store 512x512, but "Skip cropping"
+				// keeps the original, `wp option update site_icon` sets any
+				// attachment, and the get_site_icon_url filter can return any
+				// URL at all. Publishing a width a scraper then measures and
+				// disagrees with is worse than publishing none.
 				return array(
 					'url'    => $icon,
-					'width'  => 512,
-					'height' => 512,
+					'width'  => 0,
+					'height' => 0,
 				);
 			}
 		}
@@ -1325,10 +1358,18 @@ class WC_AI_Storefront_Meta_Tags {
 			// this product on an archive?", which is the question being asked.
 			'visibility' => 'catalog',
 			'limit'      => 10,
-			'orderby'    => 'menu_order',
+			// ID is the tie-break, not decoration: menu_order is 0 across the
+			// whole catalog until a merchant reorders it, so on most stores
+			// every candidate ties and the winner would be left to the query
+			// plan. The docblock's claim to be stable across paging and
+			// re-sorting only holds with a total ordering.
+			'orderby'    => 'menu_order ID',
 			'order'      => 'ASC',
 			'paginate'   => false,
-			'return'     => 'objects',
+			// IDs, not objects: first_product_image() reads one meta field,
+			// and 'objects' would hydrate up to ten full WC_Product instances
+			// (post, meta and lookup rows apiece) to get it, during wp_head.
+			'return'     => 'ids',
 			'featured'   => true,
 		);
 
@@ -1359,23 +1400,32 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * The first product in a list that actually has an image.
 	 *
-	 * @param mixed $products Whatever wc_get_products() returned.
+	 * @param mixed $product_ids Whatever wc_get_products() returned. Expected
+	 *                           to be an array of IDs; guarded because a
+	 *                           filter on the query can change the shape.
 	 * @return array{url:string,width:int,height:int}
 	 */
-	private function first_product_image( $products ): array {
-		if ( ! is_array( $products ) ) {
+	private function first_product_image( $product_ids ): array {
+		if ( ! is_array( $product_ids ) || array() === $product_ids ) {
 			return $this->no_image();
 		}
 
-		foreach ( $products as $product ) {
-			if ( ! is_object( $product ) || ! method_exists( $product, 'get_image_id' ) ) {
-				continue;
-			}
-			$image = $this->attachment_image( (int) $product->get_image_id() );
+		foreach ( $product_ids as $product_id ) {
+			$image = $this->attachment_image( (int) get_post_thumbnail_id( (int) $product_id ) );
 			if ( '' !== $image['url'] ) {
 				return $image;
 			}
 		}
+
+		// Candidates existed and none of them yielded an image. Usually that
+		// just means an imageless catalog, but it is also what a deleted
+		// attachment looks like, and what a third party forcing a different
+		// `return` shape on the query looks like — all three are otherwise
+		// indistinguishable from "no candidates" at the call site.
+		WC_AI_Storefront_Logger::debug(
+			'Open Graph: %d archive image candidates, none with a readable image.',
+			count( $product_ids )
+		);
 
 		return $this->no_image();
 	}
@@ -1404,7 +1454,10 @@ class WC_AI_Storefront_Meta_Tags {
 		}
 
 		$src = wp_get_attachment_image_src( $attachment_id, 'full' );
-		if ( ! is_array( $src ) || empty( $src[0] ) ) {
+		// `'' === (string)` rather than `empty()`: this file documents twice
+		// (#679, verified live) that the two disagree on '0', and a URL is the
+		// wrong place to start trusting empty().
+		if ( ! is_array( $src ) || ! isset( $src[0] ) || '' === (string) $src[0] ) {
 			return $this->no_image();
 		}
 
