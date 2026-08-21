@@ -52,6 +52,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'get_theme_mod' )->justReturn( 0 );
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		// Archive image resolver (#683): default every lookup to "nothing
+		// found" so a test that does not opt in gets the same answer whatever
+		// order the suite runs in — this file shares one process with the rest.
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		// usable_url() reaches esc_url() during resolution now (#684 review), so
+		// it must be defined even for tests that never render. Identity, so a
+		// test asserting rejection has to opt in by overriding it.
+		Functions\when( 'esc_url' )->returnArg();
 		// twitter_price_data() (#679) formats through wc_price(),
 		// which this suite never loads real WooCommerce for. Stand in with a
 		// minimal HTML shape matching real wc_price()'s USD output closely
@@ -1042,22 +1052,18 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_archive_og_tags_for_category_with_thumbnail(): void {
-		Functions\when( 'strip_shortcodes' )->returnArg();
 		// wp_strip_all_tags is a real stub (identity for plain text); see stub_escapers().
-		Functions\when( 'is_product_category' )->justReturn( true );
-		Functions\when( 'get_queried_object' )->justReturn(
-			(object) array(
-				'term_id'     => 9,
-				'name'        => 'Belts',
-				'description' => 'Leather belts.',
-			)
+		// stub_belts_category() answers get_term_meta() only for term 9's
+		// `thumbnail_id`, so reading a different key finds nothing.
+		$this->stub_belts_category( 77 );
+		$this->stub_attachments(
+			array(),
+			array( 77 => array( 'https://shop.test/cat.jpg', 1024, 768, false ) )
 		);
-		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
-		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
-		Functions\when( 'get_term_meta' )->justReturn( 77 );
-		Functions\when( 'wp_get_attachment_url' )->justReturn( 'https://shop.test/cat.jpg' );
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'https://shop.test/cat.jpg', $og['og:image'] );
+		$this->assertSame( '1024', $og['og:image:width'] );
+		$this->assertSame( '768', $og['og:image:height'] );
 	}
 
 	public function test_archive_og_tags_for_shop(): void {
@@ -1302,7 +1308,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
 		Functions\when( 'get_theme_mod' )->justReturn( 7 );
-		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://shop.test/logo.png' );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/logo.png', 400, 100, false ) );
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'https://shop.test/logo.png', $og['og:image'] );
 	}
@@ -1339,6 +1345,428 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://shop.test/branded-og.png', $og['og:image'] );
 	}
 
+	// --- Archive social image and card type (#683) ---
+
+	/**
+	 * Stub attachment lookups keyed by ID.
+	 *
+	 * Keyed rather than flat so a wrong winner in the resolution chain cannot
+	 * masquerade as the right one: each source resolves to its own URL, and a
+	 * lookup against an ID nobody set finds nothing.
+	 *
+	 * @param array<int,int>          $thumbnails Post or product ID => attachment ID.
+	 * @param array<int,array<mixed>> $sources    Attachment ID => wp_get_attachment_image_src() result.
+	 */
+	private function stub_attachments( array $thumbnails, array $sources ): void {
+		Functions\when( 'get_post_thumbnail_id' )->alias(
+			static function ( $post_id = 0 ) use ( $thumbnails ) {
+				return $thumbnails[ (int) $post_id ] ?? 0;
+			}
+		);
+		Functions\when( 'wp_get_attachment_image_src' )->alias(
+			static function ( $attachment_id = 0 ) use ( $sources ) {
+				return $sources[ (int) $attachment_id ] ?? false;
+			}
+		);
+	}
+
+	/**
+	 * Put the class on a shop archive backed by page 5.
+	 *
+	 * wc_get_page_id() answers only for 'shop', so reading the wrong page
+	 * yields 0 rather than quietly returning the right ID anyway.
+	 */
+	private function stub_shop_archive(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->alias(
+			static function ( $page = '' ) {
+				return 'shop' === $page ? 5 : 0;
+			}
+		);
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+	}
+
+	/**
+	 * Put the class on the Belts product category, term 9.
+	 *
+	 * get_term_meta() answers only for term 9's `thumbnail_id`, so reading a
+	 * different key or a different term finds nothing.
+	 *
+	 * @param int $thumbnail_id Attachment ID for the category image; 0 for none.
+	 */
+	private function stub_belts_category( int $thumbnail_id = 0 ): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'     => 9,
+				'slug'        => 'belts',
+				'name'        => 'Belts',
+				'description' => 'Leather belts.',
+			)
+		);
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
+		Functions\when( 'get_term_meta' )->alias(
+			static function ( $term_id = 0, $key = '', $single = false ) use ( $thumbnail_id ) {
+				return ( 9 === (int) $term_id && 'thumbnail_id' === $key ) ? $thumbnail_id : '';
+			}
+		);
+	}
+
+	public function test_archive_og_image_uses_the_shop_page_featured_image(): void {
+		$this->stub_shop_archive();
+		// A logo is set too: the page's own image must still win.
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		$this->stub_attachments(
+			array( 5 => 42 ),
+			array(
+				42 => array( 'https://shop.test/storefront.jpg', 1200, 630, false ),
+				7  => array( 'https://shop.test/logo.png', 400, 100, false ),
+			)
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/storefront.jpg', $og['og:image'] );
+		$this->assertSame( '1200', $og['og:image:width'] );
+		$this->assertSame( '630', $og['og:image:height'] );
+	}
+
+	public function test_archive_og_image_ignores_an_unconfigured_shop_page(): void {
+		$this->stub_shop_archive();
+		// WooCommerce returns -1, not 0, when the Shop page is not set.
+		Functions\when( 'wc_get_page_id' )->justReturn( -1 );
+		// With no shop page there is no permalink, so og:url takes the
+		// home_url() fallback. Stubbed here rather than relying on another
+		// test having defined it: this file shares one process with the suite.
+		Functions\when( 'home_url' )->justReturn( 'https://shop.test/' );
+		$lookups = 0;
+		Functions\when( 'get_post_thumbnail_id' )->alias(
+			static function () use ( &$lookups ) {
+				++$lookups;
+				return 0;
+			}
+		);
+		$this->meta->build_archive_og_tags();
+		$this->assertSame( 0, $lookups, 'An unconfigured Shop page is not a post to read a featured image from.' );
+	}
+
+	public function test_archive_og_image_falls_back_to_a_featured_product_on_the_shop(): void {
+		$this->stub_shop_archive();
+		// A logo is set: a curated product must outrank it.
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wc_get_products' )->justReturn( array( 88 ) );
+		$this->stub_attachments(
+			array( 88 => 91 ),
+			array(
+				91 => array( 'https://shop.test/hoodie.jpg', 900, 900, false ),
+				7  => array( 'https://shop.test/logo.png', 400, 100, false ),
+			)
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/hoodie.jpg', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_asks_only_for_featured_catalog_products(): void {
+		$seen = array();
+		$this->stub_shop_archive();
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$seen ) {
+				$seen[] = $args;
+				return array();
+			}
+		);
+		$this->meta->build_archive_og_tags();
+		$this->assertCount( 1, $seen, 'The shop must not retry without the featured filter.' );
+		$this->assertTrue( $seen[0]['featured'] );
+		$this->assertSame( 'catalog', $seen[0]['visibility'] );
+		$this->assertSame( 'publish', $seen[0]['status'] );
+		$this->assertArrayNotHasKey( 'category', $seen[0] );
+		// The docblock argues this pick is stable across paging and re-sorting.
+		// A random or descending order would defeat that silently.
+		$this->assertSame( 'menu_order ID', $seen[0]['orderby'] );
+		$this->assertSame( 'ASC', $seen[0]['order'] );
+		// IDs, not hydrated objects — the query exists to read one meta field.
+		$this->assertSame( 'ids', $seen[0]['return'] );
+		$this->assertGreaterThan( 1, $seen[0]['limit'], 'A single-row limit cannot skip an imageless candidate.' );
+	}
+
+	public function test_archive_og_image_does_not_fall_back_to_an_arbitrary_product_on_the_shop(): void {
+		$this->stub_shop_archive();
+		// Nothing featured: the store has products, but none curated.
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		$this->stub_attachments( array(), array( 7 => array( 'https://shop.test/logo.png', 400, 100, false ) ) );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/logo.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_falls_back_to_a_featured_product_in_the_category(): void {
+		$seen = array();
+		$this->stub_belts_category();
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$seen ) {
+				$seen[] = $args;
+				return array( 88 );
+			}
+		);
+		$this->stub_attachments(
+			array( 88 => 91 ),
+			array( 91 => array( 'https://shop.test/belt.jpg', 900, 900, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/belt.jpg', $og['og:image'] );
+		$this->assertSame( array( 'belts' ), $seen[0]['category'] );
+	}
+
+	public function test_archive_og_image_uses_any_category_product_when_none_is_featured(): void {
+		$seen = array();
+		$this->stub_belts_category();
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$seen ) {
+				$seen[] = $args;
+				// The first call asks for featured products and finds none.
+				return isset( $args['featured'] ) ? array() : array( 88 );
+			}
+		);
+		$this->stub_attachments(
+			array( 88 => 91 ),
+			array( 91 => array( 'https://shop.test/belt.jpg', 900, 900, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/belt.jpg', $og['og:image'] );
+		$this->assertCount( 2, $seen );
+		$this->assertSame( array( 'belts' ), $seen[1]['category'] );
+	}
+
+	public function test_archive_og_image_skips_candidates_that_have_no_image(): void {
+		$this->stub_shop_archive();
+		Functions\when( 'wc_get_products' )->justReturn( array( 87, 88 ) );
+		$this->stub_attachments(
+			array(
+				87 => 0,
+				88 => 91,
+			),
+			array( 91 => array( 'https://shop.test/second.jpg', 900, 900, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/second.jpg', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_prefers_the_configured_default_over_a_featured_product(): void {
+		$this->stub_shop_archive();
+		Functions\when( 'wc_get_products' )->justReturn( array( 88 ) );
+		$this->stub_attachments(
+			array( 88 => 91 ),
+			array( 91 => array( 'https://shop.test/hoodie.jpg', 900, 900, false ) )
+		);
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_og_default_image' === $hook ? 'https://shop.test/branded-og.png' : $value;
+			}
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/branded-og.png', $og['og:image'] );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+	}
+
+	public function test_archive_og_image_ignores_a_default_image_filter_that_returns_a_non_string(): void {
+		$this->stub_shop_archive();
+		// The easy mistake: returning wp_get_attachment_image_src()'s array.
+		// Casting it would publish og:image="http://Array".
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_og_default_image' === $hook
+					? array( 'https://shop.test/branded-og.png', 1200, 630, false )
+					: $value;
+			}
+		);
+		Functions\when( 'wc_get_products' )->justReturn( array( 88 ) );
+		$this->stub_attachments(
+			array( 88 => 91 ),
+			array( 91 => array( 'https://shop.test/hoodie.jpg', 900, 900, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		// Falls through to the rest of the chain rather than publishing a cast.
+		$this->assertSame( 'https://shop.test/hoodie.jpg', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_omits_dimensions_the_attachment_cannot_supply(): void {
+		$this->stub_shop_archive();
+		// An attachment with no _wp_attachment_metadata: image_downsize()
+		// leaves both at 0 rather than omitting them.
+		$this->stub_attachments(
+			array( 5 => 42 ),
+			array( 42 => array( 'https://shop.test/logo.svg', 0, 0, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/logo.svg', $og['og:image'] );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+	}
+
+	public function test_archive_og_image_omits_dimensions_the_lookup_never_returned(): void {
+		$this->stub_shop_archive();
+		// A CDN or media-offload plugin filtering wp_get_attachment_image_src
+		// can hand back a short array with no width/height entries at all,
+		// which is a different shape from the explicit zeros above.
+		$this->stub_attachments(
+			array( 5 => 42 ),
+			array( 42 => array( 'https://shop.test/offloaded.jpg' ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/offloaded.jpg', $og['og:image'] );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+	}
+
+	public function test_archive_og_image_omits_a_half_known_size(): void {
+		$this->stub_shop_archive();
+		// An offload or CDN plugin filtering wp_get_attachment_image_src can
+		// return one dimension and not the other. Open Graph consumers treat
+		// width and height as a pair, so half of one is worse than neither.
+		$this->stub_attachments(
+			array( 5 => 42 ),
+			array( 42 => array( 'https://shop.test/half.jpg', 1200, 0, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/half.jpg', $og['og:image'] );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+	}
+
+	public function test_archive_og_image_ignores_a_default_image_esc_url_would_empty(): void {
+		$this->stub_shop_archive();
+		// esc_url() returns '' for a disallowed protocol. Accepting the URL
+		// anyway shipped og:image="" under a summary_large_image card, and
+		// cost the store the curated-product step below (#684 review).
+		Functions\when( 'esc_url' )->alias(
+			static function ( $url ) {
+				return 0 === strpos( (string) $url, 'javascript:' ) ? '' : $url;
+			}
+		);
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_og_default_image' === $hook ? 'javascript:alert(1)' : $value;
+			}
+		);
+		Functions\when( 'wc_get_products' )->justReturn( array( 88 ) );
+		$this->stub_attachments(
+			array( 88 => 91 ),
+			array( 91 => array( 'https://shop.test/hoodie.jpg', 900, 900, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/hoodie.jpg', $og['og:image'] );
+	}
+
+	public function test_render_drops_an_image_the_printer_cannot_emit(): void {
+		$this->stub_escapers();
+		$this->stub_shop_archive();
+		// The og_tags filter can replace og:image after every resolver has
+		// finished, so the card decision has to survive that too.
+		Functions\when( 'esc_url' )->alias(
+			static function ( $url ) {
+				return 0 === strpos( (string) $url, 'data:' ) ? '' : $url;
+			}
+		);
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_og_tags' === $hook ) {
+					$value['og:image']        = 'data:image/png;base64,AAAA';
+					$value['og:image:width']  = '1200';
+					$value['og:image:height'] = '630';
+				}
+				return $value;
+			}
+		);
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+		$this->assertStringNotContainsString( 'og:image', $html, 'An image esc_url() empties must not ship as content="".' );
+		$this->assertStringNotContainsString( 'twitter:image', $html );
+		$this->assertStringContainsString( '<meta name="twitter:card" content="summary"', $html );
+	}
+
+	public function test_archive_og_image_omits_dimensions_for_the_site_icon(): void {
+		$this->stub_shop_archive();
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( 'https://shop.test/icon.png' );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/icon.png', $og['og:image'] );
+		// get_site_icon_url( 512 ) takes core's `$size >= 512` branch and asks
+		// for 'full', so the file is whatever size it was stored at. Claiming
+		// 512x512 would be a guess a scraper then measures and rejects.
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+	}
+
+	public function test_archive_twitter_card_is_summary_when_no_image_resolves(): void {
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title'       => 'Shop',
+				'og:description' => 'Everything we sell.',
+			)
+		);
+		$this->assertSame( 'summary', $tw['twitter:card'] );
+		$this->assertArrayNotHasKey( 'twitter:image', $tw );
+	}
+
+	public function test_archive_twitter_card_is_summary_when_the_image_is_an_empty_string(): void {
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title' => 'Shop',
+				'og:image' => '',
+			)
+		);
+		$this->assertSame( 'summary', $tw['twitter:card'] );
+		$this->assertArrayNotHasKey( 'twitter:image', $tw );
+	}
+
+	public function test_archive_twitter_card_is_large_image_when_an_image_resolves(): void {
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title'       => 'Shop',
+				'og:description' => 'Everything we sell.',
+				'og:image'       => 'https://shop.test/storefront.jpg',
+			)
+		);
+		$this->assertSame( 'summary_large_image', $tw['twitter:card'] );
+		$this->assertSame( 'https://shop.test/storefront.jpg', $tw['twitter:image'] );
+	}
+
+	public function test_render_emits_a_summary_card_on_an_archive_with_no_image(): void {
+		$this->stub_escapers();
+		$this->stub_shop_archive();
+		// setUp() leaves every image source empty, which is the state of a
+		// stock WooCommerce install: no site icon, no logo, no page image.
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+		$this->assertStringContainsString( '<meta name="twitter:card" content="summary"', $html );
+		$this->assertStringNotContainsString( 'twitter:image', $html );
+		$this->assertStringNotContainsString( 'og:image', $html );
+	}
+
+	public function test_product_without_a_featured_image_asks_for_the_small_card(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		// The product path has no image fallback: archive_image() is reached
+		// only from build_archive_og_tags(). So an imageless product asks for
+		// the small card, where before #683 it asked for the large one it had
+		// no image for.
+		$product = $this->og_product();
+		$og      = $this->meta->build_og_tags( $product );
+		$this->assertArrayNotHasKey( 'og:image', $og );
+		$tw = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'summary', $tw['twitter:card'] );
+	}
 	// --- Task 3: front-page brand og:title (#527) ---
 
 	public function test_archive_og_title_is_brand_when_shop_is_front_page(): void {
@@ -1431,9 +1859,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
-		// Logo ID set, but the attachment URL is missing → fall through to icon.
+		// Logo ID set, but the attachment does not resolve → fall through to
+		// the icon. Stated here rather than leaning on the setUp() default, so
+		// the test carries its own premise.
 		Functions\when( 'get_theme_mod' )->justReturn( 7 );
-		Functions\when( 'wp_get_attachment_image_url' )->justReturn( false );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
 		Functions\when( 'get_site_icon_url' )->justReturn( 'https://shop.test/icon.png' );
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'https://shop.test/icon.png', $og['og:image'] );

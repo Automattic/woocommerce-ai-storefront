@@ -690,12 +690,24 @@ class WC_AI_Storefront_Meta_Tags {
 	 * @return array<string,string> property => content.
 	 */
 	public function build_twitter_tags( array $og, $product = null ): array {
-		$tw = array(
-			'twitter:card'        => 'summary_large_image',
+		// The card type has to match what we can actually show. The Cards
+		// spec makes twitter:image REQUIRED for summary_large_image, so
+		// declaring that card with no image cannot render as one (#683).
+		//
+		// This reaches product pages too, deliberately. build_og_tags()
+		// sets og:image only when get_post_thumbnail_id() returns an ID
+		// whose attachment resolves, so a product with no featured image
+		// arrives here without one and now asks for the small card. It
+		// previously asked for the large card it had no image for. There
+		// is no image fallback on the product path: archive_image() is
+		// reached only from build_archive_og_tags().
+		$has_image = isset( $og['og:image'] ) && '' !== $og['og:image'];
+		$tw        = array(
+			'twitter:card'        => $has_image ? 'summary_large_image' : 'summary',
 			'twitter:title'       => $og['og:title'] ?? '',
 			'twitter:description' => $og['og:description'] ?? '',
 		);
-		if ( ! empty( $og['og:image'] ) ) {
+		if ( $has_image ) {
 			$tw['twitter:image'] = $og['og:image'];
 		}
 		if ( isset( $og['og:image:alt'] ) && '' !== $og['og:image:alt'] ) {
@@ -921,13 +933,6 @@ class WC_AI_Storefront_Meta_Tags {
 				if ( is_string( $link ) && '' !== $link ) {
 					$og['og:url'] = $link;
 				}
-				$thumb_id = isset( $term->term_id ) ? (int) get_term_meta( $term->term_id, 'thumbnail_id', true ) : 0;
-				if ( $thumb_id > 0 ) {
-					$img = wp_get_attachment_url( $thumb_id );
-					if ( is_string( $img ) && '' !== $img ) {
-						$og['og:image'] = $img;
-					}
-				}
 			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
 			$is_front_page = function_exists( 'is_front_page' ) && is_front_page();
@@ -944,13 +949,19 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 		}
 
-		// No archive-specific image (shop never has one; a category may lack a
-		// thumbnail) → fall back to the site's default so the share card keeps
-		// an image even after we suppress Jetpack's auto-generated one.
-		if ( empty( $og['og:image'] ) ) {
-			$default_image = $this->archive_default_image();
-			if ( '' !== $default_image ) {
-				$og['og:image'] = $default_image;
+		$image = $this->archive_image();
+		if ( '' !== $image['url'] ) {
+			$og['og:image'] = $image['url'];
+			// Same gate as the product path: for 'full', image_downsize()
+			// seeds both at 0 and only overwrites them from the attachment's
+			// _wp_attachment_metadata width/height (not its `sizes` entries,
+			// which 'full' never consults), so an attachment with no metadata
+			// would otherwise publish og:image:width="0". Two of the five
+			// sources never reach image_downsize() at all and report 0
+			// deliberately: the filter branch and the site icon.
+			if ( $image['width'] > 0 && $image['height'] > 0 ) {
+				$og['og:image:width']  = (string) $image['width'];
+				$og['og:image:height'] = (string) $image['height'];
 			}
 		}
 
@@ -1191,6 +1202,8 @@ class WC_AI_Storefront_Meta_Tags {
 	 *                                      archive-page path.
 	 */
 	private function print_og_and_twitter( array $og, $product = null ): void {
+		$og = $this->drop_unprintable_image( $og );
+
 		foreach ( $og as $property => $content ) {
 			if ( '' === $content ) {
 				continue;
@@ -1206,41 +1219,334 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
-	 * Default social image for an archive that has no image of its own.
+	 * Resolve the archive's social image, with its dimensions when known.
 	 *
-	 * Order: a merchant/dev-configured default (filter), then the site logo
-	 * (Customizer custom_logo), then the site icon. Returns '' when none is
-	 * available. Keeps the shop/home share card from going imageless when we
-	 * suppress Jetpack's auto-generated Open Graph image.
+	 * Order: the archive's own image (a product category's thumbnail, or the
+	 * shop page's featured image), then a merchant/dev-configured default
+	 * (filter), then a product the merchant curated, then the site logo
+	 * (Customizer custom_logo), then the site icon.
+	 *
+	 * The curated-product step sits below the filter deliberately: a store
+	 * that configured a brand image asked for that image, and must not be
+	 * overridden by a heuristic. It sits above the logo because a product
+	 * photo outperforms a logo as a share card.
+	 *
+	 * @return array{url:string,width:int,height:int} Empty URL when the store
+	 *                                                has no image to offer.
 	 */
-	private function archive_default_image(): string {
+	private function archive_image(): array {
+		$own = $this->archive_own_image();
+		if ( '' !== $own['url'] ) {
+			return $own;
+		}
+
 		/**
 		 * Filter the default Open Graph image URL for archive pages.
 		 *
-		 * @param string $url Default image URL. Empty string falls through to
-		 *                    the site logo, then the site icon.
+		 * @param string $url Default image URL. Empty string falls through to a
+		 *                    curated product, then the site logo, then the site
+		 *                    icon.
 		 */
-		$configured = (string) apply_filters( 'wc_ai_storefront_og_default_image', '' );
+		$configured = apply_filters( 'wc_ai_storefront_og_default_image', '' );
+		if ( ! is_string( $configured ) ) {
+			// A non-string here is a callback bug, not a merchant choice, and
+			// casting it would turn that bug into a published claim: (string)
+			// on an array yields "Array", which esc_url() then ships as
+			// og:image="http://Array", and on an object with no __toString it
+			// is an uncaught Error mid-wp_head. Returning an attachment array
+			// is the easy mistake, since wp_get_attachment_image_src() (used
+			// three times in this class) returns exactly that.
+			WC_AI_Storefront_Logger::debug(
+				'Open Graph: wc_ai_storefront_og_default_image returned %s, not a string. Ignoring it.',
+				get_debug_type( $configured )
+			);
+			$configured = '';
+		}
+		if ( '' !== $configured && '' === $this->usable_url( $configured ) ) {
+			// Returning early on a URL the printer cannot emit would cost the
+			// store the curated product, logo and icon steps below, and leave
+			// the archive with no image at all.
+			WC_AI_Storefront_Logger::debug(
+				'Open Graph: wc_ai_storefront_og_default_image returned "%s", which esc_url() empties. Ignoring it.',
+				$configured
+			);
+			$configured = '';
+		}
 		if ( '' !== $configured ) {
-			return $configured;
+			// A bare URL carries no dimensions we can vouch for.
+			return array(
+				'url'    => $configured,
+				'width'  => 0,
+				'height' => 0,
+			);
+		}
+
+		$curated = $this->archive_product_image();
+		if ( '' !== $curated['url'] ) {
+			return $curated;
 		}
 
 		$logo_id = function_exists( 'get_theme_mod' ) ? (int) get_theme_mod( 'custom_logo' ) : 0;
-		if ( $logo_id > 0 && function_exists( 'wp_get_attachment_image_url' ) ) {
-			$url = wp_get_attachment_image_url( $logo_id, 'full' );
-			if ( is_string( $url ) && '' !== $url ) {
-				return $url;
-			}
+		$logo    = $this->attachment_image( $logo_id );
+		if ( '' !== $logo['url'] ) {
+			return $logo;
 		}
 
 		if ( function_exists( 'get_site_icon_url' ) ) {
-			$icon = (string) get_site_icon_url( 512 );
+			// usable_url() because get_site_icon_url has its own filter, so
+			// this is not guaranteed to be a URL WordPress produced.
+			$icon = $this->usable_url( (string) get_site_icon_url( 512 ) );
 			if ( '' !== $icon ) {
-				return $icon;
+				// No dimensions, for the same reason the filter branch above
+				// reports none: we cannot vouch for them. Core's
+				// get_site_icon_url() takes the `$size >= 512` branch and asks
+				// for 'full', i.e. the site-icon attachment at whatever size it
+				// was stored, NOT a 512 crop (wp-includes/general-template.php).
+				// The Customizer usually does store 512x512, but "Skip cropping"
+				// keeps the original, `wp option update site_icon` sets any
+				// attachment, and the get_site_icon_url filter can return any
+				// URL at all. Publishing a width a scraper then measures and
+				// disagrees with is worse than publishing none.
+				return array(
+					'url'    => $icon,
+					'width'  => 0,
+					'height' => 0,
+				);
 			}
 		}
 
-		return '';
+		return $this->no_image();
+	}
+
+	/**
+	 * The image belonging to this archive itself, if the merchant set one.
+	 *
+	 * A product category carries one in `thumbnail_id` term meta. The shop
+	 * archive is backed by a real page (`wc_get_page_id( 'shop' )`), so it
+	 * carries one as that page's featured image.
+	 *
+	 * @return array{url:string,width:int,height:int}
+	 */
+	private function archive_own_image(): array {
+		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
+			$term    = get_queried_object();
+			$term_id = is_object( $term ) && isset( $term->term_id ) ? (int) $term->term_id : 0;
+			if ( $term_id > 0 ) {
+				return $this->attachment_image( (int) get_term_meta( $term_id, 'thumbnail_id', true ) );
+			}
+		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
+			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
+			if ( $shop_id > 0 && function_exists( 'get_post_thumbnail_id' ) ) {
+				return $this->attachment_image( (int) get_post_thumbnail_id( $shop_id ) );
+			}
+		}
+
+		return $this->no_image();
+	}
+
+	/**
+	 * A product image standing in for an archive that has none of its own.
+	 *
+	 * Prefers Featured products: WooCommerce already stores that curation in
+	 * the `product_visibility` taxonomy, so this reads a marketing decision
+	 * the merchant already made rather than inventing a new setting.
+	 *
+	 * Deliberately NOT the first product in the rendered loop. SEOPress does
+	 * that, and the result is that `/shop/page/2/` advertises a different
+	 * product than `/shop/`, and re-sorting the archive changes both. This
+	 * query is independent of the archive's own ordering and paging.
+	 *
+	 * Runs only after the archive's own image and the filter have both come
+	 * up empty, so a store that configured either never pays for the query.
+	 *
+	 * @return array{url:string,width:int,height:int}
+	 */
+	private function archive_product_image(): array {
+		if ( ! function_exists( 'wc_get_products' ) ) {
+			return $this->no_image();
+		}
+
+		$args = array(
+			'status'     => 'publish',
+			// Catalog visibility is the native answer to "may a shopper meet
+			// this product on an archive?", which is the question being asked.
+			'visibility' => 'catalog',
+			'limit'      => 10,
+			// ID is the tie-break, not decoration: menu_order is 0 across the
+			// whole catalog until a merchant reorders it, so on most stores
+			// every candidate ties and the winner would be left to the query
+			// plan. The docblock's claim to be stable across paging and
+			// re-sorting only holds with a total ordering.
+			'orderby'    => 'menu_order ID',
+			'order'      => 'ASC',
+			'paginate'   => false,
+			// IDs, not objects: first_product_image() reads one meta field,
+			// and 'objects' would hydrate up to ten full WC_Product instances
+			// (post, meta and lookup rows apiece) to get it, during wp_head.
+			'return'     => 'ids',
+			'featured'   => true,
+		);
+
+		$slug = $this->queried_category_slug();
+		if ( '' !== $slug ) {
+			$args['category'] = array( $slug );
+		}
+
+		$image = $this->first_product_image( wc_get_products( $args ) );
+		if ( '' !== $image['url'] ) {
+			return $image;
+		}
+
+		if ( '' === $slug ) {
+			// On the shop archive there is no narrower set to retry with: with
+			// nothing featured, every product in the catalog is an equally
+			// arbitrary stand-in for the whole store, so we pick none.
+			return $this->no_image();
+		}
+
+		// Within one category every product does belong to the thing being
+		// described, so any of them represents it when none is featured.
+		unset( $args['featured'] );
+
+		return $this->first_product_image( wc_get_products( $args ) );
+	}
+
+	/**
+	 * The first product in a list that actually has an image.
+	 *
+	 * @param mixed $product_ids Whatever wc_get_products() returned. Expected
+	 *                           to be an array of IDs; guarded because a
+	 *                           filter on the query can change the shape.
+	 * @return array{url:string,width:int,height:int}
+	 */
+	private function first_product_image( $product_ids ): array {
+		if ( ! is_array( $product_ids ) || array() === $product_ids ) {
+			return $this->no_image();
+		}
+
+		foreach ( $product_ids as $product_id ) {
+			$image = $this->attachment_image( (int) get_post_thumbnail_id( (int) $product_id ) );
+			if ( '' !== $image['url'] ) {
+				return $image;
+			}
+		}
+
+		// Candidates existed and none of them yielded an image. Usually that
+		// just means an imageless catalog, but it is also what a deleted
+		// attachment looks like, and what a third party forcing a different
+		// `return` shape on the query looks like — all three are otherwise
+		// indistinguishable from "no candidates" at the call site.
+		WC_AI_Storefront_Logger::debug(
+			'Open Graph: %d archive image candidates, none with a readable image.',
+			count( $product_ids )
+		);
+
+		return $this->no_image();
+	}
+
+	/**
+	 * The queried product category's slug, or '' when this is not one.
+	 */
+	private function queried_category_slug(): string {
+		if ( ! function_exists( 'is_product_category' ) || ! is_product_category() ) {
+			return '';
+		}
+		$term = get_queried_object();
+
+		return is_object( $term ) && isset( $term->slug ) ? (string) $term->slug : '';
+	}
+
+	/**
+	 * Drop an og:image the printer would escape away to nothing.
+	 *
+	 * print_meta() runs esc_url() on og:image, and esc_url() returns '' for a
+	 * disallowed protocol (`javascript:`, `data:`). But the emptiness check in
+	 * print_og_and_twitter() tests the RAW value, so the page shipped
+	 * og:image="" while build_twitter_tags() still saw a URL and asked for
+	 * summary_large_image: the large-card-with-no-image state this whole
+	 * change exists to remove (#684 review).
+	 *
+	 * Decided here, once, rather than in the resolver, because it has to hold
+	 * for every source — including the product path, which never goes through
+	 * archive_image(), and the wc_ai_storefront_og_tags filter, which can
+	 * replace og:image after any resolver has finished.
+	 *
+	 * @param array<string,string> $og Open Graph map.
+	 * @return array<string,string> The same map, minus an unprintable image
+	 *                              and the properties that describe it.
+	 */
+	private function drop_unprintable_image( array $og ): array {
+		if ( ! isset( $og['og:image'] ) || '' === $og['og:image'] ) {
+			return $og;
+		}
+
+		if ( '' !== $this->usable_url( (string) $og['og:image'] ) ) {
+			return $og;
+		}
+
+		WC_AI_Storefront_Logger::debug(
+			'Open Graph: og:image "%s" does not survive esc_url(). Dropping it, and the card with it.',
+			(string) $og['og:image']
+		);
+		unset( $og['og:image'], $og['og:image:width'], $og['og:image:height'], $og['og:image:alt'] );
+
+		return $og;
+	}
+
+	/**
+	 * The URL unchanged, or '' when escaping would empty it.
+	 *
+	 * Returns the RAW url on success, not the escaped form: print_meta()
+	 * escapes again at output, and storing the escaped value would
+	 * double-encode it.
+	 *
+	 * @param string $url Candidate URL.
+	 */
+	private function usable_url( string $url ): string {
+		if ( '' === $url || ! function_exists( 'esc_url' ) ) {
+			return $url;
+		}
+
+		return '' === esc_url( $url ) ? '' : $url;
+	}
+
+	/**
+	 * An attachment's full-size URL and dimensions.
+	 *
+	 * @param int $attachment_id Attachment ID; 0 or less yields an empty URL.
+	 * @return array{url:string,width:int,height:int}
+	 */
+	private function attachment_image( int $attachment_id ): array {
+		if ( $attachment_id <= 0 || ! function_exists( 'wp_get_attachment_image_src' ) ) {
+			return $this->no_image();
+		}
+
+		$src = wp_get_attachment_image_src( $attachment_id, 'full' );
+		// `'' === (string)` rather than `empty()`: this file documents twice
+		// (#679, verified live) that the two disagree on '0', and a URL is the
+		// wrong place to start trusting empty().
+		if ( ! is_array( $src ) || ! isset( $src[0] ) || '' === (string) $src[0] ) {
+			return $this->no_image();
+		}
+
+		return array(
+			'url'    => (string) $src[0],
+			'width'  => isset( $src[1] ) ? (int) $src[1] : 0,
+			'height' => isset( $src[2] ) ? (int) $src[2] : 0,
+		);
+	}
+
+	/**
+	 * The "no image" result every resolver step returns when it comes up empty.
+	 *
+	 * @return array{url:string,width:int,height:int}
+	 */
+	private function no_image(): array {
+		return array(
+			'url'    => '',
+			'width'  => 0,
+			'height' => 0,
+		);
 	}
 
 	/**

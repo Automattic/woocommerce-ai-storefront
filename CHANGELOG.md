@@ -9,6 +9,13 @@
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
 ### Fixed
+- **Sharing your Shop page or a product category showed a blank preview (#683).**
+  - The preview card was set up to display a large photo, but no photo was attached to it, so social networks and messaging apps fell back to showing a plain link.
+  - Your Shop page now uses its own featured image, the one on its edit screen in WordPress, and a product category uses the category image you set in WooCommerce.
+  - Where you haven't set either, your store picks one of your Featured products instead. That reads a choice you already made, so there is nothing new to fill in, and the picture stays put rather than changing as shoppers page through or re-sort the listing.
+  - If your store has no image to offer at all, the preview now asks for the small card format rather than promising a photo it cannot supply.
+  - The image's size is sent along too, so previews render at full size right away instead of sometimes needing to be measured first, and it is left out when your image library cannot report it rather than guessed at.
+  - Products without a featured image are covered by the same fix. They were asking for the large card too, with nothing to fill it. They now ask for the small one. Products that do have a featured image are unchanged.
 - **Your meta description appeared twice when another SEO plugin was active (#669).**
   - With Yoast SEO, Rank Math, SEOPress or All in One SEO also running, your product, category and shop pages each carried two meta descriptions. Search engines pick one of them, so nothing broke outright, but validators flagged it and the only way to clear it was to deactivate one of the two plugins.
   - Your store now checks whether the other SEO plugin is supplying a description for the page it is about to render, and stays quiet when it is. One description per page, whichever plugin wrote it, with nothing to deactivate.
