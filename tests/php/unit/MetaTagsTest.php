@@ -14,6 +14,25 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	private WC_AI_Storefront_Meta_Tags $meta;
 
+	/**
+	 * Decimal separator the wc_price() stub formats with.
+	 *
+	 * Real `wc_price()` reads `wc_get_price_decimal_separator()`, which a
+	 * German or French store sets to ','. Hardcoding '.' made such a store
+	 * unrepresentable in this suite (#679 review); a test that needs one
+	 * overwrites this before calling.
+	 *
+	 * @var string
+	 */
+	private string $price_decimal_separator = '.';
+
+	/**
+	 * Thousand separator the wc_price() stub formats with.
+	 *
+	 * @var string
+	 */
+	private string $price_thousand_separator = ',';
+
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
@@ -43,10 +62,28 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// `&#036;`, matching real wc_price()'s own output (confirmed by live
 		// capture, #679 task 3) rather than a literal "$" — a stub that used
 		// the literal would let a missing html_entity_decode() pass silently.
+		//
+		// THROWS on a non-numeric price (#679 review). The previous stub did
+		// its own `number_format( (float) $price, 2 )`, which laundered the
+		// production `(float)` cast: dropping the cast, or dropping the
+		// is_numeric() guard in front of it, left this suite green while
+		// "Call for price" published "$0.00". A stub that refuses what it
+		// cannot honestly format makes that guard testable. Separators are
+		// properties rather than hardcoded so a comma-decimal store is
+		// representable at all.
 		Functions\when( 'wc_price' )->alias(
-			static function ( $price, $args = array() ) {
-				$symbol = 'USD' === ( $args['currency'] ?? '' ) ? '&#036;' : ( ( $args['currency'] ?? '' ) . ' ' );
-				return '<span class="woocommerce-Price-amount amount"><bdi>' . $symbol . number_format( (float) $price, 2 ) . '</bdi></span>';
+			function ( $price, $args = array() ) {
+				if ( ! is_numeric( $price ) ) {
+					throw new \InvalidArgumentException(
+						'wc_price() stub refused a non-numeric price: ' . var_export( $price, true )
+					);
+				}
+				$currency = (string) ( $args['currency'] ?? '' );
+				$symbol   = 'USD' === $currency ? '&#036;' : ( '' !== $currency ? $currency . ' ' : '' );
+				return '<span class="woocommerce-Price-amount amount"><bdi>'
+					. $symbol
+					. number_format( (float) $price, 2, $this->price_decimal_separator, $this->price_thousand_separator )
+					. '</bdi></span>';
 			}
 		);
 		// Shared with AuthoredSeoTest; defined in tests/php/stubs-jetpack.php.
@@ -164,8 +201,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			$attr = \Mockery::mock();
 			$attr->shouldReceive( 'get_visible' )->andReturn( true );
 			$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+			$attr->shouldReceive( 'is_taxonomy' )->andReturn( true );
 			$product->shouldReceive( 'get_attributes' )->andReturn( array( 'pa_condition' => $attr ) );
+			// `pa_condition` is a TAXONOMY attribute, so real WooCommerce
+			// answers get_attribute() with the term NAME — the merchant's
+			// display label — and only wc_get_product_terms() reaches the
+			// slug (#679 review). 'condition' is that label; pass
+			// 'condition_terms' to give it slugs that differ from it.
 			$product->shouldReceive( 'get_attribute' )->andReturn( $overrides['condition'] );
+			$terms = $overrides['condition_terms'] ?? array( $overrides['condition'] );
+			Functions\when( 'wc_get_product_terms' )->justReturn( $terms );
 			$product->shouldReceive( 'get_variation_attributes' )->andReturn( array() );
 		} else {
 			$product->shouldReceive( 'get_attributes' )->andReturn( array() );
@@ -603,7 +648,38 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$og = $this->meta->build_og_tags( $this->og_product( array( 'condition' => 'new' ) ) );
+		$og = $this->meta->build_og_tags(
+			$this->og_product(
+				array(
+					// Label differs from slug, as it does on any store that
+					// renamed the term or runs in another language (#679
+					// review). Matching the label emitted nothing here.
+					'condition'       => 'Brand New',
+					'condition_terms' => array( 'new' ),
+				)
+			)
+		);
+		$this->assertSame( 'new', $og['product:condition'] );
+	}
+
+	public function test_og_tags_emit_the_slug_not_the_merchant_label(): void {
+		// Facebook's product:condition vocabulary is `new` / `refurbished`
+		// / `used`. A merchant label must never reach the tag, even when
+		// it is the one that resolved.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags(
+			$this->og_product(
+				array(
+					'condition'       => 'Neu',
+					'condition_terms' => array( 'new' ),
+				)
+			)
+		);
 		$this->assertSame( 'new', $og['product:condition'] );
 	}
 
@@ -658,6 +734,89 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertSame( '$0.00', $tw['twitter:data1'] );
 		$this->assertStringNotContainsString( '<', $tw['twitter:data1'] );
+	}
+
+	public function test_free_product_gets_both_a_price_row_and_an_availability_row(): void {
+		// End to end, build_og_tags() -> build_twitter_tags(), on the one
+		// value where `! empty()` and `'' !== $price` disagreed: '0'. The
+		// OG key was set and the Twitter pair was not, so a free product
+		// rendered a lopsided card — an Availability row with no Price row
+		// beside it (#679 review, verified live).
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/free/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product( array( 'price' => '0' ) );
+		$og      = $this->meta->build_og_tags( $product );
+		$this->assertSame( '0', $og['product:price:amount'] );
+
+		$tw = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'Price', $tw['twitter:label1'] );
+		$this->assertSame( '$0.00', $tw['twitter:data1'] );
+		$this->assertSame( 'Availability', $tw['twitter:label2'] );
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_image_alt_survives_alt_text_of_zero(): void {
+		// The same `! empty()` mismatch one gate up: "0" is legal alt text
+		// and build_og_tags() publishes it, so the Twitter mirror must too.
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:image'     => 'https://shop.test/img/belt.jpg',
+				'og:image:alt' => '0',
+			)
+		);
+		$this->assertSame( '0', $tw['twitter:image:alt'] );
+	}
+
+	public function test_twitter_data1_does_not_publish_zero_for_a_non_numeric_amount(): void {
+		// `product:price:amount` is read AFTER the wc_ai_storefront_og_tags
+		// filter, so a filter consumer can put anything there. Casting it
+		// to float published "$0.00" — a false claim, and one the machine
+		// tag on the same page contradicts (#679 review, verified live).
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => 'Call for price',
+				'product:price:currency' => 'USD',
+			)
+		);
+		$this->assertSame( 'USD Call for price', $tw['twitter:data1'] );
+		$this->assertStringNotContainsString( '0.00', $tw['twitter:data1'] );
+	}
+
+	public function test_twitter_data1_does_not_truncate_a_comma_decimal_amount(): void {
+		// A comma-decimal store's "1.234,56" casts to 1.234, which
+		// published "$1.23" — the same product advertised at a thousandth
+		// of its price. Not numeric to PHP, so it takes the raw fallback.
+		$this->price_decimal_separator  = ',';
+		$this->price_thousand_separator = '.';
+
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => '1.234,56',
+				'product:price:currency' => 'EUR',
+			)
+		);
+		$this->assertSame( 'EUR 1.234,56', $tw['twitter:data1'] );
+	}
+
+	public function test_twitter_data1_formats_a_comma_decimal_store_price(): void {
+		// The numeric counterpart: the amount OG actually carries is the
+		// bare decimal WooCommerce stores, and wc_price() is what applies
+		// the store's separators. Pins that the guard does not reject a
+		// perfectly good price on a comma-decimal store.
+		$this->price_decimal_separator  = ',';
+		$this->price_thousand_separator = '.';
+
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => '1234.56',
+				'product:price:currency' => 'EUR',
+			)
+		);
+		$this->assertSame( 'EUR 1.234,56', $tw['twitter:data1'] );
 	}
 
 	public function test_twitter_data2_uses_out_of_stock_display_text(): void {

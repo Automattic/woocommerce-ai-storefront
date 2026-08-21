@@ -683,13 +683,19 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( ! empty( $og['og:image'] ) ) {
 			$tw['twitter:image'] = $og['og:image'];
 		}
-		if ( ! empty( $og['og:image:alt'] ) ) {
+		if ( isset( $og['og:image:alt'] ) && '' !== $og['og:image:alt'] ) {
+			// Mirrors build_og_tags()'s own `'' !== $alt` gate literally.
+			// `! empty()` would drop alt text of "0" — legal alt text.
 			$tw['twitter:image:alt'] = $og['og:image:alt'];
 		}
-		if ( ! empty( $og['product:price:amount'] ) ) {
+		if ( isset( $og['product:price:amount'] ) && '' !== $og['product:price:amount'] ) {
 			// Same gate as product:price:amount itself (build_og_tags()): an
 			// unpurchasable or unpriced product never populates that key,
-			// so this pair must not appear either.
+			// so this pair must not appear either. Written as the OG gate
+			// is written, `'' !== $price`, rather than as `! empty()`:
+			// those two disagree on exactly one value, '0', and a free
+			// product got an Availability row with no Price row beside it
+			// (#679 review, verified live).
 			$tw['twitter:label1'] = __( 'Price', 'woocommerce-ai-storefront' );
 			$tw['twitter:data1']  = $this->twitter_price_data( $og );
 		}
@@ -797,6 +803,26 @@ class WC_AI_Storefront_Meta_Tags {
 	private function twitter_price_data( array $og ): string {
 		$currency = (string) ( $og['product:price:currency'] ?? '' );
 		$amount   = (string) ( $og['product:price:amount'] ?? '' );
+
+		if ( ! is_numeric( $amount ) ) {
+			// `(float)` on a non-numeric string does not fail, it invents:
+			// "Call for price" casts to 0.0 and this method would publish
+			// "$0.00", and a comma-decimal "1.234,56" casts to 1.234 and
+			// would publish "$1.23" (#679 review, both verified live).
+			// `product:price:amount` on the same page still carries the
+			// original string, so the card and the machine tag would
+			// disagree with nothing to flag it. Nowhere else on this path
+			// does bad input become a CLAIM rather than an absence, so
+			// fall back to the unformatted currency-code shape and say so
+			// in the log.
+			if ( class_exists( 'WC_AI_Storefront_Logger' ) ) {
+				WC_AI_Storefront_Logger::debug(
+					'Open Graph: product:price:amount is not numeric (%s), so twitter:data1 keeps the raw value instead of a currency-formatted zero.',
+					$amount
+				);
+			}
+			return '' !== $currency ? $currency . ' ' . $amount : $amount;
+		}
 
 		if ( function_exists( 'wc_price' ) && function_exists( 'wp_strip_all_tags' ) ) {
 			$args = '' !== $currency ? array( 'currency' => $currency ) : array();
