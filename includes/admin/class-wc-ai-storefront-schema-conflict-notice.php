@@ -1,8 +1,9 @@
 <?php
 /**
- * Migration nudge: detect an overlapping SEO plugin and invite the merchant
- * to deactivate it (this plugin now provides titles, descriptions, social
- * cards, and structured data). Informational + dismissible; changes no output.
+ * Migration nudge: detect an SEO plugin that emits some of the same tags
+ * this plugin now provides (titles, descriptions, social cards, and
+ * structured data) and invite the merchant to deactivate it. Informational
+ * + dismissible; changes no output.
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -68,7 +69,7 @@ class WC_AI_Storefront_Schema_Conflict_Notice {
 		echo '<p>';
 		printf(
 			/* translators: %s: comma-separated list of detected SEO plugin names. */
-			esc_html__( 'WooCommerce AI Storefront now provides your product titles, descriptions, social cards, and structured data. %s is also emitting these, which can produce duplicate tags. You can deactivate it. Review the checklist first.', 'woocommerce-ai-storefront' ),
+			esc_html__( 'WooCommerce AI Storefront now provides your product titles, descriptions, social cards, and structured data. %s emits some of the same tags, which can produce duplicates. You can deactivate it. Review the checklist first.', 'woocommerce-ai-storefront' ),
 			'<strong>' . esc_html( $labels ) . '</strong>'
 		);
 		echo '</p>';

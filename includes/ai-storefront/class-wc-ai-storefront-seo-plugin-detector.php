@@ -2,11 +2,14 @@
 /**
  * SEO-plugin conflict detector.
  *
- * Presence-based detection of the three SEO plugins that emit their own
- * WooCommerce Product schema and human-SERP <head> metadata. Used ONLY
- * by the migration nudge ({@see WC_AI_Storefront_Schema_Conflict_Notice})
- * to tell the merchant they can deactivate the other plugin — it does NOT
- * gate metadata emission (we always emit on commerce pages; see
+ * Presence-based detection of the SEO plugins (Yoast, Rank Math, All in
+ * One SEO, SEOPress) that emit their own human-SERP <head> metadata.
+ * Rank Math, All in One SEO, and the paid Yoast WooCommerce SEO addon
+ * also emit their own WooCommerce Product schema; free Yoast core and
+ * SEOPress do not. Used ONLY by the migration nudge
+ * ({@see WC_AI_Storefront_Schema_Conflict_Notice}) to tell the merchant
+ * they can deactivate the other plugin — it does NOT gate metadata
+ * emission (we always emit on commerce pages; see
  * {@see WC_AI_Storefront_Meta_Tags::should_emit()}).
  *
  * Presence-based (not option-reading) on purpose: reading each plugin's
@@ -31,12 +34,20 @@ class WC_AI_Storefront_Seo_Plugin_Detector {
 	public static function detect(): array {
 		$found = array();
 
-		// Yoast WooCommerce SEO addon (NOT free Yoast core) is what emits
-		// the full WC Product node + product meta.
-		if ( class_exists( 'Yoast_WooCommerce_SEO' ) ) {
+		// Yoast SEO. Free core defines WPSEO_VERSION; the paid WooCommerce
+		// SEO addon requires core and additionally defines the
+		// Yoast_WooCommerce_SEO class, so whenever the addon is active,
+		// core is too. Both states are reported as a single 'yoast' row,
+		// carrying the addon's more specific label when the addon is
+		// present and the core label otherwise, so the merchant-facing
+		// notice never names the same vendor twice.
+		$yoast_addon_active = class_exists( 'Yoast_WooCommerce_SEO' );
+		if ( $yoast_addon_active || defined( 'WPSEO_VERSION' ) ) {
 			$found[] = array(
 				'slug'  => 'yoast',
-				'label' => __( 'Yoast WooCommerce SEO', 'woocommerce-ai-storefront' ),
+				'label' => $yoast_addon_active
+					? __( 'Yoast WooCommerce SEO', 'woocommerce-ai-storefront' )
+					: __( 'Yoast SEO', 'woocommerce-ai-storefront' ),
 			);
 		}
 
@@ -51,6 +62,13 @@ class WC_AI_Storefront_Seo_Plugin_Detector {
 			$found[] = array(
 				'slug'  => 'aioseo',
 				'label' => __( 'All in One SEO', 'woocommerce-ai-storefront' ),
+			);
+		}
+
+		if ( defined( 'SEOPRESS_VERSION' ) ) {
+			$found[] = array(
+				'slug'  => 'seopress',
+				'label' => __( 'SEOPress', 'woocommerce-ai-storefront' ),
 			);
 		}
 
