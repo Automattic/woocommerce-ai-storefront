@@ -511,9 +511,26 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:locale'      => $this->og_locale(),
 		);
 
-		$image = get_the_post_thumbnail_url( $product->get_id(), 'full' );
-		if ( is_string( $image ) && '' !== $image ) {
-			$og['og:image'] = $image;
+		// Attachment ID first, then the ONE wp_get_attachment_image_src() call
+		// that returns url + width + height together (#679 task 2) — replaces
+		// the previous get_the_post_thumbnail_url(), which only ever gave us
+		// the url and discarded the dimensions Open Graph and Twitter both
+		// want too.
+		$thumbnail_id = (int) get_post_thumbnail_id( $product->get_id() );
+		if ( $thumbnail_id > 0 ) {
+			$image = wp_get_attachment_image_src( $thumbnail_id, 'full' );
+			if ( is_array( $image ) && ! empty( $image[0] ) ) {
+				$og['og:image']        = (string) $image[0];
+				$og['og:image:width']  = (string) $image[1];
+				$og['og:image:height'] = (string) $image[2];
+
+				// Alt text is frequently empty; omit the key rather than
+				// emitting an empty string, same as og:image itself above.
+				$alt = get_post_meta( $thumbnail_id, '_wp_attachment_image_alt', true );
+				if ( is_string( $alt ) && '' !== $alt ) {
+					$og['og:image:alt'] = $alt;
+				}
+			}
 		}
 
 		if ( $product->is_purchasable() ) {
@@ -522,6 +539,22 @@ class WC_AI_Storefront_Meta_Tags {
 				$og['product:price:amount']   = $price;
 				$og['product:price:currency'] = get_woocommerce_currency();
 			}
+		}
+
+		// Stock and Condition (#679 task 2), both read from the shared,
+		// vocabulary-neutral resolvers on WC_AI_Storefront_Product_Facts so
+		// this emitter can never disagree with JSON-LD about the same
+		// product. Availability is unconditional — every product has a
+		// stock state regardless of price/purchasability — while Condition
+		// is left out entirely when nothing types, per condition_slug()'s
+		// own contract.
+		$stock_state                = WC_AI_Storefront_Product_Facts::stock_state( $product );
+		$og['product:availability'] = $this->product_availability( $stock_state );
+		$og['og:availability']      = $this->og_availability( $stock_state );
+
+		$condition = WC_AI_Storefront_Product_Facts::condition_slug( $product );
+		if ( '' !== $condition ) {
+			$og['product:condition'] = $condition;
 		}
 
 		/**
@@ -534,7 +567,59 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * Facebook's `product:availability` vocabulary for a WC stock state.
+	 *
+	 * Diverges from {@see og_availability()} on backorder — the one place
+	 * these two vocabularies disagree (#679 task 2), found by reading
+	 * Yoast's WooCommerce SEO addon presenter classes:
+	 * `woocommerce-product-availability-presenter.php` (Facebook's
+	 * `product:availability`) has no "backorder" term of its own, so a
+	 * backordered product reads "available for order" there — still
+	 * purchasable, just not from stock on hand. `og_availability()` covers
+	 * the sibling `woocommerce-pinterest-product-availability-presenter.php`,
+	 * which DOES have a distinct "backorder" term. Getting this pairing
+	 * wrong ships a technically well-formed tag with the wrong word in it,
+	 * which no crawler validator flags.
+	 *
+	 * @param string $stock_state One of `instock`, `outofstock`,
+	 *                            `onbackorder` ({@see WC_AI_Storefront_Product_Facts::stock_state()}).
+	 * @return string Facebook's vocabulary term for `product:availability`.
+	 */
+	private function product_availability( string $stock_state ): string {
+		if ( 'onbackorder' === $stock_state ) {
+			return 'available for order';
+		}
+		return 'outofstock' === $stock_state ? 'out of stock' : 'instock';
+	}
+
+	/**
+	 * Pinterest's `og:availability` vocabulary for a WC stock state.
+	 *
+	 * See {@see product_availability()} for why this disagrees with it on
+	 * backorder.
+	 *
+	 * @param string $stock_state One of `instock`, `outofstock`,
+	 *                            `onbackorder`.
+	 * @return string Pinterest's vocabulary term for `og:availability`.
+	 */
+	private function og_availability( string $stock_state ): string {
+		if ( 'onbackorder' === $stock_state ) {
+			return 'backorder';
+		}
+		return 'outofstock' === $stock_state ? 'out of stock' : 'instock';
+	}
+
+	/**
 	 * Derive Twitter Card tags from an Open Graph map.
+	 *
+	 * The label/data pairs (#679 task 2) are Twitter's own "Product" card
+	 * fields, the same ones competing SEO plugins already populate:
+	 * label1/data1 carry price, label2/data2 carry availability. Both pairs
+	 * are gated on the OG key they read being present rather than
+	 * recomputed from a product — this method only ever sees the OG map,
+	 * and gating on it means a `wc_ai_storefront_og_tags` filter consumer
+	 * that adds or removes a key changes Twitter's output too, not just
+	 * Open Graph's.
 	 *
 	 * @param array<string,string> $og Open Graph map.
 	 * @return array<string,string> property => content.
@@ -548,7 +633,44 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( ! empty( $og['og:image'] ) ) {
 			$tw['twitter:image'] = $og['og:image'];
 		}
+		if ( ! empty( $og['og:image:alt'] ) ) {
+			$tw['twitter:image:alt'] = $og['og:image:alt'];
+		}
+		if ( ! empty( $og['product:price:amount'] ) ) {
+			// Same gate as product:price:amount itself (build_og_tags()): an
+			// unpurchasable or unpriced product never populates that key,
+			// so this pair must not appear either.
+			$tw['twitter:label1'] = __( 'Price', 'woocommerce-ai-storefront' );
+			$tw['twitter:data1']  = $this->twitter_price_data( $og );
+		}
+		if ( ! empty( $og['product:availability'] ) ) {
+			$tw['twitter:label2'] = __( 'Availability', 'woocommerce-ai-storefront' );
+			$tw['twitter:data2']  = $og['product:availability'];
+		}
 		return $tw;
+	}
+
+	/**
+	 * Format the price already in an Open Graph map for `twitter:data1`.
+	 *
+	 * "{currency} {amount}", e.g. "USD 48.00" — the same currency-code-
+	 * prefixed shape already used for a price surfaced elsewhere in this
+	 * plugin (see `WC_AI_Storefront_MCP_Tools::format_money()`), rather
+	 * than pulling `wc_price()`'s HTML-formatted output into a plain meta
+	 * `content` attribute.
+	 *
+	 * @param array<string,string> $og Open Graph map. Caller only invokes
+	 *                                 this once `product:price:amount` is
+	 *                                 confirmed present; `product:price:currency`
+	 *                                 is set alongside it by build_og_tags()
+	 *                                 so it is expected here too, but is
+	 *                                 read defensively all the same.
+	 * @return string
+	 */
+	private function twitter_price_data( array $og ): string {
+		$currency = (string) ( $og['product:price:currency'] ?? '' );
+		$amount   = (string) ( $og['product:price:amount'] ?? '' );
+		return '' !== $currency ? $currency . ' ' . $amount : $amount;
 	}
 
 	/**
