@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-21T20:25:11+00:00\n"
+"POT-Creation-Date: 2026-08-21T21:22:23+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -183,24 +183,24 @@ msgstr ""
 msgid "Page %s"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:705
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:714
 msgid "Price"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:712
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:723
 msgid "Availability"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:761
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:748
+msgid "In stock"
+msgstr ""
+
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:749
 msgid "Out of stock"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:764
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:750
 msgid "Available on backorder"
-msgstr ""
-
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:766
-msgid "In stock"
 msgstr ""
 
 #: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:49

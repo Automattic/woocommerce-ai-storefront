@@ -633,18 +633,28 @@ class WC_AI_Storefront_Meta_Tags {
 	 * The label/data pairs (#679) are Twitter's own "Product" card
 	 * fields, the same ones competing SEO plugins already populate:
 	 * label1/data1 carry price, label2/data2 carry availability. Both
-	 * pairs are gated on an OG key being present — label1/data1 on
-	 * `product:price:amount`, label2/data2 on `product:availability` —
-	 * but that gate is presence-only, not a content mirror: label1/
-	 * data1's *presence* and data1's *value* both come from the OG map
-	 * (via twitter_price_data()), so a `wc_ai_storefront_og_tags` filter
+	 * pairs are gated on presence — label1/data1 on `product:price:amount`
+	 * being set, label2/data2 on `$product` being passed at all — and both
+	 * are now content mirrors of the (possibly filtered) OG map, not just
+	 * presence mirrors: label1/data1's value comes from the OG map (via
+	 * twitter_price_data()), so a `wc_ai_storefront_og_tags` filter
 	 * consumer that changes `product:price:amount` changes data1 too.
-	 * label2/data2's presence is gated the same way, on
-	 * `product:availability`, but data2's value is recomputed from
-	 * `$product` below, not read back from the OG map — a filter that
-	 * rewrites `product:availability` changes only that key, and
-	 * twitter:data2 keeps its own answer, now contradicting it on the
-	 * same page.
+	 * data2's value now does the same (#681 review) — it prefers the OG
+	 * map's `product:availability`, read back through
+	 * twitter_availability_data(), and only recomputes from `$product`
+	 * when that OG value is missing or not one of Facebook's three known
+	 * terms. Previously data2 always recomputed from `$product`, so a
+	 * filter that rewrote `product:availability` changed only that key
+	 * and left twitter:data2 contradicting it on the same page; see
+	 * twitter_availability_data() for how the two are now kept in sync
+	 * without a second copy of the vocabulary.
+	 *
+	 * `og:availability` is a separate key in the same map, carrying
+	 * Pinterest's vocabulary rather than Facebook's (see
+	 * product_availability()/og_availability()). A filter consumer who
+	 * edits only `product:availability` still leaves `og:availability`
+	 * disagreeing with it; that is inherent to filtering a flat map and
+	 * is not something this method fixes.
 	 *
 	 * Both pairs render as a visible two-column strip under the card, so a
 	 * person reads them; both carry human-readable text, not machine
@@ -652,32 +662,31 @@ class WC_AI_Storefront_Meta_Tags {
 	 * WooCommerce add-on already emit. data1 goes through
 	 * twitter_price_data(), the localised, symbol-prefixed price. data2
 	 * goes through twitter_availability_data(), our own display strings
-	 * for the same `WC_AI_Storefront_Product_Facts::stock_state()` that
-	 * `product:availability`/`og:availability` already read (#679) — see
-	 * that method's docblock for why this pair does NOT read
-	 * `WC_Product::get_availability()`. `product:availability` and
-	 * `og:availability` themselves are untouched; only this human-facing
-	 * Twitter pair changes.
+	 * for the same vocabulary `product:availability` already carries
+	 * (#679, #681) — see that method's docblock for why this pair does
+	 * NOT read `WC_Product::get_availability()`.
 	 *
 	 * $product travels alongside $og rather than being re-derived here so
 	 * this method still only recomputes from data its caller already has:
 	 * render_head_tags() resolves the product once on the single-product
 	 * path and has none on the archive path, where `product:availability`
-	 * is never set in the first place. That is not the only way to reach
-	 * this method, though: build_twitter_tags() is public and `$product`
-	 * defaults to null, so a caller can pass an `$og` map that already
-	 * carries `product:availability` with no product to read — a test
-	 * exercises exactly that path. The `null !== $product` check in the
-	 * gate below is what stops that combination from emitting a pair
-	 * with nothing to compute data2 from; it is not an invariant this
-	 * method can assume from its usual caller.
+	 * is never set in the first place. build_twitter_tags() is public and
+	 * `$product` defaults to null, so a caller can pass an `$og` map that
+	 * already carries `product:availability` with no product to read — a
+	 * test exercises exactly that path. The `null !== $product` check in
+	 * the gate below is what stops that combination from emitting a pair
+	 * with no fallback source to compute data2 from if the OG value ever
+	 * turned out unusable; it is not an invariant this method can assume
+	 * from its usual caller.
 	 *
 	 * @param array<string,string> $og      Open Graph map.
-	 * @param WC_Product|null      $product Source product, read only to
-	 *                                      resolve its stock state for
-	 *                                      twitter:data2. Null on the
-	 *                                      archive-page path, where it is
-	 *                                      never needed.
+	 * @param WC_Product|null      $product Source product, read only as the
+	 *                                      fallback source for twitter:data2
+	 *                                      when the OG map's
+	 *                                      `product:availability` is absent
+	 *                                      or unrecognised. Null on the
+	 *                                      archive-page path, where the
+	 *                                      pair is never emitted.
 	 * @return array<string,string> property => content.
 	 */
 	public function build_twitter_tags( array $og, $product = null ): array {
@@ -705,20 +714,59 @@ class WC_AI_Storefront_Meta_Tags {
 			$tw['twitter:label1'] = __( 'Price', 'woocommerce-ai-storefront' );
 			$tw['twitter:data1']  = $this->twitter_price_data( $og );
 		}
-		if ( ! empty( $og['product:availability'] ) && null !== $product ) {
-			// twitter_availability_data()'s mapping is total over the three
-			// stock_state() values, so this pair is always emitted once a
-			// product is present; no empty-string guard needed (#679).
+		if ( null !== $product ) {
+			// Gated on $product alone, not on `product:availability` being
+			// present in $og (#681): twitter_availability_data() falls back
+			// to $product's own state whenever the OG value is missing or
+			// unrecognised, so this pair is always emitted once a product
+			// is present; no OG-presence guard needed.
 			$tw['twitter:label2'] = __( 'Availability', 'woocommerce-ai-storefront' );
 			$tw['twitter:data2']  = $this->twitter_availability_data(
-				WC_AI_Storefront_Product_Facts::stock_state( $product )
+				(string) ( $og['product:availability'] ?? '' ),
+				$product
 			);
 		}
 		return $tw;
 	}
 
 	/**
+	 * Facebook's `product:availability` vocabulary term => the matching
+	 * shopper-facing display string for `twitter:data2` (#681).
+	 *
+	 * Built by calling product_availability() itself for all three
+	 * stock states it is total over, rather than hard-coding 'instock' /
+	 * 'out of stock' / 'available for order' a second time here. That
+	 * keeps this map derived from, not duplicated from, the one place
+	 * the vocabulary is defined: if product_availability()'s terms ever
+	 * change, this map's keys move with them instead of silently going
+	 * stale.
+	 *
+	 * @return array<string,string> Vocabulary term => display text.
+	 */
+	private function twitter_availability_display_map(): array {
+		return array(
+			$this->product_availability( 'instock' )     => __( 'In stock', 'woocommerce-ai-storefront' ),
+			$this->product_availability( 'outofstock' )  => __( 'Out of stock', 'woocommerce-ai-storefront' ),
+			$this->product_availability( 'onbackorder' ) => __( 'Available on backorder', 'woocommerce-ai-storefront' ),
+		);
+	}
+
+	/**
 	 * The shopper-facing availability text for `twitter:data2`.
+	 *
+	 * Prefers the (possibly filtered) `product:availability` value from
+	 * the OG map, so a `wc_ai_storefront_og_tags` filter consumer who
+	 * rewrites availability is mirrored here instead of being silently
+	 * overridden by a fresh read of `$product` (#681 review — the exact
+	 * drift a Copilot review on #679 flagged). Falls back to `$product`'s
+	 * own state, via `WC_AI_Storefront_Product_Facts::stock_state()`,
+	 * whenever `$og_availability` is not one of Facebook's three known
+	 * terms: absent (the key was never set, or a filter removed it), or
+	 * an unrecognised token a filter consumer invented, which must never
+	 * be echoed back out as display text. Both the OG value and the
+	 * `$product` fallback are resolved through the same
+	 * twitter_availability_display_map(), so the two paths cannot drift
+	 * from each other.
 	 *
 	 * Deliberately NOT `WC_Product::get_availability()`, which an earlier
 	 * version of this method read (#679). Live verification against
@@ -743,27 +791,31 @@ class WC_AI_Storefront_Meta_Tags {
 	 * `outofstock` on save — so it was never a backorder product at all.
 	 * The two justifications above are each independently sufficient.
 	 *
-	 * This method instead maps `WC_AI_Storefront_Product_Facts::stock_state()`
+	 * The fallback path maps `WC_AI_Storefront_Product_Facts::stock_state()`
 	 * — the same neutral three-way state `product:availability` and
 	 * `og:availability` already read — to our own translatable display
-	 * strings. The mapping is total (every stock state has a string), so
-	 * the pair is always present, always agrees with the machine tags on
-	 * the same page, and never discloses a quantity.
+	 * strings via product_availability(). The mapping is total (every
+	 * stock state has a string), so the pair is always present, always
+	 * agrees with the machine tags on the same page absent a filter, and
+	 * never discloses a quantity.
 	 *
-	 * @param string $stock_state One of `instock`, `outofstock`,
-	 *                            `onbackorder`
-	 *                            ({@see WC_AI_Storefront_Product_Facts::stock_state()}).
+	 * @param string     $og_availability The OG map's `product:availability`
+	 *                                    value, or `''` if it was absent.
+	 *                                    Read as-is; not assumed to be one
+	 *                                    of Facebook's known terms.
+	 * @param WC_Product $product         Source product, used only as the
+	 *                                    fallback when $og_availability is
+	 *                                    not recognised.
 	 * @return string Shopper-facing availability text: "In stock",
 	 *                "Out of stock", or "Available on backorder".
 	 */
-	private function twitter_availability_data( string $stock_state ): string {
-		if ( 'outofstock' === $stock_state ) {
-			return __( 'Out of stock', 'woocommerce-ai-storefront' );
+	private function twitter_availability_data( string $og_availability, WC_Product $product ): string {
+		$map = $this->twitter_availability_display_map();
+		if ( isset( $map[ $og_availability ] ) ) {
+			return $map[ $og_availability ];
 		}
-		if ( 'onbackorder' === $stock_state ) {
-			return __( 'Available on backorder', 'woocommerce-ai-storefront' );
-		}
-		return __( 'In stock', 'woocommerce-ai-storefront' );
+		$stock_state = WC_AI_Storefront_Product_Facts::stock_state( $product );
+		return $map[ $this->product_availability( $stock_state ) ];
 	}
 
 	/**

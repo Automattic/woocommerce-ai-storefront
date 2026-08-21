@@ -903,6 +903,83 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertDoesNotMatchRegularExpression( '/\d+\s*in stock/i', $tw['twitter:data2'] );
 	}
 
+	// --- twitter:data2 follows a filtered product:availability (#681) ---
+
+	public function test_twitter_data2_follows_filtered_availability_when_instock(): void {
+		// A `wc_ai_storefront_og_tags` filter consumer can rewrite
+		// `product:availability` away from what $product's real stock
+		// state would produce. twitter:data2 must follow that filtered
+		// OG value, not recompute its own answer and contradict it on
+		// the same page (#681 review, the Copilot finding this fixes).
+		// $product's real state is out of stock; the OG map says otherwise.
+		$product = $this->og_product(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+			)
+		);
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'instock' ),
+			$product
+		);
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_follows_filtered_availability_when_out_of_stock(): void {
+		// $product's real state is in stock; the OG map says otherwise.
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'out of stock' ),
+			$product
+		);
+		$this->assertSame( 'Out of stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_follows_filtered_availability_when_available_for_order(): void {
+		// $product's real state is in stock; the OG map says otherwise.
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'available for order' ),
+			$product
+		);
+		$this->assertSame( 'Available on backorder', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_falls_back_to_product_for_unrecognised_availability(): void {
+		// A filter consumer can put anything in `product:availability`; an
+		// invented token must never be echoed back out as twitter:data2's
+		// display text (#681). Falls back to $product's real state instead.
+		$product = $this->og_product(
+			array(
+				'stock_status' => 'onbackorder',
+			)
+		);
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'gibberish' ),
+			$product
+		);
+		$this->assertSame( 'Available on backorder', $tw['twitter:data2'] );
+		$this->assertStringNotContainsString( 'gibberish', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_falls_back_to_product_when_availability_key_absent(): void {
+		// The OG map might not carry `product:availability` at all (e.g. a
+		// filter removed the key outright rather than rewriting it). With
+		// a product present the pair is still emitted, using $product's
+		// own state (#681).
+		$product = $this->og_product(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+			)
+		);
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'og:title' => 'Canvas Belt' ), // no 'product:availability' key.
+			$product
+		);
+		$this->assertSame( 'Out of stock', $tw['twitter:data2'] );
+	}
+
 	public function test_twitter_availability_pair_omitted_when_no_product_given(): void {
 		// build_twitter_tags() gates the pair on a $product being passed at
 		// all (the archive-page path never has one); product:availability
