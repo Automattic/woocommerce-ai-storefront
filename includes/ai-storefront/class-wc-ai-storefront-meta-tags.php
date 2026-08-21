@@ -807,10 +807,29 @@ class WC_AI_Storefront_Meta_Tags {
 			return;
 		}
 
-		// Always emit (#668 review): suppress_jetpack_description() always
-		// removes Jetpack's own tag on commerce pages, so this is always the
-		// only description tag printed; see that method's docblock.
-		if ( '' !== $description ) {
+		// A third input to the same structural decision (#669 task 2), not a
+		// new mechanism: suppress_jetpack_description() still always removes
+		// Jetpack's own tag on commerce pages regardless of what it predicts
+		// (see its docblock) — these four plugins do not route through
+		// jetpack_seo_meta_tags, so that removal is untouched here. What
+		// changes is OUR emit decision, and only for these four:
+		// WC_AI_Storefront_Rival_Seo_Description::is_emitting() reports
+		// what a rival plugin's own filter actually carried this request,
+		// settled before this callback runs because every rival filter is
+		// hooked at PHP_INT_MAX and fires during wp_head:1, strictly before
+		// this wp_head:5 callback (see that class's init()) — never a guess
+		// about whether it will render. Between the two suppressions, at
+		// most one plugin's description tag ever reaches the page.
+		//
+		// Description only, deliberately: og:description below is NOT
+		// gated on this signal. The filter these plugins expose predicts
+		// only their own <meta name="description">, not their Open Graph
+		// output — free Yoast with nothing authored fires wpseo_metadesc
+		// empty (correctly predicting no description tag) yet still emits
+		// og:description regardless. Extending the stand-down to Open
+		// Graph would commit to a correlation the signal does not carry.
+		// Tracked separately as #676.
+		if ( '' !== $description && ! WC_AI_Storefront_Rival_Seo_Description::is_emitting() ) {
 			$this->print_meta( 'name', 'description', $description );
 		}
 		$this->print_og_and_twitter( $og );

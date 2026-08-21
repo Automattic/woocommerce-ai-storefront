@@ -1,6 +1,6 @@
-# Coexistence with Yoast / RankMath / AIOSEO
+# Coexistence with Yoast / Rank Math / SEOPress / AIOSEO
 
-This plugin and a traditional SEO plugin (Yoast WooCommerce SEO, Rank Math, All in One SEO) overlap on exactly one plane — **structured data and human-SERP `<head>` metadata** — and are otherwise complementary. This document explains where they overlap, why, and what to check before deactivating your SEO plugin so this plugin can take over the commerce-page SERP/social surface.
+This plugin and a traditional SEO plugin (Yoast WooCommerce SEO, Rank Math, SEOPress, All in One SEO) overlap on exactly one plane — **structured data and human-SERP `<head>` metadata** — and are otherwise complementary. This document explains where they overlap, why, and what to check before deactivating your SEO plugin so this plugin can take over the commerce-page SERP/social surface.
 
 ## Two audiences, one surface
 
@@ -34,35 +34,79 @@ Yoast-stored data is **migration territory**, considered later — never a runti
 | **Reviews / aggregateRating** | Star rating + review text feeding review snippets | crawlers + agents | Authors it | Passes through WooCommerce core's (never authored here) | 🔴 Duplicated only because the Product node is |
 | **WebSite + SearchAction** | Site name + sitelinks search box | crawlers + agents | In its `@graph` | Emits its own node | 🟡 Both emit; independent |
 | **Store / Organization + `sameAs`** | Business identity + social profile links | crawlers + agents | In its `@graph` | Emits its own node; may read the SEO plugin's stored social handles as a fallback | 🟢 Plugin borrows values, no conflict |
-| **Meta title / description** | Blue headline + gray summary in search results | crawlers + humans | Owns | Self-emits on commerce pages (product title enriched with brand, except where the brand would be redundant; description derived from core fields) | 🟡 Title: single tag either way, but which plugin ends up owning it is unresolved and untested (#669). Description: transient duplicate until the SEO plugin is deactivated |
-| **Open Graph / Twitter cards** | Image + title preview when a link is shared | humans | Owns | Self-emits on commerce pages | 🟡 Transient duplicate until the SEO plugin is deactivated |
+| **Meta description** | Gray summary line in search results | crawlers + humans | Owns | Stands down: emits nothing when the SEO plugin's own description filter carried a value, otherwise emits its own (derived from core fields) | 🟢 **Resolved** (#669) — exactly one tag on product, category and shop pages, whichever plugin supplies it. Nothing needs deactivating |
+| **Meta title** | Blue headline in search results | crawlers + humans | Owns | Self-emits (product title enriched with brand, except where the brand would be redundant), but loses the contest | 🟡 Single tag either way; the SEO plugin owns it. Measured, not assumed — see [Who owns the `<title>`](#who-owns-the-title) |
+| **Open Graph / Twitter cards** | Image + title preview when a link is shared | humans | Owns | Self-emits on commerce pages | 🟡 Still duplicated while both are active. The description stand-down deliberately does **not** extend here (#676) |
 | **Canonical (`rel=canonical`)** | "This is the master URL" — dedupes `?utm=`/sort variants | crawlers | Owns | Emits no tag (uses canonical permalinks only as *data* in JSON-LD/checkout URLs) | 🟢 No overlap — different senses of "canonical" |
 | **robots-meta (indexing)** | "Should *this page* appear in search?" | crawlers | Owns (per-page UI) | Opinionated only: noindex for `catalog_visibility=hidden` products + internal shop search | 🟢 Minimal, complementary |
 | **robots.txt (crawler access)** | Site-wide "which *bots* may fetch what" | crawlers + agents | Adds `Sitemap:` lines | Owns the AI-crawler welcome list | 🟢 Distinct surface |
 | **XML sitemaps** | Machine list of every URL for crawlers | crawlers | Owns | Never emits; defers to any provider (WP core / Jetpack / Yoast / Rank Math / AIOSEO) and lists it in `llms.txt` | 🟢 No overlap (deliberate) |
 | **UCP/MCP, llms.txt, products feed, BuyAction, inventory, subscriptions, attribution** | Agentic-commerce APIs and signals | agents | None | Owns | 🟢 Plugin-exclusive |
 
-The "transient duplicate" caveat on the **Meta title / description** and **Open Graph / Twitter** rows applies to product, category, and shop pages. On product-search results (`post_type=product`) this plugin emits only the robots `noindex` tag — no meta description and no Open Graph/Twitter cards — so there is no duplication to resolve there regardless of whether the SEO plugin is active.
+The duplicate on the **Open Graph / Twitter** row applies to product, category, and shop pages. On product-search results (`post_type=product`) this plugin emits only the robots `noindex` tag — no meta description and no Open Graph/Twitter cards — so there is nothing to duplicate there regardless of whether the SEO plugin is active.
 
-The single 🔴 is the real overlap: with both plugins active, two `Product` nodes compete for the same Google rich result. The migration nudge surfaces this and invites you to deactivate the SEO plugin — which resolves both the JSON-LD duplication and the head-metadata duplication at once.
+The single 🔴 is the real overlap: with both plugins active, two `Product` nodes compete for the same Google rich result. The migration nudge surfaces this and invites you to deactivate the SEO plugin — which resolves the JSON-LD duplication and the remaining Open Graph/Twitter duplication. The meta description no longer needs it.
 
-## Coexistence behavior (assert + warn)
+## Coexistence behavior
 
-While both plugins are active, this plugin **always emits** on commerce pages — it never silently defers:
+While both plugins are active, this plugin emits its own `<head>` tags on commerce pages with one deliberate exception: the meta description, where it stands down.
 
-- **`<title>`** — there is only one title tag, so there is never duplication; the open question is who fills it. This plugin claims `pre_get_document_title` at priority 11 to print a merchant's authored headline, and hooks `document_title_parts` late to append the brand. Against an SEO plugin that also claims `pre_get_document_title`, the outcome is unresolved and untested — see the Yoast paragraph below and issue #669. On single products it appends the brand (`{name} | {brand}`), but suppresses that append when it would be redundant — case-insensitively, when the brand equals the store name (core already appends the site segment) or the product name already contains the brand. So an in-house-label store (`Camp Shirt` on the `Saltwarp` brand of the `Saltwarp` store) reads `Camp Shirt – Saltwarp`, not `Camp Shirt | Saltwarp – Saltwarp`. The brand still appears when it adds information (`Field Boot | Thornwick – Saltwarp`).
-- **Meta description, Open Graph, Twitter, robots** — these are additive `<head>` tags. Until the SEO plugin is deactivated, the page carries two of each. Search engines tolerate this (they pick one); validators flag it. The duplication is your cue to act — and the admin notice tells you so. This plugin does **not** reach into the other plugin to suppress its output.
+### The meta description stands down
 
-## Divergence: Jetpack's description and authored title are both ours; Yoast is unresolved
+Resolved in #669, and the resolution is not uninstalling anything. Before it renders, this plugin reads the value the other plugin's own description filter carried during this request — `wpseo_metadesc` (Yoast), `rank_math/frontend/description`, `seopress_titles_desc`, or `aioseo_description` — and skips its own tag when that value was non-empty. The result on product, category and shop pages is **exactly one** `<meta name="description">`, whichever plugin supplies it. This plugin still never reaches into the other plugin to suppress its output; it only declines to add a second tag.
 
-As of the authored-intent-wins fix, this plugin treats Jetpack SEO Tools the opposite way it treats Yoast: it reads the merchant's authored Jetpack fields and prints them itself, rather than emitting alongside and leaving the merchant to deactivate.
+Two constraints govern the observation, both measured against real installs rather than reasoned from documentation (`WC_AI_Storefront_Rival_Seo_Description`):
+
+- **Hooked at `PHP_INT_MAX`, not a normal priority.** With the paid Yoast WooCommerce SEO addon active, the same request gives `wpseo_metadesc` as an empty string at priority 5 — where this plugin renders — and the full 27-character product description at `PHP_INT_MAX`. The addon supplies the value above priority 5. An observer at a default priority reads "empty", never stands down, and leaves the duplicate in place for exactly the configuration the feature most needs to handle.
+- **First non-empty value wins, never the last.** SEOPress fires `seopress_titles_desc` 6 to 12 times per request, the exact count varying by page type and run; All in One SEO fires `aioseo_description` twice with the second call always empty. Keeping the last value seen would read that trailing empty and conclude nothing was emitted.
+
+An empty firing is a reliable "no tag will be emitted" signal, which is what makes the inverse safe: SEOPress fires the filter three or four times with an empty value on the shop archive, and on category pages whose term has no description, and emits no description there, so this plugin correctly keeps emitting its own. A category term that does have a description gets a non-empty firing instead, and this plugin stands down for it there too. Between the two suppressions (Jetpack's tag always removed, these four plugins' tags read and deferred to), **at most one plugin's description tag ever reaches the page** — not quite a guarantee against zero. A rival plugin's own "disable meta description" master switch, applied downstream of the filter this plugin observes, could carry a value through the filter that the rival plugin never actually prints, leaving this plugin stood down for a tag nobody sees.
+
+### Who owns the `<title>`
+
+There is only one title tag, so there is never duplication; the question is who fills it, and the answer is measured: **the SEO plugin does, almost everywhere.**
+
+`wp_get_document_title()` applies the whole `pre_get_document_title` chain and returns early on any non-empty result, so the **last** callback to return a non-empty value wins. Registration priorities on that filter:
+
+| plugin | priority on `pre_get_document_title` | provenance |
+|---|---|---|
+| **this plugin** | **11** | measured (#669 spike hookmap dump) |
+| Yoast SEO | 15 | measured (#669 spike hookmap dump) |
+| Rank Math | 15 | read from source, not independently confirmed by the spike |
+| SEOPress | 20 (or `214748364` in one config branch) | read from source, not independently confirmed by the spike |
+| All in One SEO | 99999 | measured (#669 spike hookmap dump) |
+
+Rank Math's and SEOPress's numbers are carried over from the plugin's own source rather than a runtime hookmap capture. Treat them as lower-confidence than the other three rows: the spike confirmed both plugins win the title in practice (their own title text and separator replace this plugin's, on the page types where they run at all), but did not capture a hookmap dump pinning the exact priority number the way it did for this plugin, Yoast and AIOSEO.
+
+All four register above 11, run after this plugin, and overwrite its value. This plugin's `document_title_parts` callback at priority 99 never runs at all, because the short-circuit returns before core assembles the title from its parts — so the brand suffix is lost alongside the title. Deactivating the SEO plugin restores both.
+
+**One measured exception:** SEOPress does not take the title on the shop archive, shop page 2, or shop-as-front-page. It does not treat the WooCommerce product archive as the Shop page, so an authored SEOPress title there is ignored and this plugin keeps the title. This is **documented, not fixed** — making the title consistent under SEOPress would mean losing it in one more place, not gaining it anywhere.
+
+The tell in a live `<head>` is the separator: `&#8211;` (en dash) is WordPress core's, and so this plugin's; a plain `-` means the SEO plugin supplied the title.
+
+This plugin still claims `pre_get_document_title` at priority 11, which is what lets it print a merchant's authored headline when no SEO plugin outranks it (see the Jetpack section below). On single products it appends the brand (`{name} | {brand}`), but suppresses that append when it would be redundant — case-insensitively, when the brand equals the store name (core already appends the site segment) or the product name already contains the brand. So an in-house-label store (`Camp Shirt` on the `Saltwarp` brand of the `Saltwarp` store) reads `Camp Shirt – Saltwarp`, not `Camp Shirt | Saltwarp – Saltwarp`. The brand still appears when it adds information (`Field Boot | Thornwick – Saltwarp`).
+
+### Open Graph, Twitter and robots are still additive
+
+These remain duplicated while both plugins are active: the page carries two of each. Search engines tolerate it (they pick one); validators flag it. The duplication is your cue to act, and the admin notice says so.
+
+The description stand-down deliberately does **not** extend to Open Graph, because the signal does not carry that far. The filters above predict only the other plugin's `<meta name="description">`, not its Open Graph output — free Yoast with nothing authored fires `wpseo_metadesc` empty, correctly predicting no description tag, and emits an `og:description` anyway.
+
+That produces a visible asymmetry worth knowing before you read a `<head>`: on a Yoast store, a product page now emits **one** `<meta name="description">` and **two** `og:description` tags. Nothing is broken; Open Graph needs its own observation, tracked as issue **#676**.
+
+## Divergence: Jetpack's fields are reprinted; the other SEO plugins are stood down for
+
+This plugin treats Jetpack SEO Tools differently from the other SEO plugins: it reads the merchant's authored Jetpack fields and prints them itself, rather than declining to emit.
 
 - **Description** — on product, category and shop pages, this plugin always suppresses Jetpack's own `<meta name="description">` and always prints its own tag: the merchant's `advanced_seo_description` when one is authored, otherwise a generated fallback. On those pages there is exactly one description tag, and it is always this plugin's. Product-search results are the deliberate exception described above: the suppression still applies, but this plugin emits only the robots tag there, so the page carries no description tag at all.
 - **Title** — this plugin prints the merchant's authored `jetpack_seo_html_title` itself, on single products as well as on the Shop page, via `pre_get_document_title` at priority 11. It does not defer to Jetpack: Jetpack's own `pre_get_document_title` callback short-circuits `wp_get_document_title()`, so standing down on `document_title_parts` achieved nothing when Jetpack did apply the title, and lost both the authored title and the brand suffix when it didn't (a conflicted theme, or `jetpack_seo_custom_titles` filtered false). With nothing authored, the incoming title is returned untouched and core's assembled title stands. Brand enrichment still happens on `document_title_parts`, and stands down on an authored product title. The Shop page is the case Jetpack can never reach on its own: WooCommerce renders the product archive at that URL, so the Shop page's post is not what the query resolves.
 
 Category pages are out of scope for this fix — Jetpack's SEO fields are post meta, and a product category is a term, so there is no authored field to honour there.
 
-Yoast is unchanged, and the title contest with it is **unresolved and untested**. The "late filter priority wins" claim in the Coexistence behavior section above applies only to `document_title_parts`, and `wp_get_document_title()` applies `pre_get_document_title` first and returns on any non-empty value — the same short-circuit this plugin now relies on for authored titles. A `document_title_parts` callback at priority 99 therefore never runs when an SEO plugin claims the earlier filter, whatever its priority. Which plugin ends up owning the `<title>` alongside Yoast, Rank Math, SEOPress or AIOSEO has not been established; the meta description remains an additive duplicate until the SEO plugin is deactivated. Extending authored-intent-wins to those plugins needs its own detector per plugin, and both questions are tracked as issue #669.
+Yoast, Rank Math, SEOPress and All in One SEO are handled differently again, and both halves of that are now settled rather than open:
+
+- **Description** — this plugin stands down for them, as described in [The meta description stands down](#the-meta-description-stands-down). It does not read their authored fields and reprint them the way it does Jetpack's; it declines to emit a second tag. The outcome is the same one tag per page, reached the other way round.
+- **Title** — this plugin loses, everywhere except SEOPress on the shop archive family. See [Who owns the `<title>`](#who-owns-the-title) for the measured priorities. Extending authored-intent-wins to these four would mean reading each plugin's own stored title fields — a detector per plugin — and is not built.
 
 ## Pre-flight checklist — before deactivating your SEO plugin
 
