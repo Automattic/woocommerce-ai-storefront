@@ -554,6 +554,26 @@ if ( ! class_exists( 'WC_Product' ) ) {
 			return 'instock';
 		}
 
+		/**
+		 * Shopper-facing stock availability text plus its CSS class.
+		 * Declared so PHPStan resolves the call in
+		 * `WC_AI_Storefront_Meta_Tags::twitter_availability_data()`
+		 * (#679 task 2 fix) — that method reads this rather than
+		 * `product:availability`'s machine vocabulary for the
+		 * human-readable `twitter:data2` value. Real WooCommerce
+		 * (`WC_Product::get_availability()`) returns '' for a plain
+		 * in-stock simple product in some configurations; tests override
+		 * via Mockery (`shouldReceive( 'get_availability' )->andReturn( [...] )`).
+		 *
+		 * @return array{availability: string, class: string}
+		 */
+		public function get_availability(): array {
+			return array(
+				'availability' => 'In stock',
+				'class'        => 'in-stock',
+			);
+		}
+
 		// Weight + dimensions (JSON-LD enhancer).
 		public function has_weight(): bool {
 			return false;

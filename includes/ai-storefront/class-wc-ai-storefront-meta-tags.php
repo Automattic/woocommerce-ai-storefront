@@ -621,10 +621,31 @@ class WC_AI_Storefront_Meta_Tags {
 	 * that adds or removes a key changes Twitter's output too, not just
 	 * Open Graph's.
 	 *
-	 * @param array<string,string> $og Open Graph map.
+	 * Both pairs render as a visible two-column strip under the card, so a
+	 * person reads them; both carry human-readable text, not machine
+	 * vocabulary (#679 task 2 fix), matching what Rank Math and Yoast's
+	 * WooCommerce add-on already emit. data1 goes through
+	 * twitter_price_data(), the localised, symbol-prefixed price. data2
+	 * reads the product's own shopper-facing get_availability() text
+	 * rather than `product:availability`'s Facebook vocabulary term
+	 * ("instock", "out of stock"...) — that OG value, and og:availability,
+	 * are untouched; only this human-facing Twitter pair changes.
+	 *
+	 * $product travels alongside $og rather than being re-derived here so
+	 * this method still only recomputes from data its caller already has:
+	 * render_head_tags() resolves the product once on the single-product
+	 * path and has none on the archive path, where `product:availability`
+	 * is never set in the first place, so the gate below never lets this
+	 * pair through without a product to read.
+	 *
+	 * @param array<string,string> $og      Open Graph map.
+	 * @param WC_Product|null      $product Source product, read only for
+	 *                                      the shopper-facing availability
+	 *                                      text. Null on the archive-page
+	 *                                      path, where it is never needed.
 	 * @return array<string,string> property => content.
 	 */
-	public function build_twitter_tags( array $og ): array {
+	public function build_twitter_tags( array $og, $product = null ): array {
 		$tw = array(
 			'twitter:card'        => 'summary_large_image',
 			'twitter:title'       => $og['og:title'] ?? '',
@@ -643,21 +664,61 @@ class WC_AI_Storefront_Meta_Tags {
 			$tw['twitter:label1'] = __( 'Price', 'woocommerce-ai-storefront' );
 			$tw['twitter:data1']  = $this->twitter_price_data( $og );
 		}
-		if ( ! empty( $og['product:availability'] ) ) {
-			$tw['twitter:label2'] = __( 'Availability', 'woocommerce-ai-storefront' );
-			$tw['twitter:data2']  = $og['product:availability'];
+		if ( ! empty( $og['product:availability'] ) && null !== $product ) {
+			$availability = $this->twitter_availability_data( $product );
+			// Omit the pair rather than shipping a bare "Availability:" row:
+			// WooCommerce's own get_availability() returns '' for a plain
+			// in-stock simple product in some configurations (#679 task 2
+			// fix).
+			if ( '' !== $availability ) {
+				$tw['twitter:label2'] = __( 'Availability', 'woocommerce-ai-storefront' );
+				$tw['twitter:data2']  = $availability;
+			}
 		}
 		return $tw;
 	}
 
 	/**
+	 * The shopper-facing availability text for `twitter:data2`.
+	 *
+	 * Reads WooCommerce's own translated, human-readable string
+	 * (`WC_Product::get_availability()`) rather than the Facebook/Pinterest
+	 * vocabulary terms `product:availability`/`og:availability` carry
+	 * (#679 task 2 fix) — those stay machine values for crawlers; this is
+	 * the only consumer that wants shopper-facing text. Same shopper-facing
+	 * signal #662 established as the honest one where it can disagree with
+	 * WooCommerce's internal boolean.
+	 *
+	 * @param WC_Product $product Product.
+	 * @return string Availability text (e.g. "In stock", "Out of stock",
+	 *                "Available on backorder"), or '' when WooCommerce has
+	 *                none for the current stock state/configuration.
+	 */
+	private function twitter_availability_data( $product ): string {
+		$availability = $product->get_availability();
+		if ( ! is_array( $availability ) || empty( $availability['availability'] ) ) {
+			return '';
+		}
+		return (string) $availability['availability'];
+	}
+
+	/**
 	 * Format the price already in an Open Graph map for `twitter:data1`.
 	 *
-	 * "{currency} {amount}", e.g. "USD 48.00" — the same currency-code-
-	 * prefixed shape already used for a price surfaced elsewhere in this
-	 * plugin (see `WC_AI_Storefront_MCP_Tools::format_money()`), rather
-	 * than pulling `wc_price()`'s HTML-formatted output into a plain meta
-	 * `content` attribute.
+	 * Symbol-prefixed and localised (#679 task 2 fix), e.g. "$48.00" — what
+	 * a shopper recognises as a price, the same shape Rank Math emits.
+	 * `wc_price()` builds this correctly but returns HTML (a `<span>`
+	 * wrapper plus an entity-encoded currency symbol), which is why a raw
+	 * capture of Rank Math's own output shows `&#036;0.00` rather than
+	 * `$0.00`; that markup cannot go into a meta `content` attribute, so
+	 * `wp_strip_all_tags()` reduces it to the plain text. Previously this
+	 * formatted "{currency} {amount}" (e.g. "USD 48.00"), the same
+	 * currency-code-prefixed shape `WC_AI_Storefront_MCP_Tools::format_money()`
+	 * uses elsewhere in this plugin for a machine reader; that shape was
+	 * wrong here because a person, not a crawler, reads this pair. Falls
+	 * back to it only when `wc_price()`/`wp_strip_all_tags()` are
+	 * unavailable. `product:price:amount`/`:currency` are untouched and
+	 * still carry the bare machine-readable decimal.
 	 *
 	 * @param array<string,string> $og Open Graph map. Caller only invokes
 	 *                                 this once `product:price:amount` is
@@ -670,6 +731,12 @@ class WC_AI_Storefront_Meta_Tags {
 	private function twitter_price_data( array $og ): string {
 		$currency = (string) ( $og['product:price:currency'] ?? '' );
 		$amount   = (string) ( $og['product:price:amount'] ?? '' );
+
+		if ( function_exists( 'wc_price' ) && function_exists( 'wp_strip_all_tags' ) ) {
+			$args = '' !== $currency ? array( 'currency' => $currency ) : array();
+			return wp_strip_all_tags( wc_price( (float) $amount, $args ) );
+		}
+
 		return '' !== $currency ? $currency . ' ' . $amount : $amount;
 	}
 
@@ -907,6 +974,11 @@ class WC_AI_Storefront_Meta_Tags {
 			$this->print_meta( 'name', 'robots', 'noindex,follow' );
 		}
 
+		// Threaded through to print_og_and_twitter() -> build_twitter_tags()
+		// for the shopper-facing availability text (#679 task 2 fix); stays
+		// null on the archive path below, which never needs it.
+		$product = null;
+
 		if ( function_exists( 'is_product' ) && is_product() ) {
 			$product = function_exists( 'wc_get_product' ) ? wc_get_product( get_queried_object_id() ) : null;
 			if ( ! $product ) {
@@ -954,22 +1026,27 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( '' !== $description && ! WC_AI_Storefront_Rival_Seo_Description::is_emitting() ) {
 			$this->print_meta( 'name', 'description', $description );
 		}
-		$this->print_og_and_twitter( $og );
+		$this->print_og_and_twitter( $og, $product );
 	}
 
 	/**
 	 * Print an Open Graph map followed by its derived Twitter cards.
 	 *
-	 * @param array<string,string> $og Open Graph map.
+	 * @param array<string,string> $og      Open Graph map.
+	 * @param WC_Product|null      $product Source product; threaded through
+	 *                                      to build_twitter_tags() for the
+	 *                                      shopper-facing availability text
+	 *                                      (#679 task 2 fix). Null on the
+	 *                                      archive-page path.
 	 */
-	private function print_og_and_twitter( array $og ): void {
+	private function print_og_and_twitter( array $og, $product = null ): void {
 		foreach ( $og as $property => $content ) {
 			if ( '' === $content ) {
 				continue;
 			}
 			$this->print_meta( 'property', $property, $content, 'url' === $this->attr_kind( $property ) );
 		}
-		foreach ( $this->build_twitter_tags( $og ) as $name => $content ) {
+		foreach ( $this->build_twitter_tags( $og, $product ) as $name => $content ) {
 			if ( '' === $content ) {
 				continue;
 			}

@@ -33,6 +33,18 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'get_theme_mod' )->justReturn( 0 );
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		// twitter_price_data() (#679 task 2 fix) formats through wc_price(),
+		// which this suite never loads real WooCommerce for. Stand in with a
+		// minimal HTML shape matching real wc_price()'s USD output closely
+		// enough that the real wp_strip_all_tags() stub (tests/php/stubs.php)
+		// reduces it to the same plain "$48.00" a shopper would see; tests
+		// assert on that stripped value, not this HTML.
+		Functions\when( 'wc_price' )->alias(
+			static function ( $price, $args = array() ) {
+				$symbol = 'USD' === ( $args['currency'] ?? '' ) ? '$' : ( ( $args['currency'] ?? '' ) . ' ' );
+				return '<span class="woocommerce-Price-amount amount"><bdi>' . $symbol . number_format( (float) $price, 2 ) . '</bdi></span>';
+			}
+		);
 		// Shared with AuthoredSeoTest; defined in tests/php/stubs-jetpack.php.
 		wc_ai_storefront_reset_jetpack_seo_doubles();
 		// Shared with RivalSeoDescriptionTest; the suite runs every file in
@@ -126,6 +138,17 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// / 'condition' overrides to exercise the other branches.
 		$product->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
 		$product->shouldReceive( 'get_stock_status' )->andReturn( $overrides['stock_status'] ?? 'instock' );
+		// Shopper-facing availability text for twitter:data2 (#679 task 2
+		// fix), independent of the product:availability/og:availability
+		// machine vocabulary above. Defaults to a plain in-stock product's
+		// real WooCommerce text; pass 'availability' => '' to exercise the
+		// empty-text guard in build_twitter_tags().
+		$product->shouldReceive( 'get_availability' )->andReturn(
+			array(
+				'availability' => $overrides['availability'] ?? 'In stock',
+				'class'        => $overrides['availability_class'] ?? 'in-stock',
+			)
+		);
 		if ( isset( $overrides['condition'] ) ) {
 			// Mirrors ProductFactsTest::make_product_with_attributes() for
 			// the single pa_condition case OG/Twitter tests need.
@@ -547,22 +570,117 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'product:condition', $og );
 	}
 
-	// --- Twitter label/data pairs (#679 task 2) ---
+	// --- Twitter label/data pairs (#679 task 2 fix: human-readable, not
+	// machine vocabulary) ---
 
 	public function test_twitter_tags_include_price_and_availability_labels(): void {
-		$tw = $this->meta->build_twitter_tags(
+		// Symbol-prefixed price (Rank Math's shape) and WooCommerce's own
+		// shopper-facing availability text (Rank Math / Yoast's shape),
+		// not the "USD 48.00" currency-code price or the "instock" OG
+		// vocabulary term this pair used to carry. Mutation check 1/2
+		// targets: reverting twitter:data2 to $og['product:availability'],
+		// or twitter:data1 to the currency-code shape, must make this fail.
+		$product = $this->og_product( array( 'availability' => 'In stock' ) );
+		$tw      = $this->meta->build_twitter_tags(
 			array(
 				'og:title'               => 'Canvas Belt',
 				'og:description'         => 'A belt.',
 				'product:price:amount'   => '48.00',
 				'product:price:currency' => 'USD',
 				'product:availability'   => 'instock',
-			)
+			),
+			$product
 		);
 		$this->assertSame( 'Price', $tw['twitter:label1'] );
-		$this->assertSame( 'USD 48.00', $tw['twitter:data1'] );
+		$this->assertSame( '$48.00', $tw['twitter:data1'] );
 		$this->assertSame( 'Availability', $tw['twitter:label2'] );
-		$this->assertSame( 'instock', $tw['twitter:data2'] );
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data1_strips_wc_price_markup_to_plain_symbol_price(): void {
+		// wc_price() returns HTML (see the wc_price() stub in setUp());
+		// twitter:data1 must be the stripped plain text, not raw markup.
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => '0.00',
+				'product:price:currency' => 'USD',
+			)
+		);
+		$this->assertSame( '$0.00', $tw['twitter:data1'] );
+		$this->assertStringNotContainsString( '<', $tw['twitter:data1'] );
+	}
+
+	public function test_twitter_data2_uses_out_of_stock_display_text(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+				'availability' => 'Out of stock',
+			)
+		);
+		$og      = $this->meta->build_og_tags( $product );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'Out of stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_uses_backorder_display_text(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product(
+			array(
+				'stock_status' => 'onbackorder',
+				'availability' => 'Available on backorder',
+			)
+		);
+		$og      = $this->meta->build_og_tags( $product );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'Available on backorder', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_availability_pair_omitted_when_woocommerce_text_is_empty(): void {
+		// WooCommerce's get_availability() returns '' for a plain in-stock
+		// simple product in some configurations; the pair must be left off
+		// entirely rather than shipping an "Availability:" row with nothing
+		// after it. Mutation check 3 target: removing this guard must make
+		// this test fail. product:availability itself is still present in
+		// $og (a stock state always types on OG), so this proves the guard
+		// gates on the WooCommerce text, not on the OG key.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product( array( 'availability' => '' ) );
+		$og      = $this->meta->build_og_tags( $product );
+		$this->assertArrayHasKey( 'product:availability', $og );
+		$tw = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertArrayNotHasKey( 'twitter:label2', $tw );
+		$this->assertArrayNotHasKey( 'twitter:data2', $tw );
+	}
+
+	public function test_twitter_availability_pair_omitted_when_no_product_given(): void {
+		// build_twitter_tags() gates the pair on a $product being passed at
+		// all (the archive-page path never has one); product:availability
+		// present with no product must not emit the pair.
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title'             => 'Canvas Belt',
+				'product:availability' => 'instock',
+			)
+		);
+		$this->assertArrayNotHasKey( 'twitter:label2', $tw );
+		$this->assertArrayNotHasKey( 'twitter:data2', $tw );
 	}
 
 	public function test_twitter_tags_derive_from_og(): void {
@@ -725,6 +843,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// build_og_tags()/build_twitter_tags() return.
 		$this->assertStringContainsString( '<meta property="product:availability" content="instock"', $html );
 		$this->assertStringContainsString( '<meta property="og:availability" content="instock"', $html );
+		// The OG properties above stay machine vocabulary for crawlers; the
+		// Twitter pair reaching the page is the human-readable text a
+		// person actually reads under the card (#679 task 2 fix).
+		$this->assertStringContainsString( '<meta name="twitter:label1" content="Price"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:data1" content="$48.00"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:label2" content="Availability"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:data2" content="In stock"', $html );
 		$this->assertStringNotContainsString( 'noindex', $html );
 	}
 
