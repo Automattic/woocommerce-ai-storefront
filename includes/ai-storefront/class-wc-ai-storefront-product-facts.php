@@ -160,7 +160,7 @@ class WC_AI_Storefront_Product_Facts {
 			if ( in_array( $slug, $variation_attrs, true ) ) {
 				continue;
 			}
-			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
+			$value = self::condition_attribute_value( $product, $attribute );
 			if ( '' === $value ) {
 				continue;
 			}
@@ -172,6 +172,62 @@ class WC_AI_Storefront_Product_Facts {
 		}
 
 		return $candidates;
+	}
+
+	/**
+	 * The MATCHABLE Condition text a single attribute contributes.
+	 *
+	 * `WC_Product::get_attribute()` ends in
+	 * `wc_get_product_terms( ..., array( 'fields' => 'names' ) )` for a
+	 * taxonomy attribute, so it hands back the term NAME — the merchant's
+	 * display label. {@see resolve_condition()} matches against
+	 * {@see CONDITION_SLUGS}, which are term SLUGS. Those two agree only
+	 * while nobody has renamed a term and the store runs in English: a
+	 * `pa_condition` term with slug `new` relabelled `Brand New`, or a
+	 * German store's `Neu`, matched nothing, and every product on that
+	 * store silently lost `product:condition` and `itemCondition` (#679
+	 * review). Verified live against real WooCommerce.
+	 *
+	 * So a taxonomy attribute is read as slugs and a custom attribute is
+	 * read as-is: a custom attribute stores free text with no term behind
+	 * it, so the raw value is the only value there is, and that path is
+	 * unchanged.
+	 *
+	 * Multiple terms are re-joined with WooCommerce's own `', '` so a
+	 * multi-value attribute still fails to type rather than resolving to
+	 * its first term — the same outcome the name-based read produced, for
+	 * the same reason ({@see resolve_condition()}).
+	 *
+	 * Falls back to `get_attribute()` whenever the slug read yields
+	 * nothing usable (WooCommerce unavailable, a `WP_Error`, an empty
+	 * term list): dropping the fact entirely would be a regression on a
+	 * store where the label happens to be the slug.
+	 *
+	 * Callers that display this value to a shopper must NOT use it —
+	 * `WC_AI_Storefront_JsonLd`'s `additionalProperty` entries keep
+	 * reading `get_attribute()` so the merchant's own label is what a
+	 * person sees.
+	 *
+	 * @param WC_Product $product   The product.
+	 * @param object     $attribute One `WC_Product_Attribute` from `get_attributes()`.
+	 * @return string Trimmed matchable text, or '' when the attribute contributes none.
+	 */
+	public static function condition_attribute_value( $product, $attribute ): string {
+		if ( is_callable( array( $attribute, 'is_taxonomy' ) )
+			&& $attribute->is_taxonomy()
+			&& function_exists( 'wc_get_product_terms' ) ) {
+			$slugs = wc_get_product_terms(
+				$product->get_id(),
+				$attribute->get_name(),
+				array( 'fields' => 'slugs' )
+			);
+			// A `WP_Error` is an object, so the array check rejects it too.
+			if ( is_array( $slugs ) && array() !== $slugs ) {
+				return trim( implode( ', ', array_map( 'strval', $slugs ) ) );
+			}
+		}
+
+		return trim( (string) $product->get_attribute( $attribute->get_name() ) );
 	}
 
 	/**

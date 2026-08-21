@@ -34,17 +34,39 @@ class JsonLdConditionTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function make_product_with_attributes( array $attributes ) {
 		$attribute_objects = array();
-		foreach ( array_keys( $attributes ) as $slug ) {
+		$labels            = array();
+		$terms             = array();
+		foreach ( $attributes as $slug => $spec ) {
+			// A `pa_`-prefixed slug is a TAXONOMY attribute, so real
+			// WooCommerce answers get_attribute() with the term NAME and
+			// only wc_get_product_terms() reaches the slug (#679 review).
+			// Pass array( 'label' => ..., 'terms' => array( ... ) ) to give
+			// a term a display name that differs from its slug; a plain
+			// string keeps both the same.
+			$is_taxonomy     = 0 === strpos( $slug, 'pa_' );
+			$labels[ $slug ] = is_array( $spec ) ? $spec['label'] : $spec;
+			if ( is_array( $spec ) ) {
+				$terms[ $slug ] = $spec['terms'];
+			} else {
+				$terms[ $slug ] = '' === $spec ? array() : array_map( 'trim', explode( ',', $spec ) );
+			}
+
 			$attr = Mockery::mock();
 			$attr->shouldReceive( 'get_visible' )->andReturn( true );
 			$attr->shouldReceive( 'get_name' )->andReturn( $slug );
+			$attr->shouldReceive( 'is_taxonomy' )->andReturn( $is_taxonomy );
 			$attribute_objects[ $slug ] = $attr;
 		}
 
+		Functions\when( 'wc_get_product_terms' )->alias(
+			static fn( $product_id, $taxonomy, $args = array() ) => $terms[ $taxonomy ] ?? array()
+		);
+
 		$product = Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_id' )->andReturn( 42 );
 		$product->shouldReceive( 'get_attributes' )->andReturn( $attribute_objects );
 		$product->shouldReceive( 'get_attribute' )->andReturnUsing(
-			static fn( $slug ) => $attributes[ $slug ] ?? ''
+			static fn( $slug ) => $labels[ $slug ] ?? ''
 		);
 		$product->shouldReceive( 'get_variation_attributes' )->andReturn( array() );
 		$product->shouldReceive( 'is_type' )->andReturn( false );
@@ -203,6 +225,53 @@ class JsonLdConditionTest extends \PHPUnit\Framework\TestCase {
 			'https://schema.org/UsedCondition',
 			$markup['offers'][0]['itemCondition']
 		);
+	}
+
+	public function test_relabelled_taxonomy_term_types_from_its_slug(): void {
+		// A `pa_condition` term slugged `new` but relabelled "Brand New" —
+		// or "Neu" on a German store. get_attribute() answers with the
+		// LABEL, so matching that against the three neutral slugs published
+		// no itemCondition at all on any such store (#679 review, verified
+		// live). Matching the slug does.
+		$markup = $this->emit(
+			array(
+				'pa_condition' => array(
+					'label' => 'Brand New',
+					'terms' => array( 'new' ),
+				),
+			)
+		);
+
+		$this->assertSame(
+			'https://schema.org/NewCondition',
+			$markup['offers'][0]['itemCondition']
+		);
+
+		// And having typed, it drops out of additionalProperty exactly as a
+		// label-equals-slug term does — the two halves of this feature read
+		// the same value, so they cannot disagree about which attribute won.
+		$names = array_column( $markup['additionalProperty'] ?? array(), 'name' );
+		$this->assertNotContains( 'pa_condition', $names );
+	}
+
+	public function test_additional_property_keeps_the_merchant_label_not_the_slug(): void {
+		// additionalProperty is shopper-visible, so it must go on showing
+		// the merchant's own term name. Only the MATCHING moved to slugs
+		// (#679 review). A term nobody can type is the case that makes the
+		// distinction observable, since a typed one is deduplicated away.
+		$markup = $this->emit(
+			array(
+				'pa_condition' => array(
+					'label' => 'Mint Condition',
+					'terms' => array( 'mint' ),
+				),
+			)
+		);
+
+		$this->assertArrayNotHasKey( 'itemCondition', $markup['offers'][0] );
+		$values = array_column( $markup['additionalProperty'] ?? array(), 'value' );
+		$this->assertContains( 'Mint Condition', $values );
+		$this->assertNotContains( 'mint', $values );
 	}
 
 	public function test_typed_condition_does_not_also_appear_as_additional_property(): void {

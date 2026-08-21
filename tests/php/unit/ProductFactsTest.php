@@ -98,28 +98,67 @@ class ProductFactsTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	/**
-	 * Builds a mock WC_Product exposing the given attributes, mirroring
-	 * JsonLdConditionTest's helper of the same name.
+	 * Builds a mock WC_Product exposing the given attributes.
 	 *
-	 * @param array<string, string> $attributes Slug => value.
+	 * Models real WooCommerce rather than what the resolver wants to see
+	 * (#679 review). Two attribute kinds, and they behave differently:
+	 *
+	 * - TAXONOMY (`array( 'label' => 'Brand New', 'terms' => array( 'new' ) )`):
+	 *   `get_attribute()` returns the term NAME — the merchant's display
+	 *   label — because `WC_Product::get_attribute()` ends in
+	 *   `wc_get_product_terms( ..., array( 'fields' => 'names' ) )`. The
+	 *   SLUGS are reachable only through `wc_get_product_terms()`, stubbed
+	 *   here to answer with them. Giving the label a different string from
+	 *   the slug is the whole point: fixtures that returned `'new'` from
+	 *   `get_attribute()` concealed a resolver matching display labels
+	 *   against slugs.
+	 * - CUSTOM (a plain string): free text with no term behind it, so the
+	 *   raw value is all there is and `get_attribute()` returns it.
+	 *
+	 * @param array<string, string|array{label: string, terms: string[]}> $attributes Attribute slug => custom value, or taxonomy spec.
 	 */
 	private function make_product_with_attributes( array $attributes ): Mockery\MockInterface {
 		$attribute_objects = array();
-		foreach ( array_keys( $attributes ) as $slug ) {
-			$attr = Mockery::mock();
+		$labels            = array();
+		$terms             = array();
+		foreach ( $attributes as $slug => $spec ) {
+			$is_taxonomy     = is_array( $spec );
+			$labels[ $slug ] = $is_taxonomy ? $spec['label'] : $spec;
+			$terms[ $slug ]  = $is_taxonomy ? $spec['terms'] : array();
+			$attr            = Mockery::mock();
 			$attr->shouldReceive( 'get_visible' )->andReturn( true );
 			$attr->shouldReceive( 'get_name' )->andReturn( $slug );
+			$attr->shouldReceive( 'is_taxonomy' )->andReturn( $is_taxonomy );
 			$attribute_objects[ $slug ] = $attr;
 		}
 
+		Monkey\Functions\when( 'wc_get_product_terms' )->alias(
+			static fn( $product_id, $taxonomy, $args = array() ) => $terms[ $taxonomy ] ?? array()
+		);
+
 		$product = Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_id' )->andReturn( 7 );
 		$product->shouldReceive( 'get_attributes' )->andReturn( $attribute_objects );
 		$product->shouldReceive( 'get_attribute' )->andReturnUsing(
-			static fn( $slug ) => $attributes[ $slug ] ?? ''
+			static fn( $slug ) => $labels[ $slug ] ?? ''
 		);
 		$product->shouldReceive( 'get_variation_attributes' )->andReturn( array() );
 
 		return $product;
+	}
+
+	/**
+	 * Shorthand for a taxonomy attribute spec.
+	 *
+	 * @param string   $label Term name the merchant sees.
+	 * @param string[] $terms Term slugs behind it.
+	 * @return array{label: string, terms: string[]}
+	 */
+	private function taxonomy_attribute( string $label, array $terms ): array {
+		return array(
+			'label' => $label,
+			'terms' => $terms,
+		);
 	}
 
 	public function test_absent_condition_attribute_resolves_to_empty_string(): void {
@@ -129,31 +168,82 @@ class ProductFactsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_new_condition_resolves_to_new(): void {
-		$product = $this->make_product_with_attributes( array( 'pa_condition' => 'new' ) );
+		$product = $this->make_product_with_attributes(
+			array( 'pa_condition' => $this->taxonomy_attribute( 'Brand New', array( 'new' ) ) )
+		);
 
 		$this->assertSame( 'new', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
 	}
 
 	public function test_refurbished_condition_resolves_to_refurbished(): void {
-		$product = $this->make_product_with_attributes( array( 'pa_condition' => 'refurbished' ) );
+		$product = $this->make_product_with_attributes(
+			array( 'pa_condition' => $this->taxonomy_attribute( 'Factory Refurbished', array( 'refurbished' ) ) )
+		);
 
 		$this->assertSame( 'refurbished', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
 	}
 
 	public function test_used_condition_resolves_to_used(): void {
-		$product = $this->make_product_with_attributes( array( 'pa_condition' => 'used' ) );
+		$product = $this->make_product_with_attributes(
+			array( 'pa_condition' => $this->taxonomy_attribute( 'Pre-owned', array( 'used' ) ) )
+		);
 
 		$this->assertSame( 'used', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
 	}
 
-	public function test_unrecognised_condition_value_resolves_to_empty_string(): void {
+	public function test_non_english_condition_label_still_resolves(): void {
+		// A German store's Condition terms read "Neu", "Generalüberholt",
+		// "Gebraucht" while their slugs stay English. Matching the label
+		// lost the condition on every product of every non-English store
+		// (#679 review); matching the slug does not.
+		$product = $this->make_product_with_attributes(
+			array( 'pa_condition' => $this->taxonomy_attribute( 'Neu', array( 'new' ) ) )
+		);
+
+		$this->assertSame( 'new', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
+	}
+
+	public function test_unrecognised_condition_slug_resolves_to_empty_string(): void {
 		// A merchant's own pre-existing pa_condition is not overwritten by
-		// seeding, so values like "B-grade" reach this code in the wild.
+		// seeding, so terms like "B-grade" reach this code in the wild.
 		// This is also the test that catches a removed/short-circuited
 		// condition lookup: without it, an unrecognised value would type.
-		$product = $this->make_product_with_attributes( array( 'pa_condition' => 'B-grade' ) );
+		$product = $this->make_product_with_attributes(
+			array( 'pa_condition' => $this->taxonomy_attribute( 'B Grade', array( 'b-grade' ) ) )
+		);
 
 		$this->assertSame( '', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
+	}
+
+	public function test_recognised_label_over_an_unrecognised_slug_resolves_to_empty_string(): void {
+		// The mirror image, and the one that pins WHICH half is matched:
+		// a term slugged `b-grade` that the merchant relabelled "Used" is
+		// not a `used` product. Reading the label would type it; reading
+		// the slug does not.
+		$product = $this->make_product_with_attributes(
+			array( 'pa_condition' => $this->taxonomy_attribute( 'Used', array( 'b-grade' ) ) )
+		);
+
+		$this->assertSame( '', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
+	}
+
+	public function test_multi_term_condition_resolves_to_empty_string(): void {
+		// Two terms on one attribute: WooCommerce joins them, and there is
+		// no single honest claim to make from "new, used".
+		$product = $this->make_product_with_attributes(
+			array( 'pa_condition' => $this->taxonomy_attribute( 'Brand New, Pre-owned', array( 'new', 'used' ) ) )
+		);
+
+		$this->assertSame( '', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
+	}
+
+	public function test_custom_attribute_matches_its_raw_value(): void {
+		// A non-taxonomy attribute stores free text with no term behind
+		// it, so the raw value is the only value there is. That path is
+		// unchanged by the slug fix and must stay that way.
+		$product = $this->make_product_with_attributes( array( 'condition' => 'Used' ) );
+
+		$this->assertSame( 'used', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
 	}
 
 	public function test_seeded_attribute_outranks_a_bare_custom_one(): void {
@@ -163,12 +253,25 @@ class ProductFactsTest extends \PHPUnit\Framework\TestCase {
 		// lives in resolve_condition(), not in either emitter.
 		$product = $this->make_product_with_attributes(
 			array(
-				'pa_condition' => 'refurbished',
+				'pa_condition' => $this->taxonomy_attribute( 'Factory Refurbished', array( 'refurbished' ) ),
 				'condition'    => 'used',
 			)
 		);
 
 		$this->assertSame( 'refurbished', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
+	}
+
+	public function test_bare_attribute_is_used_when_the_seeded_slug_cannot_type(): void {
+		// A pa_ term whose SLUG does not type must not block the next
+		// candidate — the fall-through has to survive the slug fix.
+		$product = $this->make_product_with_attributes(
+			array(
+				'pa_condition' => $this->taxonomy_attribute( 'B Grade', array( 'b-grade' ) ),
+				'condition'    => 'used',
+			)
+		);
+
+		$this->assertSame( 'used', WC_AI_Storefront_Product_Facts::condition_slug( $product ) );
 	}
 
 	public function test_resolve_condition_reports_the_winning_attribute_slug(): void {

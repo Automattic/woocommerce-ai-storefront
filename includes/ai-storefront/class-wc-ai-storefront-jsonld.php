@@ -1173,12 +1173,23 @@ class WC_AI_Storefront_JsonLd {
 			// audience sub-property. Reusing $audience_pending is what
 			// gives it the same additionalProperty fallback for free.
 			if ( isset( WC_AI_Storefront_Product_Facts::CONDITION_ATTRIBUTE_MAP[ $slug ] ) ) {
+				// Matched on the term SLUG, not on $value: $value is the
+				// merchant's display LABEL, and matching that against the
+				// three neutral slugs loses the condition on every store
+				// that renamed a term or runs in a language other than
+				// English (#679 review). Same read
+				// add_item_condition() does via
+				// collect_condition_candidates(), so the two halves of
+				// this feature cannot disagree about which attribute won.
 				$condition_candidates[] = array(
 					'slug'     => $slug,
-					'value'    => $value,
+					'value'    => WC_AI_Storefront_Product_Facts::condition_attribute_value( $product, $attribute ),
 					'priority' => WC_AI_Storefront_Product_Facts::CONDITION_ATTRIBUTE_MAP[ $slug ]['priority'],
 				);
 
+				// additionalProperty keeps $value, the merchant's own
+				// label — a shopper-visible field must not start showing
+				// an internal slug.
 				$audience_pending[ $slug ] = array(
 					'@type' => 'PropertyValue',
 					'name'  => wc_attribute_label( $attribute->get_name(), $product ),
