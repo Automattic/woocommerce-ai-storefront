@@ -114,8 +114,8 @@ class SeoPluginDetectorTest extends \PHPUnit\Framework\TestCase {
 		// Normal real-world state: the paid addon requires free core, so
 		// both are active together. This must not surface as two vendor
 		// rows - WC_AI_Storefront_Schema_Conflict_Notice::maybe_render()
-		// joins every label into one sentence ("X is also emitting
-		// these..."), which reads wrong (and grammatically singular-vs-
+		// joins every label into one sentence ("X emits some of the same
+		// tags..."), which reads wrong (and grammatically singular-vs-
 		// plural broken) if the same vendor appears twice.
 		define( 'WPSEO_VERSION', '22.0-test' );
 		class_alias( 'WC_AI_Storefront_Yoast_WC_SEO_Test_Double', 'Yoast_WooCommerce_SEO' );

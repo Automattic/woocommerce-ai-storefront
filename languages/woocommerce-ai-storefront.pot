@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-20T23:24:56+00:00\n"
+"POT-Creation-Date: 2026-08-21T00:09:44+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -76,32 +76,32 @@ msgid "Use this for individual adult products in an otherwise general store: nud
 msgstr ""
 
 #. translators: %s: comma-separated list of detected SEO plugin names.
-#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:71
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:72
 #, php-format
-msgid "WooCommerce AI Storefront now provides your product titles, descriptions, social cards, and structured data. %s is also emitting these, which can produce duplicate tags. You can deactivate it. Review the checklist first."
+msgid "WooCommerce AI Storefront now provides your product titles, descriptions, social cards, and structured data. %s emits some of the same tags, which can produce duplicates. You can deactivate it. Review the checklist first."
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:75
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:76
 msgid "Before deactivating, check:"
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:77
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:78
 msgid "Breadcrumbs: if your theme calls the SEO plugin's breadcrumb function, switch it to woocommerce_breadcrumb()."
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:78
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:79
 msgid "Redirects: any redirects configured in the SEO plugin will stop working. Keep a dedicated redirect plugin."
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:79
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:80
 msgid "Custom noindex rules: pages you manually noindexed will become indexable."
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:80
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:81
 msgid "Sitemap: WordPress core serves /wp-sitemap.xml. Resubmit it in Google Search Console."
 msgstr ""
 
-#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:82
+#: includes/admin/class-wc-ai-storefront-schema-conflict-notice.php:83
 msgid "Read the full coexistence guide"
 msgstr ""
 
