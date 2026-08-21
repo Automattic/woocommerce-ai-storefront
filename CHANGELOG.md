@@ -1,5 +1,12 @@
 ## [Unreleased]
 
+### Added
+- **Product links you share now carry richer previews (#679).**
+  - When a product is shared on social media or in a messaging app, the preview card now shows whether it's in stock, on backorder or sold out, plus its condition when you've set one, new, used or refurbished.
+  - On Twitter/X, the preview also shows price and stock as readable text beneath the image, matching what stores running Yoast SEO or Rank Math already show.
+  - The product photo's size and description are included too, so previews render at full size right away instead of sometimes needing to be measured first.
+  - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
+
 ### Fixed
 - **Your meta description appeared twice when another SEO plugin was active (#669).**
   - With Yoast SEO, Rank Math, SEOPress or All in One SEO also running, your product, category and shop pages each carried two meta descriptions. Search engines pick one of them, so nothing broke outright, but validators flagged it and the only way to clear it was to deactivate one of the two plugins.
