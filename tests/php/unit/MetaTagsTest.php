@@ -58,6 +58,10 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
 		Functions\when( 'wc_get_products' )->justReturn( array() );
+		// usable_url() reaches esc_url() during resolution now (#684 review), so
+		// it must be defined even for tests that never render. Identity, so a
+		// test asserting rejection has to opt in by overriding it.
+		Functions\when( 'esc_url' )->returnArg();
 		// twitter_price_data() (#679) formats through wc_price(),
 		// which this suite never loads real WooCommerce for. Stand in with a
 		// minimal HTML shape matching real wc_price()'s USD output closely
@@ -1632,6 +1636,58 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://shop.test/half.jpg', $og['og:image'] );
 		$this->assertArrayNotHasKey( 'og:image:width', $og );
 		$this->assertArrayNotHasKey( 'og:image:height', $og );
+	}
+
+	public function test_archive_og_image_ignores_a_default_image_esc_url_would_empty(): void {
+		$this->stub_shop_archive();
+		// esc_url() returns '' for a disallowed protocol. Accepting the URL
+		// anyway shipped og:image="" under a summary_large_image card, and
+		// cost the store the curated-product step below (#684 review).
+		Functions\when( 'esc_url' )->alias(
+			static function ( $url ) {
+				return 0 === strpos( (string) $url, 'javascript:' ) ? '' : $url;
+			}
+		);
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_og_default_image' === $hook ? 'javascript:alert(1)' : $value;
+			}
+		);
+		Functions\when( 'wc_get_products' )->justReturn( array( 88 ) );
+		$this->stub_attachments(
+			array( 88 => 91 ),
+			array( 91 => array( 'https://shop.test/hoodie.jpg', 900, 900, false ) )
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/hoodie.jpg', $og['og:image'] );
+	}
+
+	public function test_render_drops_an_image_the_printer_cannot_emit(): void {
+		$this->stub_escapers();
+		$this->stub_shop_archive();
+		// The og_tags filter can replace og:image after every resolver has
+		// finished, so the card decision has to survive that too.
+		Functions\when( 'esc_url' )->alias(
+			static function ( $url ) {
+				return 0 === strpos( (string) $url, 'data:' ) ? '' : $url;
+			}
+		);
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_og_tags' === $hook ) {
+					$value['og:image']        = 'data:image/png;base64,AAAA';
+					$value['og:image:width']  = '1200';
+					$value['og:image:height'] = '630';
+				}
+				return $value;
+			}
+		);
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+		$this->assertStringNotContainsString( 'og:image', $html, 'An image esc_url() empties must not ship as content="".' );
+		$this->assertStringNotContainsString( 'twitter:image', $html );
+		$this->assertStringContainsString( '<meta name="twitter:card" content="summary"', $html );
 	}
 
 	public function test_archive_og_image_omits_dimensions_for_the_site_icon(): void {

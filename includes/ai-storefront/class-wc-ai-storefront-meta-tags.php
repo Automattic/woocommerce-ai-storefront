@@ -1202,6 +1202,8 @@ class WC_AI_Storefront_Meta_Tags {
 	 *                                      archive-page path.
 	 */
 	private function print_og_and_twitter( array $og, $product = null ): void {
+		$og = $this->drop_unprintable_image( $og );
+
 		foreach ( $og as $property => $content ) {
 			if ( '' === $content ) {
 				continue;
@@ -1260,6 +1262,16 @@ class WC_AI_Storefront_Meta_Tags {
 			);
 			$configured = '';
 		}
+		if ( '' !== $configured && '' === $this->usable_url( $configured ) ) {
+			// Returning early on a URL the printer cannot emit would cost the
+			// store the curated product, logo and icon steps below, and leave
+			// the archive with no image at all.
+			WC_AI_Storefront_Logger::debug(
+				'Open Graph: wc_ai_storefront_og_default_image returned "%s", which esc_url() empties. Ignoring it.',
+				$configured
+			);
+			$configured = '';
+		}
 		if ( '' !== $configured ) {
 			// A bare URL carries no dimensions we can vouch for.
 			return array(
@@ -1281,7 +1293,9 @@ class WC_AI_Storefront_Meta_Tags {
 		}
 
 		if ( function_exists( 'get_site_icon_url' ) ) {
-			$icon = (string) get_site_icon_url( 512 );
+			// usable_url() because get_site_icon_url has its own filter, so
+			// this is not guaranteed to be a URL WordPress produced.
+			$icon = $this->usable_url( (string) get_site_icon_url( 512 ) );
 			if ( '' !== $icon ) {
 				// No dimensions, for the same reason the filter branch above
 				// reports none: we cannot vouch for them. Core's
@@ -1440,6 +1454,60 @@ class WC_AI_Storefront_Meta_Tags {
 		$term = get_queried_object();
 
 		return is_object( $term ) && isset( $term->slug ) ? (string) $term->slug : '';
+	}
+
+	/**
+	 * Drop an og:image the printer would escape away to nothing.
+	 *
+	 * print_meta() runs esc_url() on og:image, and esc_url() returns '' for a
+	 * disallowed protocol (`javascript:`, `data:`). But the emptiness check in
+	 * print_og_and_twitter() tests the RAW value, so the page shipped
+	 * og:image="" while build_twitter_tags() still saw a URL and asked for
+	 * summary_large_image: the large-card-with-no-image state this whole
+	 * change exists to remove (#684 review).
+	 *
+	 * Decided here, once, rather than in the resolver, because it has to hold
+	 * for every source — including the product path, which never goes through
+	 * archive_image(), and the wc_ai_storefront_og_tags filter, which can
+	 * replace og:image after any resolver has finished.
+	 *
+	 * @param array<string,string> $og Open Graph map.
+	 * @return array<string,string> The same map, minus an unprintable image
+	 *                              and the properties that describe it.
+	 */
+	private function drop_unprintable_image( array $og ): array {
+		if ( ! isset( $og['og:image'] ) || '' === $og['og:image'] ) {
+			return $og;
+		}
+
+		if ( '' !== $this->usable_url( (string) $og['og:image'] ) ) {
+			return $og;
+		}
+
+		WC_AI_Storefront_Logger::debug(
+			'Open Graph: og:image "%s" does not survive esc_url(). Dropping it, and the card with it.',
+			(string) $og['og:image']
+		);
+		unset( $og['og:image'], $og['og:image:width'], $og['og:image:height'], $og['og:image:alt'] );
+
+		return $og;
+	}
+
+	/**
+	 * The URL unchanged, or '' when escaping would empty it.
+	 *
+	 * Returns the RAW url on success, not the escaped form: print_meta()
+	 * escapes again at output, and storing the escaped value would
+	 * double-encode it.
+	 *
+	 * @param string $url Candidate URL.
+	 */
+	private function usable_url( string $url ): string {
+		if ( '' === $url || ! function_exists( 'esc_url' ) ) {
+			return $url;
+		}
+
+		return '' === esc_url( $url ) ? '' : $url;
 	}
 
 	/**
