@@ -9,6 +9,12 @@
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
 ### Fixed
+- **SEOPress and your store both described your product pages to social networks (#676).**
+  - With SEOPress active, every product, category and shop page carried two sets of share tags. Networks pick one, so previews looked fine at a glance, but which one you got was not yours to choose.
+  - Your store now stands SEOPress's social tags down on those pages and publishes its own, which carry the commerce details SEOPress does not: price, stock, and condition.
+  - Everything else SEOPress does is untouched. Your titles, canonical links, robots directives, meta descriptions and structured data are all still SEOPress's.
+  - Off commerce pages nothing changes. Your posts and pages are still described entirely by SEOPress.
+  - Other SEO plugins are not affected by this change yet. Yoast, Rank Math and All in One SEO still emit their own share tags alongside your store's.
 - **Sharing your Shop page or a product category showed a blank preview (#683).**
   - The preview card was set up to display a large photo, but no photo was attached to it, so social networks and messaging apps fell back to showing a plain link.
   - Your Shop page now uses its own featured image, the one on its edit screen in WordPress, and a product category uses the category image you set in WooCommerce.
