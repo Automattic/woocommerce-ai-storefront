@@ -721,9 +721,16 @@ class WC_AI_Storefront_Meta_Tags {
 	 *   "5 in stock". That publishes the merchant's stock level into a
 	 *   public social card, which nobody asked for and a merchant would
 	 *   not expect.
-	 * - For a backordered product it reads "Out of stock", contradicting
-	 *   `product:availability`'s "available for order" for the very same
-	 *   product on the very same page.
+	 *
+	 * A third justification stood here and was WRONG: it claimed
+	 * `get_availability()` reads "Out of stock" for a backordered
+	 * product. Re-verified against real WooCommerce (#679 review), a
+	 * genuine backorder product returns `''` (managed, `backorders=yes`)
+	 * or "Available on backorder" (managed, `backorders=notify`), never
+	 * "Out of stock". The original evidence came from a fixture with
+	 * backorders DISABLED, where WooCommerce rewrites the stock status to
+	 * `outofstock` on save — so it was never a backorder product at all.
+	 * The two justifications above are each independently sufficient.
 	 *
 	 * This method instead maps `WC_AI_Storefront_Product_Facts::stock_state()`
 	 * — the same neutral three-way state `product:availability` and

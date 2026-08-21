@@ -563,18 +563,26 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		 * live verification found this real-WooCommerce method unusable
 		 * for a public social card: it returns '' for a plain unmanaged
 		 * in-stock product (the commonest configuration, since stock
-		 * management is off by default), leaks the live quantity for a
-		 * managed one (e.g. "5 in stock"), and disagrees with
-		 * `product:availability` on backorder. Declared here only for
-		 * `WC_Product` API fidelity; `MetaTagsTest` overrides it via
-		 * Mockery (`shouldReceive( 'get_availability' )->andReturn( [...] )`)
-		 * to prove the emitter never reads it.
+		 * management is off by default) and leaks the live quantity for a
+		 * managed one (e.g. "5 in stock"). An earlier version of this
+		 * docblock also claimed it disagrees with `product:availability`
+		 * on backorder; that claim was wrong and has been removed (#679
+		 * review) — a genuine backorder product returns '' or "Available
+		 * on backorder", never "Out of stock".
+		 *
+		 * The return value models the default product this stub
+		 * represents: unmanaged and in stock, which real WooCommerce
+		 * answers with an EMPTY availability string, not "In stock".
+		 * Declared here only for `WC_Product` API fidelity; `MetaTagsTest`
+		 * overrides it via Mockery
+		 * (`shouldReceive( 'get_availability' )->andReturn( [...] )`) to
+		 * prove the emitter never reads it.
 		 *
 		 * @return array{availability: string, class: string}
 		 */
 		public function get_availability(): array {
 			return array(
-				'availability' => 'In stock',
+				'availability' => '',
 				'class'        => 'in-stock',
 			);
 		}
