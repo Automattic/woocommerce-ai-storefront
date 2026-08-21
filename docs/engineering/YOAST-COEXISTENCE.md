@@ -58,9 +58,9 @@ Resolved in #669, and the resolution is not uninstalling anything. Before it ren
 Two constraints govern the observation, both measured against real installs rather than reasoned from documentation (`WC_AI_Storefront_Rival_Seo_Description`):
 
 - **Hooked at `PHP_INT_MAX`, not a normal priority.** With the paid Yoast WooCommerce SEO addon active, the same request gives `wpseo_metadesc` as an empty string at priority 5 — where this plugin renders — and the full 27-character product description at `PHP_INT_MAX`. The addon supplies the value above priority 5. An observer at a default priority reads "empty", never stands down, and leaves the duplicate in place for exactly the configuration the feature most needs to handle.
-- **First non-empty value wins, never the last.** SEOPress fires `seopress_titles_desc` 6 to 12 times in one request; All in One SEO fires `aioseo_description` twice with the second call always empty. Keeping the last value seen would read that trailing empty and conclude nothing was emitted.
+- **First non-empty value wins, never the last.** SEOPress fires `seopress_titles_desc` 6 to 12 times per request, the exact count varying by page type and run; All in One SEO fires `aioseo_description` twice with the second call always empty. Keeping the last value seen would read that trailing empty and conclude nothing was emitted.
 
-An empty firing is a reliable "no tag will be emitted" signal, which is what makes the inverse safe: SEOPress fires the filter three or four times with an empty value on category and shop-archive pages and emits no description there, so this plugin correctly keeps emitting its own. **A page never ends up with zero description tags** because this plugin stood down for a tag the other plugin was not going to print.
+An empty firing is a reliable "no tag will be emitted" signal, which is what makes the inverse safe: SEOPress fires the filter three or four times with an empty value on the shop archive, and on category pages whose term has no description, and emits no description there, so this plugin correctly keeps emitting its own. A category term that does have a description gets a non-empty firing instead, and this plugin stands down for it there too. Between the two suppressions (Jetpack's tag always removed, these four plugins' tags read and deferred to), **at most one plugin's description tag ever reaches the page** — not quite a guarantee against zero. A rival plugin's own "disable meta description" master switch, applied downstream of the filter this plugin observes, could carry a value through the filter that the rival plugin never actually prints, leaving this plugin stood down for a tag nobody sees.
 
 ### Who owns the `<title>`
 
@@ -68,13 +68,15 @@ There is only one title tag, so there is never duplication; the question is who 
 
 `wp_get_document_title()` applies the whole `pre_get_document_title` chain and returns early on any non-empty result, so the **last** callback to return a non-empty value wins. Registration priorities on that filter:
 
-| plugin | priority on `pre_get_document_title` |
-|---|---|
-| **this plugin** | **11** |
-| Yoast SEO | 15 |
-| Rank Math | 15 |
-| SEOPress | 20 |
-| All in One SEO | 99999 |
+| plugin | priority on `pre_get_document_title` | provenance |
+|---|---|---|
+| **this plugin** | **11** | measured (#669 spike hookmap dump) |
+| Yoast SEO | 15 | measured (#669 spike hookmap dump) |
+| Rank Math | 15 | read from source, not independently confirmed by the spike |
+| SEOPress | 20 (or `214748364` in one config branch) | read from source, not independently confirmed by the spike |
+| All in One SEO | 99999 | measured (#669 spike hookmap dump) |
+
+Rank Math's and SEOPress's numbers are carried over from the plugin's own source rather than a runtime hookmap capture. Treat them as lower-confidence than the other three rows: the spike confirmed both plugins win the title in practice (their own title text and separator replace this plugin's, on the page types where they run at all), but did not capture a hookmap dump pinning the exact priority number the way it did for this plugin, Yoast and AIOSEO.
 
 All four register above 11, run after this plugin, and overwrite its value. This plugin's `document_title_parts` callback at priority 99 never runs at all, because the short-circuit returns before core assembles the title from its parts — so the brand suffix is lost alongside the title. Deactivating the SEO plugin restores both.
 
