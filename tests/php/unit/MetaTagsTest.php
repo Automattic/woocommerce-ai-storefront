@@ -52,6 +52,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'get_theme_mod' )->justReturn( 0 );
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		// Archive image resolver (#683): default every lookup to "nothing
+		// found" so a test that does not opt in gets the same answer whatever
+		// order the suite runs in — this file shares one process with the rest.
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
 		// twitter_price_data() (#679) formats through wc_price(),
 		// which this suite never loads real WooCommerce for. Stand in with a
 		// minimal HTML shape matching real wc_price()'s USD output closely
@@ -1055,9 +1061,11 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
 		Functions\when( 'get_term_meta' )->justReturn( 77 );
-		Functions\when( 'wp_get_attachment_url' )->justReturn( 'https://shop.test/cat.jpg' );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/cat.jpg', 1024, 768, false ) );
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'https://shop.test/cat.jpg', $og['og:image'] );
+		$this->assertSame( '1024', $og['og:image:width'] );
+		$this->assertSame( '768', $og['og:image:height'] );
 	}
 
 	public function test_archive_og_tags_for_shop(): void {
@@ -1302,7 +1310,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
 		Functions\when( 'get_theme_mod' )->justReturn( 7 );
-		Functions\when( 'wp_get_attachment_image_url' )->justReturn( 'https://shop.test/logo.png' );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/logo.png', 400, 100, false ) );
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'https://shop.test/logo.png', $og['og:image'] );
 	}
@@ -1337,6 +1345,237 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$og = $this->meta->build_archive_og_tags();
 		$this->assertSame( 'https://shop.test/branded-og.png', $og['og:image'] );
+	}
+
+	// --- Archive social image and card type (#683) ---
+
+	/**
+	 * Stub a product carrying (or lacking) an image.
+	 *
+	 * @param int $image_id Attachment ID; 0 for a product with no image.
+	 */
+	private function archive_candidate( int $image_id ): \Mockery\MockInterface {
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->allows( 'get_image_id' )->andReturn( $image_id );
+		return $product;
+	}
+
+	public function test_archive_og_image_uses_the_shop_page_featured_image(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 42 );
+		// A logo is set too: the page's own image must still win.
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wp_get_attachment_image_src' )->alias(
+			static function ( $id ) {
+				// Keyed by ID so a wrong winner cannot masquerade as the right
+				// one: every source in the chain returns a distinct URL.
+				$by_id = array(
+					42 => array( 'https://shop.test/storefront.jpg', 1200, 630, false ),
+					88 => array( 'https://shop.test/hoodie.jpg', 900, 900, false ),
+					7  => array( 'https://shop.test/logo.png', 400, 100, false ),
+				);
+				return $by_id[ (int) $id ] ?? false;
+			}
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/storefront.jpg', $og['og:image'] );
+		$this->assertSame( '1200', $og['og:image:width'] );
+		$this->assertSame( '630', $og['og:image:height'] );
+	}
+
+	public function test_archive_og_image_falls_back_to_a_featured_product_on_the_shop(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->archive_candidate( 88 ) ) );
+		// A logo is set: a curated product must outrank it.
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wp_get_attachment_image_src' )->alias(
+			static function ( $id ) {
+				// Keyed by ID so a wrong winner cannot masquerade as the right
+				// one: every source in the chain returns a distinct URL.
+				$by_id = array(
+					42 => array( 'https://shop.test/storefront.jpg', 1200, 630, false ),
+					88 => array( 'https://shop.test/hoodie.jpg', 900, 900, false ),
+					7  => array( 'https://shop.test/logo.png', 400, 100, false ),
+				);
+				return $by_id[ (int) $id ] ?? false;
+			}
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/hoodie.jpg', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_asks_only_for_featured_catalog_products(): void {
+		$seen = array();
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$seen ) {
+				$seen[] = $args;
+				return array();
+			}
+		);
+		$this->meta->build_archive_og_tags();
+		$this->assertCount( 1, $seen, 'The shop must not retry without the featured filter.' );
+		$this->assertTrue( $seen[0]['featured'] );
+		$this->assertSame( 'catalog', $seen[0]['visibility'] );
+		$this->assertSame( 'publish', $seen[0]['status'] );
+		$this->assertArrayNotHasKey( 'category', $seen[0] );
+	}
+
+	public function test_archive_og_image_does_not_fall_back_to_an_arbitrary_product_on_the_shop(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		// Nothing featured: the store has products, but none curated.
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 7 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/logo.png', 400, 100, false ) );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/logo.png', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_falls_back_to_a_featured_product_in_the_category(): void {
+		$seen = array();
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'     => 9,
+				'slug'        => 'belts',
+				'name'        => 'Belts',
+				'description' => 'Leather belts.',
+			)
+		);
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
+		Functions\when( 'get_term_meta' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->alias(
+			function ( $args ) use ( &$seen ) {
+				$seen[] = $args;
+				return array( $this->archive_candidate( 88 ) );
+			}
+		);
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/belt.jpg', 900, 900, false ) );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/belt.jpg', $og['og:image'] );
+		$this->assertSame( array( 'belts' ), $seen[0]['category'] );
+	}
+
+	public function test_archive_og_image_uses_any_category_product_when_none_is_featured(): void {
+		$seen = array();
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'is_product_category' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'     => 9,
+				'slug'        => 'belts',
+				'name'        => 'Belts',
+				'description' => 'Leather belts.',
+			)
+		);
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-category/belts/' );
+		Functions\when( 'get_term_meta' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->alias(
+			function ( $args ) use ( &$seen ) {
+				$seen[] = $args;
+				// First call asks for featured and finds none.
+				return isset( $args['featured'] ) ? array() : array( $this->archive_candidate( 88 ) );
+			}
+		);
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/belt.jpg', 900, 900, false ) );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/belt.jpg', $og['og:image'] );
+		$this->assertCount( 2, $seen );
+		$this->assertSame( array( 'belts' ), $seen[1]['category'] );
+	}
+
+	public function test_archive_og_image_skips_candidates_that_have_no_image(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->justReturn(
+			array(
+				$this->archive_candidate( 0 ),
+				$this->archive_candidate( 88 ),
+			)
+		);
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/second.jpg', 900, 900, false ) );
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/second.jpg', $og['og:image'] );
+	}
+
+	public function test_archive_og_image_prefers_the_configured_default_over_a_featured_product(): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->justReturn( array( $this->archive_candidate( 88 ) ) );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/hoodie.jpg', 900, 900, false ) );
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_og_default_image' === $hook ? 'https://shop.test/branded-og.png' : $value;
+			}
+		);
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertSame( 'https://shop.test/branded-og.png', $og['og:image'] );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+	}
+
+	public function test_archive_twitter_card_is_summary_when_no_image_resolves(): void {
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title'       => 'Shop',
+				'og:description' => 'Everything we sell.',
+			)
+		);
+		$this->assertSame( 'summary', $tw['twitter:card'] );
+		$this->assertArrayNotHasKey( 'twitter:image', $tw );
+	}
+
+	public function test_archive_twitter_card_is_large_image_when_an_image_resolves(): void {
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title'       => 'Shop',
+				'og:description' => 'Everything we sell.',
+				'og:image'       => 'https://shop.test/storefront.jpg',
+			)
+		);
+		$this->assertSame( 'summary_large_image', $tw['twitter:card'] );
+		$this->assertSame( 'https://shop.test/storefront.jpg', $tw['twitter:image'] );
 	}
 
 	// --- Task 3: front-page brand og:title (#527) ---
