@@ -118,7 +118,7 @@ final class WC_AI_Storefront_Rival_Seo_Description {
 	 *                      a string; a non-string is treated as no value
 	 *                      and never recorded, but is still returned
 	 *                      unchanged.
-	 * @return mixed $value, byte for byte unchanged.
+	 * @return mixed The input value, byte for byte unchanged.
 	 */
 	public static function observe( $value ) {
 		if ( null === self::$observed_description && is_string( $value ) && '' !== $value ) {
