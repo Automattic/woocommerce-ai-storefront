@@ -5,13 +5,19 @@
  * The two multi-firing shapes exercised here (test_is_emitting_is_true_
  * for_the_seopress_shape, ..._aioseo_shape) are not arbitrary — they
  * reproduce the exact firing patterns measured against real installs in
- * `.claude/tmp/artifacts/669/GROUND-TRUTH.md` (#669 spike). Every callback
- * is called directly, the same way MetaTagsTest exercises
+ * `.claude/tmp/artifacts/669/GROUND-TRUTH.md` (#669 spike). Every observe()
+ * call is made directly, the same way MetaTagsTest exercises
  * suppress_jetpack_description(), rather than through a real `wp_head`
  * dispatch: Brain Monkey's `apply_filters()` does not invoke callbacks
  * registered via `add_filter()` (it is an expectation-recording double,
- * not a real hook engine), so the only way to exercise observe() under
- * test is to call it directly.
+ * not a real hook engine), so that is the only way to exercise observe()
+ * under test.
+ *
+ * init()'s PHP_INT_MAX priority is a different story: `add_filter()`'s
+ * registration IS recorded (not dispatched), so
+ * `\Brain\Monkey\Filters\expectAdded( $filter )->with( $callback, PHP_INT_MAX )`
+ * asserts the exact priority argument init() passed, no real dispatch
+ * needed. See test_init_hooks_all_four_rival_description_filters_at_php_int_max().
  *
  * @package WooCommerce_AI_Storefront
  */
@@ -102,8 +108,16 @@ class RivalSeoDescriptionTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( $value, WC_AI_Storefront_Rival_Seo_Description::observe( $value ) );
 	}
 
-	public function test_callback_returns_empty_input_unchanged(): void {
-		$this->assertSame( '', WC_AI_Storefront_Rival_Seo_Description::observe( '' ) );
+	public function test_callback_returns_whitespace_only_input_unchanged(): void {
+		// NOT literal '' - a mutant that returns '' unconditionally would
+		// still pass an assertSame( '', observe( '' ) ) test, since the
+		// broken output and the expected output are the same string. A
+		// whitespace-only value is still non-empty by PHP's '' !== $value
+		// rule, so it discriminates: passthrough must return it verbatim,
+		// not '' and not trimmed.
+		$value = '   ';
+
+		$this->assertSame( $value, WC_AI_Storefront_Rival_Seo_Description::observe( $value ) );
 	}
 
 	public function test_callback_returns_non_string_input_unchanged(): void {
@@ -116,26 +130,34 @@ class RivalSeoDescriptionTest extends \PHPUnit\Framework\TestCase {
 	// init()
 	// ------------------------------------------------------------------
 
-	public function test_init_hooks_all_four_rival_description_filters(): void {
-		// Registration existence only - deliberately not asserting the
-		// PHP_INT_MAX priority here. See init()'s own docblock for why the
-		// priority is load-bearing; that requirement is a runtime-ordering
-		// property (this observer must run after whatever priority the
-		// rival plugin itself uses), not something a same-process unit
-		// test can prove by re-reading Brain Monkey's recorded args.
-		WC_AI_Storefront_Rival_Seo_Description::init();
-
-		$filters = array(
+	public function test_init_hooks_all_four_rival_description_filters_at_php_int_max(): void {
+		// Pins constraint 1 (init()'s docblock, GROUND-TRUTH.md): the paid
+		// Yoast WooCommerce SEO addon only fills wpseo_metadesc ABOVE
+		// priority 5, so anything less than PHP_INT_MAX can silently miss
+		// it. `Filters\expectAdded()->with( $callback, $priority )` reads
+		// the exact arguments add_filter() registered with - not a real
+		// hook dispatch, but the registration call IS recorded, which is
+		// enough to pin the literal. Confirmed by mutation: reverting
+		// PHP_INT_MAX to 5 makes this test fail (see task-1-report.md).
+		$callback = array( 'WC_AI_Storefront_Rival_Seo_Description', 'observe' );
+		$filters  = array(
 			'wpseo_metadesc',
 			'rank_math/frontend/description',
 			'seopress_titles_desc',
 			'aioseo_description',
 		);
 		foreach ( $filters as $filter ) {
-			$this->assertNotFalse(
-				has_filter( $filter, array( 'WC_AI_Storefront_Rival_Seo_Description', 'observe' ) ),
-				"init() did not hook {$filter}"
-			);
+			\Brain\Monkey\Filters\expectAdded( $filter )
+				->once()
+				->with( $callback, PHP_INT_MAX );
 		}
+
+		WC_AI_Storefront_Rival_Seo_Description::init();
+
+		// Brain Monkey verifies expectations during tearDown(); PHPUnit
+		// doesn't count those as native assertions, so acknowledge them
+		// explicitly to avoid a "risky test" flag. Mirrors the pattern in
+		// IndexNowTest::test_init_registers_brand_term_hooks().
+		$this->addToAssertionCount( 4 );
 	}
 }
