@@ -217,12 +217,11 @@ class WC_AI_Storefront {
 		$jsonld->init();
 
 		// Observes whether another SEO plugin is emitting its own meta
-		// description this request (#669, task 1 of 3). Pure observation,
-		// no gating yet — a later task reads is_emitting() to let
-		// Meta_Tags stand down instead of duplicating the tag. Wired
-		// alongside Meta_Tags, and before it, so the observer has already
-		// seen every rival filter fire by the time our own wp_head
-		// callback (priority 5) needs the answer.
+		// description this request (#669), so Meta_Tags can stand down
+		// instead of duplicating the tag when one is. Wired alongside
+		// Meta_Tags, and before it, so the observer has already seen
+		// every rival filter fire by the time our own wp_head callback
+		// (priority 5) needs the answer.
 		WC_AI_Storefront_Rival_Seo_Description::init();
 
 		// Human-SERP / social metadata (title, description, OG/Twitter,

@@ -160,4 +160,28 @@ class RivalSeoDescriptionTest extends \PHPUnit\Framework\TestCase {
 		// IndexNowTest::test_init_registers_brand_term_hooks().
 		$this->addToAssertionCount( 4 );
 	}
+
+	public function test_init_registers_reset_on_wp_head_at_priority_zero(): void {
+		// Fix for #669: under PHP-FPM or mod_php the process dies with the
+		// request, so a missing reset is invisible. Under a persistent
+		// worker (FrankenPHP, RoadRunner worker mode) the same process, and
+		// so the same static, serves many requests - without this
+		// registration self::$observed_description latches from whichever
+		// request last set it onto every request after it. Priority 0 is
+		// required, not incidental: every rival filter fires at wp_head:1
+		// (GROUND-TRUTH.md, #669 spike), so reset() must run before that,
+		// and strictly before our own wp_head:5 read. Confirmed by
+		// mutation: changing the priority argument makes this test fail
+		// (see task-3-report.md).
+		\Brain\Monkey\Actions\expectAdded( 'wp_head' )
+			->once()
+			->with( array( 'WC_AI_Storefront_Rival_Seo_Description', 'reset' ), 0 );
+
+		WC_AI_Storefront_Rival_Seo_Description::init();
+
+		// Brain Monkey verifies expectations during tearDown(); PHPUnit
+		// doesn't count those as native assertions, so acknowledge them
+		// explicitly to avoid a "risky test" flag.
+		$this->addToAssertionCount( 1 );
+	}
 }
