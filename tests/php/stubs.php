@@ -556,14 +556,19 @@ if ( ! class_exists( 'WC_Product' ) ) {
 
 		/**
 		 * Shopper-facing stock availability text plus its CSS class.
-		 * Declared so PHPStan resolves the call in
-		 * `WC_AI_Storefront_Meta_Tags::twitter_availability_data()`
-		 * (#679 task 2 fix) — that method reads this rather than
-		 * `product:availability`'s machine vocabulary for the
-		 * human-readable `twitter:data2` value. Real WooCommerce
-		 * (`WC_Product::get_availability()`) returns '' for a plain
-		 * in-stock simple product in some configurations; tests override
-		 * via Mockery (`shouldReceive( 'get_availability' )->andReturn( [...] )`).
+		 *
+		 * No longer read by `WC_AI_Storefront_Meta_Tags` (#679 task 3
+		 * fix) — `twitter:data2` derives from
+		 * `WC_AI_Storefront_Product_Facts::stock_state()` instead, because
+		 * live verification found this real-WooCommerce method unusable
+		 * for a public social card: it returns '' for a plain unmanaged
+		 * in-stock product (the commonest configuration, since stock
+		 * management is off by default), leaks the live quantity for a
+		 * managed one (e.g. "5 in stock"), and disagrees with
+		 * `product:availability` on backorder. Declared here only for
+		 * `WC_Product` API fidelity; `MetaTagsTest` overrides it via
+		 * Mockery (`shouldReceive( 'get_availability' )->andReturn( [...] )`)
+		 * to prove the emitter never reads it.
 		 *
 		 * @return array{availability: string, class: string}
 		 */

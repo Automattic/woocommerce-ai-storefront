@@ -37,11 +37,15 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// which this suite never loads real WooCommerce for. Stand in with a
 		// minimal HTML shape matching real wc_price()'s USD output closely
 		// enough that the real wp_strip_all_tags() stub (tests/php/stubs.php)
-		// reduces it to the same plain "$48.00" a shopper would see; tests
-		// assert on that stripped value, not this HTML.
+		// plus html_entity_decode() (#679 task 3 fix) reduce it to the same
+		// plain "$48.00" a shopper would see; tests assert on that decoded
+		// value, not this HTML. The symbol is deliberately the HTML entity
+		// `&#036;`, matching real wc_price()'s own output (confirmed by live
+		// capture, #679 task 3) rather than a literal "$" — a stub that used
+		// the literal would let a missing html_entity_decode() pass silently.
 		Functions\when( 'wc_price' )->alias(
 			static function ( $price, $args = array() ) {
-				$symbol = 'USD' === ( $args['currency'] ?? '' ) ? '$' : ( ( $args['currency'] ?? '' ) . ' ' );
+				$symbol = 'USD' === ( $args['currency'] ?? '' ) ? '&#036;' : ( ( $args['currency'] ?? '' ) . ' ' );
 				return '<span class="woocommerce-Price-amount amount"><bdi>' . $symbol . number_format( (float) $price, 2 ) . '</bdi></span>';
 			}
 		);
@@ -138,14 +142,19 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// / 'condition' overrides to exercise the other branches.
 		$product->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
 		$product->shouldReceive( 'get_stock_status' )->andReturn( $overrides['stock_status'] ?? 'instock' );
-		// Shopper-facing availability text for twitter:data2 (#679 task 2
-		// fix), independent of the product:availability/og:availability
-		// machine vocabulary above. Defaults to a plain in-stock product's
-		// real WooCommerce text; pass 'availability' => '' to exercise the
-		// empty-text guard in build_twitter_tags().
+		// twitter:data2 is now derived from stock_state() (#679 task 3 fix),
+		// NOT from this mock. get_availability() is stubbed here purely so a
+		// regression that points twitter:data2 back at it is exercised by
+		// the tests below rather than fataling on an unmocked call. The
+		// default mirrors real WooCommerce's own behaviour, verified live
+		// (#679 task 3): a plain UNMANAGED in-stock product returns '' here,
+		// not "In stock" — stock management is off by default, so this is
+		// the commonest configuration on any store. Pass 'availability' to
+		// simulate a different WooCommerce answer (e.g. a managed product's
+		// quantity-bearing "5 in stock") for the quantity-leak test.
 		$product->shouldReceive( 'get_availability' )->andReturn(
 			array(
-				'availability' => $overrides['availability'] ?? 'In stock',
+				'availability' => $overrides['availability'] ?? '',
 				'class'        => $overrides['availability_class'] ?? 'in-stock',
 			)
 		);
@@ -574,13 +583,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	// machine vocabulary) ---
 
 	public function test_twitter_tags_include_price_and_availability_labels(): void {
-		// Symbol-prefixed price (Rank Math's shape) and WooCommerce's own
-		// shopper-facing availability text (Rank Math / Yoast's shape),
-		// not the "USD 48.00" currency-code price or the "instock" OG
-		// vocabulary term this pair used to carry. Mutation check 1/2
-		// targets: reverting twitter:data2 to $og['product:availability'],
-		// or twitter:data1 to the currency-code shape, must make this fail.
-		$product = $this->og_product( array( 'availability' => 'In stock' ) );
+		// Symbol-prefixed price (Rank Math's shape) and our own
+		// stock_state()-derived shopper-facing availability text (Rank
+		// Math / Yoast's shape), not the "USD 48.00" currency-code price
+		// or the "instock" OG vocabulary term this pair used to carry.
+		// Mutation check 2 target: swapping the instock/onbackorder
+		// display strings must make this fail.
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
 		$tw      = $this->meta->build_twitter_tags(
 			array(
 				'og:title'               => 'Canvas Belt',
@@ -621,7 +630,6 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			array(
 				'in_stock'     => false,
 				'stock_status' => 'outofstock',
-				'availability' => 'Out of stock',
 			)
 		);
 		$og      = $this->meta->build_og_tags( $product );
@@ -639,7 +647,6 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$product = $this->og_product(
 			array(
 				'stock_status' => 'onbackorder',
-				'availability' => 'Available on backorder',
 			)
 		);
 		$og      = $this->meta->build_og_tags( $product );
@@ -647,26 +654,49 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'Available on backorder', $tw['twitter:data2'] );
 	}
 
-	public function test_twitter_availability_pair_omitted_when_woocommerce_text_is_empty(): void {
-		// WooCommerce's get_availability() returns '' for a plain in-stock
-		// simple product in some configurations; the pair must be left off
-		// entirely rather than shipping an "Availability:" row with nothing
-		// after it. Mutation check 3 target: removing this guard must make
-		// this test fail. product:availability itself is still present in
-		// $og (a stock state always types on OG), so this proves the guard
-		// gates on the WooCommerce text, not on the OG key.
+	public function test_twitter_data2_unmanaged_in_stock_product_still_emits_in_stock(): void {
+		// This is the configuration the original get_availability()-based
+		// implementation got wrong (#679 task 3): real WooCommerce (verified
+		// live) returns '' from get_availability() for a plain UNMANAGED
+		// in-stock product, and stock management is off by default, so this
+		// is the commonest configuration on any store. og_product()'s
+		// get_availability() mock defaults to that same empty string.
+		// twitter_availability_data() no longer reads get_availability() at
+		// all, so the row must still read "In stock" regardless. Mutation
+		// check 1 target: pointing twitter:data2 back at get_availability()
+		// must make this fail.
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 
-		$product = $this->og_product( array( 'availability' => '' ) );
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
 		$og      = $this->meta->build_og_tags( $product );
-		$this->assertArrayHasKey( 'product:availability', $og );
-		$tw = $this->meta->build_twitter_tags( $og, $product );
-		$this->assertArrayNotHasKey( 'twitter:label2', $tw );
-		$this->assertArrayNotHasKey( 'twitter:data2', $tw );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_never_discloses_stock_quantity(): void {
+		// Guards against a regression back to WooCommerce's own
+		// get_availability(), which for a managed product includes the live
+		// quantity, e.g. "5 in stock" (#679 task 3) — publishing inventory
+		// levels into a public social card, which nobody asked for. The
+		// product mock is set up to answer get_availability() with exactly
+		// that shape; twitter_availability_data() must never read it, so
+		// the assertion holds regardless. If a future change points
+		// twitter:data2 back at get_availability(), this fails loudly
+		// instead of silently republishing inventory levels.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product( array( 'availability' => '5 in stock' ) );
+		$og      = $this->meta->build_og_tags( $product );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertDoesNotMatchRegularExpression( '/\d+\s*in stock/i', $tw['twitter:data2'] );
 	}
 
 	public function test_twitter_availability_pair_omitted_when_no_product_given(): void {

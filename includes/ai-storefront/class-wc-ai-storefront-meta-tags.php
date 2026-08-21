@@ -626,10 +626,13 @@ class WC_AI_Storefront_Meta_Tags {
 	 * vocabulary (#679 task 2 fix), matching what Rank Math and Yoast's
 	 * WooCommerce add-on already emit. data1 goes through
 	 * twitter_price_data(), the localised, symbol-prefixed price. data2
-	 * reads the product's own shopper-facing get_availability() text
-	 * rather than `product:availability`'s Facebook vocabulary term
-	 * ("instock", "out of stock"...) — that OG value, and og:availability,
-	 * are untouched; only this human-facing Twitter pair changes.
+	 * goes through twitter_availability_data(), our own display strings
+	 * for the same `WC_AI_Storefront_Product_Facts::stock_state()` that
+	 * `product:availability`/`og:availability` already read (#679 task 3
+	 * fix) — see that method's docblock for why this pair does NOT read
+	 * `WC_Product::get_availability()`. `product:availability` and
+	 * `og:availability` themselves are untouched; only this human-facing
+	 * Twitter pair changes.
 	 *
 	 * $product travels alongside $og rather than being re-derived here so
 	 * this method still only recomputes from data its caller already has:
@@ -639,10 +642,11 @@ class WC_AI_Storefront_Meta_Tags {
 	 * pair through without a product to read.
 	 *
 	 * @param array<string,string> $og      Open Graph map.
-	 * @param WC_Product|null      $product Source product, read only for
-	 *                                      the shopper-facing availability
-	 *                                      text. Null on the archive-page
-	 *                                      path, where it is never needed.
+	 * @param WC_Product|null      $product Source product, read only to
+	 *                                      resolve its stock state for
+	 *                                      twitter:data2. Null on the
+	 *                                      archive-page path, where it is
+	 *                                      never needed.
 	 * @return array<string,string> property => content.
 	 */
 	public function build_twitter_tags( array $og, $product = null ): array {
@@ -665,15 +669,14 @@ class WC_AI_Storefront_Meta_Tags {
 			$tw['twitter:data1']  = $this->twitter_price_data( $og );
 		}
 		if ( ! empty( $og['product:availability'] ) && null !== $product ) {
-			$availability = $this->twitter_availability_data( $product );
-			// Omit the pair rather than shipping a bare "Availability:" row:
-			// WooCommerce's own get_availability() returns '' for a plain
-			// in-stock simple product in some configurations (#679 task 2
+			// twitter_availability_data()'s mapping is total over the three
+			// stock_state() values, so this pair is always emitted once a
+			// product is present; no empty-string guard needed (#679 task 3
 			// fix).
-			if ( '' !== $availability ) {
-				$tw['twitter:label2'] = __( 'Availability', 'woocommerce-ai-storefront' );
-				$tw['twitter:data2']  = $availability;
-			}
+			$tw['twitter:label2'] = __( 'Availability', 'woocommerce-ai-storefront' );
+			$tw['twitter:data2']  = $this->twitter_availability_data(
+				WC_AI_Storefront_Product_Facts::stock_state( $product )
+			);
 		}
 		return $tw;
 	}
@@ -681,25 +684,43 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * The shopper-facing availability text for `twitter:data2`.
 	 *
-	 * Reads WooCommerce's own translated, human-readable string
-	 * (`WC_Product::get_availability()`) rather than the Facebook/Pinterest
-	 * vocabulary terms `product:availability`/`og:availability` carry
-	 * (#679 task 2 fix) — those stay machine values for crawlers; this is
-	 * the only consumer that wants shopper-facing text. Same shopper-facing
-	 * signal #662 established as the honest one where it can disagree with
-	 * WooCommerce's internal boolean.
+	 * Deliberately NOT `WC_Product::get_availability()`, which an earlier
+	 * version of this method read (#679 task 2). Live verification against
+	 * real WooCommerce (#679 task 3) found it unusable for a public social
+	 * card:
 	 *
-	 * @param WC_Product $product Product.
-	 * @return string Availability text (e.g. "In stock", "Out of stock",
-	 *                "Available on backorder"), or '' when WooCommerce has
-	 *                none for the current stock state/configuration.
+	 * - For an unmanaged in-stock product, WooCommerce's own text is `''`.
+	 *   Stock management is OFF by default, so this is the commonest
+	 *   configuration on any store, and the row simply never appeared.
+	 * - For a managed product it includes the live quantity, e.g.
+	 *   "5 in stock". That publishes the merchant's stock level into a
+	 *   public social card, which nobody asked for and a merchant would
+	 *   not expect.
+	 * - For a backordered product it reads "Out of stock", contradicting
+	 *   `product:availability`'s "available for order" for the very same
+	 *   product on the very same page.
+	 *
+	 * This method instead maps `WC_AI_Storefront_Product_Facts::stock_state()`
+	 * — the same neutral three-way state `product:availability` and
+	 * `og:availability` already read — to our own translatable display
+	 * strings. The mapping is total (every stock state has a string), so
+	 * the pair is always present, always agrees with the machine tags on
+	 * the same page, and never discloses a quantity.
+	 *
+	 * @param string $stock_state One of `instock`, `outofstock`,
+	 *                            `onbackorder`
+	 *                            ({@see WC_AI_Storefront_Product_Facts::stock_state()}).
+	 * @return string Shopper-facing availability text: "In stock",
+	 *                "Out of stock", or "Available on backorder".
 	 */
-	private function twitter_availability_data( $product ): string {
-		$availability = $product->get_availability();
-		if ( ! is_array( $availability ) || empty( $availability['availability'] ) ) {
-			return '';
+	private function twitter_availability_data( string $stock_state ): string {
+		if ( 'outofstock' === $stock_state ) {
+			return __( 'Out of stock', 'woocommerce-ai-storefront' );
 		}
-		return (string) $availability['availability'];
+		if ( 'onbackorder' === $stock_state ) {
+			return __( 'Available on backorder', 'woocommerce-ai-storefront' );
+		}
+		return __( 'In stock', 'woocommerce-ai-storefront' );
 	}
 
 	/**
@@ -708,17 +729,30 @@ class WC_AI_Storefront_Meta_Tags {
 	 * Symbol-prefixed and localised (#679 task 2 fix), e.g. "$48.00" — what
 	 * a shopper recognises as a price, the same shape Rank Math emits.
 	 * `wc_price()` builds this correctly but returns HTML (a `<span>`
-	 * wrapper plus an entity-encoded currency symbol), which is why a raw
-	 * capture of Rank Math's own output shows `&#036;0.00` rather than
-	 * `$0.00`; that markup cannot go into a meta `content` attribute, so
-	 * `wp_strip_all_tags()` reduces it to the plain text. Previously this
-	 * formatted "{currency} {amount}" (e.g. "USD 48.00"), the same
-	 * currency-code-prefixed shape `WC_AI_Storefront_MCP_Tools::format_money()`
-	 * uses elsewhere in this plugin for a machine reader; that shape was
-	 * wrong here because a person, not a crawler, reads this pair. Falls
-	 * back to it only when `wc_price()`/`wp_strip_all_tags()` are
-	 * unavailable. `product:price:amount`/`:currency` are untouched and
-	 * still carry the bare machine-readable decimal.
+	 * wrapper plus an entity-encoded currency symbol, e.g. `&#036;` for
+	 * `$`), which is why a raw capture of Rank Math's own output shows
+	 * `&#036;0.00` rather than `$0.00`; that markup cannot go into a meta
+	 * `content` attribute, so `wp_strip_all_tags()` reduces it to plain
+	 * text. Stripping tags does not decode entities, so without a decode
+	 * step the currency symbol would still be the literal entity string
+	 * (#679 task 3 fix); a live capture confirmed the raw attribute really
+	 * does emit `&#036;48.00` before this fix. `html_entity_decode()`
+	 * turns that back into `$` so the returned string is plain text,
+	 * matching the same decode `extract_description()`
+	 * (`WC_AI_Storefront_UCP_Variant_Translator`) already applies to
+	 * WooCommerce HTML elsewhere in this plugin. It happened to render
+	 * correctly before this fix only because `esc_attr()` in `print_meta()`
+	 * defaults to not double-encoding an already-encoded entity; decoding
+	 * here removes that dependency on a default, so the value it hands to
+	 * `print_meta()` is escaped exactly once, deliberately, regardless of
+	 * how it is escaped. Previously this formatted "{currency} {amount}"
+	 * (e.g. "USD 48.00"), the same currency-code-prefixed shape
+	 * `WC_AI_Storefront_MCP_Tools::format_money()` uses elsewhere in this
+	 * plugin for a machine reader; that shape was wrong here because a
+	 * person, not a crawler, reads this pair. Falls back to it only when
+	 * `wc_price()`/`wp_strip_all_tags()` are unavailable.
+	 * `product:price:amount`/`:currency` are untouched and still carry the
+	 * bare machine-readable decimal.
 	 *
 	 * @param array<string,string> $og Open Graph map. Caller only invokes
 	 *                                 this once `product:price:amount` is
@@ -734,7 +768,7 @@ class WC_AI_Storefront_Meta_Tags {
 
 		if ( function_exists( 'wc_price' ) && function_exists( 'wp_strip_all_tags' ) ) {
 			$args = '' !== $currency ? array( 'currency' => $currency ) : array();
-			return wp_strip_all_tags( wc_price( (float) $amount, $args ) );
+			return html_entity_decode( wp_strip_all_tags( wc_price( (float) $amount, $args ) ), ENT_QUOTES, 'UTF-8' );
 		}
 
 		return '' !== $currency ? $currency . ' ' . $amount : $amount;
