@@ -301,4 +301,28 @@ class JsonLdConditionTest extends \PHPUnit\Framework\TestCase {
 			$found
 		);
 	}
+
+	public function test_condition_value_map_keys_match_product_facts_condition_slugs(): void {
+		// CONDITION_VALUE_MAP (here) and WC_AI_Storefront_Product_Facts::
+		// CONDITION_SLUGS are two constant lists of the same three slugs,
+		// maintained in two files with nothing tying them together. Add a
+		// slug to one and not the other and resolve_condition() above does
+		// self::CONDITION_VALUE_MAP[ $slug ] on a missing key — an
+		// undefined-index warning, 'url' => null, and itemCondition
+		// silently reaching the JSON-LD markup as null. Pin the two lists
+		// to each other so drift fails here instead of showing up as a
+		// malformed offer.
+		$map = ( new \ReflectionClass( WC_AI_Storefront_JsonLd::class ) )
+			->getConstant( 'CONDITION_VALUE_MAP' );
+
+		// Compare as sets, not sequences — declaration order differing
+		// between the two files is harmless; a missing or extra slug is
+		// not.
+		$map_keys = array_keys( $map );
+		$slugs    = WC_AI_Storefront_Product_Facts::CONDITION_SLUGS;
+		sort( $map_keys );
+		sort( $slugs );
+
+		$this->assertSame( $slugs, $map_keys );
+	}
 }
