@@ -5078,6 +5078,23 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 	// ------------------------------------------------------------------
 
 	/**
+	 * Stubs `wc_get_product_terms()` for a `pa_condition` taxonomy read.
+	 *
+	 * `pa_condition` is a taxonomy attribute, so the Condition resolver
+	 * reads term SLUGS through this function rather than trusting
+	 * `get_attribute()`, which returns the merchant's display label (#679
+	 * review). These fixtures use terms whose label and slug happen to
+	 * match, so the comma-joined value doubles as the slug list.
+	 *
+	 * @param string $condition Comma-joined term list, as WooCommerce joins them.
+	 */
+	private function stub_condition_terms( string $condition ): void {
+		Functions\when( 'wc_get_product_terms' )->justReturn(
+			'' === trim( $condition ) ? array() : array_map( 'trim', explode( ',', $condition ) )
+		);
+	}
+
+	/**
 	 * Builds a variable parent carrying a visible pa_condition attribute.
 	 *
 	 * @param string $condition Parent's condition value.
@@ -5087,6 +5104,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$attr = Mockery::mock();
 		$attr->shouldReceive( 'get_visible' )->andReturn( true );
 		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$attr->shouldReceive( 'is_taxonomy' )->andReturn( true );
+		$this->stub_condition_terms( $condition );
 
 		$parent = $this->make_product(
 			array(
@@ -5196,6 +5215,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$attr = Mockery::mock();
 		$attr->shouldReceive( 'get_visible' )->andReturn( true );
 		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$attr->shouldReceive( 'is_taxonomy' )->andReturn( true );
+		$this->stub_condition_terms( 'used' );
 		$product = $this->make_product(
 			array(
 				'id'         => 42,
@@ -5291,6 +5312,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$attr = Mockery::mock();
 		$attr->shouldReceive( 'get_visible' )->andReturn( true );
 		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$attr->shouldReceive( 'is_taxonomy' )->andReturn( true );
+		$this->stub_condition_terms( 'new, used' );
 		$parent = $this->make_product(
 			array(
 				'id'                   => 100,
@@ -5342,6 +5365,8 @@ class JsonLdTest extends \PHPUnit\Framework\TestCase {
 		$attr = Mockery::mock();
 		$attr->shouldReceive( 'get_visible' )->andReturn( true );
 		$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+		$attr->shouldReceive( 'is_taxonomy' )->andReturn( true );
+		$this->stub_condition_terms( 'new, used' );
 		$parent = $this->make_product(
 			array(
 				'id'                   => 100,

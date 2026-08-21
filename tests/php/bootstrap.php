@@ -81,6 +81,7 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-cache-invalida
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-handling-time.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-shipping-policy.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-indexnow.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-product-facts.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-jsonld.php';
 
 // UCP REST adapter module (1.3.0+).

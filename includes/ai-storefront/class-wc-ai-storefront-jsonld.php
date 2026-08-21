@@ -248,22 +248,6 @@ class WC_AI_Storefront_JsonLd {
 	);
 
 	/**
-	 * Attribute slugs that supply the Offer's `itemCondition`.
-	 *
-	 * Same `pa_`-outranks-bare precedence as {@see AUDIENCE_ATTRIBUTE_MAP}:
-	 * `pa_condition` is the attribute this plugin seeds with Google's
-	 * accepted values, so it is authoritative by construction, while a
-	 * bare `condition` is the compatibility fallback for a merchant's own
-	 * pre-existing custom attribute.
-	 *
-	 * @var array<string, array{priority: int}>
-	 */
-	private const CONDITION_ATTRIBUTE_MAP = array(
-		'pa_condition' => array( 'priority' => 0 ),
-		'condition'    => array( 'priority' => 1 ),
-	);
-
-	/**
 	 * Attribute value to `OfferItemCondition` URL.
 	 *
 	 * Google documents exactly three accepted values and says "Don't
@@ -1188,13 +1172,24 @@ class WC_AI_Storefront_JsonLd {
 			// neither a CORE_ATTRIBUTE_MAP entry (Text on Product) nor an
 			// audience sub-property. Reusing $audience_pending is what
 			// gives it the same additionalProperty fallback for free.
-			if ( isset( self::CONDITION_ATTRIBUTE_MAP[ $slug ] ) ) {
+			if ( isset( WC_AI_Storefront_Product_Facts::CONDITION_ATTRIBUTE_MAP[ $slug ] ) ) {
+				// Matched on the term SLUG, not on $value: $value is the
+				// merchant's display LABEL, and matching that against the
+				// three neutral slugs loses the condition on every store
+				// that renamed a term or runs in a language other than
+				// English (#679 review). Same read
+				// add_item_condition() does via
+				// collect_condition_candidates(), so the two halves of
+				// this feature cannot disagree about which attribute won.
 				$condition_candidates[] = array(
 					'slug'     => $slug,
-					'value'    => $value,
-					'priority' => self::CONDITION_ATTRIBUTE_MAP[ $slug ]['priority'],
+					'value'    => WC_AI_Storefront_Product_Facts::condition_attribute_value( $product, $attribute ),
+					'priority' => WC_AI_Storefront_Product_Facts::CONDITION_ATTRIBUTE_MAP[ $slug ]['priority'],
 				);
 
+				// additionalProperty keeps $value, the merchant's own
+				// label — a shopper-visible field must not start showing
+				// an internal slug.
 				$audience_pending[ $slug ] = array(
 					'@type' => 'PropertyValue',
 					'name'  => wc_attribute_label( $attribute->get_name(), $product ),
@@ -1732,7 +1727,7 @@ class WC_AI_Storefront_JsonLd {
 	 * @return array<string,string> Slug → trimmed value, empty when unset.
 	 */
 	private static function read_variation_condition( int $variation_id ): array {
-		return self::read_variation_attributes_from_map( $variation_id, self::CONDITION_ATTRIBUTE_MAP );
+		return self::read_variation_attributes_from_map( $variation_id, WC_AI_Storefront_Product_Facts::CONDITION_ATTRIBUTE_MAP );
 	}
 
 	/**
@@ -2083,66 +2078,15 @@ class WC_AI_Storefront_JsonLd {
 	}
 
 	/**
-	 * Collect Condition candidates from a product's visible attributes.
-	 *
-	 * Applies the same three filters {@see emit_attributes()} applies —
-	 * visible, not a variation axis, non-empty — so the hoisted emitter
-	 * and the additionalProperty bookkeeping see the same candidate set.
-	 * Variation axes are excluded because the parent has no single value
-	 * for them; {@see add_variant_condition()} handles that case per
-	 * variation.
-	 *
-	 * @param WC_Product $product The product.
-	 * @return array<int, array{slug: string, value: string, priority: int}>
-	 */
-	private static function collect_condition_candidates( $product ): array {
-		$attributes = $product->get_attributes();
-		if ( empty( $attributes ) ) {
-			// Bail before touching get_variation_attributes(), matching
-			// emit_attributes(). Most products have no attributes at all,
-			// and this method now runs for every one of them.
-			return array();
-		}
-
-		// Resolved lazily, only once a Condition attribute is actually
-		// present — the lookup is only needed to exclude variation axes.
-		$variation_attrs = null;
-		$candidates      = array();
-
-		foreach ( $attributes as $attribute ) {
-			if ( ! $attribute->get_visible() ) {
-				continue;
-			}
-			$slug = strtolower( $attribute->get_name() );
-			if ( ! isset( self::CONDITION_ATTRIBUTE_MAP[ $slug ] ) ) {
-				continue;
-			}
-			if ( null === $variation_attrs ) {
-				$variation_attrs = self::get_variation_attribute_slugs( $product );
-			}
-			if ( in_array( $slug, $variation_attrs, true ) ) {
-				continue;
-			}
-			$value = trim( (string) $product->get_attribute( $attribute->get_name() ) );
-			if ( '' === $value ) {
-				continue;
-			}
-			$candidates[] = array(
-				'slug'     => $slug,
-				'value'    => $value,
-				'priority' => self::CONDITION_ATTRIBUTE_MAP[ $slug ]['priority'],
-			);
-		}
-
-		return $candidates;
-	}
-
-	/**
 	 * Pick the winning Condition candidate.
 	 *
-	 * Lowest priority number wins, and a `pa_` value that cannot be typed
-	 * falls through to the next candidate rather than blocking emission
-	 * for the field — the same resolution rule the audience fields use.
+	 * Candidate collection and the priority/typability resolution this
+	 * method does both moved to {@see WC_AI_Storefront_Product_Facts}
+	 * (#679) so the Open Graph / meta-tags emitter can reach the same
+	 * Condition answer JSON-LD does. This method is now a thin wrapper
+	 * that translates the shared neutral result into the schema.org URL
+	 * this file's callers expect — see the shared class for the actual
+	 * priority-order and typability rules.
 	 *
 	 * Shared by {@see add_item_condition()}, which runs above the
 	 * syndication gate and does the writing, and {@see emit_attributes()},
@@ -2154,29 +2098,16 @@ class WC_AI_Storefront_JsonLd {
 	 * @return array{slug: string, url: string} Empty strings when nothing types.
 	 */
 	private static function resolve_condition( array $candidates ): array {
-		usort(
-			$candidates,
-			static fn( $a, $b ) => $a['priority'] <=> $b['priority']
-		);
-		foreach ( $candidates as $candidate ) {
-			$key = strtolower( trim( $candidate['value'] ) );
-			if ( isset( self::CONDITION_VALUE_MAP[ $key ] ) ) {
-				return array(
-					'slug' => $candidate['slug'],
-					'url'  => self::CONDITION_VALUE_MAP[ $key ],
-				);
-			}
-			// Unrecognised, or multi-value. WooCommerce joins TAXONOMY
-			// terms with ', ' and CUSTOM attribute values with ' | '
-			// (WC_DELIMITER) — do not assume a comma if this is ever
-			// split. Google forbids more than one value either way, so
-			// there is no honest single claim. Falls through to the next
-			// candidate; emit_attributes() routes it to additionalProperty
-			// instead of discarding what the merchant entered.
+		$resolved = WC_AI_Storefront_Product_Facts::resolve_condition( $candidates );
+		if ( '' === $resolved['condition'] ) {
+			return array(
+				'slug' => '',
+				'url'  => '',
+			);
 		}
 		return array(
-			'slug' => '',
-			'url'  => '',
+			'slug' => $resolved['slug'],
+			'url'  => self::CONDITION_VALUE_MAP[ $resolved['condition'] ],
 		);
 	}
 
@@ -2210,7 +2141,7 @@ class WC_AI_Storefront_JsonLd {
 		}
 
 		$resolved = self::resolve_condition(
-			self::collect_condition_candidates( $product )
+			WC_AI_Storefront_Product_Facts::collect_condition_candidates( $product )
 		);
 		if ( '' === $resolved['url'] ) {
 			return;
@@ -2248,7 +2179,7 @@ class WC_AI_Storefront_JsonLd {
 		$condition_url  = '';
 		$own            = self::read_variation_condition( $variation->get_id() );
 		$stated_its_own = false;
-		foreach ( array_keys( self::CONDITION_ATTRIBUTE_MAP ) as $slug ) {
+		foreach ( array_keys( WC_AI_Storefront_Product_Facts::CONDITION_ATTRIBUTE_MAP ) as $slug ) {
 			if ( ! isset( $own[ $slug ] ) ) {
 				continue;
 			}
@@ -2751,48 +2682,24 @@ class WC_AI_Storefront_JsonLd {
 	/**
 	 * Map a product's WC stock status onto a schema.org availability term.
 	 *
-	 * WC tracks three stock states — `instock`, `outofstock` and
-	 * `onbackorder` — but `is_in_stock()` collapses them to a bool that is
-	 * TRUE for backorders: it returns `'outofstock' !== stock_status`
-	 * passed through the `woocommerce_product_is_in_stock` filter.
-	 * Branching on that bool alone publishes `InStock` for a backordered
-	 * variant, which contradicts the `inventoryLevel` the same Offer
-	 * carries: an oversold variation ships `InStock` next to a negative
-	 * quantity. `BackOrder` keeps the two fields telling one story and
-	 * still marks the variant as orderable.
-	 *
-	 * The out-of-stock branch is checked FIRST and wins outright. Because
-	 * `is_in_stock()` runs through that filter, a third party (multi-
-	 * warehouse inventory, role-based catalogs, availability windows) can
-	 * legitimately force the bool false while `stock_status` still reads
-	 * `onbackorder`. Ordering it this way stops that combination from
-	 * being upgraded to a purchasable-sounding `BackOrder`.
-	 *
-	 * Semantically equivalent to WC core's own
-	 * `WC_Structured_Data::generate_product_data()` — core nests the
-	 * backorder ternary inside `if ( is_in_stock() )` where this
-	 * early-returns the out-of-stock case. Core has done this since WC
-	 * 7.8, so it predates this plugin's declared WC floor and applies to
-	 * the parent Offer core builds; this is the equivalent for the
-	 * per-variant Offers built here.
-	 *
-	 * The status is compared as a literal rather than via
-	 * `Automattic\WooCommerce\Enums\ProductStockStatus::ON_BACKORDER`
-	 * (which does exist at our WC floor) because the value is frozen
-	 * public API — core itself wrote this comparison as a bare
-	 * `'onbackorder'` literal through WC 8.x — and a literal keeps the
-	 * unit-test doubles free of the `Automattic\WooCommerce\Enums`
-	 * namespace.
+	 * The state resolution itself — including why the out-of-stock branch
+	 * must be checked before backorder, and why `is_in_stock()` alone is
+	 * not enough — moved to {@see WC_AI_Storefront_Product_Facts::stock_state()}
+	 * (#679) so the Open Graph / meta-tags emitter can reach the same
+	 * three-way answer JSON-LD does, in its own vocabulary. This method is
+	 * now only the schema.org translation: `outofstock` → `OutOfStock`,
+	 * `onbackorder` → `BackOrder`, `instock` → `InStock`.
 	 *
 	 * @param WC_Product $product The product or variation.
 	 * @return string Unqualified schema.org term: InStock, OutOfStock or BackOrder.
 	 */
 
 	private static function stock_status_to_schema( $product ): string {
-		if ( ! $product->is_in_stock() ) {
+		$state = WC_AI_Storefront_Product_Facts::stock_state( $product );
+		if ( 'outofstock' === $state ) {
 			return 'OutOfStock';
 		}
-		return 'onbackorder' === $product->get_stock_status() ? 'BackOrder' : 'InStock';
+		return 'onbackorder' === $state ? 'BackOrder' : 'InStock';
 	}
 
 	/**

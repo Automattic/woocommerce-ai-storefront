@@ -14,6 +14,25 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	private WC_AI_Storefront_Meta_Tags $meta;
 
+	/**
+	 * Decimal separator the wc_price() stub formats with.
+	 *
+	 * Real `wc_price()` reads `wc_get_price_decimal_separator()`, which a
+	 * German or French store sets to ','. Hardcoding '.' made such a store
+	 * unrepresentable in this suite (#679 review); a test that needs one
+	 * overwrites this before calling.
+	 *
+	 * @var string
+	 */
+	private string $price_decimal_separator = '.';
+
+	/**
+	 * Thousand separator the wc_price() stub formats with.
+	 *
+	 * @var string
+	 */
+	private string $price_thousand_separator = ',';
+
 	protected function setUp(): void {
 		parent::setUp();
 		Monkey\setUp();
@@ -33,6 +52,45 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'get_theme_mod' )->justReturn( 0 );
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		// twitter_price_data() (#679) formats through wc_price(),
+		// which this suite never loads real WooCommerce for. Stand in with a
+		// minimal HTML shape matching real wc_price()'s USD output closely
+		// enough that the real wp_strip_all_tags() stub (tests/php/stubs.php)
+		// plus html_entity_decode() (#679) reduce it to the same
+		// plain "$48.00" a shopper would see; tests assert on that decoded
+		// value, not this HTML. The symbol is deliberately the HTML entity
+		// `&#036;` rather than a literal "$" — a stub that used the literal
+		// would let a missing html_entity_decode() pass silently. Real
+		// `wc_price()` itself emits the two-digit `&#36;`; the three-digit
+		// `&#036;` only appears once that value has been through
+		// `esc_attr()`'s `wp_kses_normalize_entities()` pass downstream
+		// (confirmed by live capture, #679). Either digit width decodes to
+		// the same "$" here, so stubbing with the escaped form does not
+		// change what this test proves.
+		//
+		// THROWS on a non-numeric price (#679 review). The previous stub did
+		// its own `number_format( (float) $price, 2 )`, which laundered the
+		// production `(float)` cast: dropping the cast, or dropping the
+		// is_numeric() guard in front of it, left this suite green while
+		// "Call for price" published "$0.00". A stub that refuses what it
+		// cannot honestly format makes that guard testable. Separators are
+		// properties rather than hardcoded so a comma-decimal store is
+		// representable at all.
+		Functions\when( 'wc_price' )->alias(
+			function ( $price, $args = array() ) {
+				if ( ! is_numeric( $price ) ) {
+					throw new \InvalidArgumentException(
+						'wc_price() stub refused a non-numeric price: ' . var_export( $price, true )
+					);
+				}
+				$currency = (string) ( $args['currency'] ?? '' );
+				$symbol   = 'USD' === $currency ? '&#036;' : ( '' !== $currency ? $currency . ' ' : '' );
+				return '<span class="woocommerce-Price-amount amount"><bdi>'
+					. $symbol
+					. number_format( (float) $price, 2, $this->price_decimal_separator, $this->price_thousand_separator )
+					. '</bdi></span>';
+			}
+		);
 		// Shared with AuthoredSeoTest; defined in tests/php/stubs-jetpack.php.
 		wc_ai_storefront_reset_jetpack_seo_doubles();
 		// Shared with RivalSeoDescriptionTest; the suite runs every file in
@@ -119,6 +177,49 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_description' )->andReturn( '' );
 		$product->shouldReceive( 'is_purchasable' )->andReturn( $overrides['purchasable'] ?? true );
 		$product->shouldReceive( 'get_price' )->andReturn( $overrides['price'] ?? '48.00' );
+		// Stock/Condition facts (#679), read by build_og_tags() via
+		// WC_AI_Storefront_Product_Facts. Default to a plain in-stock,
+		// condition-less product so every OG test predating this task keeps
+		// its existing behaviour unchanged; pass 'in_stock' / 'stock_status'
+		// / 'condition' overrides to exercise the other branches.
+		$product->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
+		$product->shouldReceive( 'get_stock_status' )->andReturn( $overrides['stock_status'] ?? 'instock' );
+		// twitter:data2 is now derived from stock_state() (#679),
+		// NOT from this mock. get_availability() is stubbed here purely so a
+		// regression that points twitter:data2 back at it is exercised by
+		// the tests below rather than fataling on an unmocked call. The
+		// default mirrors real WooCommerce's own behaviour, verified live
+		// (#679): a plain UNMANAGED in-stock product returns '' here,
+		// not "In stock" — stock management is off by default, so this is
+		// the commonest configuration on any store. Pass 'availability' to
+		// simulate a different WooCommerce answer (e.g. a managed product's
+		// quantity-bearing "5 in stock") for the quantity-leak test.
+		$product->shouldReceive( 'get_availability' )->andReturn(
+			array(
+				'availability' => $overrides['availability'] ?? '',
+				'class'        => $overrides['availability_class'] ?? 'in-stock',
+			)
+		);
+		if ( isset( $overrides['condition'] ) ) {
+			// Mirrors ProductFactsTest::make_product_with_attributes() for
+			// the single pa_condition case OG/Twitter tests need.
+			$attr = \Mockery::mock();
+			$attr->shouldReceive( 'get_visible' )->andReturn( true );
+			$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+			$attr->shouldReceive( 'is_taxonomy' )->andReturn( true );
+			$product->shouldReceive( 'get_attributes' )->andReturn( array( 'pa_condition' => $attr ) );
+			// `pa_condition` is a TAXONOMY attribute, so real WooCommerce
+			// answers get_attribute() with the term NAME — the merchant's
+			// display label — and only wc_get_product_terms() reaches the
+			// slug (#679 review). 'condition' is that label; pass
+			// 'condition_terms' to give it slugs that differ from it.
+			$product->shouldReceive( 'get_attribute' )->andReturn( $overrides['condition'] );
+			$terms = $overrides['condition_terms'] ?? array( $overrides['condition'] );
+			Functions\when( 'wc_get_product_terms' )->justReturn( $terms );
+			$product->shouldReceive( 'get_variation_attributes' )->andReturn( array() );
+		} else {
+			$product->shouldReceive( 'get_attributes' )->andReturn( array() );
+		}
 		return $product;
 	}
 
@@ -344,7 +445,9 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/canvas-belt/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
-		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( 'https://shop.test/img/belt.jpg' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/img/belt.jpg', 800, 600, false ) );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		$og = $this->meta->build_og_tags( $this->og_product() );
 		$this->assertSame( 'product', $og['og:type'] );
@@ -361,11 +464,534 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
-		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false ); // no image
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 ); // no image
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		$og = $this->meta->build_og_tags( $this->og_product( array( 'purchasable' => false ) ) );
 		$this->assertArrayNotHasKey( 'og:image', $og );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+		$this->assertArrayNotHasKey( 'og:image:alt', $og );
 		$this->assertArrayNotHasKey( 'product:price:amount', $og );
+
+		// Gated the same way as product:price:amount itself (#679).
+		$tw = $this->meta->build_twitter_tags( $og );
+		$this->assertArrayNotHasKey( 'twitter:label1', $tw );
+		$this->assertArrayNotHasKey( 'twitter:data1', $tw );
+		$this->assertArrayNotHasKey( 'twitter:image:alt', $tw );
+	}
+
+	public function test_twitter_price_pair_omitted_when_purchasable_but_unpriced(): void {
+		// The second way product:price:amount ends up unset: purchasable,
+		// but get_price() is ''. Distinct from the not-purchasable branch
+		// above; both must gate the Twitter pair.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+		$og = $this->meta->build_og_tags(
+			$this->og_product(
+				array(
+					'purchasable' => true,
+					'price'       => '',
+				)
+			)
+		);
+		$this->assertArrayNotHasKey( 'product:price:amount', $og );
+
+		$tw = $this->meta->build_twitter_tags( $og );
+		$this->assertArrayNotHasKey( 'twitter:label1', $tw );
+		$this->assertArrayNotHasKey( 'twitter:data1', $tw );
+	}
+
+	// --- Image dimensions and alt text (#679) ---
+
+	public function test_og_tags_include_image_dimensions_and_alt(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/canvas-belt/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/img/belt.jpg', 800, 600, false ) );
+		Functions\when( 'get_post_meta' )->justReturn( 'A canvas belt on a wooden table.' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product() );
+		$this->assertSame( '800', $og['og:image:width'] );
+		$this->assertSame( '600', $og['og:image:height'] );
+		$this->assertSame( 'A canvas belt on a wooden table.', $og['og:image:alt'] );
+
+		$tw = $this->meta->build_twitter_tags( $og );
+		$this->assertSame( 'A canvas belt on a wooden table.', $tw['twitter:image:alt'] );
+	}
+
+	public function test_og_tags_omit_alt_when_attachment_has_no_alt_text(): void {
+		// Mutation check target: dropping the alt-empty guard must make
+		// this test fail (#679).
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/img/belt.jpg', 800, 600, false ) );
+		Functions\when( 'get_post_meta' )->justReturn( '' ); // no alt text set on the attachment
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product() );
+		$this->assertSame( '800', $og['og:image:width'] );
+		$this->assertSame( '600', $og['og:image:height'] );
+		$this->assertArrayNotHasKey( 'og:image:alt', $og );
+
+		$tw = $this->meta->build_twitter_tags( $og );
+		$this->assertArrayNotHasKey( 'twitter:image:alt', $tw );
+	}
+
+	public function test_og_tags_omit_dimensions_when_wordpress_reports_zero(): void {
+		// image_downsize() (WP core) initialises width/height to 0 and
+		// only overwrites them from the attachment's metadata. An
+		// attachment with no _wp_attachment_metadata — offloaded media
+		// that clears it, a failed regeneration, an unregenerated import
+		// — leaves both at 0 while the URL is still valid. og:image must
+		// still publish; the dimension pair must not, the same way
+		// og:image:alt is omitted rather than emitted empty.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/img/belt.jpg', 0, 0, false ) );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product() );
+		$this->assertSame( 'https://shop.test/img/belt.jpg', $og['og:image'] );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+	}
+
+	public function test_og_tags_omit_image_when_attachment_lookup_fails(): void {
+		// get_post_thumbnail_id() can return a positive ID for an
+		// orphaned or deleted attachment; wp_get_attachment_image_src()
+		// then returns false rather than an array. No image property
+		// should be emitted at all in that case.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product() );
+		$this->assertArrayNotHasKey( 'og:image', $og );
+		$this->assertArrayNotHasKey( 'og:image:width', $og );
+		$this->assertArrayNotHasKey( 'og:image:height', $og );
+		$this->assertArrayNotHasKey( 'og:image:alt', $og );
+	}
+
+	// --- Availability vocabulary (#679) ---
+
+	public function test_og_tags_availability_instock(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags(
+			$this->og_product(
+				array(
+					'in_stock'     => true,
+					'stock_status' => 'instock',
+				)
+			)
+		);
+		$this->assertSame( 'instock', $og['product:availability'] );
+		$this->assertSame( 'instock', $og['og:availability'] );
+	}
+
+	public function test_og_tags_availability_diverges_on_backorder(): void {
+		// The one case the two vocabularies disagree, and the one most
+		// likely to be got wrong (#679). Facebook's
+		// product:availability has no "backorder" term of its own — a
+		// backordered product reads "available for order" there — while
+		// Pinterest's og:availability does have a distinct "backorder"
+		// term. Mutation check target: swapping the two vocabularies must
+		// make this test fail.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags(
+			$this->og_product(
+				array(
+					'in_stock'     => true,
+					'stock_status' => 'onbackorder',
+				)
+			)
+		);
+		$this->assertSame( 'available for order', $og['product:availability'] );
+		$this->assertSame( 'backorder', $og['og:availability'] );
+	}
+
+	public function test_og_tags_availability_out_of_stock(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product( array( 'in_stock' => false ) ) );
+		$this->assertSame( 'out of stock', $og['product:availability'] );
+		$this->assertSame( 'out of stock', $og['og:availability'] );
+	}
+
+	// --- Condition (#679) ---
+
+	public function test_og_tags_include_condition_when_attribute_present(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags(
+			$this->og_product(
+				array(
+					// Label differs from slug, as it does on any store that
+					// renamed the term or runs in another language (#679
+					// review). Matching the label emitted nothing here.
+					'condition'       => 'Brand New',
+					'condition_terms' => array( 'new' ),
+				)
+			)
+		);
+		$this->assertSame( 'new', $og['product:condition'] );
+	}
+
+	public function test_og_tags_emit_the_slug_not_the_merchant_label(): void {
+		// Facebook's product:condition vocabulary is `new` / `refurbished`
+		// / `used`. A merchant label must never reach the tag, even when
+		// it is the one that resolved.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags(
+			$this->og_product(
+				array(
+					'condition'       => 'Neu',
+					'condition_terms' => array( 'new' ),
+				)
+			)
+		);
+		$this->assertSame( 'new', $og['product:condition'] );
+	}
+
+	public function test_og_tags_omit_condition_when_attribute_absent(): void {
+		// Mutation check target: removing the product:condition key must
+		// make this test fail (#679).
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$og = $this->meta->build_og_tags( $this->og_product() ); // no 'condition' override
+		$this->assertArrayNotHasKey( 'product:condition', $og );
+	}
+
+	// --- Twitter label/data pairs (#679; human-readable, not machine vocabulary) ---
+
+	public function test_twitter_tags_include_price_and_availability_labels(): void {
+		// Symbol-prefixed price (Rank Math's shape) and our own
+		// stock_state()-derived shopper-facing availability text (Rank
+		// Math / Yoast's shape), not the "USD 48.00" currency-code price
+		// or the "instock" OG vocabulary term this pair used to carry.
+		// Mutation check 2 target: swapping the instock/onbackorder
+		// display strings must make this fail.
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
+		$tw      = $this->meta->build_twitter_tags(
+			array(
+				'og:title'               => 'Canvas Belt',
+				'og:description'         => 'A belt.',
+				'product:price:amount'   => '48.00',
+				'product:price:currency' => 'USD',
+				'product:availability'   => 'instock',
+			),
+			$product
+		);
+		$this->assertSame( 'Price', $tw['twitter:label1'] );
+		$this->assertSame( '$48.00', $tw['twitter:data1'] );
+		$this->assertSame( 'Availability', $tw['twitter:label2'] );
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data1_strips_wc_price_markup_to_plain_symbol_price(): void {
+		// wc_price() returns HTML (see the wc_price() stub in setUp());
+		// twitter:data1 must be the stripped plain text, not raw markup.
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => '0.00',
+				'product:price:currency' => 'USD',
+			)
+		);
+		$this->assertSame( '$0.00', $tw['twitter:data1'] );
+		$this->assertStringNotContainsString( '<', $tw['twitter:data1'] );
+	}
+
+	public function test_free_product_gets_both_a_price_row_and_an_availability_row(): void {
+		// End to end, build_og_tags() -> build_twitter_tags(), on the one
+		// value where `! empty()` and `'' !== $price` disagreed: '0'. The
+		// OG key was set and the Twitter pair was not, so a free product
+		// rendered a lopsided card — an Availability row with no Price row
+		// beside it (#679 review, verified live).
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/free/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product( array( 'price' => '0' ) );
+		$og      = $this->meta->build_og_tags( $product );
+		$this->assertSame( '0', $og['product:price:amount'] );
+
+		$tw = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'Price', $tw['twitter:label1'] );
+		$this->assertSame( '$0.00', $tw['twitter:data1'] );
+		$this->assertSame( 'Availability', $tw['twitter:label2'] );
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_image_alt_survives_alt_text_of_zero(): void {
+		// The same `! empty()` mismatch one gate up: "0" is legal alt text
+		// and build_og_tags() publishes it, so the Twitter mirror must too.
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:image'     => 'https://shop.test/img/belt.jpg',
+				'og:image:alt' => '0',
+			)
+		);
+		$this->assertSame( '0', $tw['twitter:image:alt'] );
+	}
+
+	public function test_twitter_data1_does_not_publish_zero_for_a_non_numeric_amount(): void {
+		// `product:price:amount` is read AFTER the wc_ai_storefront_og_tags
+		// filter, so a filter consumer can put anything there. Casting it
+		// to float published "$0.00" — a false claim, and one the machine
+		// tag on the same page contradicts (#679 review, verified live).
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => 'Call for price',
+				'product:price:currency' => 'USD',
+			)
+		);
+		$this->assertSame( 'USD Call for price', $tw['twitter:data1'] );
+		$this->assertStringNotContainsString( '0.00', $tw['twitter:data1'] );
+	}
+
+	public function test_twitter_data1_does_not_truncate_a_comma_decimal_amount(): void {
+		// A comma-decimal store's "1.234,56" casts to 1.234, which
+		// published "$1.23" — the same product advertised at a thousandth
+		// of its price. Not numeric to PHP, so it takes the raw fallback.
+		$this->price_decimal_separator  = ',';
+		$this->price_thousand_separator = '.';
+
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => '1.234,56',
+				'product:price:currency' => 'EUR',
+			)
+		);
+		$this->assertSame( 'EUR 1.234,56', $tw['twitter:data1'] );
+	}
+
+	public function test_twitter_data1_formats_a_comma_decimal_store_price(): void {
+		// The numeric counterpart: the amount OG actually carries is the
+		// bare decimal WooCommerce stores, and wc_price() is what applies
+		// the store's separators. Pins that the guard does not reject a
+		// perfectly good price on a comma-decimal store.
+		$this->price_decimal_separator  = ',';
+		$this->price_thousand_separator = '.';
+
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'product:price:amount'   => '1234.56',
+				'product:price:currency' => 'EUR',
+			)
+		);
+		$this->assertSame( 'EUR 1.234,56', $tw['twitter:data1'] );
+	}
+
+	public function test_twitter_data2_uses_out_of_stock_display_text(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+			)
+		);
+		$og      = $this->meta->build_og_tags( $product );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'Out of stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_uses_backorder_display_text(): void {
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product(
+			array(
+				'stock_status' => 'onbackorder',
+			)
+		);
+		$og      = $this->meta->build_og_tags( $product );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'Available on backorder', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_unmanaged_in_stock_product_still_emits_in_stock(): void {
+		// This is the configuration the original get_availability()-based
+		// implementation got wrong (#679): real WooCommerce (verified
+		// live) returns '' from get_availability() for a plain UNMANAGED
+		// in-stock product, and stock management is off by default, so this
+		// is the commonest configuration on any store. og_product()'s
+		// get_availability() mock defaults to that same empty string.
+		// twitter_availability_data() no longer reads get_availability() at
+		// all, so the row must still read "In stock" regardless. Mutation
+		// check 1 target: pointing twitter:data2 back at get_availability()
+		// must make this fail.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
+		$og      = $this->meta->build_og_tags( $product );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_never_discloses_stock_quantity(): void {
+		// Guards against a regression back to WooCommerce's own
+		// get_availability(), which for a managed product includes the live
+		// quantity, e.g. "5 in stock" (#679) — publishing inventory
+		// levels into a public social card, which nobody asked for. The
+		// product mock is set up to answer get_availability() with exactly
+		// that shape; twitter_availability_data() must never read it, so
+		// the assertion holds regardless. If a future change points
+		// twitter:data2 back at get_availability(), this fails loudly
+		// instead of silently republishing inventory levels.
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
+
+		$product = $this->og_product( array( 'availability' => '5 in stock' ) );
+		$og      = $this->meta->build_og_tags( $product );
+		$tw      = $this->meta->build_twitter_tags( $og, $product );
+		$this->assertDoesNotMatchRegularExpression( '/\d+\s*in stock/i', $tw['twitter:data2'] );
+	}
+
+	// --- twitter:data2 follows a filtered product:availability (#681) ---
+
+	public function test_twitter_data2_follows_filtered_availability_when_instock(): void {
+		// A `wc_ai_storefront_og_tags` filter consumer can rewrite
+		// `product:availability` away from what $product's real stock
+		// state would produce. twitter:data2 must follow that filtered
+		// OG value, not recompute its own answer and contradict it on
+		// the same page (#681 review, the Copilot finding this fixes).
+		// $product's real state is out of stock; the OG map says otherwise.
+		$product = $this->og_product(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+			)
+		);
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'instock' ),
+			$product
+		);
+		$this->assertSame( 'In stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_follows_filtered_availability_when_out_of_stock(): void {
+		// $product's real state is in stock; the OG map says otherwise.
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'out of stock' ),
+			$product
+		);
+		$this->assertSame( 'Out of stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_follows_filtered_availability_when_available_for_order(): void {
+		// $product's real state is in stock; the OG map says otherwise.
+		$product = $this->og_product(); // defaults: unmanaged, in stock.
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'available for order' ),
+			$product
+		);
+		$this->assertSame( 'Available on backorder', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_falls_back_to_product_for_unrecognised_availability(): void {
+		// A filter consumer can put anything in `product:availability`; an
+		// invented token must never be echoed back out as twitter:data2's
+		// display text (#681). Falls back to $product's real state instead.
+		$product = $this->og_product(
+			array(
+				'stock_status' => 'onbackorder',
+			)
+		);
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'product:availability' => 'gibberish' ),
+			$product
+		);
+		$this->assertSame( 'Available on backorder', $tw['twitter:data2'] );
+		$this->assertStringNotContainsString( 'gibberish', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_data2_falls_back_to_product_when_availability_key_absent(): void {
+		// The OG map might not carry `product:availability` at all (e.g. a
+		// filter removed the key outright rather than rewriting it). With
+		// a product present the pair is still emitted, using $product's
+		// own state (#681).
+		$product = $this->og_product(
+			array(
+				'in_stock'     => false,
+				'stock_status' => 'outofstock',
+			)
+		);
+		$tw      = $this->meta->build_twitter_tags(
+			array( 'og:title' => 'Canvas Belt' ), // no 'product:availability' key.
+			$product
+		);
+		$this->assertSame( 'Out of stock', $tw['twitter:data2'] );
+	}
+
+	public function test_twitter_availability_pair_omitted_when_no_product_given(): void {
+		// build_twitter_tags() gates the pair on a $product being passed at
+		// all (the archive-page path never has one); product:availability
+		// present with no product must not emit the pair.
+		$tw = $this->meta->build_twitter_tags(
+			array(
+				'og:title'             => 'Canvas Belt',
+				'product:availability' => 'instock',
+			)
+		);
+		$this->assertArrayNotHasKey( 'twitter:label2', $tw );
+		$this->assertArrayNotHasKey( 'twitter:data2', $tw );
 	}
 
 	public function test_twitter_tags_derive_from_og(): void {
@@ -507,7 +1133,9 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/belt/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
-		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( 'https://shop.test/i.jpg' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 99 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'https://shop.test/i.jpg', 800, 600, false ) );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		$product = $this->og_product();
 		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
@@ -521,6 +1149,18 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '<meta property="og:title" content="Canvas Belt"', $html );
 		$this->assertStringContainsString( '<meta name="twitter:card" content="summary_large_image"', $html );
 		$this->assertStringContainsString( '<meta name="twitter:image" content="https://shop.test/i.jpg"', $html );
+		// End-to-end confirmation (#679) that the new properties
+		// reach the actual printed <meta> output, not just the arrays
+		// build_og_tags()/build_twitter_tags() return.
+		$this->assertStringContainsString( '<meta property="product:availability" content="instock"', $html );
+		$this->assertStringContainsString( '<meta property="og:availability" content="instock"', $html );
+		// The OG properties above stay machine vocabulary for crawlers; the
+		// Twitter pair reaching the page is the human-readable text a
+		// person actually reads under the card (#679).
+		$this->assertStringContainsString( '<meta name="twitter:label1" content="Price"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:data1" content="$48.00"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:label2" content="Availability"', $html );
+		$this->assertStringContainsString( '<meta name="twitter:data2" content="In stock"', $html );
 		$this->assertStringNotContainsString( 'noindex', $html );
 	}
 
@@ -530,7 +1170,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/belt/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
-		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		$product = $this->og_product();
 		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'hidden' );
@@ -576,7 +1216,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/x/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
-		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 		Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		$product = $this->og_product(
 			array(
@@ -612,16 +1252,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product' )->justReturn( true );
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
-		$product = \Mockery::mock( 'WC_Product' );
-		$product->shouldReceive( 'get_name' )->andReturn( 'Canvas Belt' );
-		$product->shouldReceive( 'get_short_description' )->andReturn( 'A belt.' );
-		$product->shouldReceive( 'get_description' )->andReturn( '' );
-		$product->shouldReceive( 'get_id' )->andReturn( 10 );
-		$product->shouldReceive( 'is_purchasable' )->andReturn( false );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
-		Functions\when( 'get_the_post_thumbnail_url' )->justReturn( '' );
-		$og = $this->meta->build_og_tags( $product );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		$product = $this->og_product(
+			array(
+				'id'          => 10,
+				'purchasable' => false,
+			)
+		);
+		$og      = $this->meta->build_og_tags( $product );
 		$this->assertSame( 'en_US', $og['og:locale'] );
 	}
 
@@ -892,7 +1532,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
 			Functions\when( 'wc_get_product' )->justReturn( $product );
 			Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/p/x/' );
-			Functions\when( 'get_the_post_thumbnail_url' )->justReturn( false );
+			Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 			Functions\when( 'get_woocommerce_currency' )->justReturn( 'USD' );
 		} elseif ( 'shop' === $type ) {
 			// No Shop page by default; set_shop_page_id() overrides this.
