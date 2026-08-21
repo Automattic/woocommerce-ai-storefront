@@ -35,12 +35,18 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
 		// Shared with AuthoredSeoTest; defined in tests/php/stubs-jetpack.php.
 		wc_ai_storefront_reset_jetpack_seo_doubles();
+		// Shared with RivalSeoDescriptionTest; the suite runs every file in
+		// one process (phpunit.xml.dist sets no processIsolation), so this
+		// per-request static would otherwise leak between test files (#669
+		// task 2).
+		WC_AI_Storefront_Rival_Seo_Description::reset();
 		$this->meta = new WC_AI_Storefront_Meta_Tags();
 	}
 
 	protected function tearDown(): void {
 		WC_AI_Storefront::$test_settings = array();
 		wc_ai_storefront_reset_jetpack_seo_doubles();
+		WC_AI_Storefront_Rival_Seo_Description::reset();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -1549,5 +1555,86 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			1,
 			substr_count( $this->render_head(), '<meta name="description"' )
 		);
+	}
+
+	// ------------------------------------------------------------------
+	// Stand down for other SEO plugins (#669 task 2)
+	//
+	// "Not emitting -> unchanged on product, category and shop" is not
+	// re-tested here: every test above already exercises those three page
+	// types through render_head_tags() with WC_AI_Storefront_Rival_Seo_Description
+	// left at its reset() default (is_emitting() === false), e.g.
+	// test_authored_product_description_is_emitted_by_us() (product),
+	// test_render_emits_archive_metadata_for_category() and
+	// test_category_page_is_untouched_by_this_change() (category), and
+	// test_authored_shop_description_is_emitted_by_us() (shop). Adding
+	// near-duplicates of those here would only restate the same assertion.
+	// ------------------------------------------------------------------
+
+	public function test_description_tag_suppressed_when_a_rival_seo_plugin_is_emitting(): void {
+		// is_emitting() reports what a rival plugin's own filter actually
+		// carried this request — settled before this wp_head:5 callback
+		// runs, since every rival filter is hooked at PHP_INT_MAX and fires
+		// during wp_head:1 (see WC_AI_Storefront_Rival_Seo_Description::init()).
+		// Never a prediction. Authored copy is set so our own path would
+		// otherwise have produced a description here.
+		$this->fake_page( 'product', 77 );
+		$this->set_authored_description( 77, 'Hand-written product copy.' );
+		WC_AI_Storefront_Rival_Seo_Description::observe( 'Yoast wrote this one.' );
+
+		$this->assertStringNotContainsString( 'name="description"', $this->render_head() );
+	}
+
+	public function test_og_description_still_emitted_when_a_rival_seo_plugin_is_emitting(): void {
+		// Scope is description-only. Open Graph/Twitter duplication is a
+		// separate, deliberately out-of-scope problem (#676): the rival
+		// filter predicts only the rival's own <meta name="description">,
+		// not its Open Graph output — free Yoast with nothing authored
+		// fires wpseo_metadesc empty (correctly predicting no description
+		// tag) yet still emits og:description regardless. Asserted
+		// explicitly so this asymmetry reads as a decision, not an
+		// oversight.
+		$this->fake_page( 'product', 77 );
+		$this->set_authored_description( 77, 'Hand-written product copy.' );
+		WC_AI_Storefront_Rival_Seo_Description::observe( 'Yoast wrote this one.' );
+
+		$html = $this->render_head();
+
+		$this->assertStringContainsString(
+			'<meta property="og:description" content="Hand-written product copy."',
+			$html
+		);
+		$this->assertStringContainsString(
+			'<meta name="twitter:description" content="Hand-written product copy."',
+			$html
+		);
+	}
+
+	public function test_rival_signal_has_no_effect_when_should_emit_is_false(): void {
+		// Non-commerce page (every conditional defaults false in setUp()):
+		// should_emit() is false regardless of what the rival observer
+		// says, and render_head_tags() stays a no-op. The stand-down is a
+		// third input to the existing decision, living inside should_emit()'s
+		// gate, not a parallel check that could fire outside it.
+		WC_AI_Storefront_Rival_Seo_Description::observe( 'Yoast wrote this one.' );
+
+		$this->assertSame( '', $this->render_head() );
+	}
+
+	public function test_exactly_one_description_tag_on_the_page_when_a_rival_plugin_emits(): void {
+		// render_head_tags() only ever controls our half of the page; the
+		// rival plugin prints its own tag directly during its own wp_head
+		// callback, which this unit test cannot invoke. Concatenating a
+		// stand-in for that tag with our own output proves the *page* ends
+		// up with exactly one description tag, not merely that our own
+		// emitter stayed silent (the test above).
+		$this->fake_page( 'product', 77 );
+		$this->set_authored_description( 77, 'Hand-written product copy.' );
+		WC_AI_Storefront_Rival_Seo_Description::observe( 'Yoast wrote this one.' );
+
+		$rival_tag = '<meta name="description" content="Yoast wrote this one." />' . "\n";
+		$html      = $rival_tag . $this->render_head();
+
+		$this->assertSame( 1, substr_count( $html, '<meta name="description"' ) );
 	}
 }
