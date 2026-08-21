@@ -68,11 +68,11 @@ class WC_AI_Storefront_Product_Facts {
 	 * TRUE for backorders: it returns `'outofstock' !== stock_status`
 	 * passed through the `woocommerce_product_is_in_stock` filter.
 	 * Branching on that bool alone reports a backordered variant as
-	 * simply "in stock", which contradicts an `inventoryLevel` (JSON-LD)
-	 * or quantity (Open Graph) the same offer carries elsewhere: an
-	 * oversold variation would report in-stock next to a negative
-	 * quantity. Returning `onbackorder` keeps every field fed by this
-	 * method telling one story while still marking the variant orderable.
+	 * simply "in stock", which contradicts the `inventoryLevel` JSON-LD
+	 * carries for the same offer elsewhere: an oversold variation would
+	 * report in-stock next to a negative inventory level. Returning
+	 * `onbackorder` keeps every field fed by this method telling one
+	 * story while still marking the variant orderable.
 	 *
 	 * The out-of-stock branch is checked FIRST and wins outright. Because
 	 * `is_in_stock()` runs through that filter, a third party (multi-
@@ -80,10 +80,14 @@ class WC_AI_Storefront_Product_Facts {
 	 * legitimately force the bool false while `stock_status` still reads
 	 * `onbackorder`. Ordering it this way stops that combination from
 	 * being reported as a purchasable-sounding backorder — the same
-	 * "shopper-facing signal wins on disagreement" principle #662
-	 * established for the UCP catalog path, applied here to the
-	 * `WC_Product` object directly rather than to Store API payload
-	 * shape.
+	 * "shopper-facing signal wins on disagreement" principle #658
+	 * established for the UCP catalog path (there, the Store API's
+	 * `stock_availability.class` beat `is_in_stock` because that field
+	 * carries what the shopper's product page actually shows), applied
+	 * here to the `WC_Product` object directly rather than to Store API
+	 * payload shape: `is_in_stock()` is what drives WooCommerce's own
+	 * shopper-facing availability text, so on THIS object it is the
+	 * shopper-facing signal, and it is the one that wins.
 	 *
 	 * Semantically equivalent to WC core's own
 	 * `WC_Structured_Data::generate_product_data()` — core nests the
@@ -136,8 +140,7 @@ class WC_AI_Storefront_Product_Facts {
 		$attributes = $product->get_attributes();
 		if ( empty( $attributes ) ) {
 			// Bail before touching get_variation_attributes() — most
-			// products have no attributes at all, and this method now
-			// runs for every one of them.
+			// products have no attributes at all.
 			return array();
 		}
 
@@ -305,10 +308,13 @@ class WC_AI_Storefront_Product_Facts {
 	 * properties), inside `emit_attributes()` — the largest, most
 	 * sensitive method in that file. Reaching into it from here, or
 	 * pulling it out from under it, would touch that method for a change
-	 * this task does not need. Both copies are a direct, five-line
-	 * `WC_Product` API wrapper with no business policy of its own, so the
-	 * duplication is not the kind #679 exists to eliminate — see this
-	 * class's docblock.
+	 * this task does not need. The two copies are not identical: this one
+	 * is a direct, eight-line `WC_Product` API wrapper with no business
+	 * policy of its own, while the JsonLd original carries six further
+	 * lines explaining why `method_exists()` is the right capability
+	 * gate — dropped here because the reasoning lives there, not because
+	 * it stopped applying. That gap is not the kind of duplication #679
+	 * exists to eliminate — see this class's docblock.
 	 *
 	 * @param WC_Product $product The product object.
 	 * @return string[]

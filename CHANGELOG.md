@@ -3,8 +3,9 @@
 ### Added
 - **Product links you share now carry richer previews (#679).**
   - When a product is shared on social media or in a messaging app, the preview card now shows whether it's in stock, on backorder or sold out, plus its condition when you've set one, new, used or refurbished.
-  - On Twitter/X, the preview also shows price and stock as readable text beneath the image, matching what stores running Yoast SEO or Rank Math already show.
-  - The product photo's size and description are included too, so previews render at full size right away instead of sometimes needing to be measured first.
+  - On Twitter/X, the preview also shows price and stock as readable text beneath the image, matching what stores running Rank Math or the Yoast WooCommerce SEO add-on already show.
+  - The product photo's size is included too, so previews render at full size right away instead of sometimes needing to be measured first.
+  - Its description (the featured image's alt text) is included as well, for anyone using a screen reader.
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
 ### Fixed

@@ -512,7 +512,7 @@ class WC_AI_Storefront_Meta_Tags {
 		);
 
 		// Attachment ID first, then the ONE wp_get_attachment_image_src() call
-		// that returns url + width + height together (#679 task 2) — replaces
+		// that returns url + width + height together (#679) — replaces
 		// the previous get_the_post_thumbnail_url(), which only ever gave us
 		// the url and discarded the dimensions Open Graph and Twitter both
 		// want too.
@@ -559,7 +559,7 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 		}
 
-		// Stock and Condition (#679 task 2), both read from the shared,
+		// Stock and Condition (#679), both read from the shared,
 		// vocabulary-neutral resolvers on WC_AI_Storefront_Product_Facts so
 		// this emitter can never disagree with JSON-LD about the same
 		// product. Availability is unconditional — every product has a
@@ -588,7 +588,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * Facebook's `product:availability` vocabulary for a WC stock state.
 	 *
 	 * Diverges from {@see og_availability()} on backorder — the one place
-	 * these two vocabularies disagree (#679 task 2), found by reading
+	 * these two vocabularies disagree (#679), found by reading
 	 * Yoast's WooCommerce SEO addon presenter classes:
 	 * `woocommerce-product-availability-presenter.php` (Facebook's
 	 * `product:availability`) has no "backorder" term of its own, so a
@@ -630,12 +630,12 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Derive Twitter Card tags from an Open Graph map.
 	 *
-	 * The label/data pairs (#679 task 2) are Twitter's own "Product" card
+	 * The label/data pairs (#679) are Twitter's own "Product" card
 	 * fields, the same ones competing SEO plugins already populate:
-	 * label1/data1 carry price, label2/data2 carry availability. Both pairs
-	 * are gated on the OG key they read being present rather than
-	 * recomputed from a product — this method only ever sees the OG map.
-	 * That gate is presence-only, though, not a content mirror: label1/
+	 * label1/data1 carry price, label2/data2 carry availability. Both
+	 * pairs are gated on an OG key being present — label1/data1 on
+	 * `product:price:amount`, label2/data2 on `product:availability` —
+	 * but that gate is presence-only, not a content mirror: label1/
 	 * data1's *presence* and data1's *value* both come from the OG map
 	 * (via twitter_price_data()), so a `wc_ai_storefront_og_tags` filter
 	 * consumer that changes `product:price:amount` changes data1 too.
@@ -648,13 +648,13 @@ class WC_AI_Storefront_Meta_Tags {
 	 *
 	 * Both pairs render as a visible two-column strip under the card, so a
 	 * person reads them; both carry human-readable text, not machine
-	 * vocabulary (#679 task 2 fix), matching what Rank Math and Yoast's
+	 * vocabulary (#679), matching what Rank Math and Yoast's
 	 * WooCommerce add-on already emit. data1 goes through
 	 * twitter_price_data(), the localised, symbol-prefixed price. data2
 	 * goes through twitter_availability_data(), our own display strings
 	 * for the same `WC_AI_Storefront_Product_Facts::stock_state()` that
-	 * `product:availability`/`og:availability` already read (#679 task 3
-	 * fix) — see that method's docblock for why this pair does NOT read
+	 * `product:availability`/`og:availability` already read (#679) — see
+	 * that method's docblock for why this pair does NOT read
 	 * `WC_Product::get_availability()`. `product:availability` and
 	 * `og:availability` themselves are untouched; only this human-facing
 	 * Twitter pair changes.
@@ -663,8 +663,14 @@ class WC_AI_Storefront_Meta_Tags {
 	 * this method still only recomputes from data its caller already has:
 	 * render_head_tags() resolves the product once on the single-product
 	 * path and has none on the archive path, where `product:availability`
-	 * is never set in the first place, so the gate below never lets this
-	 * pair through without a product to read.
+	 * is never set in the first place. That is not the only way to reach
+	 * this method, though: build_twitter_tags() is public and `$product`
+	 * defaults to null, so a caller can pass an `$og` map that already
+	 * carries `product:availability` with no product to read — a test
+	 * exercises exactly that path. The `null !== $product` check in the
+	 * gate below is what stops that combination from emitting a pair
+	 * with nothing to compute data2 from; it is not an invariant this
+	 * method can assume from its usual caller.
 	 *
 	 * @param array<string,string> $og      Open Graph map.
 	 * @param WC_Product|null      $product Source product, read only to
@@ -702,8 +708,7 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( ! empty( $og['product:availability'] ) && null !== $product ) {
 			// twitter_availability_data()'s mapping is total over the three
 			// stock_state() values, so this pair is always emitted once a
-			// product is present; no empty-string guard needed (#679 task 3
-			// fix).
+			// product is present; no empty-string guard needed (#679).
 			$tw['twitter:label2'] = __( 'Availability', 'woocommerce-ai-storefront' );
 			$tw['twitter:data2']  = $this->twitter_availability_data(
 				WC_AI_Storefront_Product_Facts::stock_state( $product )
@@ -716,8 +721,8 @@ class WC_AI_Storefront_Meta_Tags {
 	 * The shopper-facing availability text for `twitter:data2`.
 	 *
 	 * Deliberately NOT `WC_Product::get_availability()`, which an earlier
-	 * version of this method read (#679 task 2). Live verification against
-	 * real WooCommerce (#679 task 3) found it unusable for a public social
+	 * version of this method read (#679). Live verification against
+	 * real WooCommerce (#679) found it unusable for a public social
 	 * card:
 	 *
 	 * - For an unmanaged in-stock product, WooCommerce's own text is `''`.
@@ -764,17 +769,19 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Format the price already in an Open Graph map for `twitter:data1`.
 	 *
-	 * Symbol-prefixed and localised (#679 task 2 fix), e.g. "$48.00" — what
+	 * Symbol-prefixed and localised (#679), e.g. "$48.00" — what
 	 * a shopper recognises as a price, the same shape Rank Math emits.
 	 * `wc_price()` builds this correctly but returns HTML (a `<span>`
-	 * wrapper plus an entity-encoded currency symbol, e.g. `&#036;` for
-	 * `$`), which is why a raw capture of Rank Math's own output shows
-	 * `&#036;0.00` rather than `$0.00`; that markup cannot go into a meta
-	 * `content` attribute, so `wp_strip_all_tags()` reduces it to plain
-	 * text. Stripping tags does not decode entities, so without a decode
-	 * step the currency symbol would still be the literal entity string
-	 * (#679 task 3 fix); a live capture confirmed the raw attribute really
-	 * does emit `&#036;48.00` before this fix. `html_entity_decode()`
+	 * wrapper plus an entity-encoded currency symbol, e.g. `&#36;` for
+	 * `$`); that markup cannot go into a meta `content` attribute, so
+	 * `wp_strip_all_tags()` reduces it to plain text with the entity
+	 * intact, `&#36;0.00`. Stripping tags does not decode entities, so
+	 * without a decode step the currency symbol would still be the
+	 * literal entity string (#679); a live capture of the printed
+	 * attribute — Rank Math's own, after `esc_attr()`'s normalisation —
+	 * confirmed it really does emit `&#036;48.00` before this fix. The
+	 * extra zero comes from `esc_attr()`'s own `wp_kses_normalize_entities()`
+	 * pass downstream, not from `wc_price()`. `html_entity_decode()`
 	 * turns that back into `$` so the returned string is plain text,
 	 * matching the same decode `extract_description()`
 	 * (`WC_AI_Storefront_UCP_Variant_Translator`) already applies to
@@ -1067,7 +1074,7 @@ class WC_AI_Storefront_Meta_Tags {
 		}
 
 		// Threaded through to print_og_and_twitter() -> build_twitter_tags()
-		// for the shopper-facing availability text (#679 task 2 fix); stays
+		// for the shopper-facing availability text (#679); stays
 		// null on the archive path below, which never needs it.
 		$product = null;
 
@@ -1128,7 +1135,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 * @param WC_Product|null      $product Source product; threaded through
 	 *                                      to build_twitter_tags() for the
 	 *                                      shopper-facing availability text
-	 *                                      (#679 task 2 fix). Null on the
+	 *                                      (#679). Null on the
 	 *                                      archive-page path.
 	 */
 	private function print_og_and_twitter( array $og, $product = null ): void {

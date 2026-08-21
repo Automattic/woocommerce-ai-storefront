@@ -557,8 +557,8 @@ if ( ! class_exists( 'WC_Product' ) ) {
 		/**
 		 * Shopper-facing stock availability text plus its CSS class.
 		 *
-		 * No longer read by `WC_AI_Storefront_Meta_Tags` (#679 task 3
-		 * fix) — `twitter:data2` derives from
+		 * No longer read by `WC_AI_Storefront_Meta_Tags` (#679) —
+		 * `twitter:data2` derives from
 		 * `WC_AI_Storefront_Product_Facts::stock_state()` instead, because
 		 * live verification found this real-WooCommerce method unusable
 		 * for a public social card: it returns '' for a plain unmanaged

@@ -52,16 +52,21 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
 		Functions\when( 'get_theme_mod' )->justReturn( 0 );
 		Functions\when( 'get_site_icon_url' )->justReturn( '' );
-		// twitter_price_data() (#679 task 2 fix) formats through wc_price(),
+		// twitter_price_data() (#679) formats through wc_price(),
 		// which this suite never loads real WooCommerce for. Stand in with a
 		// minimal HTML shape matching real wc_price()'s USD output closely
 		// enough that the real wp_strip_all_tags() stub (tests/php/stubs.php)
-		// plus html_entity_decode() (#679 task 3 fix) reduce it to the same
+		// plus html_entity_decode() (#679) reduce it to the same
 		// plain "$48.00" a shopper would see; tests assert on that decoded
 		// value, not this HTML. The symbol is deliberately the HTML entity
-		// `&#036;`, matching real wc_price()'s own output (confirmed by live
-		// capture, #679 task 3) rather than a literal "$" — a stub that used
-		// the literal would let a missing html_entity_decode() pass silently.
+		// `&#036;` rather than a literal "$" — a stub that used the literal
+		// would let a missing html_entity_decode() pass silently. Real
+		// `wc_price()` itself emits the two-digit `&#36;`; the three-digit
+		// `&#036;` only appears once that value has been through
+		// `esc_attr()`'s `wp_kses_normalize_entities()` pass downstream
+		// (confirmed by live capture, #679). Either digit width decodes to
+		// the same "$" here, so stubbing with the escaped form does not
+		// change what this test proves.
 		//
 		// THROWS on a non-numeric price (#679 review). The previous stub did
 		// its own `number_format( (float) $price, 2 )`, which laundered the
@@ -172,19 +177,19 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_description' )->andReturn( '' );
 		$product->shouldReceive( 'is_purchasable' )->andReturn( $overrides['purchasable'] ?? true );
 		$product->shouldReceive( 'get_price' )->andReturn( $overrides['price'] ?? '48.00' );
-		// Stock/Condition facts (#679 task 2), read by build_og_tags() via
+		// Stock/Condition facts (#679), read by build_og_tags() via
 		// WC_AI_Storefront_Product_Facts. Default to a plain in-stock,
 		// condition-less product so every OG test predating this task keeps
 		// its existing behaviour unchanged; pass 'in_stock' / 'stock_status'
 		// / 'condition' overrides to exercise the other branches.
 		$product->shouldReceive( 'is_in_stock' )->andReturn( $overrides['in_stock'] ?? true );
 		$product->shouldReceive( 'get_stock_status' )->andReturn( $overrides['stock_status'] ?? 'instock' );
-		// twitter:data2 is now derived from stock_state() (#679 task 3 fix),
+		// twitter:data2 is now derived from stock_state() (#679),
 		// NOT from this mock. get_availability() is stubbed here purely so a
 		// regression that points twitter:data2 back at it is exercised by
 		// the tests below rather than fataling on an unmocked call. The
 		// default mirrors real WooCommerce's own behaviour, verified live
-		// (#679 task 3): a plain UNMANAGED in-stock product returns '' here,
+		// (#679): a plain UNMANAGED in-stock product returns '' here,
 		// not "In stock" — stock management is off by default, so this is
 		// the commonest configuration on any store. Pass 'availability' to
 		// simulate a different WooCommerce answer (e.g. a managed product's
@@ -468,7 +473,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'og:image:alt', $og );
 		$this->assertArrayNotHasKey( 'product:price:amount', $og );
 
-		// Gated the same way as product:price:amount itself (#679 task 2).
+		// Gated the same way as product:price:amount itself (#679).
 		$tw = $this->meta->build_twitter_tags( $og );
 		$this->assertArrayNotHasKey( 'twitter:label1', $tw );
 		$this->assertArrayNotHasKey( 'twitter:data1', $tw );
@@ -499,7 +504,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'twitter:data1', $tw );
 	}
 
-	// --- Image dimensions and alt text (#679 task 2) ---
+	// --- Image dimensions and alt text (#679) ---
 
 	public function test_og_tags_include_image_dimensions_and_alt(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
@@ -521,7 +526,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_og_tags_omit_alt_when_attachment_has_no_alt_text(): void {
 		// Mutation check target: dropping the alt-empty guard must make
-		// this test fail (#679 task 2 brief, Step 5).
+		// this test fail (#679).
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
@@ -580,7 +585,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'og:image:alt', $og );
 	}
 
-	// --- Availability vocabulary (#679 task 2) ---
+	// --- Availability vocabulary (#679) ---
 
 	public function test_og_tags_availability_instock(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
@@ -603,7 +608,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_og_tags_availability_diverges_on_backorder(): void {
 		// The one case the two vocabularies disagree, and the one most
-		// likely to be got wrong (#679 task 2 brief). Facebook's
+		// likely to be got wrong (#679). Facebook's
 		// product:availability has no "backorder" term of its own — a
 		// backordered product reads "available for order" there — while
 		// Pinterest's og:availability does have a distinct "backorder"
@@ -639,7 +644,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'out of stock', $og['og:availability'] );
 	}
 
-	// --- Condition (#679 task 2) ---
+	// --- Condition (#679) ---
 
 	public function test_og_tags_include_condition_when_attribute_present(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
@@ -685,7 +690,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_og_tags_omit_condition_when_attribute_absent(): void {
 		// Mutation check target: removing the product:condition key must
-		// make this test fail (#679 task 2 brief, Step 5).
+		// make this test fail (#679).
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/x/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
@@ -696,8 +701,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertArrayNotHasKey( 'product:condition', $og );
 	}
 
-	// --- Twitter label/data pairs (#679 task 2 fix: human-readable, not
-	// machine vocabulary) ---
+	// --- Twitter label/data pairs (#679; human-readable, not machine vocabulary) ---
 
 	public function test_twitter_tags_include_price_and_availability_labels(): void {
 		// Symbol-prefixed price (Rank Math's shape) and our own
@@ -856,7 +860,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_twitter_data2_unmanaged_in_stock_product_still_emits_in_stock(): void {
 		// This is the configuration the original get_availability()-based
-		// implementation got wrong (#679 task 3): real WooCommerce (verified
+		// implementation got wrong (#679): real WooCommerce (verified
 		// live) returns '' from get_availability() for a plain UNMANAGED
 		// in-stock product, and stock management is off by default, so this
 		// is the commonest configuration on any store. og_product()'s
@@ -880,7 +884,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_twitter_data2_never_discloses_stock_quantity(): void {
 		// Guards against a regression back to WooCommerce's own
 		// get_availability(), which for a managed product includes the live
-		// quantity, e.g. "5 in stock" (#679 task 3) — publishing inventory
+		// quantity, e.g. "5 in stock" (#679) — publishing inventory
 		// levels into a public social card, which nobody asked for. The
 		// product mock is set up to answer get_availability() with exactly
 		// that shape; twitter_availability_data() must never read it, so
@@ -1068,14 +1072,14 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( '<meta property="og:title" content="Canvas Belt"', $html );
 		$this->assertStringContainsString( '<meta name="twitter:card" content="summary_large_image"', $html );
 		$this->assertStringContainsString( '<meta name="twitter:image" content="https://shop.test/i.jpg"', $html );
-		// End-to-end confirmation (#679 task 2) that the new properties
+		// End-to-end confirmation (#679) that the new properties
 		// reach the actual printed <meta> output, not just the arrays
 		// build_og_tags()/build_twitter_tags() return.
 		$this->assertStringContainsString( '<meta property="product:availability" content="instock"', $html );
 		$this->assertStringContainsString( '<meta property="og:availability" content="instock"', $html );
 		// The OG properties above stay machine vocabulary for crawlers; the
 		// Twitter pair reaching the page is the human-readable text a
-		// person actually reads under the card (#679 task 2 fix).
+		// person actually reads under the card (#679).
 		$this->assertStringContainsString( '<meta name="twitter:label1" content="Price"', $html );
 		$this->assertStringContainsString( '<meta name="twitter:data1" content="$48.00"', $html );
 		$this->assertStringContainsString( '<meta name="twitter:label2" content="Availability"', $html );
