@@ -48,6 +48,19 @@ parameters:
     # analyses the real class directly from `includes/`.
     scanFiles:
         - tests/php/stubs.php
+        # Yoast, unlike Jetpack (see ignoreErrors below), IS scanned. The
+        # difference is what the symbol is used for. Jetpack's classes are
+        # only ever called behind class_exists() guards, so a stub would turn
+        # its waivers into alreadyNarrowedType waivers and change nothing.
+        # Here we `extends` a Yoast class — `wpseo_frontend_presenters`
+        # silently drops any presenter that does not (#676) — and PHPStan
+        # marks the resulting class.notFound non-ignorable, so there is no
+        # waiver available and excluding the file only moves the error to its
+        # caller. This stub mirrors signatures verified against a live
+        # wordpress-seo 28.x install; if Yoast changes them it keeps analysis
+        # green while production breaks, which is why the live check in #676
+        # Task 4 is what actually proves the pipeline.
+        - tests/php/stubs-yoast.php
 
     # Plugin constants defined at runtime by the bootstrap file. They
     # exist but PHPStan can't prove it from static analysis alone.

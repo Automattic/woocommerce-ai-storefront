@@ -22,6 +22,7 @@ require_once __DIR__ . '/stubs.php';
 // PHPUnit's file discovery order. See the file for why they're keyed by
 // post ID.
 require_once __DIR__ . '/stubs-jetpack.php';
+require_once __DIR__ . '/stubs-yoast.php';
 
 // WooCommerce version the suite pretends to run against. The shipping-policy
 // and JSON-LD zone readers gate on this because
@@ -77,6 +78,7 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy-seopress.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy-yoast.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategies.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-attribution.php';

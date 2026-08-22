@@ -9,6 +9,13 @@
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
 ### Fixed
+- **Yoast SEO and your store both described your product pages to social networks (#676).**
+  - With Yoast active, your product, category and shop pages carried two sets of share tags, and Yoast's called every one of them an article. A product is not an article, and neither is a category listing.
+  - Your store now corrects that inside Yoast's own output rather than publishing a second set. Products are labelled as products, and category, shop and search pages as ordinary pages.
+  - The commerce facts Yoast leaves out are filled in beside its own: price, currency and stock. If you run the paid Yoast WooCommerce SEO add-on, it already supplies most of these and keeps supplying them; your store only adds what is missing, which on a product with options is the price.
+  - Yoast's "modified on" date is no longer attached to your product and shop pages. It describes an article, and these are not articles.
+  - Anything you wrote in Yoast's own SEO fields still wins, exactly as before.
+
 - **SEOPress and your store both described your product pages to social networks (#676).**
   - With SEOPress active, every product, category and shop page carried two sets of share tags. Networks pick one, so previews looked fine at a glance, but which one you got was not yours to choose.
   - Your store now stands SEOPress's social tags down on those pages and publishes its own, which carry the commerce details SEOPress does not: price, stock, and condition.

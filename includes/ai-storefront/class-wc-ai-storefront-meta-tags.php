@@ -1207,7 +1207,15 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( '' !== $description && ! WC_AI_Storefront_Rival_Seo_Description::is_emitting() ) {
 			$this->print_meta( 'name', 'description', $description );
 		}
-		$this->print_og_and_twitter( $og, $product );
+		// One set of social tags per page (#676). An enriching strategy has
+		// already hooked the other plugin's own pipeline to correct its
+		// og:type and add the commerce facts it lacks, so printing ours as
+		// well would produce exactly the duplication that work removes. The
+		// description above is decided separately, by
+		// WC_AI_Storefront_Rival_Seo_Description, and is unaffected.
+		if ( ! WC_AI_Storefront_Og_Strategies::emission_is_delegated() ) {
+			$this->print_og_and_twitter( $og, $product );
+		}
 	}
 
 	/**

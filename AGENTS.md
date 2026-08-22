@@ -210,6 +210,8 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-og-strategies.php` | YOAST-COEXISTENCE.md, ARCHITECTURE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-og-strategy.php` | YOAST-COEXISTENCE.md, ARCHITECTURE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-og-strategy-seopress.php` | YOAST-COEXISTENCE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-og-strategy-yoast.php` | YOAST-COEXISTENCE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-yoast-og-presenter.php` | YOAST-COEXISTENCE.md |
 | `includes/admin/class-wc-ai-storefront-schema-conflict-notice.php` | YOAST-COEXISTENCE.md |
 | `includes/admin/class-wc-ai-storefront-product-meta-box.php` | DATA-MODEL.md, USER-GUIDE.md |
 | `includes/class-wc-ai-storefront.php` | DATA-MODEL.md, ARCHITECTURE.md |

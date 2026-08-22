@@ -94,6 +94,14 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 	}
 
 	/**
+	 * SEOPress offers no filter over its Open Graph, so removal is the only
+	 * route to a single set of tags. Ours stay on the page.
+	 */
+	public static function mode(): string {
+		return self::MODE_SUPPRESS;
+	}
+
+	/**
 	 * Register the removal, at the one timing that works.
 	 *
 	 * SEOPress does NOT register the sixteen callbacks at plugin load.

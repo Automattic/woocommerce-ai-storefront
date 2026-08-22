@@ -33,7 +33,19 @@ class WC_AI_Storefront_Og_Strategies {
 	 */
 	private const STRATEGIES = array(
 		'seopress' => WC_AI_Storefront_Og_Strategy_Seopress::class,
+		'yoast'    => WC_AI_Storefront_Og_Strategy_Yoast::class,
 	);
+
+	/**
+	 * Strategies registered for THIS request.
+	 *
+	 * Replaced wholesale on every init(), never appended to: #669 shipped a
+	 * request-scoped latch that survived between requests in a persistent
+	 * worker, and this is the same shape.
+	 *
+	 * @var WC_AI_Storefront_Og_Strategy[]
+	 */
+	private static array $registered = array();
 
 	/**
 	 * Build and register a strategy for every active SEO plugin we handle.
@@ -58,9 +70,40 @@ class WC_AI_Storefront_Og_Strategies {
 	 *                                   emitting its own tags.
 	 */
 	public static function init_for_slugs( array $slugs, callable $on_commerce_page ): void {
-		foreach ( self::for_slugs( $slugs ) as $strategy ) {
+		self::$registered = self::for_slugs( $slugs );
+
+		foreach ( self::$registered as $strategy ) {
 			$strategy->init( $on_commerce_page );
 		}
+	}
+
+	/**
+	 * Whether another plugin is rendering our social tags for us this request.
+	 *
+	 * True when any registered strategy is in MODE_ENRICH. WC_AI_Storefront_Meta_Tags
+	 * asks before printing its own Open Graph and Twitter block: enrichment
+	 * that did not also stand our block down would produce two sets of tags,
+	 * which is the defect, not the fix.
+	 *
+	 * Suppression strategies answer false — there the other plugin's tags are
+	 * the ones being removed, so ours are the only ones left to print.
+	 */
+	public static function emission_is_delegated(): bool {
+		foreach ( self::$registered as $strategy ) {
+			if ( WC_AI_Storefront_Og_Strategy::MODE_ENRICH === $strategy::mode() ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Forget this request's strategies. Test-only; production re-registers on
+	 * every request, and nothing in a request should need to undo init().
+	 */
+	public static function reset(): void {
+		self::$registered = array();
 	}
 
 	/**

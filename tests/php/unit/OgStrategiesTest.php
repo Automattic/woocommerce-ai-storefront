@@ -28,6 +28,7 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		WC_AI_Storefront_Og_Strategies::reset();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -80,6 +81,45 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 	public function test_init_registers_nothing_when_no_strategy_applies(): void {
 		Actions\expectAdded( 'template_redirect' )->never();
 		WC_AI_Storefront_Og_Strategies::init_for_slugs( array(), $this->gate() );
+	}
+
+	public function test_yoast_yields_its_own_strategy(): void {
+		$strategies = WC_AI_Storefront_Og_Strategies::for_slugs( array( 'yoast' ) );
+		$this->assertCount( 1, $strategies );
+		$this->assertInstanceOf( WC_AI_Storefront_Og_Strategy_Yoast::class, $strategies[0] );
+	}
+
+	// --- Who prints the tags ---
+
+	public function test_nothing_is_delegated_when_no_strategy_is_registered(): void {
+		WC_AI_Storefront_Og_Strategies::reset();
+		$this->assertFalse( WC_AI_Storefront_Og_Strategies::emission_is_delegated() );
+	}
+
+	public function test_a_suppressing_strategy_leaves_emission_with_us(): void {
+		// SEOPress's tags are the ones being removed, so ours are the only
+		// ones left to print.
+		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'seopress' ), $this->gate() );
+		$this->assertFalse( WC_AI_Storefront_Og_Strategies::emission_is_delegated() );
+	}
+
+	public function test_an_enriching_strategy_takes_emission_over(): void {
+		// Yoast renders; we corrected its type and filled its gaps through its
+		// own pipeline. Printing our block as well is the duplication #676
+		// exists to remove.
+		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'yoast' ), $this->gate() );
+		$this->assertTrue( WC_AI_Storefront_Og_Strategies::emission_is_delegated() );
+	}
+
+	public function test_registration_replaces_rather_than_accumulates(): void {
+		// #669 shipped a request-scoped latch that survived between requests
+		// in a persistent worker. This is the same shape, so it is pinned.
+		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'yoast' ), $this->gate() );
+		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'seopress' ), $this->gate() );
+		$this->assertFalse(
+			WC_AI_Storefront_Og_Strategies::emission_is_delegated(),
+			'A previous request\'s enriching strategy must not answer for this one.'
+		);
 	}
 
 	// --- SEOPress ---
