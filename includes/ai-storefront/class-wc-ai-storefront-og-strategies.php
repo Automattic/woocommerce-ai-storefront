@@ -34,6 +34,8 @@ class WC_AI_Storefront_Og_Strategies {
 	private const STRATEGIES = array(
 		'seopress' => WC_AI_Storefront_Og_Strategy_Seopress::class,
 		'yoast'    => WC_AI_Storefront_Og_Strategy_Yoast::class,
+		'aioseo'   => WC_AI_Storefront_Og_Strategy_Aioseo::class,
+		'rankmath' => WC_AI_Storefront_Og_Strategy_Rankmath::class,
 	);
 
 	/**

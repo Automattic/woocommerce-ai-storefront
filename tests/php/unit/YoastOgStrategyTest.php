@@ -71,7 +71,7 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	private function strategy(): WC_AI_Storefront_Og_Strategy_Yoast {
-		$strategy = new WC_AI_Storefront_Og_Strategy_Yoast();
+		$strategy = new WC_AI_Storefront_Og_Strategy_Yoast( new WC_AI_Storefront_Og_Commerce_Facts() );
 		$strategy->init( $this->gate() );
 		return $strategy;
 	}

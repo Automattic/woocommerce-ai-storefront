@@ -9,6 +9,12 @@
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
 ### Fixed
+- **Rank Math and All in One SEO both described your product pages to social networks too (#676).**
+  - Same fix as Yoast, through each plugin's own output rather than a second set of tags. Products are labelled as products; category, shop and search pages as ordinary pages.
+  - Rank Math was already close. It gets the price on products with options, which it leaves out, and the stock wording Pinterest reads, which it never emits.
+  - All in One SEO gets price, currency and stock, and its "article" labels are removed from your product and shop pages.
+  - One thing to know about All in One SEO: it publishes no share tags at all on a product category, so on those pages your store keeps publishing its own.
+
 - **Yoast SEO and your store both described your product pages to social networks (#676).**
   - With Yoast active, your product, category and shop pages carried two sets of share tags, and Yoast's called every one of them an article. A product is not an article, and neither is a category listing.
   - Your store now corrects that inside Yoast's own output rather than publishing a second set. Products are labelled as products, and category, shop and search pages as ordinary pages.
