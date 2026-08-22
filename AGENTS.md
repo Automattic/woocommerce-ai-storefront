@@ -194,9 +194,12 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md, JSON-LD-SCHEMA.md |
 | `includes/ai-storefront/class-wc-ai-storefront-product-facts.php` | ARCHITECTURE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php` | ARCHITECTURE.md, DATA-MODEL.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-products-feed.php` | API-REFERENCE.md, ARCHITECTURE.md, DATA-MODEL.md, KNOWN-GAPS.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-handling-time.php` | JSON-LD-SCHEMA.md, USER-GUIDE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-shipping-policy.php` | ARCHITECTURE.md, JSON-LD-SCHEMA.md, SCHEMA-ORG-COVERAGE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-robots.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-indexnow.php` | API-REFERENCE.md, DATA-MODEL.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php` | ARCHITECTURE.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-cache-invalidator.php` | DATA-MODEL.md, ARCHITECTURE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-crawl-logger.php` | DATA-MODEL.md, ARCHITECTURE.md, API-REFERENCE.md, USER-GUIDE.md, HOOKS.md |
@@ -221,6 +224,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/admin/class-wc-ai-storefront-schema-conflict-notice.php` | YOAST-COEXISTENCE.md |
 | `includes/admin/class-wc-ai-storefront-product-meta-box.php` | DATA-MODEL.md, USER-GUIDE.md |
 | `includes/class-wc-ai-storefront.php` | DATA-MODEL.md, ARCHITECTURE.md |
+| `includes/class-wc-ai-storefront-updater.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
 | `uninstall.php` | DATA-MODEL.md |
 | `client/settings/ai-storefront/**` | UI-CONVENTIONS.md, USER-GUIDE.md |
 | `client/data/ai-storefront/**` | UI-CONVENTIONS.md |
@@ -231,7 +235,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `.github/workflows/**` | TESTING.md, RELEASE.md |
 | `docker-compose.yml`, `bin/local-dev-bootstrap.sh` | AGENTS.md (Local development section) |
 
-If you add a code file outside this map, add a row to both this table and the workflow YAML so the autonomous docs-followup picks it up.
+If you add a code file outside this map, add a row to both this table and the workflow YAML so the autonomous docs-followup picks it up. `tests/php/unit/DocsMapTest.php` enforces this: it fails if the two lists disagree, if a mapped path no longer exists, if a listed doc is missing, or if a plugin PHP file is in neither list. A row the workflow lacks matches nothing, contributes no docs, and skips the follow-up job silently — the map's own drift was the one kind it could never report (#671).
 
 ## Workflow guidance
 
