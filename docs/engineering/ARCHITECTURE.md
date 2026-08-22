@@ -256,6 +256,8 @@ woocommerce-ai-storefront/
 │       ├── class-wc-ai-storefront-multi-currency.php
 │       ├── class-wc-ai-storefront-return-policy.php
 │       ├── class-wc-ai-storefront-meta-tags.php           # Human-SERP + social metadata on commerce pages
+│       ├── class-wc-ai-storefront-content-meta-tags.php   # Same, for posts/pages when nothing else emits (#680)
+│       ├── class-wc-ai-storefront-meta-text.php          # Shared cleaning, truncation and locale helpers
 │       ├── class-wc-ai-storefront-seo-plugin-detector.php # Which rival SEO plugin is present
 │       ├── class-wc-ai-storefront-rival-seo-description.php # Observes whose <meta description> won (#669)
 │       ├── class-wc-ai-storefront-og-strategy.php         # Open Graph coexistence contract (#676)

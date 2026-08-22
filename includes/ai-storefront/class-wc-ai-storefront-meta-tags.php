@@ -218,7 +218,7 @@ class WC_AI_Storefront_Meta_Tags {
 		// Cleaned and truncated like every sibling fallback. This is also the
 		// path that builds the LONGEST strings — three category names plus
 		// the store name — so it is the one most likely to exceed the limit.
-		return $this->truncate( $this->clean_text( $description ), self::DESCRIPTION_MAX );
+		return WC_AI_Storefront_Meta_Text::truncate( WC_AI_Storefront_Meta_Text::clean_text( $description ), self::DESCRIPTION_MAX );
 	}
 
 	/**
@@ -328,7 +328,7 @@ class WC_AI_Storefront_Meta_Tags {
 						$store
 					)
 					: $name;
-				$description = $this->truncate( $this->clean_text( $fallback ), self::DESCRIPTION_MAX );
+				$description = WC_AI_Storefront_Meta_Text::truncate( WC_AI_Storefront_Meta_Text::clean_text( $fallback ), self::DESCRIPTION_MAX );
 			}
 		}
 
@@ -359,9 +359,9 @@ class WC_AI_Storefront_Meta_Tags {
 	private function first_usable_candidate( array $candidates ): string {
 		foreach ( $candidates as $raw ) {
 			$raw  = (string) $raw;
-			$text = $this->clean_text( $raw );
-			if ( self::is_readable_prose( $text ) ) {
-				return $this->truncate( $text, self::DESCRIPTION_MAX );
+			$text = WC_AI_Storefront_Meta_Text::clean_text( $raw );
+			if ( WC_AI_Storefront_Meta_Text::is_readable_prose( $text ) ) {
+				return WC_AI_Storefront_Meta_Text::truncate( $text, self::DESCRIPTION_MAX );
 			}
 			if ( '' !== trim( $raw ) ) {
 				// Merchant content existed and we discarded it: markup,
@@ -376,97 +376,8 @@ class WC_AI_Storefront_Meta_Tags {
 		return '';
 	}
 
-	/**
-	 * Whether cleaned text is worth publishing as a description.
-	 *
-	 * Not the same question as "is it non-empty", and the difference ships.
-	 * clean_text() strips tags and collapses ASCII whitespace, but a
-	 * non-breaking space is neither: `&nbsp;` survives as six literal bytes,
-	 * a raw U+00A0 as two, and `trim()`'s default charlist does not include
-	 * either. So the block editor's own empty paragraph — open the Shop page,
-	 * press Enter, leave — cleans to `&nbsp;` and reads as a usable
-	 * description.
-	 *
-	 * strip_shortcodes() has the same shape of hole: it intersects against
-	 * the shortcodes registered AT THAT MOMENT, so a tag left behind by a
-	 * deactivated plugin passes through verbatim and `[some_slider id="3"]`
-	 * ships as the SERP snippet.
-	 *
-	 * Both cases cost more than the tag they produce, because the candidate
-	 * chain stops at the first "usable" entry: a stray non-breaking space on
-	 * the Shop page suppressed the merchant's own tagline AND the generated
-	 * fallback beneath it (#682 review).
-	 *
-	 * The test is one letter or digit, in any script.
-	 *
-	 * @param string $text Cleaned candidate text.
-	 */
-	private static function is_readable_prose( string $text ): bool {
-		if ( '' === $text ) {
-			return false;
-		}
 
-		// preg_match() returns false, not 0, on a subject that is not valid
-		// UTF-8. Treat that as readable rather than as junk: the text came
-		// from the merchant, and discarding it would be the same silent loss
-		// the fold above guards against.
-		$match = preg_match( '/[\p{L}\p{N}]/u', $text );
 
-		return false === $match || 1 === $match;
-	}
-
-	/**
-	 * Strip shortcodes + HTML and collapse whitespace.
-	 */
-	private function clean_text( string $raw ): string {
-		// Three passes that have to happen before the ASCII whitespace
-		// collapse below, each closing a way for non-prose to read as
-		// content (#682 review).
-		//
-		// 1. Decode entities. The block editor stores its own empty
-		//    paragraph as the literal `&nbsp;`, six ASCII bytes that survive
-		//    tag-stripping and whitespace-collapsing and even carry letters.
-		$raw = html_entity_decode( $raw, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
-
-		// 2. Remove shortcode-shaped tokens. strip_shortcodes() intersects
-		//    against the shortcodes registered AT THAT MOMENT, so a tag left
-		//    behind by a deactivated plugin passes through verbatim and
-		//    `[some_slider id="3"]` ships as the SERP snippet.
-		$raw = (string) preg_replace( '/\[\/?[a-zA-Z0-9_-]+(?:[^\]]*)?\]/', ' ', $raw );
-
-		// 3. Fold Unicode whitespace. `\s` without the `u` flag does not
-		//    match U+00A0, U+200B or U+FEFF, and neither does trim()'s
-		//    default charlist, so they survive every other step.
-		//
-		//    Null-safe, and that is load-bearing rather than defensive. A
-		//    `/u` pattern returns NULL when the SUBJECT is not valid UTF-8,
-		//    and `(string) null` is '' — so one mis-encoded byte anywhere in
-		//    a merchant's Shop page silently discarded the whole description
-		//    and fell through to the generated fallback. Mojibake from an
-		//    old latin-1 import is the ordinary way to get there (#682
-		//    review). Keeping the unfolded text is strictly better than
-		//    losing it: the ASCII collapse below still runs.
-		$folded = preg_replace( '/[\x{00A0}\x{200B}\x{FEFF}]+/u', ' ', $raw );
-		$raw    = is_string( $folded ) ? $folded : $raw;
-		$raw    = strip_shortcodes( $raw );
-		$raw    = wp_strip_all_tags( $raw );
-		return trim( (string) preg_replace( '/\s+/', ' ', $raw ) );
-	}
-
-	/**
-	 * Truncate to a soft max on a word boundary, appending an ellipsis.
-	 */
-	private function truncate( string $text, int $max ): string {
-		if ( mb_strlen( $text ) <= $max ) {
-			return $text;
-		}
-		$cut   = mb_substr( $text, 0, $max );
-		$space = mb_strrpos( $cut, ' ' );
-		if ( false !== $space && $space > 0 ) {
-			$cut = mb_substr( $cut, 0, $space );
-		}
-		return rtrim( $cut ) . '…';
-	}
 
 	/**
 	 * Build the meta description for the current archive (category or shop).
@@ -797,7 +708,7 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:description' => null === $description ? $this->build_description( $product ) : $description,
 			'og:url'         => get_permalink( $product->get_id() ),
 			'og:site_name'   => get_bloginfo( 'name' ),
-			'og:locale'      => $this->og_locale(),
+			'og:locale'      => WC_AI_Storefront_Meta_Text::og_locale(),
 		);
 
 		// Attachment ID first, then the ONE wp_get_attachment_image_src() call
@@ -1209,7 +1120,7 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:site_name'   => $site,
 			'og:title'       => $site,
 			'og:url'         => '',
-			'og:locale'      => $this->og_locale(),
+			'og:locale'      => WC_AI_Storefront_Meta_Text::og_locale(),
 		);
 
 		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
@@ -1867,23 +1778,6 @@ class WC_AI_Storefront_Meta_Tags {
 		);
 	}
 
-	/**
-	 * The current locale as an Open Graph `language_TERRITORY` value.
-	 *
-	 * WordPress locales like `de_DE_formal` carry a variant suffix Open Graph
-	 * does not accept, so we keep only the language and territory segments.
-	 * Defaults to `en_US` when the locale is unavailable.
-	 */
-	private function og_locale(): string {
-		$locale = function_exists( 'get_locale' ) ? (string) get_locale() : '';
-		if ( '' === $locale ) {
-			return 'en_US';
-		}
-		// Normalize a BCP-47 hyphen form (e.g. a filtered `pt-BR`) to Open
-		// Graph's underscore form before stripping any WP variant suffix.
-		$parts = explode( '_', str_replace( '-', '_', $locale ) );
-		return isset( $parts[1] ) ? $parts[0] . '_' . $parts[1] : $parts[0];
-	}
 
 	/**
 	 * Whether an OG property carries a URL value (so it is esc_url'd).
