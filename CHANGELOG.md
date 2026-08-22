@@ -8,6 +8,14 @@
   - Its description (the featured image's alt text) is included as well, for anyone using a screen reader.
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
+### Added
+- **Your blog posts and pages now get share previews too (#680).**
+  - On a store with no SEO plugin, sharing a post or page gave whoever received it a blank card: no title, no summary, no image. Your product pages have had these for a while; everything else had nothing.
+  - Posts and pages now carry a title, a summary taken from your excerpt or the post itself, your featured image, and a description for search results.
+  - Your store stays out of the way when Yoast, Rank Math, All in One SEO, SEOPress or Jetpack's social previews are already doing this. If you use Jetpack's SEO description without its social previews, you get the share card and keep Jetpack's description, with no duplication.
+  - Less common SEO plugins are not yet recognised, so if you run one of those you may see two sets of tags. Turning the plugin's metadata off in its settings avoids it, and wider detection is planned.
+  - Only posts and pages. Author and date archives are left alone, because a made-up summary there is worse than none.
+
 ### Fixed
 - **Your Shop page could go out with no description at all (#682).**
   - Product and category pages each fall back to a generated description when you haven't written one. Your Shop page did not, so on a store with an empty tagline and an empty Shop page, which is how WooCommerce ships, it published none.

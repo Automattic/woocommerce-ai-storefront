@@ -238,6 +238,15 @@ class WC_AI_Storefront {
 		// own tags, which excludes product search.
 		WC_AI_Storefront_Og_Strategies::init( array( $meta_tags, 'will_emit_open_graph' ) );
 
+		// Social metadata for posts and pages, but ONLY on a store where
+		// nothing else provides any (#680). Meta_Tags is scoped to commerce
+		// on purpose; that boundary assumes a second emitter exists, and on a
+		// plain WooCommerce install none does — a shared blog post unfurls as
+		// a blank card. This gates itself strictly and stays silent whenever
+		// another source is present.
+		$content_meta_tags = new WC_AI_Storefront_Content_Meta_Tags();
+		$content_meta_tags->init();
+
 		$robots = new WC_AI_Storefront_Robots();
 		$robots->init();
 
