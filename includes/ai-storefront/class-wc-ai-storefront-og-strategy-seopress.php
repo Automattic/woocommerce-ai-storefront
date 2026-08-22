@@ -104,6 +104,14 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 	}
 
 	/**
+	 * Never. SEOPress's tags are the ones being removed, so ours are the only
+	 * ones left to print.
+	 */
+	public function has_taken_over(): bool {
+		return false;
+	}
+
+	/**
 	 * Register the removal, at the one timing that works.
 	 *
 	 * SEOPress does NOT register the sixteen callbacks at plugin load.

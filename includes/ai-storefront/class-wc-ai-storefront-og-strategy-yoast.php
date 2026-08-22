@@ -86,6 +86,13 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	}
 
 	/**
+	 * On every commerce page: Yoast emits Open Graph on all five of them.
+	 */
+	public function has_taken_over(): bool {
+		return null !== $this->on_commerce_page && ( $this->on_commerce_page )();
+	}
+
+	/**
 	 * @param callable $on_commerce_page Resolved at hook time, not here.
 	 */
 	public function init( callable $on_commerce_page ): void {

@@ -46,6 +46,21 @@ interface WC_AI_Storefront_Og_Strategy {
 	public static function mode(): string;
 
 	/**
+	 * Whether this strategy is rendering our tags for us, for THIS request.
+	 *
+	 * Asked per request rather than answered by mode() alone, because
+	 * "enriches" is not the same as "enriches everywhere". All in One SEO
+	 * emits no Open Graph at all on a product category — no tags, and neither
+	 * of its filters fires — so on that page type there is nothing to enrich
+	 * and standing our own block down would leave the page with no social
+	 * tags whatsoever (#676 spike).
+	 *
+	 * Suppression strategies always answer false: there the other plugin's
+	 * tags are the ones being removed, so ours are the only ones left.
+	 */
+	public function has_taken_over(): bool;
+
+	/**
 	 * The detector slug this strategy answers for.
 	 *
 	 * Must match a `slug` that WC_AI_Storefront_Seo_Plugin_Detector::detect()

@@ -90,7 +90,14 @@ class WC_AI_Storefront_Og_Strategies {
 	 */
 	public static function emission_is_delegated(): bool {
 		foreach ( self::$registered as $strategy ) {
-			if ( WC_AI_Storefront_Og_Strategy::MODE_ENRICH === $strategy::mode() ) {
+			if ( WC_AI_Storefront_Og_Strategy::MODE_ENRICH !== $strategy::mode() ) {
+				continue;
+			}
+			// Per request, not per plugin: All in One SEO enriches on four of
+			// the five commerce page types and emits nothing at all on a
+			// product category, where standing our block down would leave the
+			// page with no social tags.
+			if ( $strategy->has_taken_over() ) {
 				return true;
 			}
 		}
