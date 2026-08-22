@@ -72,7 +72,7 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * Stub everything build_og_tags() reaches for on a product page.
 	 */
-	private function stub_product_page(): void {
+	private function stub_product_page( string $price = '48.00' ): void {
 		Functions\when( 'is_product' )->justReturn( true );
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
@@ -96,7 +96,7 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		$product->shouldReceive( 'get_short_description' )->andReturn( 'A belt.' );
 		$product->shouldReceive( 'get_description' )->andReturn( '' );
 		$product->shouldReceive( 'is_purchasable' )->andReturn( true );
-		$product->shouldReceive( 'get_price' )->andReturn( '48.00' );
+		$product->shouldReceive( 'get_price' )->andReturn( $price );
 		$product->shouldReceive( 'is_in_stock' )->andReturn( true );
 		$product->shouldReceive( 'get_stock_status' )->andReturn( 'instock' );
 		$product->shouldReceive( 'get_availability' )->andReturn(
@@ -190,9 +190,53 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $this->aioseo()->has_taken_over() );
 	}
 
-	public function test_aioseo_takes_over_the_other_commerce_pages(): void {
+	public function test_aioseo_takes_over_only_once_its_filter_has_run(): void {
+		// Presence is not evidence. AIOSEO ships an Open Graph switch, and a
+		// merchant who turns it off gets neither filter on any page type —
+		// answering from page type alone would stand our block down against a
+		// plugin publishing nothing, leaving the page bare (#676 review).
 		Functions\when( 'is_shop' )->justReturn( true );
-		$this->assertTrue( $this->aioseo()->has_taken_over() );
+		$strategy = $this->aioseo();
+
+		$this->assertFalse( $strategy->has_taken_over(), 'Nothing observed yet.' );
+
+		$strategy->filter_facebook_tags( array( 'og:type' => 'article' ) );
+
+		$this->assertTrue( $strategy->has_taken_over() );
+	}
+
+	public function test_aioseo_never_takes_over_a_product_category_by_observation(): void {
+		// The hand-written page-type exception is gone: AIOSEO's isAllowed()
+		// is an allowlist that excludes product categories, so its filters
+		// never fire there and the latch simply stays false.
+		Functions\when( 'is_product_category' )->justReturn( true );
+		$strategy = $this->aioseo();
+
+		$this->assertFalse( $strategy->has_taken_over() );
+	}
+
+	public function test_rankmath_takes_over_only_once_its_action_has_run(): void {
+		// RANK_MATH_VERSION is defined at load, but Rank Math publishes
+		// nothing until its setup wizard is finished.
+		$this->stub_product_page();
+		$strategy = $this->rankmath();
+
+		$this->assertFalse( $strategy->has_taken_over(), 'Activated is not the same as emitting.' );
+
+		$strategy->add_missing_tags( new WC_AI_Storefront_Rankmath_Og_Double() );
+
+		$this->assertTrue( $strategy->has_taken_over() );
+	}
+
+	public function test_rankmath_does_not_take_over_when_the_object_shape_is_wrong(): void {
+		// Rank Math changing or removing tag() is an integration break. We
+		// added nothing, so we must not stand our own block down either.
+		$this->stub_product_page();
+		$strategy = $this->rankmath();
+
+		$strategy->add_missing_tags( new \stdClass() );
+
+		$this->assertFalse( $strategy->has_taken_over() );
 	}
 
 	public function test_aioseo_type_becomes_product_and_article_keys_go(): void {
@@ -257,6 +301,63 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	public function test_aioseo_ignores_a_non_array(): void {
 		$this->assertNull( $this->aioseo()->filter_facebook_tags( null ) );
 		$this->assertNull( $this->aioseo()->filter_twitter_tags( null ) );
+	}
+
+	public function test_aioseo_hooks_after_its_own_pro_woocommerce_integration(): void {
+		Filters\expectAdded( 'aioseo_facebook_tags' )->once()->with( \Mockery::type( 'array' ), 20 );
+		Filters\expectAdded( 'aioseo_twitter_tags' )->once()->with( \Mockery::type( 'array' ), 20 );
+		$this->aioseo();
+	}
+
+	public function test_aioseo_does_not_overwrite_a_label_slot_it_filled(): void {
+		// With "additional data" on, AIOSEO writes twitter:label{n} itself.
+		// An array_merge would silently replace its rows with ours.
+		$this->stub_product_page();
+
+		$tags = $this->aioseo()->filter_twitter_tags(
+			array(
+				'twitter:card'   => 'summary',
+				'twitter:label1' => 'Est. reading time',
+				'twitter:data1'  => '3 minutes',
+			)
+		);
+
+		$this->assertSame( 'Est. reading time', $tags['twitter:label1'] );
+		$this->assertSame( '3 minutes', $tags['twitter:data1'] );
+		$this->assertSame( 'Availability', $tags['twitter:label2'], 'A free slot still gets ours.' );
+	}
+
+	public function test_a_free_products_price_survives_the_falsy_filters(): void {
+		// Rank Math's tag() returns early on empty(), and AIOSEO array_filter()s
+		// its map with no callback. A price of "0" is dropped by both, so a
+		// genuinely free product would lose it silently — the #658 and #679
+		// class of bug.
+		$this->stub_product_page( '0' );
+
+		$properties = ( new WC_AI_Storefront_Og_Commerce_Facts() )->properties();
+
+		$this->assertSame( '0.00', $properties['product:price:amount'] );
+		$this->assertNotEmpty( $properties['product:price:amount'] );
+	}
+
+	public function test_a_property_only_the_og_tags_filter_added_is_not_claimed(): void {
+		// build_og_tags() ends in the public wc_ai_storefront_og_tags filter.
+		// A third party adding product:brand passes a `product:` prefix test
+		// and is absent from OWNED_PROPERTIES; claiming it would give Rank
+		// Math no per-tag filter for it and duplicate the tag.
+		$this->stub_product_page();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_og_tags' === $hook && is_array( $value ) ) {
+					$value['product:brand'] = 'Saltwarp';
+				}
+				return $value;
+			}
+		);
+
+		$properties = ( new WC_AI_Storefront_Og_Commerce_Facts() )->properties();
+
+		$this->assertArrayNotHasKey( 'product:brand', $properties );
 	}
 
 	// --- Rank Math ---

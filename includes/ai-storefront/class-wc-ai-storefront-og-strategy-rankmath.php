@@ -27,23 +27,47 @@ defined( 'ABSPATH' ) || exit;
  *    emit `content=""`, so substitution through the filter is safe.
  * 2. A tag added with `$og->tag()` passes through the SAME per-tag filter, so
  *    blanking a property and then adding it back cancels out.
- * 3. Rank Math's own tags are filtered strictly BEFORE the
- *    `rank_math/opengraph/facebook` action fires.
+ * 3. Rank Math's own emitters are callbacks ON that same action, not a pass
+ *    before it. Verified against seo-by-rank-math 1.0.276: locale 1, type 5,
+ *    title 10, description 11, url 12, site_name 13, website 14,
+ *    article_author 15, tags 16, category 17, publish_date 19, site_owner 20,
+ *    image 30, the WooCommerce module's og_enhancement 50, and the Schema
+ *    module's add_schema_tags 90. Each per-tag filter fires the instant the
+ *    callback currently running calls `tag()`.
  *
- * Fact 3 is what makes this exact. Each per-tag filter records that Rank Math
- * emitted the property and substitutes our value; the action, running after
- * all of them, adds only the properties that were never recorded. Every
- * property ends up on the page once, carrying our value, whether or not Rank
- * Math had one of its own.
+ * So priority 99 is not incidental, it is the whole mechanism: 99 is above
+ * Rank Math's highest, 90. Below 90 the schema tags are missed, below 50 the
+ * WooCommerce module's price and availability are, and every property lands
+ * twice. Each per-tag filter records that Rank Math emitted the property and
+ * substitutes our value; the action, running after all of them, adds only
+ * what was never recorded. Every property ends up on the page once, carrying
+ * our value, whether or not Rank Math had one.
+ *
+ * Rank Math PRO is closed source and could register above 90. 99 is safe
+ * against the free plugin, not a guarantee against PRO.
  */
 class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strategy {
 
 	/**
 	 * Whether we are on a page this plugin describes.
 	 *
-	 * @var callable
+	 * Null until init() assigns it, which is why every reader guards.
+	 *
+	 * @var callable|null
 	 */
 	private $on_commerce_page;
+
+	/**
+	 * Whether Rank Math's Open Graph output actually ran this request.
+	 *
+	 * Set from inside add_missing_tags(), on the action Rank Math fires only
+	 * when it is rendering. Rank Math defines RANK_MATH_VERSION at load but
+	 * publishes nothing until its setup wizard is finished, so presence alone
+	 * is no evidence at all (#676 review).
+	 *
+	 * @var bool
+	 */
+	private bool $observed = false;
 
 	/**
 	 * The commerce facts Rank Math is missing.
@@ -55,9 +79,9 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	/**
 	 * Properties Rank Math emitted itself this request.
 	 *
-	 * Request-scoped and reset by init(), never accumulated: #669 shipped a
-	 * latch of this exact shape that survived between requests in a
-	 * persistent worker.
+	 * Request-scoped by construction: `for_slugs()` builds a fresh strategy on
+	 * every load, so this is a new array each request. The `init()` reset is
+	 * belt and braces for a caller that re-inits one instance.
 	 *
 	 * @var array<string,true>
 	 */
@@ -88,6 +112,19 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	 * On every commerce page: Rank Math emits Open Graph on all five.
 	 */
 	public function has_taken_over(): bool {
+		// Observed, not predicted. An activated but unconfigured Rank Math is
+		// one wizard step away and emits nothing; standing our block down for
+		// it leaves the page with no social tags at all.
+		return $this->observed && $this->should_enrich();
+	}
+
+	/**
+	 * Whether this request is one we describe. The hooks' own gate.
+	 *
+	 * Separate from has_taken_over() because the hooks run BEFORE the latch
+	 * they set; asking the observed question inside them would never be true.
+	 */
+	private function should_enrich(): bool {
 		return null !== $this->on_commerce_page && ( $this->on_commerce_page )();
 	}
 
@@ -114,8 +151,10 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 			);
 		}
 
-		// Priority 99: this must run after every per-tag filter above, and
-		// fact 3 guarantees the action itself already does.
+		// Priority 99, and the margin is nine. Rank Math's own emitters are
+		// callbacks on this same action, the highest being the Schema
+		// module's at 90. Lowering this does not degrade gracefully: it
+		// silently doubles properties.
 		add_action( 'rank_math/opengraph/facebook', array( $this, 'add_missing_tags' ), 99 );
 
 		// The twitter:label/data rows come from a numbered array here too,
@@ -143,7 +182,7 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	 * @return mixed Unchanged off commerce pages.
 	 */
 	public function filter_type( $type ) {
-		if ( ! $this->has_taken_over() ) {
+		if ( ! $this->should_enrich() ) {
 			return $type;
 		}
 
@@ -165,7 +204,7 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	 * @return mixed Ours, or the original off a commerce page.
 	 */
 	public function filter_property( string $property, $value ) {
-		if ( ! $this->has_taken_over() ) {
+		if ( ! $this->should_enrich() ) {
 			return $value;
 		}
 
@@ -185,9 +224,27 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	 * @param mixed $og RankMath\OpenGraph\Facebook.
 	 */
 	public function add_missing_tags( $og ): void {
-		if ( ! $this->has_taken_over() || ! is_object( $og ) || ! method_exists( $og, 'tag' ) ) {
+		if ( ! $this->should_enrich() || ! is_object( $og ) ) {
 			return;
 		}
+
+		if ( ! method_exists( $og, 'tag' ) ) {
+			// Reaching the action with an object that is not Rank Math's
+			// OpenGraph is either a third party firing our hook, or Rank Math
+			// having changed the shape we integrate against. The second is an
+			// integration break and must NOT leave has_taken_over() true, or
+			// we stand down having added nothing.
+			WC_AI_Storefront_Logger::debug(
+				'Open Graph: rank_math/opengraph/facebook passed a %s, which has no tag(). Leaving Rank Math alone.',
+				get_class( $og )
+			);
+
+			return;
+		}
+
+		// Reaching here means Rank Math is rendering Open Graph for a page we
+		// describe. That is the fact has_taken_over() reports.
+		$this->observed = true;
 
 		foreach ( $this->facts->properties() as $property => $value ) {
 			if ( isset( $this->seen[ $property ] ) ) {
@@ -204,13 +261,15 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	 * @return mixed Unchanged off commerce pages.
 	 */
 	public function filter_slack_data( $data ) {
-		if ( ! is_array( $data ) || ! $this->has_taken_over() ) {
+		if ( ! is_array( $data ) || ! $this->should_enrich() ) {
 			return $data;
 		}
 
 		foreach ( $this->facts->twitter_rows() as $label => $value ) {
-			// Theirs wins; we only fill what is missing.
-			if ( isset( $data[ $label ] ) ) {
+			// Comparing values as well as labels: both sides translate
+			// "Price" and "Availability" in their own text domain, so the
+			// keys match only in English (#676 review).
+			if ( isset( $data[ $label ] ) || in_array( $value, $data, true ) ) {
 				continue;
 			}
 			$data[ $label ] = $value;

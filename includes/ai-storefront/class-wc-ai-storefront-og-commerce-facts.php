@@ -75,7 +75,7 @@ class WC_AI_Storefront_Og_Commerce_Facts {
 			if ( '' === $value || ! self::is_commerce_property( $key ) ) {
 				continue;
 			}
-			$properties[ $key ] = $value;
+			$properties[ $key ] = self::survivable( $key, $value );
 		}
 
 		return $properties;
@@ -133,12 +133,49 @@ class WC_AI_Storefront_Og_Commerce_Facts {
 	}
 
 	/**
+	 * A value that survives the rival plugins' own falsy filters.
+	 *
+	 * Both of them discard a falsy value on the way out, and a genuinely free
+	 * product's price is the string "0":
+	 *
+	 * - Rank Math's `OpenGraph::tag()` returns early on `empty( $content )`
+	 *   before printing, so "0" never reaches the page.
+	 * - All in One SEO runs `array_filter()` with no callback over its tag
+	 *   map, which drops '', null, 0, '0', false and [].
+	 *
+	 * A free product would therefore lose its price on both, silently — the
+	 * same class of bug as #658 and #679, where free and unpriced products
+	 * were treated alike. "0.00" is the same number, is not falsy, and is
+	 * what a shopper is shown anyway.
+	 *
+	 * @param string $key   Property name.
+	 * @param string $value Its value.
+	 */
+	private static function survivable( string $key, string $value ): string {
+		if ( '0' !== $value ) {
+			return $value;
+		}
+
+		return 'product:price:amount' === $key ? '0.00' : $value;
+	}
+
+	/**
 	 * Whether a property is a commerce fact rather than a page description.
 	 *
 	 * @param string $key Open Graph property name.
 	 */
 	public static function is_commerce_property( string $key ): bool {
-		return 0 === strpos( $key, 'product:' ) || 'og:availability' === $key;
+		// The constant is the single authority, not a prefix rule that merely
+		// happens to agree with it. `build_og_tags()` ends in the public
+		// `wc_ai_storefront_og_tags` filter, so a third party can add
+		// `product:brand` — which passes a `product:` prefix test and is
+		// absent from the list. Rank Math is the one strategy that reads both:
+		// it registers per-tag filters from the list, so a key only
+		// properties() knows about gets no filter, never lands in $seen, and
+		// add_missing_tags() adds it beside Rank Math's own. That is this
+		// feature's own defect, reintroduced through our own extension point
+		// (#676 review).
+		return in_array( $key, self::OWNED_PROPERTIES, true );
 	}
 
 	/**

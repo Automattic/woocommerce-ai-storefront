@@ -34,6 +34,22 @@ class WC_AI_Storefront_Presenter_Double extends \Yoast\WP\SEO\Presenters\Abstrac
 	}
 }
 
+/**
+ * Yoast strategy with its presenter base reported missing.
+ *
+ * A named class rather than an anonymous one: Brain Monkey names hook
+ * callbacks by class, and refuses an anonymous class outright.
+ */
+class WC_AI_Storefront_Yoast_Strategy_Without_Base extends WC_AI_Storefront_Og_Strategy_Yoast {
+
+	/**
+	 * @return bool
+	 */
+	protected function presenter_base_exists(): bool {
+		return false;
+	}
+}
+
 class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	use MockeryPHPUnitIntegration;
 
@@ -451,6 +467,40 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		$given = $this->presenters( array( 'og:title' ) );
 		$this->assertSame( $given, $strategy->filter_presenters( $given ) );
 		$this->assertSame( array( 'a' => 'b' ), $strategy->filter_slack_data( array( 'a' => 'b' ) ) );
+	}
+
+	public function test_yoast_takes_over_only_once_its_pipeline_has_run(): void {
+		// Yoast ships an Open Graph switch, and a third party can unhook its
+		// head integration. Either way the presenter filter never fires, and
+		// answering from page type alone would stand our block down against a
+		// plugin publishing nothing (#676 review).
+		Functions\when( 'is_shop' )->justReturn( true );
+		$strategy = $this->strategy();
+
+		$this->assertFalse( $strategy->has_taken_over(), 'Nothing observed yet.' );
+
+		$strategy->filter_presenters( $this->presenters( array( 'og:title' ) ) );
+
+		$this->assertTrue( $strategy->has_taken_over() );
+	}
+
+	public function test_yoast_does_not_take_over_without_its_presenter_base(): void {
+		// filter_presenters() bails and adds nothing when the base is gone.
+		// Standing our block down as well would leave Yoast's uncorrected
+		// `article` type with none of our facts and nothing of ours: strictly
+		// worse than not being installed (#676 review).
+		Functions\when( 'is_shop' )->justReturn( true );
+
+		$strategy = new WC_AI_Storefront_Yoast_Strategy_Without_Base( new WC_AI_Storefront_Og_Commerce_Facts() );
+		$strategy->init(
+			static function () {
+				return true;
+			}
+		);
+
+		$given = $this->presenters( array( 'og:title' ) );
+		$this->assertSame( $given, $strategy->filter_presenters( $given ), 'Adds nothing.' );
+		$this->assertFalse( $strategy->has_taken_over(), 'So it must not stand our block down either.' );
 	}
 
 	public function test_a_non_array_presenter_list_is_returned_unchanged(): void {

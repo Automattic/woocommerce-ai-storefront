@@ -36,7 +36,7 @@ Yoast-stored data is **migration territory**, considered later — never a runti
 | **Store / Organization + `sameAs`** | Business identity + social profile links | crawlers + agents | In its `@graph` | Emits its own node; may read the SEO plugin's stored social handles as a fallback | 🟢 Plugin borrows values, no conflict |
 | **Meta description** | Gray summary line in search results | crawlers + humans | Owns | Stands down: emits nothing when the SEO plugin's own description filter carried a value, otherwise emits its own (derived from core fields) | 🟢 **Resolved** (#669) — exactly one tag on product, category and shop pages, whichever plugin supplies it. Nothing needs deactivating |
 | **Meta title** | Blue headline in search results | crawlers + humans | Owns | Self-emits (product title enriched with brand, except where the brand would be redundant), but loses the contest | 🟡 Single tag either way; the SEO plugin owns it. Measured, not assumed — see [Who owns the `<title>`](#who-owns-the-title) |
-| **Open Graph / Twitter cards** | Image + title preview when a link is shared | humans | Owns | Self-emits on commerce pages | 🟡 Still duplicated while both are active. The description stand-down deliberately does **not** extend here (#676) |
+| **Open Graph / Twitter cards** | Image + title preview when a link is shared | humans | Owns | One strategy per plugin: SEOPress's social tags are removed and ours print; Yoast, Rank Math and AIOSEO have theirs corrected and extended in place | 🟢 **Resolved** (#676) — one set of tags per page. See [Open Graph coexistence](#open-graph-coexistence) |
 | **Canonical (`rel=canonical`)** | "This is the master URL" — dedupes `?utm=`/sort variants | crawlers | Owns | Emits no tag (uses canonical permalinks only as *data* in JSON-LD/checkout URLs) | 🟢 No overlap — different senses of "canonical" |
 | **robots-meta (indexing)** | "Should *this page* appear in search?" | crawlers | Owns (per-page UI) | Opinionated only: noindex for `catalog_visibility=hidden` products + internal shop search | 🟢 Minimal, complementary |
 | **robots.txt (crawler access)** | Site-wide "which *bots* may fetch what" | crawlers + agents | Adds `Sitemap:` lines | Owns the AI-crawler welcome list | 🟢 Distinct surface |
@@ -90,9 +90,25 @@ This plugin still claims `pre_get_document_title` at priority 11, which is what 
 
 These remain duplicated while both plugins are active: the page carries two of each. Search engines tolerate it (they pick one); validators flag it. The duplication is your cue to act, and the admin notice says so.
 
-The description stand-down deliberately does **not** extend to Open Graph, because the signal does not carry that far. The filters above predict only the other plugin's `<meta name="description">`, not its Open Graph output — free Yoast with nothing authored fires `wpseo_metadesc` empty, correctly predicting no description tag, and emits an `og:description` anyway.
+Open Graph used to be on that list. It no longer is, and it was resolved by a different mechanism than the description — see below.
 
-That produces a visible asymmetry worth knowing before you read a `<head>`: on a Yoast store, a product page now emits **one** `<meta name="description">` and **two** `og:description` tags. Nothing is broken; Open Graph needs its own observation, tracked as issue **#676**.
+## Open Graph coexistence
+
+The description stand-down works by prediction: the other plugin's own filter tells us what it is about to write. That signal does not reach Open Graph. Free Yoast with nothing authored fires `wpseo_metadesc` empty, correctly predicting no description tag, and emits an `og:description` anyway.
+
+So Open Graph got its own mechanism, one strategy per plugin, because five measured providers behave five different ways.
+
+| Plugin | Strategy | Why |
+|---|---|---|
+| SEOPress | **Suppress** — remove its 16 social callbacks, print ours | Its per-tag filters fire only for tags it already emits, so there is no seam through which to add a commerce fact it never emits |
+| Yoast (free, and with the paid WooCommerce addon) | **Enrich** — correct `og:type`, drop the `article:*` presenters, add the missing facts | Both extension points reach the page, and the paid addon uses the same two itself |
+| Rank Math | **Enrich** — substitute through its per-tag filters, add the rest from its action | Closest to correct already; misses price on variable products and `og:availability` everywhere |
+| All in One SEO | **Enrich** — one flat tag map through two filters | Emits no Open Graph at all on a product category, where our own block stays |
+| Jetpack | **Suppress** — predates this work, lives in `WC_AI_Storefront_Meta_Tags` | One lazy callback, removed between its loader and its emitter |
+
+**Presence is not emission.** Standing our own block down is decided by observing that the other plugin's seam actually ran this request, never by its being installed. Rank Math defines its version constant at load but publishes nothing until its setup wizard is finished; Yoast and AIOSEO both ship an Open Graph switch. In every one of those states the plugin is present and silent, and standing down would leave the page with no social tags at all — worse than the duplication this replaced. Each strategy latches on its own filter running, at `wp_head:1`, and `render_head_tags()` reads that at `wp_head:5`.
+
+**One known residue.** With SEOPress's "Date in SERPs" option on, `seopress_titles_single_cpt_date_hook` emits `article:published_time`, `article:modified_time` and `og:updated_time` on singular pages. It lives in SEOPress's titles file, not its social file, and it is the same callback rendering the SERP date the merchant asked for, so it is deliberately left alone.
 
 ## Divergence: Jetpack's fields are reprinted; the other SEO plugins are stood down for
 

@@ -10,14 +10,22 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Enrich All in One SEO's Open Graph through its two tag filters.
  *
- * AIOSEO hands both filters a flat, associative `property => value` map and
- * puts back whatever it is given. Measured (#676 spike,
- * `captures/aioseo-enrich/`): mutating `og:type`, adding `product:*` keys,
- * unsetting `article:*` keys and adding arbitrary properties all reached the
- * page unchanged. Its normalisation then does two useful things and nothing
- * harmful — it drops empty-string and NULL values, and it picks the attribute
- * from the key prefix, so `product:*` and `og:*` render as `property=` and
- * `twitter:*` as `name=` without being told.
+ * AIOSEO hands both filters a flat, associative `property => value` map.
+ * Measured (#676 spike, `captures/aioseo-enrich/`): mutating `og:type`,
+ * adding `product:*` keys, unsetting `article:*` keys and adding arbitrary
+ * properties all reached the page.
+ *
+ * Two things about what happens after the filter, both easy to get wrong:
+ *
+ * - It is NOT "puts back whatever it is given". `array_filter()` runs on the
+ *   result with no callback, so every falsy value is dropped: '', null, 0,
+ *   '0', false, []. A genuinely free product's price of "0" would vanish;
+ *   WC_AI_Storefront_Og_Commerce_Facts sends "0.00" for that reason.
+ * - The attribute is NOT chosen from the key prefix. Two hardcoded loops
+ *   print everything from the facebook map as `property=` and everything from
+ *   the twitter map as `name=`. The outcome matches a prefix rule for the
+ *   keys we send, but a `twitter:*` key placed in the facebook map would
+ *   render as `property=`.
  *
  * The one exception is a real one, and it is why has_taken_over() exists:
  * **neither filter fires on a product category.** AIOSEO emits no Open Graph
@@ -29,9 +37,23 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	/**
 	 * Whether we are on a page this plugin describes.
 	 *
-	 * @var callable
+	 * Null until init() assigns it, which is why every reader guards.
+	 *
+	 * @var callable|null
 	 */
 	private $on_commerce_page;
+
+	/**
+	 * Whether AIOSEO's Open Graph output actually ran this request.
+	 *
+	 * Set from inside filter_facebook_tags(), which fires only when AIOSEO is
+	 * rendering. Its `isAllowed()` is an allowlist, so this is false on a
+	 * product category by construction, as well as whenever the merchant has
+	 * turned its Open Graph off.
+	 *
+	 * @var bool
+	 */
+	private bool $observed = false;
 
 	/**
 	 * The commerce facts AIOSEO is missing.
@@ -70,11 +92,23 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	 * no social tags at all.
 	 */
 	public function has_taken_over(): bool {
-		if ( null === $this->on_commerce_page || ! ( $this->on_commerce_page )() ) {
-			return false;
-		}
+		// Observed, not predicted. The product-category carve-out used to be
+		// spelled out here as a page-type exception; it no longer needs to be,
+		// because AIOSEO's filters simply do not fire there and the latch
+		// stays false. That also covers the case the hand-written exception
+		// could not: the merchant switching AIOSEO's Open Graph off, where
+		// neither filter fires on ANY page type (#676 review).
+		return $this->observed && $this->should_enrich();
+	}
 
-		return ! ( function_exists( 'is_product_category' ) && is_product_category() );
+	/**
+	 * Whether this request is one we describe. The filters' own gate.
+	 *
+	 * Separate from has_taken_over() because the filters run BEFORE the latch
+	 * they set; asking the observed question inside them would never be true.
+	 */
+	private function should_enrich(): bool {
+		return null !== $this->on_commerce_page && ( $this->on_commerce_page )();
 	}
 
 	/**
@@ -82,8 +116,13 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	 */
 	public function init( callable $on_commerce_page ): void {
 		$this->on_commerce_page = $on_commerce_page;
-		add_filter( 'aioseo_facebook_tags', array( $this, 'filter_facebook_tags' ) );
-		add_filter( 'aioseo_twitter_tags', array( $this, 'filter_twitter_tags' ) );
+		// Priority 20, not the default. AIOSEO Pro's own WooCommerce
+		// integration hooks these same two filters, and at equal priority the
+		// winner is registration order — which is exactly how the Yoast addon
+		// caught us out (see that strategy's init()). Running after it means
+		// our values win the array_merge below rather than being overwritten.
+		add_filter( 'aioseo_facebook_tags', array( $this, 'filter_facebook_tags' ), 20 );
+		add_filter( 'aioseo_twitter_tags', array( $this, 'filter_twitter_tags' ), 20 );
 	}
 
 	/**
@@ -93,9 +132,13 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	 * @return mixed Unchanged when this is not ours to touch.
 	 */
 	public function filter_facebook_tags( $tags ) {
-		if ( ! is_array( $tags ) || ! $this->has_taken_over() ) {
+		if ( ! is_array( $tags ) || ! $this->should_enrich() ) {
 			return $tags;
 		}
+
+		// Reaching here means AIOSEO is rendering Open Graph for a page we
+		// describe. That is the fact has_taken_over() reports.
+		$this->observed = true;
 
 		$tags['og:type'] = ( function_exists( 'is_product' ) && is_product() ) ? 'product' : 'website';
 
@@ -120,21 +163,35 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	 *
 	 * Unlike Yoast and Rank Math, AIOSEO has no numbered enhanced-data
 	 * pipeline: this filter takes the same flat map, so the raw
-	 * `twitter:label1` keys are the right shape here. Its input carries
-	 * `twitter:card`, `twitter:site`, `twitter:title`, `twitter:description`
-	 * and `twitter:creator` and no label rows at all, so nothing collides.
+	 * `twitter:label1` keys are the right shape here.
+	 *
+	 * It does emit label rows of its own, though — the fixture simply had the
+	 * option off. With "additional data" enabled it appends
+	 * `twitter:label{n}` / `twitter:data{n}` on any singular. Merging ours
+	 * over the top would overwrite whatever it put in those numbered slots,
+	 * so we only fill slots it left empty.
 	 *
 	 * @param mixed $tags Property => value.
 	 * @return mixed Unchanged when this is not ours to touch.
 	 */
 	public function filter_twitter_tags( $tags ) {
-		if ( ! is_array( $tags ) || ! $this->has_taken_over() ) {
+		if ( ! is_array( $tags ) || ! $this->should_enrich() ) {
 			return $tags;
 		}
 
 		// twitter:card is left alone deliberately. AIOSEO manages its own
 		// image, so it is the only one that knows whether a large card has
 		// anything to put in it (#683).
-		return array_merge( $tags, $this->facts->twitter_tags() );
+		foreach ( $this->facts->twitter_tags() as $key => $value ) {
+			// Never overwrite a numbered slot AIOSEO already filled: with its
+			// "additional data" option on it writes these itself, and an
+			// array_merge would silently replace its rows with ours.
+			if ( isset( $tags[ $key ] ) ) {
+				continue;
+			}
+			$tags[ $key ] = $value;
+		}
+
+		return $tags;
 	}
 }

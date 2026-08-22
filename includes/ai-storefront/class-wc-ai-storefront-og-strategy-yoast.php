@@ -54,6 +54,17 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	private $on_commerce_page;
 
 	/**
+	 * Whether Yoast's presenter pipeline actually ran this request.
+	 *
+	 * Set from inside filter_presenters(), which only fires if Yoast is
+	 * rendering. Per-instance and therefore per-request: for_slugs() builds a
+	 * fresh strategy on every load.
+	 *
+	 * @var bool
+	 */
+	private bool $observed = false;
+
+	/**
 	 * The commerce facts Yoast is missing.
 	 *
 	 * Shared with the other enrichment strategies so three copies of the
@@ -88,7 +99,20 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	 * On every commerce page: Yoast emits Open Graph on all five of them.
 	 */
 	public function has_taken_over(): bool {
-		return $this->on_commerce_page();
+		// Observed, not predicted. `wpseo_frontend_presenters` fires at
+		// wp_head:1 and Meta_Tags asks this at wp_head:5, so by now the
+		// answer is a fact. Yoast with its Open Graph switch off, or with a
+		// third party unhooking its head integration, never reaches the
+		// filter — and answering true there would leave the page with no
+		// social tags at all.
+		//
+		// class_exists() as well, because filter_presenters() bails on a
+		// missing presenter base and adds nothing. Standing down then would
+		// leave Yoast's uncorrected `article` type with none of our facts and
+		// no block of our own: strictly worse than not being installed.
+		return $this->observed
+			&& $this->on_commerce_page()
+			&& $this->presenter_base_exists();
 	}
 
 	/**
@@ -124,6 +148,18 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	}
 
 	/**
+	 * Whether Yoast's presenter base is loadable.
+	 *
+	 * Protected rather than an inline class_exists() so a test can answer no.
+	 * The suite loads a stub of that class for the whole process, so an inline
+	 * check is unfalsifiable there — and this guards a path where getting it
+	 * wrong leaves a page with no social tags at all.
+	 */
+	protected function presenter_base_exists(): bool {
+		return class_exists( self::PRESENTER_BASE );
+	}
+
+	/**
 	 * Whether this request is one we describe.
 	 *
 	 * Guards the null: `for_slugs()` is public and hands out strategies that
@@ -132,7 +168,7 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	 * to the same question (#676 review).
 	 */
 	private function on_commerce_page(): bool {
-		return $this->on_commerce_page();
+		return null !== $this->on_commerce_page && ( $this->on_commerce_page )();
 	}
 
 	/**
@@ -171,7 +207,11 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 			return $presenters;
 		}
 
-		if ( ! class_exists( self::PRESENTER_BASE ) ) {
+		// Reaching here means Yoast is rendering its head for a page we
+		// describe. That is the fact has_taken_over() reports.
+		$this->observed = true;
+
+		if ( ! $this->presenter_base_exists() ) {
 			// Yoast reported present but its presenter pipeline is not what we
 			// measured against. Adding a presenter that does not extend the
 			// base is dropped silently, so say so once rather than emit

@@ -103,11 +103,26 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( WC_AI_Storefront_Og_Strategies::emission_is_delegated() );
 	}
 
-	public function test_an_enriching_strategy_takes_emission_over(): void {
-		// Yoast renders; we corrected its type and filled its gaps through its
-		// own pipeline. Printing our block as well is the duplication #676
-		// exists to remove.
+	public function test_an_enriching_strategy_does_not_take_over_until_observed(): void {
+		// Registering is not emitting. Yoast with its Open Graph switch off
+		// never reaches its presenter filter, and standing our block down for
+		// it leaves the page with no social tags at all (#676 review).
 		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'yoast' ), $this->gate() );
+		$this->assertFalse( WC_AI_Storefront_Og_Strategies::emission_is_delegated() );
+	}
+
+	public function test_an_enriching_strategy_takes_emission_over_once_it_has_run(): void {
+		// Yoast rendered; we corrected its type and filled its gaps through
+		// its own pipeline. Printing our block as well is the duplication
+		// #676 exists to remove.
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'is_product' )->justReturn( false );
+		$strategy = new WC_AI_Storefront_Og_Strategy_Yoast();
+		$strategy->init( $this->gate() );
+		$strategy->filter_presenters( array() );
+
+		WC_AI_Storefront_Og_Strategies::register_for_test( array( $strategy ) );
+
 		$this->assertTrue( WC_AI_Storefront_Og_Strategies::emission_is_delegated() );
 	}
 

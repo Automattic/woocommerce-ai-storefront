@@ -1761,12 +1761,18 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// would be two sets of tags, which is the defect (#676).
 		$this->stub_escapers();
 		$this->stub_shop_archive();
-		WC_AI_Storefront_Og_Strategies::init_for_slugs(
-			array( 'yoast' ),
+		Functions\when( 'is_product' )->justReturn( false );
+
+		// Delegation is an observation now: the strategy has to have seen its
+		// own seam run. Registering it is not enough, by design (#676 review).
+		$strategy = new WC_AI_Storefront_Og_Strategy_Yoast();
+		$strategy->init(
 			static function () {
 				return true;
 			}
 		);
+		$strategy->filter_presenters( array() );
+		WC_AI_Storefront_Og_Strategies::register_for_test( array( $strategy ) );
 
 		ob_start();
 		$this->meta->render_head_tags();
