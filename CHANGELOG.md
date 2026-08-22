@@ -17,6 +17,11 @@
   - Only posts and pages. Author and date archives are left alone, because a made-up summary there is worse than none.
 
 ### Fixed
+- **Search results on your store shared as a blank link, and could share worse than before (#692).**
+  - Someone searching your shop and pasting that link into Slack or Facebook got no preview: no headline, no image, no summary.
+  - Search pages now get the same kind of preview as your Shop page, headlined with what was searched for, and page two of a long result list no longer claims to be page one.
+  - On a store using Jetpack's social previews, this was worse than nothing. Your store removed Jetpack's tags from search pages, because it normally replaces them with better ones, but on search it put nothing back. That page now gets a real preview instead.
+  - Search pages stay out of search-engine results exactly as before. That setting is about crawlers; this is about what people see when a link is shared.
 - **Your Shop page could go out with no description at all (#682).**
   - Product and category pages each fall back to a generated description when you haven't written one. Your Shop page did not, so on a store with an empty tagline and an empty Shop page, which is how WooCommerce ships, it published none.
   - It now falls back to naming what you sell, taken from your top product categories: "Shop Hoodies, Tees and Accessories at Saltwarp." Anything you wrote yourself still wins.
