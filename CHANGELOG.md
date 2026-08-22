@@ -9,6 +9,17 @@
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
 ### Fixed
+- **Your Shop page could go out with no description at all (#682).**
+  - Product and category pages each fall back to a generated description when you haven't written one. Your Shop page did not, so on a store with an empty tagline and an empty Shop page, which is how WooCommerce ships, it published none.
+  - It now falls back to naming what you sell, taken from your top product categories: "Shop Hoodies, Tees and Accessories at Saltwarp." Anything you wrote yourself still wins.
+- **Page two of your Shop listing claimed to be page one when shared (#682).**
+  - Every paginated Shop page published the same address and headline as the first, so sharing page two showed a preview of page one.
+  - Both now match the page you are actually on, and the headline agrees with the browser tab. Product category listings get the same fix.
+  - The shared address is also built from your shop's own permalink now, so sorting or filtering the page no longer changes the address it publishes to social networks.
+- **A Shop page containing only a stray space published that as your description (#682).**
+  - Opening your Shop page in the editor, pressing Enter and leaving stores an invisible character. Your store treated that as your description, published it, and skipped both your site tagline and the generated fallback beneath it.
+  - Leftovers from a deactivated plugin behaved the same way, so a shortcode could end up as your search-result snippet.
+  - Your store now looks for actual words before publishing anything, and falls through to the next candidate when it does not find any.
 - **Your share previews are unaffected when another SEO plugin is installed but silent (#676).**
   - Rank Math is active from the moment you install it, but publishes nothing until you finish its setup wizard. Yoast and All in One SEO both have a switch that turns their share tags off, which people use when another plugin is handling them.
   - In all three cases your store checks that the other plugin actually published something before standing its own tags down, rather than assuming it did because it is installed. If it published nothing, your store publishes its own.
