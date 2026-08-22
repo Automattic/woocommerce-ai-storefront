@@ -116,6 +116,9 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	protected function tearDown(): void {
+		// Reset the rewrite global a pagination test sets; this file shares
+		// one process with the rest of the suite.
+		unset( $GLOBALS['wp_rewrite'] );
 		WC_AI_Storefront::$test_settings = array();
 		wc_ai_storefront_reset_jetpack_seo_doubles();
 		WC_AI_Storefront_Rival_Seo_Description::reset();
@@ -1784,7 +1787,14 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wp_sprintf' )->alias(
 			static function ( $pattern, $args ) {
-				// Stands in for core's %l list join.
+				// THROWS on any pattern but %l. The previous stub ignored
+				// $pattern entirely, so swapping '%l' for '%s' passed here
+				// while real core produced "Shop Array at Saltwarp." plus an
+				// Array-to-string warning (#682 review). Same discipline the
+				// wc_price() stub above applies to a non-numeric price.
+				if ( '%l' !== $pattern ) {
+					throw new \InvalidArgumentException( "wp_sprintf stub only implements %l, got: $pattern" );
+				}
 				$args = (array) $args;
 				$last = array_pop( $args );
 				return array() === $args ? (string) $last : implode( ', ', $args ) . ' and ' . $last;
@@ -1805,7 +1815,10 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_bare_shop();
 		Functions\when( 'get_transient' )->justReturn( array() );
 
-		$this->assertNotSame( '', $this->meta->build_archive_description() );
+		// assertSame, not assertNotSame: the loose form could not tell a
+		// correct description from the two-character stub "Shop ." that a
+		// one-token mutation produces (#682 review).
+		$this->assertSame( 'Shop Saltwarp.', $this->meta->build_archive_description() );
 	}
 
 	public function test_the_shop_description_names_what_the_store_sells(): void {
@@ -1906,12 +1919,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_a_plain_permalink_store_paginates_with_a_query_arg(): void {
-		// No /page/N/ path segment to append to.
+		// No /page/N/ path segment to append to. The base is what
+		// get_permalink() actually returns on such a store — a query string
+		// already — so the join has to be '&', which is what core does.
 		$this->stub_bare_shop( 2 );
 		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/?page_id=5' );
 		Functions\when( 'add_query_arg' )->alias(
 			static function ( $key, $value, $url ) {
-				return $url . '?' . $key . '=' . $value;
+				$join = false === strpos( (string) $url, '?' ) ? '?' : '&';
+				return $url . $join . $key . '=' . $value;
 			}
 		);
 		Functions\when( 'get_transient' )->justReturn( array() );
@@ -1920,7 +1937,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		$og = $this->meta->build_archive_og_tags();
 
-		$this->assertSame( 'https://shop.test/shop/?paged=2', $og['og:url'] );
+		$this->assertSame( 'https://shop.test/?page_id=5&paged=2', $og['og:url'] );
 	}
 
 	public function test_a_paginated_category_is_paginated_too(): void {
@@ -2008,7 +2025,93 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			array( array( 'name' => 'Hoodies' ), array( 'name' => 'Tees' ) )
 		);
 
-		$this->assertStringContainsString( 'Hoodies', $this->meta->build_archive_description() );
+		// Exact, so the two-name join is pinned: `count( $names ) < 2` at 3
+		// dropped the second category and a contains-check could not see it.
+		$this->assertSame( 'Shop Hoodies and Tees.', $this->meta->build_archive_description() );
+	}
+
+	public function test_a_store_with_no_title_and_no_categories_says_nothing(): void {
+		// The fourth cell of the (list, site) grid, previously untested.
+		$this->stub_bare_shop();
+		Functions\when( 'get_bloginfo' )->justReturn( '' );
+		Functions\when( 'get_transient' )->justReturn( array() );
+
+		$this->assertSame( '', $this->meta->build_archive_description() );
+	}
+
+	public function test_a_mangled_catalog_cache_is_handled_quietly(): void {
+		// get_catalog_summary() returns whatever the transient held, with no
+		// type check. A persistent object cache or a pre_transient_* filter
+		// can make that a scalar (#682 review). Asserting the description
+		// alone is not enough — without the guard, foreach over a string
+		// still yields no names and the same fallback text, differing only
+		// by a PHP warning printed into wp_head. So the warning is what this
+		// pins.
+		$this->stub_bare_shop();
+		Functions\when( 'get_transient' )->justReturn( 'a:0:{}' );
+
+		$warnings = array();
+		set_error_handler(
+			static function ( $errno, $errstr ) use ( &$warnings ) {
+				$warnings[] = $errstr;
+				return true;
+			},
+			E_WARNING
+		);
+		$description = $this->meta->build_archive_description();
+		restore_error_handler();
+
+		$this->assertSame( array(), $warnings, 'A mangled cache must not warn inside wp_head.' );
+		$this->assertSame( 'Shop Saltwarp.', $description );
+	}
+
+	public function test_merchant_copy_with_accents_survives_intact(): void {
+		// Every other fixture here is ASCII, which left the entity-decode
+		// charset and its interaction with the Unicode fold unverified. Get
+		// the charset wrong and `&eacute;` becomes a lone 0xE9, the /u
+		// pattern that follows returns NULL, and the whole description is
+		// silently replaced by the generated fallback (#682 review).
+		$this->stub_bare_shop();
+		Functions\when( 'get_post_field' )->justReturn( '<p>Caf&eacute; blend &mdash; small batch roasting.</p>' );
+		Functions\when( 'get_transient' )->justReturn( array( array( 'name' => 'Hoodies' ) ) );
+
+		$this->assertSame( 'Café blend — small batch roasting.', $this->meta->build_archive_description() );
+	}
+
+	public function test_mis_encoded_copy_is_kept_rather_than_discarded(): void {
+		// A /u pattern returns NULL when the SUBJECT is invalid UTF-8, and
+		// (string) null is ''. One mojibake byte from an old latin-1 import
+		// used to discard the merchant's whole description.
+		$this->stub_bare_shop();
+		Functions\when( 'get_post_field' )->justReturn( "Caf\xE9 blend" );
+		Functions\when( 'get_transient' )->justReturn( array( array( 'name' => 'Hoodies' ) ) );
+
+		$description = $this->meta->build_archive_description();
+
+		$this->assertStringNotContainsString( 'Hoodies', $description, 'Their copy must not be replaced by the fallback.' );
+		$this->assertStringContainsString( 'blend', $description );
+	}
+
+	public function test_invisible_characters_inside_real_prose_are_folded(): void {
+		// The nbsp test alone did not cover this: a pure-nbsp string is
+		// rejected by is_readable_prose() before the fold matters. Only prose
+		// WITH invisibles in it exercises the third pass.
+		$this->stub_bare_shop();
+		Functions\when( 'get_post_field' )->justReturn( '<p>Free&nbsp;shipping on&#8203;every order.</p>' );
+		Functions\when( 'get_transient' )->justReturn( array() );
+
+		$this->assertSame( 'Free shipping on every order.', $this->meta->build_archive_description() );
+	}
+
+	public function test_a_shortcode_wrapping_real_prose_keeps_the_prose(): void {
+		// The single self-closing fixture pinned only the attribute group.
+		// An opener/closer pair covers the `\/?` half and the replacement
+		// character that keeps words apart.
+		$this->stub_bare_shop();
+		Functions\when( 'get_post_field' )->justReturn( '[vc_row]Handmade leather goods.[/vc_row]' );
+		Functions\when( 'get_transient' )->justReturn( array() );
+
+		$this->assertSame( 'Handmade leather goods.', $this->meta->build_archive_description() );
 	}
 
 	public function test_the_generated_description_is_truncated(): void {
@@ -2024,7 +2127,90 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			)
 		);
 
-		$this->assertLessThanOrEqual( 155, strlen( $this->meta->build_archive_description() ) );
+		// mb_strlen, because truncate() measures in characters. strlen()
+		// passed only because every fixture here is ASCII, and would fail on
+		// accented category names while production stayed correct.
+		$this->assertLessThanOrEqual( 155, mb_strlen( $this->meta->build_archive_description() ) );
+	}
+
+	public function test_a_renamed_pagination_base_is_honoured(): void {
+		// WordPress lets a site rename the /page/ segment. A hardcoded one
+		// publishes an og:url that 404s, and og:url is the only
+		// self-referential claim an archive has — we emit no rel=canonical
+		// there (#682 review).
+		global $wp_rewrite;
+		$wp_rewrite = (object) array( 'pagination_base' => 'pagina' );
+
+		$this->stub_bare_shop( 2 );
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/shop/pagina/2/', $og['og:url'] );
+	}
+
+	public function test_a_store_without_trailing_slashes_still_joins_correctly(): void {
+		// The default fixture's base already ends in a slash and the
+		// user_trailingslashit stub always adds one, which together hid
+		// whether trailingslashit( $base ) does anything. A /%postname%
+		// store has neither.
+		$this->stub_bare_shop( 2 );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop' );
+		Functions\when( 'user_trailingslashit' )->alias(
+			static function ( $url ) {
+				return rtrim( (string) $url, '/' );
+			}
+		);
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/shop/page/2', $og['og:url'] );
+	}
+
+	public function test_a_category_whose_link_failed_falls_back_to_home(): void {
+		// get_term_link() returns a WP_Error for a broken term. Without the
+		// empty-base guard the page would publish a root-relative
+		// "/page/2/" instead of reaching the home_url() fallback.
+		$this->stub_belts_category();
+		Functions\when( 'get_term_link' )->justReturn( new \WP_Error( 'invalid_term', 'nope' ) );
+		Functions\when( 'home_url' )->justReturn( 'https://shop.test/' );
+		Functions\when( 'get_query_var' )->alias(
+			static function ( $var ) {
+				return 'paged' === $var ? 2 : '';
+			}
+		);
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/', $og['og:url'] );
+	}
+
+	public function test_the_catalog_list_is_capped_and_skips_unusable_entries(): void {
+		// Only the slice offset was pinned. The limit, the per-entry name
+		// filter and the is_array guard were all free to drift.
+		$this->stub_bare_shop();
+		Functions\when( 'get_transient' )->justReturn(
+			array(
+				array( 'name' => 'Hoodies' ),
+				'not-an-array',
+				array( 'name' => '' ),
+				array( 'name' => 'Tees' ),
+				array( 'name' => 'Caps' ),
+				array( 'name' => 'Bags' ),
+			)
+		);
+
+		// Three at most, and the unusable entries are skipped rather than
+		// counted against the cap.
+		$this->assertSame( 'Shop Hoodies, Tees and Caps at Saltwarp.', $this->meta->build_archive_description() );
 	}
 
 	public function test_an_unpaginated_shop_carries_no_page_suffix(): void {

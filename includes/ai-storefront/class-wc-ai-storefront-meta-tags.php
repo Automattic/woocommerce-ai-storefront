@@ -247,15 +247,17 @@ class WC_AI_Storefront_Meta_Tags {
 			return array();
 		}
 
+		// Filter first, then cap. Slicing first let a malformed entry eat one
+		// of the three slots and silently shorten the list (#682 review).
 		$names = array();
-		foreach ( array_slice( $summary, 0, 3 ) as $entry ) {
+		foreach ( $summary as $entry ) {
 			$name = is_array( $entry ) ? (string) ( $entry['name'] ?? '' ) : '';
 			if ( '' !== $name ) {
 				$names[] = $name;
 			}
 		}
 
-		return $names;
+		return array_slice( $names, 0, 3 );
 	}
 
 	/**
@@ -275,18 +277,7 @@ class WC_AI_Storefront_Meta_Tags {
 		// joins with a different character, and the separator sitting outside
 		// the translatable string put it beyond a translator's reach
 		// entirely (#682 review).
-		if ( function_exists( 'wp_sprintf' ) ) {
-			return (string) wp_sprintf( '%l', $names );
-		}
-
-		$last = array_pop( $names );
-
-		return sprintf(
-			/* translators: 1: Comma-separated list of all but the last item. 2: The last item. */
-			__( '%1$s and %2$s', 'woocommerce-ai-storefront' ),
-			implode( ', ', $names ),
-			$last
-		);
+		return (string) wp_sprintf( '%l', $names );
 	}
 
 	/**
@@ -415,7 +406,13 @@ class WC_AI_Storefront_Meta_Tags {
 			return false;
 		}
 
-		return 1 === preg_match( '/[\p{L}\p{N}]/u', $text );
+		// preg_match() returns false, not 0, on a subject that is not valid
+		// UTF-8. Treat that as readable rather than as junk: the text came
+		// from the merchant, and discarding it would be the same silent loss
+		// the fold above guards against.
+		$match = preg_match( '/[\p{L}\p{N}]/u', $text );
+
+		return false === $match || 1 === $match;
 	}
 
 	/**
@@ -440,9 +437,19 @@ class WC_AI_Storefront_Meta_Tags {
 		// 3. Fold Unicode whitespace. `\s` without the `u` flag does not
 		//    match U+00A0, U+200B or U+FEFF, and neither does trim()'s
 		//    default charlist, so they survive every other step.
-		$raw = (string) preg_replace( '/[\x{00A0}\x{200B}\x{FEFF}]+/u', ' ', $raw );
-		$raw = strip_shortcodes( $raw );
-		$raw = wp_strip_all_tags( $raw );
+		//
+		//    Null-safe, and that is load-bearing rather than defensive. A
+		//    `/u` pattern returns NULL when the SUBJECT is not valid UTF-8,
+		//    and `(string) null` is '' — so one mis-encoded byte anywhere in
+		//    a merchant's Shop page silently discarded the whole description
+		//    and fell through to the generated fallback. Mojibake from an
+		//    old latin-1 import is the ordinary way to get there (#682
+		//    review). Keeping the unfolded text is strictly better than
+		//    losing it: the ASCII collapse below still runs.
+		$folded = preg_replace( '/[\x{00A0}\x{200B}\x{FEFF}]+/u', ' ', $raw );
+		$raw    = is_string( $folded ) ? $folded : $raw;
+		$raw    = strip_shortcodes( $raw );
+		$raw    = wp_strip_all_tags( $raw );
 		return trim( (string) preg_replace( '/\s+/', ' ', $raw ) );
 	}
 
