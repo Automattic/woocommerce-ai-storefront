@@ -10,15 +10,34 @@ defined( 'ABSPATH' ) || exit;
 /**
  * Stand SEOPress's social metadata down on commerce pages.
  *
- * SEOPress offers no filter to correct or extend its Open Graph, so the only
- * way to end up with one set of tags is to take its. What it does offer is
- * granularity: sixteen separate `wp_head` actions, one per tag, entirely
- * separate from its title, canonical, robots, description and JSON-LD. So the
- * removal is surgical, and everything SEOPress is handling well stays.
+ * SEOPress does expose per-tag filters — `seopress_social_og_type`,
+ * `seopress_social_fb_title` and fourteen more, each receiving the rendered
+ * `<meta …>` string. But they fire only for tags SEOPress already emits, so
+ * there is no seam through which to ADD a property it never emits, and the
+ * commerce facts are exactly what it never emits. Removal is the only route
+ * to one complete set.
+ *
+ * What makes removal safe is granularity: those tags come from sixteen
+ * `wp_head` callbacks of their own, separate from the ones rendering title,
+ * canonical, robots and description. Two caveats on "one per tag" — a single
+ * callback can emit several (`seopress_social_fb_img_hook` emits five, and
+ * `seopress_social_facebook_og_author_hook` emits the whole `article:*`
+ * family) and the WebSite JSON-LD registers from the same file. Neither
+ * changes which sixteen names to remove.
  *
  * Verified across all five commerce page types (#676 spike,
  * `captures/seopress-strip/`): 16 callbacks removed each, 0 SEOPress social
  * tags remaining, title, canonical, robots, description and schema intact.
+ *
+ * That "0 remaining" is conditional on one SEOPress option being off, and the
+ * fixture had it off. With "Date in SERPs" enabled,
+ * `seopress_titles_single_cpt_date_hook` emits `article:published_time`,
+ * `article:modified_time` and `og:updated_time` on any singular. It lives in
+ * SEOPress's titles file, not its social file, and it is the same callback
+ * that renders the SERP date the merchant switched on — so it is deliberately
+ * NOT removed. A product page can therefore carry those three beside our
+ * `og:type=product` (#676 review). A known residue, rather than silently
+ * breaking a feature the merchant asked for.
  *
  * Description is untouched here on purpose. WC_AI_Storefront_Rival_Seo_Description
  * already decides who writes that one, per request, and #669 settled that it
@@ -120,8 +139,32 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 			return;
 		}
 
+		$removed = 0;
 		foreach ( self::SOCIAL_CALLBACKS as $callback ) {
-			remove_action( 'wp_head', $callback, self::SOCIAL_PRIORITY );
+			if ( remove_action( 'wp_head', $callback, self::SOCIAL_PRIORITY ) ) {
+				++$removed;
+			}
 		}
+
+		if ( count( self::SOCIAL_CALLBACKS ) === $removed ) {
+			return;
+		}
+
+		// The chosen timing rules out the trap this return value cannot see:
+		// a same-priority mid-bucket removal reports true sixteen times and
+		// emits anyway. What is left for it to catch is the shape moving —
+		// SEOPress renaming a callback, or registering at a priority other
+		// than 1 — which would otherwise ship its tags beside ours with no
+		// signal at all.
+		//
+		// Zero and partial mean different things. Zero usually means
+		// SEOPress did not load its social options this request, which is
+		// benign. Anything between is a reorganisation, and the difference
+		// is how many duplicate tags the page is now carrying.
+		WC_AI_Storefront_Logger::debug(
+			'Open Graph: removed %1$d of %2$d SEOPress social callbacks. The rest are not registered under the names or priority we expect.',
+			$removed,
+			count( self::SOCIAL_CALLBACKS )
+		);
 	}
 }

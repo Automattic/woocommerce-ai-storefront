@@ -52,6 +52,25 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * Whether this request will actually print an Open Graph block.
+	 *
+	 * NOT the same question as should_emit(), which is "is this a commerce
+	 * page" and is a strict superset. Product search is a commerce page we
+	 * deliberately describe with nothing but a robots directive: there is no
+	 * single product or term to describe, and the result set differs per
+	 * visitor (#668 review).
+	 *
+	 * A strategy must stand down on exactly the pages where we print our own
+	 * tags, not on every page we consider ours. Gated on the wider predicate,
+	 * a suppression strategy removed the other plugin's social tags from a
+	 * product-search page and we printed nothing in their place, leaving the
+	 * page barer than before this plugin was installed (#676 review).
+	 */
+	public function will_emit_open_graph(): bool {
+		return $this->should_emit() && ! $this->is_product_search();
+	}
+
+	/**
 	 * Build the meta description for a product.
 	 *
 	 * Authored intent wins (#668): the merchant's own Jetpack-authored

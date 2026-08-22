@@ -148,6 +148,51 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_seopress_removes_nothing_on_a_product_search(): void {
+		// should_emit() is true on product search, but render_head_tags()
+		// prints no Open Graph there — no single product or term to describe,
+		// and the result set differs per visitor (#668). Gating the removal on
+		// the wider predicate stripped SEOPress's card off that page and put
+		// nothing back, leaving it barer than with this plugin uninstalled.
+		$this->on_commerce_page = false;
+		$removed                = 0;
+		Functions\when( 'remove_action' )->alias(
+			static function () use ( &$removed ) {
+				++$removed;
+				return true;
+			}
+		);
+
+		$strategy = new WC_AI_Storefront_Og_Strategy_Seopress();
+		$strategy->init( $this->gate() );
+		$strategy->remove_social_tags();
+
+		$this->assertSame( 0, $removed );
+	}
+
+	public function test_seopress_keeps_going_when_one_removal_fails(): void {
+		// remove_action() returning false means that callback is not
+		// registered under the name and priority we expect. Stopping there
+		// would leave the remaining fifteen on the page. The count feeds a
+		// debug line, which this suite cannot assert on — error_log() is an
+		// internal function Patchwork will not redefine — so what is pinned
+		// here is that every callback is still attempted.
+		$attempted = array();
+		Functions\when( 'remove_action' )->alias(
+			static function ( $hook, $callback ) use ( &$attempted ) {
+				$attempted[] = $callback;
+				return 'seopress_social_twitter_img_hook' !== $callback;
+			}
+		);
+
+		$strategy = new WC_AI_Storefront_Og_Strategy_Seopress();
+		$strategy->init( $this->gate() );
+		$strategy->remove_social_tags();
+
+		$this->assertCount( 16, $attempted );
+		$this->assertContains( 'seopress_social_facebook_app_id_hook', $attempted, 'The last name must still be attempted.' );
+	}
+
 	public function test_seopress_removes_nothing_off_a_commerce_page(): void {
 		$this->on_commerce_page = false;
 		$removed                = 0;

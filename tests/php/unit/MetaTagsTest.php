@@ -1737,6 +1737,24 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://shop.test/storefront.jpg', $tw['twitter:image'] );
 	}
 
+	public function test_will_emit_open_graph_is_narrower_than_should_emit(): void {
+		// Product search is a commerce page we describe with a robots
+		// directive and nothing else. A strategy gated on should_emit() there
+		// removed the other plugin's social tags and we printed nothing back
+		// (#676 review), so the two predicates must not be interchangeable.
+		Functions\when( 'is_search' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'get_query_var' )->justReturn( 'product' );
+
+		$this->assertTrue( $this->meta->should_emit() );
+		$this->assertFalse( $this->meta->will_emit_open_graph() );
+	}
+
+	public function test_will_emit_open_graph_is_true_where_we_actually_print(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		$this->assertTrue( $this->meta->will_emit_open_graph() );
+	}
+
 	public function test_render_emits_a_summary_card_on_an_archive_with_no_image(): void {
 		$this->stub_escapers();
 		$this->stub_shop_archive();
