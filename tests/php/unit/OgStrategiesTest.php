@@ -7,6 +7,7 @@
 
 use Brain\Monkey;
 use Brain\Monkey\Actions;
+use Brain\Monkey\Filters;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
 
@@ -127,14 +128,68 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_registration_replaces_rather_than_accumulates(): void {
-		// #669 shipped a request-scoped latch that survived between requests
-		// in a persistent worker. This is the same shape, so it is pinned.
-		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'yoast' ), $this->gate() );
+		// Static state on a class that outlives a request. The strategy handed
+		// over here has ALREADY observed its seam, so delegation would be true
+		// if the array accumulated — without that, the observation latch made
+		// this test pass either way (#676 review).
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'is_product' )->justReturn( false );
+		$observed = new WC_AI_Storefront_Og_Strategy_Yoast();
+		$observed->init( $this->gate() );
+		$observed->filter_presenters( array() );
+		WC_AI_Storefront_Og_Strategies::register_for_test( array( $observed ) );
+
 		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'seopress' ), $this->gate() );
+
 		$this->assertFalse(
 			WC_AI_Storefront_Og_Strategies::emission_is_delegated(),
 			'A previous request\'s enriching strategy must not answer for this one.'
 		);
+	}
+
+	public function test_every_registered_strategy_is_initialised(): void {
+		// A store can run two SEO plugins. Initialising only the first leaves
+		// the second with no hooks at all, and nothing said so.
+		Filters\expectAdded( 'wpseo_frontend_presenters' )->once();
+		Filters\expectAdded( 'aioseo_facebook_tags' )->once();
+
+		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'yoast', 'aioseo' ), $this->gate() );
+	}
+
+	public function test_one_enricher_standing_down_does_not_cancel_another(): void {
+		// AIOSEO never latches on a product category. If delegation required
+		// EVERY enricher to have taken over, Yoast's genuine takeover would be
+		// cancelled there and both blocks would print.
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'is_product' )->justReturn( false );
+
+		$taken = new WC_AI_Storefront_Og_Strategy_Yoast();
+		$taken->init( $this->gate() );
+		$taken->filter_presenters( array() );
+
+		$silent = new WC_AI_Storefront_Og_Strategy_Aioseo();
+		$silent->init( $this->gate() );
+
+		foreach ( array( array( $taken, $silent ), array( $silent, $taken ) ) as $order ) {
+			WC_AI_Storefront_Og_Strategies::register_for_test( $order );
+			$this->assertTrue(
+				WC_AI_Storefront_Og_Strategies::emission_is_delegated(),
+				'Order must not decide this.'
+			);
+		}
+	}
+
+	public function test_seopress_never_delegates_emission(): void {
+		// mode() and has_taken_over() were covering for each other: each could
+		// be broken alone without a failure.
+		$this->assertSame(
+			WC_AI_Storefront_Og_Strategy::MODE_SUPPRESS,
+			WC_AI_Storefront_Og_Strategy_Seopress::mode()
+		);
+
+		$strategy = new WC_AI_Storefront_Og_Strategy_Seopress();
+		$strategy->init( $this->gate() );
+		$this->assertFalse( $strategy->has_taken_over() );
 	}
 
 	// --- SEOPress ---
@@ -154,7 +209,7 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 		// before its wp_head:1 emitters. Priority 1 would report success and
 		// emit anyway: WP_Hook::apply_filters copies the bucket at loop entry,
 		// so a same-priority removal made mid-bucket has no effect.
-		Actions\expectAdded( 'wp_head' )->once()->with( \Mockery::type( 'array' ), 0 );
+		Actions\expectAdded( 'wp_head' )->once()->with( \Mockery::any(), 0 );
 		( new WC_AI_Storefront_Og_Strategy_Seopress() )->register_removal();
 	}
 

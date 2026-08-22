@@ -1782,6 +1782,12 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertStringNotContainsString( 'og:type', $html );
 		$this->assertStringNotContainsString( 'twitter:card', $html );
+
+		// The description and the robots directive are decided separately and
+		// must survive the stand-down. Free Yoast with nothing authored fires
+		// wpseo_metadesc empty, so on those pages we are the one writing the
+		// description — gating it on delegation would lose it entirely.
+		$this->assertStringContainsString( '<meta name="description"', $html );
 	}
 
 	public function test_render_keeps_our_block_when_a_strategy_only_suppresses(): void {

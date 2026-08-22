@@ -144,7 +144,7 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		// The addon filters wpseo_opengraph_type at the default priority. On a
 		// singular product we must run after it and agree, not before it and
 		// get overwritten.
-		Filters\expectAdded( 'wpseo_opengraph_type' )->once()->with( \Mockery::type( 'array' ), 20 );
+		Filters\expectAdded( 'wpseo_opengraph_type' )->once()->with( \Mockery::any(), 20 );
 		$this->strategy();
 	}
 
@@ -152,7 +152,7 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		// The addon adds its presenters on this filter at priority 10, and
 		// registers after us, so at the default priority we would not see its
 		// product:* tags and would ship each of them twice.
-		Filters\expectAdded( 'wpseo_frontend_presenters' )->once()->with( \Mockery::type( 'array' ), 99 );
+		Filters\expectAdded( 'wpseo_frontend_presenters' )->once()->with( \Mockery::any(), 99 );
 		$this->strategy();
 	}
 
@@ -261,7 +261,21 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 				'class'        => 'in-stock',
 			)
 		);
-		$product->shouldReceive( 'get_attributes' )->andReturn( array() );
+		if ( isset( $overrides['condition'] ) ) {
+			// pa_condition is a TAXONOMY attribute, so real WooCommerce answers
+			// get_attribute() with the term NAME and only wc_get_product_terms()
+			// reaches the slug (#679).
+			$attr = \Mockery::mock();
+			$attr->shouldReceive( 'get_visible' )->andReturn( true );
+			$attr->shouldReceive( 'get_name' )->andReturn( 'pa_condition' );
+			$attr->shouldReceive( 'is_taxonomy' )->andReturn( true );
+			$product->shouldReceive( 'get_attributes' )->andReturn( array( 'pa_condition' => $attr ) );
+			$product->shouldReceive( 'get_attribute' )->andReturn( $overrides['condition'] );
+			$product->shouldReceive( 'get_variation_attributes' )->andReturn( array() );
+			Functions\when( 'wc_get_product_terms' )->justReturn( array( $overrides['condition'] ) );
+		} else {
+			$product->shouldReceive( 'get_attributes' )->andReturn( array() );
+		}
 
 		return $product;
 	}
@@ -269,7 +283,7 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	/**
 	 * Stub everything build_og_tags() reaches for on a product page.
 	 */
-	private function stub_product_page(): void {
+	private function stub_product_page( array $overrides = array() ): void {
 		Functions\when( 'is_product' )->justReturn( true );
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'get_queried_object_id' )->justReturn( 42 );
@@ -289,7 +303,7 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 				return '&#036;' . number_format( (float) $price, 2 );
 			}
 		);
-		Functions\when( 'wc_get_product' )->justReturn( $this->product() );
+		Functions\when( 'wc_get_product' )->justReturn( $this->product( $overrides ) );
 	}
 
 	// --- Enrichment: the commerce facts Yoast lacks ---
@@ -441,7 +455,7 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_hooks_enhanced_data_after_the_addon(): void {
-		Filters\expectAdded( 'wpseo_enhanced_slack_data' )->once()->with( \Mockery::type( 'array' ), 20 );
+		Filters\expectAdded( 'wpseo_enhanced_slack_data' )->once()->with( \Mockery::any(), 20 );
 		$this->strategy();
 	}
 
@@ -501,6 +515,32 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		$given = $this->presenters( array( 'og:title' ) );
 		$this->assertSame( $given, $strategy->filter_presenters( $given ), 'Adds nothing.' );
 		$this->assertFalse( $strategy->has_taken_over(), 'So it must not stand our block down either.' );
+	}
+
+	public function test_yoast_latches_only_on_the_presenter_pipeline(): void {
+		// Yoast gates its Open Graph separately from the rest of its head, so
+		// the type filter or the Slack data running is no evidence the
+		// presenters did.
+		Functions\when( 'is_shop' )->justReturn( true );
+		$strategy = $this->strategy();
+
+		$strategy->filter_type( 'article' );
+		$strategy->filter_slack_data( array() );
+
+		$this->assertFalse( $strategy->has_taken_over() );
+	}
+
+	public function test_a_products_condition_reaches_yoast(): void {
+		// No fixture in any of these files produced a condition, so
+		// product:condition was untested in all four strategies — including
+		// the vocabulary check, which passed vacuously for it.
+		$this->stub_product_page( array( 'condition' => 'refurbished' ) );
+
+		$keys = $this->keys_of(
+			$this->strategy()->filter_presenters( $this->presenters( array( 'og:title' ) ) )
+		);
+
+		$this->assertContains( 'product_condition', $keys );
 	}
 
 	public function test_a_non_array_presenter_list_is_returned_unchanged(): void {

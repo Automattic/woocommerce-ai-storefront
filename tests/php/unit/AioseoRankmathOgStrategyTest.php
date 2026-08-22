@@ -181,6 +181,59 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_the_twitter_rows_carry_both_facts_correctly_paired(): void {
+		// Only the Price row was ever asserted, so dropping label2 from the
+		// enumeration, or pairing label2 with data1, both survived — the
+		// second silently puts the PRICE under the Availability heading.
+		$this->stub_product_page();
+
+		$this->assertSame(
+			array(
+				'Price'        => '$48.00',
+				'Availability' => 'In stock',
+			),
+			( new WC_AI_Storefront_Og_Commerce_Facts() )->twitter_rows()
+		);
+	}
+
+	public function test_the_twitter_tag_map_carries_labels_and_their_data(): void {
+		// Narrowing this to `twitter:label` survived: AIOSEO would ship two
+		// headings with no values beside them. Widening it to all `twitter:`
+		// keys also survived, handing AIOSEO the image and title that #683
+		// decided are its to own.
+		$this->stub_product_page();
+
+		$this->assertSame(
+			array(
+				'twitter:label1' => 'Price',
+				'twitter:data1'  => '$48.00',
+				'twitter:label2' => 'Availability',
+				'twitter:data2'  => 'In stock',
+			),
+			( new WC_AI_Storefront_Og_Commerce_Facts() )->twitter_tags()
+		);
+	}
+
+	public function test_a_blanked_property_is_not_claimed(): void {
+		// A third party emptying a key through wc_ai_storefront_og_tags would
+		// otherwise have us claim ownership, drop the rival's presenter for
+		// it, and render nothing in its place.
+		$this->stub_product_page();
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_og_tags' === $hook && is_array( $value ) ) {
+					$value['product:availability'] = '';
+				}
+				return $value;
+			}
+		);
+
+		$this->assertArrayNotHasKey(
+			'product:availability',
+			( new WC_AI_Storefront_Og_Commerce_Facts() )->properties()
+		);
+	}
+
 	// --- AIOSEO ---
 
 	public function test_aioseo_does_not_take_over_a_product_category(): void {
@@ -304,9 +357,38 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_aioseo_hooks_after_its_own_pro_woocommerce_integration(): void {
-		Filters\expectAdded( 'aioseo_facebook_tags' )->once()->with( \Mockery::type( 'array' ), 20 );
-		Filters\expectAdded( 'aioseo_twitter_tags' )->once()->with( \Mockery::type( 'array' ), 20 );
+		// Mockery::any() rather than ::type( 'array' ): the priority is the
+		// contract, the callable shape is not, and pinning it breaks on a
+		// first-class-callable refactor for no behavioural reason.
+		Filters\expectAdded( 'aioseo_facebook_tags' )->once()->with( \Mockery::any(), 20 );
+		Filters\expectAdded( 'aioseo_twitter_tags' )->once()->with( \Mockery::any(), 20 );
 		$this->aioseo();
+	}
+
+	public function test_aioseo_latches_only_on_the_facebook_seam(): void {
+		// AIOSEO gates Facebook and Twitter output separately, so its Twitter
+		// filter running is no evidence its Open Graph did.
+		Functions\when( 'is_shop' )->justReturn( true );
+		$strategy = $this->aioseo();
+
+		$strategy->filter_twitter_tags( array( 'twitter:card' => 'summary' ) );
+
+		$this->assertFalse( $strategy->has_taken_over() );
+	}
+
+	public function test_aioseo_values_win_over_theirs(): void {
+		// "Ours win outright" is the merge direction, and every other AIOSEO
+		// test passes an input carrying only og:type, so reversing it survived.
+		$this->stub_product_page();
+
+		$tags = $this->aioseo()->filter_facebook_tags(
+			array(
+				'og:type'              => 'article',
+				'product:price:amount' => '999.00',
+			)
+		);
+
+		$this->assertSame( '48.00', $tags['product:price:amount'] );
 	}
 
 	public function test_aioseo_does_not_overwrite_a_label_slot_it_filled(): void {
@@ -363,16 +445,61 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	// --- Rank Math ---
 
 	public function test_rankmath_registers_a_filter_per_owned_property(): void {
-		$this->stub_product_page();
-		// One per property in WC_AI_Storefront_Og_Commerce_Facts::properties(),
-		// named with ':' replaced by '_' — the slug rule confirmed live.
-		Filters\expectAdded( 'rank_math/opengraph/facebook/product_price_amount' )->once();
-		Filters\expectAdded( 'rank_math/opengraph/facebook/product_availability' )->once();
-		Filters\expectAdded( 'rank_math/opengraph/facebook/og_availability' )->once();
-		Filters\expectAdded( 'rank_math/opengraph/facebook/og_type' )->once();
-		Filters\expectAdded( 'rank_math/opengraph/slack_enhanced_data' )->once();
-		Actions\expectAdded( 'rank_math/opengraph/facebook' )->once();
+		// Deliberately NO stub_product_page(). init() runs on plugins_loaded,
+		// long before the query resolves, so is_product() is false and
+		// properties() is empty — which is exactly why registration reads the
+		// OWNED_PROPERTIES vocabulary instead. Stubbing a product first made
+		// this test pass against a version that registered nothing in
+		// production (#676 review).
+		foreach ( WC_AI_Storefront_Og_Commerce_Facts::OWNED_PROPERTIES as $property ) {
+			Filters\expectAdded( 'rank_math/opengraph/facebook/' . str_replace( ':', '_', $property ) )->once();
+		}
 		$this->rankmath();
+	}
+
+	public function test_rankmath_pins_every_hook_priority(): void {
+		// The class docblock says lowering the action's 99 "does not degrade
+		// gracefully: it silently doubles properties" — Rank Math's own
+		// emitters are callbacks on that same action, the highest at 90.
+		// Nothing pinned it, so every priority here was free to drift.
+		Actions\expectAdded( 'rank_math/opengraph/facebook' )->once()->with( \Mockery::any(), 99 );
+		Filters\expectAdded( 'rank_math/opengraph/facebook/og_type' )->once()->with( \Mockery::any(), 20 );
+		Filters\expectAdded( 'rank_math/opengraph/slack_enhanced_data' )->once()->with( \Mockery::any(), 20 );
+		$this->rankmath();
+	}
+
+	public function test_rankmath_latches_only_on_the_open_graph_action(): void {
+		// Evidence from any other seam is not evidence the Open Graph
+		// pipeline ran: Rank Math gates Facebook and Twitter output
+		// separately. Latching on the wrong one stands our block down for a
+		// page that got no Open Graph at all.
+		$this->stub_product_page();
+		$strategy = $this->rankmath();
+
+		$strategy->filter_type( 'article' );
+		$strategy->filter_property( 'product:availability', 'instock' );
+		$strategy->filter_slack_data( array() );
+
+		$this->assertFalse( $strategy->has_taken_over(), 'None of those is the Open Graph pipeline.' );
+	}
+
+	public function test_rankmath_fills_the_missing_twitter_row_without_repeating_theirs(): void {
+		// Rank Math carries the same value-based dedupe as Yoast and had no
+		// twin test, so a non-English store could get two rows for one fact.
+		$this->stub_product_page();
+
+		$data = $this->rankmath()->filter_slack_data( array( 'Verfügbarkeit' => 'In stock' ) );
+
+		$this->assertArrayNotHasKey( 'Availability', $data );
+		$this->assertArrayHasKey( 'Price', $data );
+	}
+
+	public function test_rankmath_survives_a_non_object_on_its_action(): void {
+		// do_action() with no argument passes ''. method_exists( '', 'tag' )
+		// is a TypeError on PHP 8, mid-wp_head.
+		$this->stub_product_page();
+		$this->rankmath()->add_missing_tags( '' );
+		$this->assertTrue( true, 'No fatal.' );
 	}
 
 	public function test_rankmath_type_is_corrected(): void {
