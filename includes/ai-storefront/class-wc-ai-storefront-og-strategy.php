@@ -24,6 +24,28 @@ defined( 'ABSPATH' ) || exit;
 interface WC_AI_Storefront_Og_Strategy {
 
 	/**
+	 * The other plugin's social tags go; ours are the ones on the page.
+	 *
+	 * For plugins that expose no way to correct their Open Graph, so the only
+	 * route to one set of tags is to remove theirs.
+	 */
+	public const MODE_SUPPRESS = 'suppress';
+
+	/**
+	 * The other plugin renders; we correct and extend what it renders.
+	 *
+	 * WC_AI_Storefront_Meta_Tags stands its own Open Graph and Twitter block
+	 * down for the request when any active strategy reports this, or the
+	 * enrichment would be a second set of tags rather than a replacement.
+	 */
+	public const MODE_ENRICH = 'enrich';
+
+	/**
+	 * Which of the two this strategy is. One of the MODE_* constants.
+	 */
+	public static function mode(): string;
+
+	/**
 	 * The detector slug this strategy answers for.
 	 *
 	 * Must match a `slug` that WC_AI_Storefront_Seo_Plugin_Detector::detect()

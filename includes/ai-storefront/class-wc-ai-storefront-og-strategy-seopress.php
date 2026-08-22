@@ -82,7 +82,9 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 	/**
 	 * Whether we are emitting our own tags this request.
 	 *
-	 * @var callable
+	 * Null until init() assigns it, which is why every reader guards.
+	 *
+	 * @var callable|null
 	 */
 	private $on_commerce_page;
 
@@ -91,6 +93,14 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 	 */
 	public static function slug(): string {
 		return 'seopress';
+	}
+
+	/**
+	 * SEOPress offers no filter over its Open Graph, so removal is the only
+	 * route to a single set of tags. Ours stay on the page.
+	 */
+	public static function mode(): string {
+		return self::MODE_SUPPRESS;
 	}
 
 	/**

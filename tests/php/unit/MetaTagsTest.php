@@ -1755,6 +1755,49 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertTrue( $this->meta->will_emit_open_graph() );
 	}
 
+	public function test_render_stands_our_block_down_when_a_strategy_is_enriching(): void {
+		// With Yoast active we correct its og:type and add the commerce facts
+		// it lacks through its own presenter pipeline. Printing our block too
+		// would be two sets of tags, which is the defect (#676).
+		$this->stub_escapers();
+		$this->stub_shop_archive();
+		WC_AI_Storefront_Og_Strategies::init_for_slugs(
+			array( 'yoast' ),
+			static function () {
+				return true;
+			}
+		);
+
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+
+		WC_AI_Storefront_Og_Strategies::reset();
+
+		$this->assertStringNotContainsString( 'og:type', $html );
+		$this->assertStringNotContainsString( 'twitter:card', $html );
+	}
+
+	public function test_render_keeps_our_block_when_a_strategy_only_suppresses(): void {
+		// SEOPress's own social tags are the ones being removed, so ours are
+		// the only ones left to print.
+		$this->stub_escapers();
+		$this->stub_shop_archive();
+		WC_AI_Storefront_Og_Strategies::init_for_slugs(
+			array( 'seopress' ),
+			static function () {
+				return true;
+			}
+		);
+
+		ob_start();
+		$this->meta->render_head_tags();
+		$html = ob_get_clean();
+
+		WC_AI_Storefront_Og_Strategies::reset();
+
+		$this->assertStringContainsString( '<meta property="og:type" content="website"', $html );   }
+
 	public function test_render_emits_a_summary_card_on_an_archive_with_no_image(): void {
 		$this->stub_escapers();
 		$this->stub_shop_archive();
