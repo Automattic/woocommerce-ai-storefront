@@ -47,7 +47,9 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	/**
 	 * Whether we are on a page this plugin describes.
 	 *
-	 * @var callable
+	 * Null until init() assigns it, which is why every reader guards.
+	 *
+	 * @var callable|null
 	 */
 	private $on_commerce_page;
 
@@ -96,11 +98,13 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 		// Priority 99, not the default. The WooCommerce addon adds its own
 		// presenters on this same filter at priority 10, so at equal priority
 		// the winner is registration order — and measured live, the addon
-		// registers after us. We then never saw its product:availability,
-		// og:availability, product:condition, product:retailer_item_id or its
-		// twitter:label1 pair, appended ours beside them, and shipped each of
-		// those properties twice. Running last is what makes the
-		// already-present check in missing_tags() mean anything.
+		// registers after us. Running last is what lets us SEE its
+		// presenters, which is what filter_presenters() needs in order to
+		// drop the ones whose properties we supply. At the default priority
+		// its product:availability, og:availability, product:condition and
+		// product:retailer_item_id were not in the list yet, so nothing was
+		// dropped, ours went in beside them, and the page shipped each of
+		// those properties twice.
 		add_filter( 'wpseo_frontend_presenters', array( $this, 'filter_presenters' ), 99 );
 		// The twitter:label/data rows are NOT presenters. Yoast's Slack
 		// Enhanced_Data_Presenter builds them by numbering a label => value
@@ -113,13 +117,25 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	}
 
 	/**
+	 * Whether this request is one we describe.
+	 *
+	 * Guards the null: `for_slugs()` is public and hands out strategies that
+	 * have not been init()'d, and three callbacks below used to dereference
+	 * the callable raw while has_taken_over() guarded it — one class, two
+	 * answers to the same question (#676 review).
+	 */
+	private function on_commerce_page(): bool {
+		return null !== $this->on_commerce_page && ( $this->on_commerce_page )();
+	}
+
+	/**
 	 * Replace Yoast's inherited `article` with the type the page actually is.
 	 *
 	 * @param mixed $type Whatever Yoast, or the addon, produced.
 	 * @return mixed Unchanged off commerce pages.
 	 */
 	public function filter_type( $type ) {
-		if ( ! ( $this->on_commerce_page )() ) {
+		if ( ! $this->on_commerce_page() ) {
 			return $type;
 		}
 
@@ -144,7 +160,7 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	 *               base is missing.
 	 */
 	public function filter_presenters( $presenters ) {
-		if ( ! is_array( $presenters ) || ! ( $this->on_commerce_page )() ) {
+		if ( ! is_array( $presenters ) || ! $this->on_commerce_page() ) {
 			return $presenters;
 		}
 
@@ -224,25 +240,45 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	/**
 	 * A presenter's property key, or '' when it will not say.
 	 *
-	 * `escape_key()` is the only public accessor Yoast offers — `$key` itself
-	 * is protected — and it rewrites `:` to `_`. That transform is lossy, so
-	 * callers compare in that same space rather than mapping back.
+	 * Yoast offers two accessors: `get_key()` returns the raw key, and
+	 * `escape_key()` rewrites `:`, ` ` and `-` to `_`. We deliberately compare
+	 * in the escaped space, because it is the one every Yoast presenter
+	 * implements consistently, and normalise_key() puts our own keys into it.
+	 * The transform is lossy and is never reversed.
 	 *
 	 * @param mixed $presenter One entry from Yoast's presenter list.
 	 */
 	private function presenter_key( $presenter ): string {
 		if ( ! is_object( $presenter ) || ! method_exists( $presenter, 'escape_key' ) ) {
+			// Not a tag presenter at all. Yoast's Title, Canonical, Robots and
+			// Schema presenters have no escape_key(), and dropping those would
+			// strip Yoast's title and canonical off every commerce page. Keep
+			// them, silently: this is the common case, not a problem.
 			return '';
 		}
 
 		$key = $presenter->escape_key();
 		if ( ! is_string( $key ) || '' === $key ) {
+			// A tag presenter that will not say what it renders. Yoast returns
+			// null from escape_key() while $key is still 'NO KEY PROVIDED', so
+			// a presenter that sets its key late — as Yoast already does with
+			// $presenter->presentation, assigned after this filter returns —
+			// looks anonymous here. We keep it, which is the safe direction,
+			// but if it turns out to render a property we also supply the page
+			// carries that property twice. Worth knowing about rather than
+			// discovering from a duplicated tag.
+			WC_AI_Storefront_Logger::debug(
+				'Open Graph: Yoast presenter %s renders a tag but will not name it. Keeping it unread.',
+				get_class( $presenter )
+			);
+
 			return '';
 		}
 
-		// escape_key() maps ':' to '_' and cannot be reversed unambiguously,
-		// so compare in that space instead: our own keys are normalised the
-		// same way before the isset() check in missing_tags().
+		// escape_key() maps ':', ' ' and '-' to '_' and cannot be reversed
+		// unambiguously, so callers compare in that space; normalise_key()
+		// puts our own property names into it before the $supplied lookup in
+		// filter_presenters().
 		return $key;
 	}
 
@@ -292,7 +328,7 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	 * @return mixed Unchanged off product pages.
 	 */
 	public function filter_slack_data( $data ) {
-		if ( ! is_array( $data ) || ! ( $this->on_commerce_page )() ) {
+		if ( ! is_array( $data ) || ! $this->on_commerce_page() ) {
 			return $data;
 		}
 
@@ -304,7 +340,14 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 			$data_key = str_replace( 'label', 'data', $label_key );
 			$label    = (string) ( $ours[ $label_key ] ?? '' );
 			$value    = (string) ( $ours[ $data_key ] ?? '' );
-			if ( '' === $label || '' === $value || isset( $data[ $label ] ) ) {
+			// isset() on the label alone compares OUR translation against
+			// THEIRS. Both sides translate "Price" and "Availability", in
+			// different text domains, so the keys match only in English —
+			// any locale where the two renderings differ gets both rows,
+			// theirs at label2 and ours at label3, both saying availability
+			// (#676 review). Comparing values too catches the common case:
+			// the same fact under a different word.
+			if ( '' === $label || '' === $value || isset( $data[ $label ] ) || in_array( $value, $data, true ) ) {
 				continue;
 			}
 			$data[ $label ] = $value;

@@ -82,7 +82,9 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 	/**
 	 * Whether we are emitting our own tags this request.
 	 *
-	 * @var callable
+	 * Null until init() assigns it, which is why every reader guards.
+	 *
+	 * @var callable|null
 	 */
 	private $on_commerce_page;
 

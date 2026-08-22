@@ -1796,7 +1796,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		WC_AI_Storefront_Og_Strategies::reset();
 
-		$this->assertStringContainsString( '<meta property="og:type" content="website"', $html );	}
+		$this->assertStringContainsString( '<meta property="og:type" content="website"', $html );   }
 
 	public function test_render_emits_a_summary_card_on_an_archive_with_no_image(): void {
 		$this->stub_escapers();

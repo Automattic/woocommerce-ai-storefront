@@ -429,6 +429,30 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		$this->strategy();
 	}
 
+	public function test_a_row_they_worded_differently_is_not_added_twice(): void {
+		// The addon translates "Availability" in its own text domain, we
+		// translate it in ours. On any locale where those differ, matching on
+		// the label alone gave the page two rows for one fact (#676 review).
+		$this->stub_product_page();
+
+		$data = $this->strategy()->filter_slack_data( array( 'Verfügbarkeit' => 'In stock' ) );
+
+		$this->assertSame( array( 'Verfügbarkeit' => 'In stock' ), array_intersect( $data, array( 'In stock' ) ) );
+		$this->assertArrayNotHasKey( 'Availability', $data );
+		$this->assertArrayHasKey( 'Price', $data, 'A genuinely missing row still lands.' );
+	}
+
+	public function test_an_uninitialised_strategy_touches_nothing(): void {
+		// for_slugs() is public and hands out strategies that have not been
+		// init()'d. Three callbacks used to dereference the callable raw.
+		$strategy = new WC_AI_Storefront_Og_Strategy_Yoast();
+
+		$this->assertSame( 'article', $strategy->filter_type( 'article' ) );
+		$given = $this->presenters( array( 'og:title' ) );
+		$this->assertSame( $given, $strategy->filter_presenters( $given ) );
+		$this->assertSame( array( 'a' => 'b' ), $strategy->filter_slack_data( array( 'a' => 'b' ) ) );
+	}
+
 	public function test_a_non_array_presenter_list_is_returned_unchanged(): void {
 		$this->assertNull( $this->strategy()->filter_presenters( null ) );
 	}
