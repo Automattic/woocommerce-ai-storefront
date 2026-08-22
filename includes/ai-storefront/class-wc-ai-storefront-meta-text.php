@@ -12,15 +12,17 @@ defined( 'ABSPATH' ) || exit;
  *
  * Extracted from WC_AI_Storefront_Meta_Tags when a second emitter needed the
  * same rules (#680). The cleaning in particular is not obvious code and has
- * been corrected twice against live behaviour — entity decoding, shortcode
- * remnants, Unicode whitespace, invalid UTF-8, and the difference between
- * "non-empty" and "readable" (#682 review). Two copies of that would drift,
- * and the copy that drifted would be the one nobody had measured.
+ * been corrected twice: once by code review, which found that `&nbsp;` and
+ * shortcode remnants read as usable descriptions, and once by a mutation
+ * pass, which found that invalid UTF-8 silently discarded the whole string.
+ * That second one had never been observed — every fixture was ASCII. Two
+ * copies of this would drift, and the copy that drifted would be the one
+ * nobody had measured.
  */
 class WC_AI_Storefront_Meta_Text {
 
 	/**
-	 * Strip shortcodes + HTML and collapse whitespace.
+	 * Decode entities, strip shortcodes and HTML, and fold whitespace.
 	 */
 	public static function clean_text( string $raw ): string {
 		// Three passes that have to happen before the ASCII whitespace
@@ -75,23 +77,17 @@ class WC_AI_Storefront_Meta_Text {
 	/**
 	 * Whether cleaned text is worth publishing as a description.
 	 *
-	 * Not the same question as "is it non-empty", and the difference ships.
-	 * clean_text() strips tags and collapses ASCII whitespace, but a
-	 * non-breaking space is neither: `&nbsp;` survives as six literal bytes,
-	 * a raw U+00A0 as two, and `trim()`'s default charlist does not include
-	 * either. So the block editor's own empty paragraph — open the Shop page,
-	 * press Enter, leave — cleans to `&nbsp;` and reads as a usable
-	 * description.
+	 * Not the same question as "is it non-empty", and the gap is narrow but
+	 * real. clean_text() above already removes the two cases this method was
+	 * originally written for — `&nbsp;` and shortcode remnants both clean to
+	 * '' now, and this method could never have caught the second anyway,
+	 * since a shortcode name is full of letters.
 	 *
-	 * strip_shortcodes() has the same shape of hole: it intersects against
-	 * the shortcodes registered AT THAT MOMENT, so a tag left behind by a
-	 * deactivated plugin passes through verbatim and `[some_slider id="3"]`
-	 * ships as the SERP snippet.
-	 *
-	 * Both cases cost more than the tag they produce, because the candidate
-	 * chain stops at the first "usable" entry: a stray non-breaking space on
-	 * the Shop page suppressed the merchant's own tagline AND the generated
-	 * fallback beneath it (#682 review).
+	 * What is left is text that cleans to something and still is not prose:
+	 * a rule of bullets, a row of dashes, a lone piece of punctuation. Those
+	 * survive cleaning intact and would otherwise ship as the SERP snippet —
+	 * and worse, stop the candidate chain, suppressing the real description
+	 * beneath them.
 	 *
 	 * The test is one letter or digit, in any script.
 	 *

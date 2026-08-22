@@ -1431,7 +1431,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 *                                      archive-page path.
 	 */
 	private function print_og_and_twitter( array $og, $product = null ): void {
-		$og = $this->drop_unprintable_image( $og );
+		$og = WC_AI_Storefront_Meta_Image::drop_unprintable_image( $og );
 
 		foreach ( $og as $property => $content ) {
 			if ( '' === $content ) {
@@ -1491,7 +1491,7 @@ class WC_AI_Storefront_Meta_Tags {
 			);
 			$configured = '';
 		}
-		if ( '' !== $configured && '' === $this->usable_url( $configured ) ) {
+		if ( '' !== $configured && '' === WC_AI_Storefront_Meta_Image::usable_url( $configured ) ) {
 			// Returning early on a URL the printer cannot emit would cost the
 			// store the curated product, logo and icon steps below, and leave
 			// the archive with no image at all.
@@ -1516,7 +1516,7 @@ class WC_AI_Storefront_Meta_Tags {
 		}
 
 		$logo_id = function_exists( 'get_theme_mod' ) ? (int) get_theme_mod( 'custom_logo' ) : 0;
-		$logo    = $this->attachment_image( $logo_id );
+		$logo    = WC_AI_Storefront_Meta_Image::attachment_image( $logo_id );
 		if ( '' !== $logo['url'] ) {
 			return $logo;
 		}
@@ -1524,7 +1524,7 @@ class WC_AI_Storefront_Meta_Tags {
 		if ( function_exists( 'get_site_icon_url' ) ) {
 			// usable_url() because get_site_icon_url has its own filter, so
 			// this is not guaranteed to be a URL WordPress produced.
-			$icon = $this->usable_url( (string) get_site_icon_url( 512 ) );
+			$icon = WC_AI_Storefront_Meta_Image::usable_url( (string) get_site_icon_url( 512 ) );
 			if ( '' !== $icon ) {
 				// No dimensions, for the same reason the filter branch above
 				// reports none: we cannot vouch for them. Core's
@@ -1544,7 +1544,7 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 		}
 
-		return $this->no_image();
+		return WC_AI_Storefront_Meta_Image::no_image();
 	}
 
 	/**
@@ -1561,16 +1561,16 @@ class WC_AI_Storefront_Meta_Tags {
 			$term    = get_queried_object();
 			$term_id = is_object( $term ) && isset( $term->term_id ) ? (int) $term->term_id : 0;
 			if ( $term_id > 0 ) {
-				return $this->attachment_image( (int) get_term_meta( $term_id, 'thumbnail_id', true ) );
+				return WC_AI_Storefront_Meta_Image::attachment_image( (int) get_term_meta( $term_id, 'thumbnail_id', true ) );
 			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
 			$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
 			if ( $shop_id > 0 && function_exists( 'get_post_thumbnail_id' ) ) {
-				return $this->attachment_image( (int) get_post_thumbnail_id( $shop_id ) );
+				return WC_AI_Storefront_Meta_Image::attachment_image( (int) get_post_thumbnail_id( $shop_id ) );
 			}
 		}
 
-		return $this->no_image();
+		return WC_AI_Storefront_Meta_Image::no_image();
 	}
 
 	/**
@@ -1592,7 +1592,7 @@ class WC_AI_Storefront_Meta_Tags {
 	 */
 	private function archive_product_image(): array {
 		if ( ! function_exists( 'wc_get_products' ) ) {
-			return $this->no_image();
+			return WC_AI_Storefront_Meta_Image::no_image();
 		}
 
 		$args = array(
@@ -1630,7 +1630,7 @@ class WC_AI_Storefront_Meta_Tags {
 			// On the shop archive there is no narrower set to retry with: with
 			// nothing featured, every product in the catalog is an equally
 			// arbitrary stand-in for the whole store, so we pick none.
-			return $this->no_image();
+			return WC_AI_Storefront_Meta_Image::no_image();
 		}
 
 		// Within one category every product does belong to the thing being
@@ -1650,11 +1650,11 @@ class WC_AI_Storefront_Meta_Tags {
 	 */
 	private function first_product_image( $product_ids ): array {
 		if ( ! is_array( $product_ids ) || array() === $product_ids ) {
-			return $this->no_image();
+			return WC_AI_Storefront_Meta_Image::no_image();
 		}
 
 		foreach ( $product_ids as $product_id ) {
-			$image = $this->attachment_image( (int) get_post_thumbnail_id( (int) $product_id ) );
+			$image = WC_AI_Storefront_Meta_Image::attachment_image( (int) get_post_thumbnail_id( (int) $product_id ) );
 			if ( '' !== $image['url'] ) {
 				return $image;
 			}
@@ -1670,7 +1670,7 @@ class WC_AI_Storefront_Meta_Tags {
 			count( $product_ids )
 		);
 
-		return $this->no_image();
+		return WC_AI_Storefront_Meta_Image::no_image();
 	}
 
 	/**
@@ -1685,98 +1685,9 @@ class WC_AI_Storefront_Meta_Tags {
 		return is_object( $term ) && isset( $term->slug ) ? (string) $term->slug : '';
 	}
 
-	/**
-	 * Drop an og:image the printer would escape away to nothing.
-	 *
-	 * print_meta() runs esc_url() on og:image, and esc_url() returns '' for a
-	 * disallowed protocol (`javascript:`, `data:`). But the emptiness check in
-	 * print_og_and_twitter() tests the RAW value, so the page shipped
-	 * og:image="" while build_twitter_tags() still saw a URL and asked for
-	 * summary_large_image: the large-card-with-no-image state this whole
-	 * change exists to remove (#684 review).
-	 *
-	 * Decided here, once, rather than in the resolver, because it has to hold
-	 * for every source — including the product path, which never goes through
-	 * archive_image(), and the wc_ai_storefront_og_tags filter, which can
-	 * replace og:image after any resolver has finished.
-	 *
-	 * @param array<string,string> $og Open Graph map.
-	 * @return array<string,string> The same map, minus an unprintable image
-	 *                              and the properties that describe it.
-	 */
-	private function drop_unprintable_image( array $og ): array {
-		if ( ! isset( $og['og:image'] ) || '' === $og['og:image'] ) {
-			return $og;
-		}
 
-		if ( '' !== $this->usable_url( (string) $og['og:image'] ) ) {
-			return $og;
-		}
 
-		WC_AI_Storefront_Logger::debug(
-			'Open Graph: og:image "%s" does not survive esc_url(). Dropping it, and the card with it.',
-			(string) $og['og:image']
-		);
-		unset( $og['og:image'], $og['og:image:width'], $og['og:image:height'], $og['og:image:alt'] );
 
-		return $og;
-	}
-
-	/**
-	 * The URL unchanged, or '' when escaping would empty it.
-	 *
-	 * Returns the RAW url on success, not the escaped form: print_meta()
-	 * escapes again at output, and storing the escaped value would
-	 * double-encode it.
-	 *
-	 * @param string $url Candidate URL.
-	 */
-	private function usable_url( string $url ): string {
-		if ( '' === $url || ! function_exists( 'esc_url' ) ) {
-			return $url;
-		}
-
-		return '' === esc_url( $url ) ? '' : $url;
-	}
-
-	/**
-	 * An attachment's full-size URL and dimensions.
-	 *
-	 * @param int $attachment_id Attachment ID; 0 or less yields an empty URL.
-	 * @return array{url:string,width:int,height:int}
-	 */
-	private function attachment_image( int $attachment_id ): array {
-		if ( $attachment_id <= 0 || ! function_exists( 'wp_get_attachment_image_src' ) ) {
-			return $this->no_image();
-		}
-
-		$src = wp_get_attachment_image_src( $attachment_id, 'full' );
-		// `'' === (string)` rather than `empty()`: this file documents twice
-		// (#679, verified live) that the two disagree on '0', and a URL is the
-		// wrong place to start trusting empty().
-		if ( ! is_array( $src ) || ! isset( $src[0] ) || '' === (string) $src[0] ) {
-			return $this->no_image();
-		}
-
-		return array(
-			'url'    => (string) $src[0],
-			'width'  => isset( $src[1] ) ? (int) $src[1] : 0,
-			'height' => isset( $src[2] ) ? (int) $src[2] : 0,
-		);
-	}
-
-	/**
-	 * The "no image" result every resolver step returns when it comes up empty.
-	 *
-	 * @return array{url:string,width:int,height:int}
-	 */
-	private function no_image(): array {
-		return array(
-			'url'    => '',
-			'width'  => 0,
-			'height' => 0,
-		);
-	}
 
 
 	/**

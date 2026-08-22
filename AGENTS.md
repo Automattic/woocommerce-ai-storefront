@@ -206,6 +206,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-meta-tags.php` | YOAST-COEXISTENCE.md, ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-content-meta-tags.php` | YOAST-COEXISTENCE.md, ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-meta-text.php` | ARCHITECTURE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-meta-image.php` | ARCHITECTURE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php` | YOAST-COEXISTENCE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-authored-seo.php` | YOAST-COEXISTENCE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-rival-seo-description.php` | YOAST-COEXISTENCE.md |

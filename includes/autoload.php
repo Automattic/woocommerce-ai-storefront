@@ -30,6 +30,7 @@ spl_autoload_register(
 			'WC_AI_Storefront_JsonLd'                 => '/ai-storefront/class-wc-ai-storefront-jsonld.php',
 			'WC_AI_Storefront_Llms_Txt'               => '/ai-storefront/class-wc-ai-storefront-llms-txt.php',
 			'WC_AI_Storefront_Meta_Text'              => '/ai-storefront/class-wc-ai-storefront-meta-text.php',
+			'WC_AI_Storefront_Meta_Image'             => '/ai-storefront/class-wc-ai-storefront-meta-image.php',
 			'WC_AI_Storefront_Content_Meta_Tags'      => '/ai-storefront/class-wc-ai-storefront-content-meta-tags.php',
 			'WC_AI_Storefront_Meta_Tags'              => '/ai-storefront/class-wc-ai-storefront-meta-tags.php',
 			'WC_AI_Storefront_Product_Facts'          => '/ai-storefront/class-wc-ai-storefront-product-facts.php',

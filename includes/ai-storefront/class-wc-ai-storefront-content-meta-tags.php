@@ -15,15 +15,23 @@ defined( 'ABSPATH' ) || exit;
  * that boundary is what makes coexistence clean: a product page carries our
  * tags, a policy page carries whatever general-purpose plugin the merchant
  * runs. But the boundary assumes a second emitter exists, and on a plain
- * WooCommerce install none does — so a shared blog post unfurls as a blank
- * card, with core emitting a `<title>` and a canonical link and nothing else
- * (#680).
+ * WooCommerce install none does. Core emits plenty in `wp_head` — robots,
+ * feed links, oEmbed discovery, generator, canonical, shortlink — but no
+ * `og:*`, no `twitter:*` and no `<meta name="description">`, so a scraper
+ * falls back to guessing from the `<title>` and the markup (#680).
  *
- * This is not this plugin becoming an SEO plugin. Six core properties, an
- * image when there is one, and a description. Explicitly NOT emitted:
- * `article:published_time`, `article:modified_time`, `article:author` and
- * `profile:*`. Those belong to a general-purpose emitter, and #679 left them
- * out of the commerce path for the same reason.
+ * This is not this plugin becoming an SEO plugin. Six `og:*` properties,
+ * three `twitter:*`, a `<meta name="description">`, and an image with its
+ * dimensions when the post has one.
+ *
+ * Explicitly NOT emitted: `article:published_time`, `article:modified_time`,
+ * `article:author` and `profile:*`. #679 excluded the first two from the
+ * COMMERCE path, on the argument that publish timestamps on a product reach
+ * outside this plugin's line — which does not transfer here, since posts are
+ * exactly what those properties describe. The reason here is narrower and
+ * its own: this is a fallback for stores with no general-purpose emitter,
+ * and the smallest thing that fixes a blank card is the right size for it.
+ * Authorship and timestamps are where a real SEO plugin starts.
  *
  * `og:type` here is `article`, which unlike `product` is in the ogp.me
  * vocabulary, so this one carries no grey area.
@@ -39,10 +47,37 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	 * Register the emitter.
 	 */
 	public function init(): void {
+		// Jetpack's SEO description is a SEPARATE module from its Open Graph:
+		// Jetpack_SEO::init() hooks wp_head at 10 with no dependency on
+		// Publicize or Sharing, while Open Graph only loads when one of those
+		// is active. "SEO Tools on, Open Graph off" is an ordinary state, and
+		// on it we printed a description at wp_head:5 and Jetpack printed a
+		// second at 10 — the defect #678 exists to remove (#680 review).
+		//
+		// The filter fires at wp_head:10, after render(), so should_emit()
+		// has already settled by the time this runs.
+		add_filter( 'jetpack_seo_meta_tags', array( $this, 'suppress_jetpack_description' ) );
+
 		// Same priority as the commerce emitter, and they are mutually
 		// exclusive by should_emit(). Also after Jetpack's wp_head:1 loader,
 		// so has_action( 'wp_head', 'jetpack_og_tags' ) is answerable by now.
 		add_action( 'wp_head', array( $this, 'render' ), 5 );
+	}
+
+	/**
+	 * Drop Jetpack's meta description when we are writing one.
+	 *
+	 * @param mixed $meta Jetpack's tag map.
+	 * @return mixed Unchanged when we are not emitting.
+	 */
+	public function suppress_jetpack_description( $meta ) {
+		if ( ! is_array( $meta ) || ! $this->should_emit() ) {
+			return $meta;
+		}
+
+		unset( $meta['description'] );
+
+		return $meta;
 	}
 
 	/**
@@ -52,8 +87,16 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	 * approach #669 uses for commerce descriptions. That is the right trade
 	 * here, because the two failure directions are not symmetric: a false
 	 * negative leaves a post with the blank card it has today, while a false
-	 * positive puts duplicate tags on page types this plugin has never
-	 * touched. Err toward silence.
+	 * positive puts a second set of social tags on a page that already has
+	 * one. Err toward silence.
+	 *
+	 * KNOWN LIMIT, and it is the direction this cannot cover: the detector
+	 * knows five plugins, so The SEO Framework, Slim SEO, Squirrly and any
+	 * theme with built-in Open Graph open the gate and get duplicates. Only
+	 * observing what actually reached the page closes that, the way
+	 * WC_AI_Storefront_Og_Strategies does for commerce — but that ground
+	 * truth was measured on commerce pages and has to be re-measured on posts
+	 * before it can be leaned on here. Tracked as #690.
 	 *
 	 * @param string[]|null $slugs Detected SEO plugin slugs; resolved from
 	 *                             the detector when null. Injectable because
@@ -71,10 +114,22 @@ class WC_AI_Storefront_Content_Meta_Tags {
 			return false;
 		}
 
-		if ( ! function_exists( 'is_singular' ) || ! is_singular() ) {
-			// Singular only. An author or date archive has no authored text
-			// to describe it, and a generated description there is worse
-			// than none (#680).
+		// Posts and pages, named explicitly. A bare is_singular() also
+		// matches attachments — which have no featured image, so an image
+		// page got a card with no image — and every public custom post type
+		// another plugin registers, all labelled og:type=article. The
+		// docblock and the CHANGELOG both said "posts and pages"; the code
+		// said any singular (#680 review).
+		if ( ! function_exists( 'is_singular' ) || ! is_singular( array( 'post', 'page' ) ) ) {
+			return false;
+		}
+
+		// A social scraper carries no cookie, so post_password_required() is
+		// always true for it — and get_the_excerpt() answers a protected post
+		// with core's own "There is no excerpt because this is a protected
+		// post." That is readable prose, so it won the candidate chain and
+		// shipped as the description of every protected page (#680 review).
+		if ( function_exists( 'post_password_required' ) && post_password_required() ) {
 			return false;
 		}
 
@@ -82,7 +137,23 @@ class WC_AI_Storefront_Content_Meta_Tags {
 			return false;
 		}
 
-		return ! $this->another_source_is_emitting( null === $slugs ? $this->detected_slugs() : $slugs );
+		$present = null === $slugs ? $this->detected_slugs() : $slugs;
+		$blocker = $this->blocking_source( $present );
+
+		if ( '' !== $blocker ) {
+			// The only failure mode of this feature is silence, and a
+			// merchant who installed it to fix blank share cards has no way
+			// to tell "the gate closed" from "the plugin is not running"
+			// (#680 review).
+			WC_AI_Storefront_Logger::debug(
+				'Content social tags: standing down, %s is already providing metadata.',
+				$blocker
+			);
+
+			return false;
+		}
+
+		return true;
 	}
 
 	/**
@@ -102,10 +173,10 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	 *
 	 * @param string[] $slugs Detected SEO plugin slugs.
 	 */
-	private function another_source_is_emitting( array $slugs ): bool {
+	private function blocking_source( array $slugs ): string {
 		foreach ( $slugs as $slug ) {
 			if ( 'jetpack' !== $slug ) {
-				return true;
+				return $slug;
 			}
 
 			// Jetpack is the one entry where presence is not the question.
@@ -118,11 +189,11 @@ class WC_AI_Storefront_Content_Meta_Tags {
 			// registered by Jetpack's own wp_head:1 loader and therefore
 			// settled before this runs at wp_head:5.
 			if ( function_exists( 'has_action' ) && false !== has_action( 'wp_head', 'jetpack_og_tags' ) ) {
-				return true;
+				return 'jetpack (Open Graph)';
 			}
 		}
 
-		return false;
+		return '';
 	}
 
 	/**
@@ -144,9 +215,18 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	public function build_tags(): array {
 		$description = $this->build_description();
 
+		// A static front page is singular, but it is the site, not an
+		// article. The commerce emitter makes the same call for the mirror
+		// case (shop-as-front-page gets `website` and the site name), and
+		// Jetpack does `is_front_page() || is_home() -> website` (#680
+		// review).
+		$is_front = function_exists( 'is_front_page' ) && is_front_page();
+
 		$og = array(
-			'og:type'        => 'article',
-			'og:title'       => (string) get_the_title( get_queried_object_id() ),
+			'og:type'        => $is_front ? 'website' : 'article',
+			'og:title'       => $is_front
+				? (string) get_bloginfo( 'name' )
+				: (string) get_the_title( get_queried_object_id() ),
 			'og:description' => $description,
 			'og:url'         => (string) get_permalink( get_queried_object_id() ),
 			'og:site_name'   => (string) get_bloginfo( 'name' ),
@@ -177,22 +257,63 @@ class WC_AI_Storefront_Content_Meta_Tags {
 		 *
 		 * @param array<string,string> $og Property => content.
 		 */
-		return (array) apply_filters( 'wc_ai_storefront_content_og_tags', $og );
+		$filtered = apply_filters( 'wc_ai_storefront_content_og_tags', $og );
+
+		// NOT a bare (array) cast. `(array) null` is [], which would delete
+		// this feature store-wide in silence; `(array) 'oops'` is
+		// [0 => 'oops'], which prints <meta property="0">; and a value that
+		// is itself an array reaches esc_attr() and ships content="Array".
+		// #684 hit the same class of problem casting a filter result and its
+		// fix is the precedent here (#680 review).
+		if ( ! is_array( $filtered ) ) {
+			WC_AI_Storefront_Logger::debug(
+				'Content social tags: wc_ai_storefront_content_og_tags returned %s, not an array. Ignoring it.',
+				get_debug_type( $filtered )
+			);
+
+			return $og;
+		}
+
+		$clean = array();
+		foreach ( $filtered as $key => $value ) {
+			if ( is_string( $key ) && is_scalar( $value ) ) {
+				$clean[ $key ] = (string) $value;
+				continue;
+			}
+
+			WC_AI_Storefront_Logger::debug(
+				'Content social tags: dropping filtered entry %s, which is %s.',
+				is_string( $key ) ? $key : get_debug_type( $key ),
+				get_debug_type( $value )
+			);
+		}
+
+		return $clean;
 	}
 
 	/**
-	 * Description for the current post: its excerpt, else its content.
+	 * Description for the current post: its authored excerpt, else its content.
 	 *
 	 * No tagline fallback on purpose. Repeating the same sentence under every
 	 * post is worse than a card with a title and no description, and unlike
 	 * the shop archive there is no single page whose identity it would carry.
 	 */
 	private function build_description(): string {
-		$candidates = array( (string) get_the_excerpt( get_queried_object_id() ) );
+		$id = get_queried_object_id();
 
-		if ( function_exists( 'get_post_field' ) ) {
-			$candidates[] = (string) get_post_field( 'post_content', get_queried_object_id() );
-		}
+		// The RAW excerpt, deliberately. get_the_excerpt() runs
+		// wp_trim_excerpt(), which calls apply_filters( 'the_content' ) —
+		// so reading it here executes the entire content chain inside
+		// wp_head:5. On the plain store this feature targets that means the
+		// chain runs twice per view, and third-party callbacks that inject
+		// once per request (ad injectors, related posts, share buttons behind
+		// a static flag) fire in the head and go missing from the body
+		// (#680 review). Falling through to post_content ourselves reaches
+		// the same text without the side effects.
+		$candidates = array(
+			(string) get_post_field( 'post_excerpt', $id, 'raw' ),
+			(string) get_post_field( 'post_content', $id, 'raw' ),
+		);
 
 		foreach ( $candidates as $raw ) {
 			$text = WC_AI_Storefront_Meta_Text::clean_text( $raw );
@@ -210,31 +331,25 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	 * @return array{url:string,width:int,height:int}
 	 */
 	private function featured_image(): array {
-		$empty = array(
-			'url'    => '',
-			'width'  => 0,
-			'height' => 0,
-		);
-
-		if ( ! function_exists( 'get_post_thumbnail_id' ) || ! function_exists( 'wp_get_attachment_image_src' ) ) {
-			return $empty;
+		if ( ! function_exists( 'get_post_thumbnail_id' ) ) {
+			return WC_AI_Storefront_Meta_Image::no_image();
 		}
 
 		$thumbnail_id = (int) get_post_thumbnail_id( get_queried_object_id() );
-		if ( $thumbnail_id <= 0 ) {
-			return $empty;
+		$image        = WC_AI_Storefront_Meta_Image::attachment_image( $thumbnail_id );
+
+		if ( $thumbnail_id > 0 && '' === $image['url'] ) {
+			// The merchant set a featured image and it did not resolve: a
+			// deleted attachment, or a PDF set as the featured image. They
+			// see a picture in the editor and a text-only card in the wild,
+			// with nothing connecting the two (#680 review).
+			WC_AI_Storefront_Logger::debug(
+				'Content social tags: featured image %d did not resolve to a usable image.',
+				$thumbnail_id
+			);
 		}
 
-		$src = wp_get_attachment_image_src( $thumbnail_id, 'full' );
-		if ( ! is_array( $src ) || ! isset( $src[0] ) || '' === (string) $src[0] ) {
-			return $empty;
-		}
-
-		return array(
-			'url'    => (string) $src[0],
-			'width'  => isset( $src[1] ) ? (int) $src[1] : 0,
-			'height' => isset( $src[2] ) ? (int) $src[2] : 0,
-		);
+		return $image;
 	}
 
 	/**
@@ -245,7 +360,20 @@ class WC_AI_Storefront_Content_Meta_Tags {
 			return;
 		}
 
-		$tags        = $this->build_tags();
+		// The shared rule, not a second hand-written one. Testing a raw value
+		// for emptiness and escaping it at print time ships og:image="" under
+		// a summary_large_image card — #684 found that in the commerce
+		// emitter, and writing this printer by hand reproduced it here within
+		// hours (#680 review). Applied AFTER the filter, because the filter
+		// can replace og:image.
+		$tags = WC_AI_Storefront_Meta_Image::drop_unprintable_image( $this->build_tags() );
+
+		// Recomputed from what survived, not from what was proposed.
+		if ( ! isset( $tags['og:image'] ) ) {
+			unset( $tags['twitter:image'] );
+			$tags['twitter:card'] = 'summary';
+		}
+
 		$description = (string) ( $tags['og:description'] ?? '' );
 
 		if ( '' !== $description ) {
@@ -267,7 +395,7 @@ class WC_AI_Storefront_Content_Meta_Tags {
 				'<meta %1$s="%2$s" content="%3$s" />' . "\n",
 				$is_twitter ? 'name' : 'property',
 				esc_attr( $key ),
-				// Escaped immediately above by the ternary.
+				// Escaped inline by the ternary below.
 				$is_url ? esc_url( $content ) : esc_attr( $content ) // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
 			);
 		}

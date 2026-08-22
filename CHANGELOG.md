@@ -12,7 +12,8 @@
 - **Your blog posts and pages now get share previews too (#680).**
   - On a store with no SEO plugin, sharing a post or page gave whoever received it a blank card: no title, no summary, no image. Your product pages have had these for a while; everything else had nothing.
   - Posts and pages now carry a title, a summary taken from your excerpt or the post itself, your featured image, and a description for search results.
-  - Your store stays out of the way when anything else is already doing this. If you run Yoast, Rank Math, All in One SEO or SEOPress, or you have Jetpack's social preview feature switched on, nothing changes and nothing is duplicated.
+  - Your store stays out of the way when Yoast, Rank Math, All in One SEO, SEOPress or Jetpack's social previews are already doing this. If you use Jetpack's SEO description without its social previews, you get the share card and keep Jetpack's description, with no duplication.
+  - Less common SEO plugins are not yet recognised, so if you run one of those you may see two sets of tags. Turning the plugin's metadata off in its settings avoids it, and wider detection is planned.
   - Only posts and pages. Author and date archives are left alone, because a made-up summary there is worse than none.
 
 ### Fixed

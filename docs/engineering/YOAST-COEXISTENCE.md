@@ -110,6 +110,26 @@ So Open Graph got its own mechanism, one strategy per plugin, because five measu
 
 **One known residue.** With SEOPress's "Date in SERPs" option on, `seopress_titles_single_cpt_date_hook` emits `article:published_time`, `article:modified_time` and `og:updated_time` on singular pages. It lives in SEOPress's titles file, not its social file, and it is the same callback rendering the SERP date the merchant asked for, so it is deliberately left alone.
 
+## Non-commerce fallback
+
+`WC_AI_Storefront_Meta_Tags` is scoped to commerce pages, and that boundary is what makes everything above work. It assumes a second emitter exists. On a plain WooCommerce install none does, so a shared blog post had no `og:*`, no `twitter:*` and no description at all (#680).
+
+`WC_AI_Storefront_Content_Meta_Tags` fills that, and only that. Singular posts and pages, six `og:*` properties, three `twitter:*`, a description, and an image when the post has one. Not `article:published_time`, `article:modified_time`, `article:author` or `profile:*` — the smallest thing that fixes a blank card is the right size for a fallback, and authorship and timestamps are where a real SEO plugin starts.
+
+**The gate is presence-based, and asymmetric on purpose.** A false negative leaves a post with the blank card it already had; a false positive puts a second set of tags on a page that has one. So any plugin the detector reports means silence.
+
+Jetpack is the exception, because it has two independent emitters:
+
+| Jetpack state | what we do |
+|---|---|
+| active, Open Graph off, SEO Tools off | emit |
+| active, Open Graph on | stay silent — `has_action( 'wp_head', 'jetpack_og_tags' )` |
+| active, SEO Tools on | emit the card, but suppress Jetpack's description via `jetpack_seo_meta_tags` |
+
+Treating Jetpack's mere presence as disqualifying would mean this never fires on a WordPress.com store, which is where the bug was found.
+
+**Known limit.** The detector knows five plugins. The SEO Framework, Slim SEO, Squirrly and themes with built-in Open Graph are not among them, so on those stores the gate opens and the page gets duplicate tags. Closing that needs observing what actually reached the page, the way `WC_AI_Storefront_Og_Strategies` does for commerce — and that ground truth was measured on commerce pages, so it has to be re-measured on posts first. Tracked as #690.
+
 ## Divergence: Jetpack's fields are reprinted; the other SEO plugins are stood down for
 
 This plugin treats Jetpack SEO Tools differently from the other SEO plugins: it reads the merchant's authored Jetpack fields and prints them itself, rather than declining to emit.
@@ -139,7 +159,9 @@ The litmus test for what belongs in this plugin is: **does it serve product disc
 
 **In scope** (serves discovery): product/category/shop metadata, structured data, opinionated noindex, the agentic-commerce surfaces.
 
-**Deferred** (would serve discovery, not yet built): non-commerce page metadata (home, blog, archives, search), Article/author schema, a per-page manual noindex UI, per-product editable SEO fields.
+**Deferred** (would serve discovery, not yet built): blog and archive metadata, Article/author schema, a per-page manual noindex UI, per-product editable SEO fields.
+
+**Shipped since** (#680): social metadata for singular posts and pages, on stores where nothing else provides any. See [Non-commerce fallback](#non-commerce-fallback).
 
 **Never in scope** (fails the test):
 

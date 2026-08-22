@@ -25,7 +25,6 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 
 		// Nothing else is emitting, and this is a singular post.
-		Functions\when( 'is_singular' )->justReturn( true );
 		Functions\when( 'is_product' )->justReturn( false );
 		Functions\when( 'is_product_category' )->justReturn( false );
 		Functions\when( 'is_shop' )->justReturn( false );
@@ -39,7 +38,21 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/hello-world/' );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_locale' )->justReturn( 'en_US' );
-		Functions\when( 'get_the_excerpt' )->justReturn( 'A short post about hoodies.' );
+		// post_excerpt / post_content, raw — get_the_excerpt() is no longer
+		// used, because it runs the whole the_content chain inside wp_head.
+		Functions\when( 'get_post_field' )->alias(
+			static function ( $field ) {
+				return 'post_excerpt' === $field ? 'A short post about hoodies.' : '';
+			}
+		);
+		Functions\when( 'post_password_required' )->justReturn( false );
+		// is_singular() is called WITH an argument now; answer only for the
+		// post/page pair so a wrong scope is visible.
+		Functions\when( 'is_singular' )->alias(
+			static function ( $types = '' ) {
+				return array( 'post', 'page' ) === $types;
+			}
+		);
 		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
 
@@ -125,6 +138,53 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $this->tags->should_emit() );
 	}
 
+	public function test_stays_silent_on_a_password_protected_post(): void {
+		// A social scraper carries no cookie, so post_password_required() is
+		// always true for it, and get_the_excerpt() answers with core's own
+		// "There is no excerpt because this is a protected post." That is
+		// readable prose, so it won the chain and shipped as the description
+		// of every protected page (#680 review).
+		Functions\when( 'post_password_required' )->justReturn( true );
+		$this->assertFalse( $this->tags->should_emit() );
+	}
+
+	public function test_stays_silent_on_an_attachment_or_a_custom_post_type(): void {
+		// A bare is_singular() matched attachments — which have no featured
+		// image — and every public CPT another plugin registers, all labelled
+		// og:type=article, while the docs said "posts and pages".
+		Functions\when( 'is_singular' )->alias(
+			static function ( $types = '' ) {
+				// The request is an attachment: true unqualified, false for
+				// the post/page pair.
+				return '' === $types;
+			}
+		);
+		$this->assertFalse( $this->tags->should_emit() );
+	}
+
+	public function test_jetpacks_seo_description_is_suppressed_when_we_write_one(): void {
+		// Jetpack's SEO description is a separate module from its Open Graph
+		// and hooks wp_head at 10 regardless. "SEO Tools on, Open Graph off"
+		// is ordinary, and on it we printed a description at 5 and Jetpack
+		// printed a second at 10 (#680 review).
+		$meta = $this->tags->suppress_jetpack_description(
+			array(
+				'description' => 'Jetpack would have written this.',
+				'other'       => 'kept',
+			)
+		);
+
+		$this->assertArrayNotHasKey( 'description', $meta );
+		$this->assertSame( 'kept', $meta['other'], 'Only the description is ours to take.' );
+	}
+
+	public function test_jetpacks_description_is_left_alone_when_we_stand_down(): void {
+		Functions\when( 'is_product' )->justReturn( true );
+		$given = array( 'description' => 'Jetpack\'s.' );
+
+		$this->assertSame( $given, $this->tags->suppress_jetpack_description( $given ) );
+	}
+
 	// --- What it emits ---
 
 	public function test_a_post_gets_the_six_core_properties(): void {
@@ -174,16 +234,36 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_a_post_with_no_excerpt_falls_back_to_its_content(): void {
-		Functions\when( 'get_the_excerpt' )->justReturn( '' );
-		Functions\when( 'get_post_field' )->justReturn( '<p>The full body of the post, which is long enough to matter.</p>' );
+		Functions\when( 'get_post_field' )->alias(
+			static function ( $field ) {
+				return 'post_content' === $field ? '<p>The full body of the post, which is long enough to matter.</p>' : '';
+			}
+		);
 
 		$this->assertStringContainsString( 'The full body of the post', $this->render() );
+	}
+
+	public function test_the_description_never_runs_the_content_filter_chain(): void {
+		// get_the_excerpt() calls wp_trim_excerpt(), which applies
+		// `the_content`. Reading it inside wp_head:5 runs the whole chain a
+		// second time per view and fires once-per-request injectors in the
+		// head instead of the body (#680 review).
+		$called = false;
+		Functions\when( 'get_the_excerpt' )->alias(
+			static function () use ( &$called ) {
+				$called = true;
+				return 'from the filter chain';
+			}
+		);
+
+		$this->render();
+
+		$this->assertFalse( $called, 'get_the_excerpt() must not be on this path.' );
 	}
 
 	public function test_a_post_with_nothing_to_say_emits_no_description(): void {
 		// Better a card with a title and no description than one repeating
 		// the site tagline on every post.
-		Functions\when( 'get_the_excerpt' )->justReturn( '' );
 		Functions\when( 'get_post_field' )->justReturn( '&nbsp;' );
 
 		$html = $this->render();
@@ -195,11 +275,71 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// Separates the two gates: a bullet rule cleans to something
 		// non-empty, so only the readable-prose check rejects it. Publishing
 		// it would put "•••" in the SERP snippet.
-		Functions\when( 'get_the_excerpt' )->justReturn( '' );
 		Functions\when( 'get_post_field' )->justReturn( '••• ••• •••' );
 
 		$html = $this->render();
 		$this->assertStringNotContainsString( '•', $html );
+		$this->assertStringContainsString( 'og:title', $html );
+	}
+
+	public function test_a_static_front_page_is_a_website_not_an_article(): void {
+		// Singular, but it is the site rather than an article. The commerce
+		// emitter makes the same call for shop-as-front-page (#680 review).
+		Functions\when( 'is_front_page' )->justReturn( true );
+
+		$html = $this->render();
+
+		$this->assertStringContainsString( '<meta property="og:type" content="website"', $html );
+		$this->assertStringContainsString( '<meta property="og:title" content="Saltwarp"', $html );
+	}
+
+	public function test_an_unprintable_image_takes_the_large_card_with_it(): void {
+		// #684's defect, reproduced here by writing a second printer by hand.
+		// The emptiness test runs on the raw value and esc_url() runs at
+		// print time, so a disallowed protocol shipped og:image="" under a
+		// summary_large_image card (#680 review).
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 42 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( array( 'data:image/png;base64,AAAA', 1200, 630, false ) );
+		Functions\when( 'esc_url' )->alias(
+			static function ( $url ) {
+				return 0 === strpos( (string) $url, 'data:' ) ? '' : $url;
+			}
+		);
+
+		$html = $this->render();
+
+		$this->assertStringNotContainsString( 'og:image', $html );
+		$this->assertStringNotContainsString( 'twitter:image', $html );
+		$this->assertStringContainsString( '<meta name="twitter:card" content="summary"', $html );
+	}
+
+	public function test_a_filter_returning_nothing_does_not_delete_the_card(): void {
+		// (array) null is [], which would silently remove every tag on every
+		// post. #684 hit the same class of problem casting a filter result.
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				return 'wc_ai_storefront_content_og_tags' === $hook ? null : $value;
+			}
+		);
+
+		$this->assertStringContainsString( 'og:title', $this->render() );
+	}
+
+	public function test_a_filter_adding_a_non_scalar_has_that_entry_dropped(): void {
+		// An array value reaches esc_attr() and ships content="Array".
+		Functions\when( 'apply_filters' )->alias(
+			static function ( $hook, $value ) {
+				if ( 'wc_ai_storefront_content_og_tags' === $hook && is_array( $value ) ) {
+					$value['og:broken'] = array( 'nested' );
+				}
+				return $value;
+			}
+		);
+
+		$html = $this->render();
+
+		$this->assertStringNotContainsString( 'og:broken', $html );
+		$this->assertStringNotContainsString( 'Array', $html );
 		$this->assertStringContainsString( 'og:title', $html );
 	}
 
