@@ -76,9 +76,12 @@ require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-products-feed.
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-ucp.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-robots.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-commerce-facts.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy-seopress.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy-yoast.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy-aioseo.php';
+require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategy-rankmath.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-og-strategies.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-store-api-rate-limiter.php';
 require_once $plugin_path . 'ai-storefront/class-wc-ai-storefront-attribution.php';

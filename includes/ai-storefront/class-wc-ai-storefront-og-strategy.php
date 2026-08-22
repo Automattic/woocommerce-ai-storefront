@@ -46,6 +46,35 @@ interface WC_AI_Storefront_Og_Strategy {
 	public static function mode(): string;
 
 	/**
+	 * Whether this strategy is rendering our tags for us, for THIS request.
+	 *
+	 * Must be an OBSERVATION, not a prediction. Presence of the other plugin
+	 * is not evidence that it emitted anything, and the gap is not academic:
+	 * Rank Math defines its version constant at load but publishes nothing
+	 * until its setup wizard is finished, and both Yoast and All in One SEO
+	 * ship an Open Graph switch that merchants turn off precisely when
+	 * another plugin is handling social. Answering from page type alone in
+	 * any of those states stands our own block down against a rival that
+	 * publishes nothing, and the page ships with no social tags at all —
+	 * worse than the duplication this feature exists to remove (#676 review).
+	 *
+	 * So implementations latch on their own seam actually running, and answer
+	 * true only once they have seen it. The timing allows it: every rival
+	 * emits at `wp_head:1` and WC_AI_Storefront_Meta_Tags reads this at
+	 * `wp_head:5`, so by the time the question is asked the answer is a fact.
+	 * This is the shape WC_AI_Storefront_Rival_Seo_Description already uses
+	 * for the same class of decision about the description.
+	 *
+	 * Falling back to printing our own block is the safe direction: the worst
+	 * case is the duplication that shipped before this feature, which is
+	 * survivable. Zero tags is not.
+	 *
+	 * Suppression strategies always answer false: there the other plugin's
+	 * tags are the ones being removed, so ours are the only ones left.
+	 */
+	public function has_taken_over(): bool;
+
+	/**
 	 * The detector slug this strategy answers for.
 	 *
 	 * Must match a `slug` that WC_AI_Storefront_Seo_Plugin_Detector::detect()

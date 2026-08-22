@@ -34,14 +34,17 @@ class WC_AI_Storefront_Og_Strategies {
 	private const STRATEGIES = array(
 		'seopress' => WC_AI_Storefront_Og_Strategy_Seopress::class,
 		'yoast'    => WC_AI_Storefront_Og_Strategy_Yoast::class,
+		'aioseo'   => WC_AI_Storefront_Og_Strategy_Aioseo::class,
+		'rankmath' => WC_AI_Storefront_Og_Strategy_Rankmath::class,
 	);
 
 	/**
 	 * Strategies registered for THIS request.
 	 *
-	 * Replaced wholesale on every init(), never appended to: #669 shipped a
-	 * request-scoped latch that survived between requests in a persistent
-	 * worker, and this is the same shape.
+	 * Replaced wholesale on every init(), never appended to. Static state on a
+	 * class that outlives a request is the shape #669 had to be careful about,
+	 * and WC_AI_Storefront_Rival_Seo_Description guards its own with a
+	 * `wp_head:0` reset for that reason.
 	 *
 	 * @var WC_AI_Storefront_Og_Strategy[]
 	 */
@@ -80,17 +83,25 @@ class WC_AI_Storefront_Og_Strategies {
 	/**
 	 * Whether another plugin is rendering our social tags for us this request.
 	 *
-	 * True when any registered strategy is in MODE_ENRICH. WC_AI_Storefront_Meta_Tags
-	 * asks before printing its own Open Graph and Twitter block: enrichment
-	 * that did not also stand our block down would produce two sets of tags,
-	 * which is the defect, not the fix.
+	 * True when a registered strategy both enriches AND has observed its own
+	 * seam run this request. Enrichment that did not also stand our block down
+	 * would produce two sets of tags, which is the defect rather than the fix
+	 * — but standing down for a rival that published nothing leaves the page
+	 * with no tags at all, which is worse. Both halves are required.
 	 *
 	 * Suppression strategies answer false — there the other plugin's tags are
 	 * the ones being removed, so ours are the only ones left to print.
 	 */
 	public static function emission_is_delegated(): bool {
 		foreach ( self::$registered as $strategy ) {
-			if ( WC_AI_Storefront_Og_Strategy::MODE_ENRICH === $strategy::mode() ) {
+			if ( WC_AI_Storefront_Og_Strategy::MODE_ENRICH !== $strategy::mode() ) {
+				continue;
+			}
+			// Per request, not per plugin: All in One SEO enriches on four of
+			// the five commerce page types and emits nothing at all on a
+			// product category, where standing our block down would leave the
+			// page with no social tags.
+			if ( $strategy->has_taken_over() ) {
 				return true;
 			}
 		}
@@ -104,6 +115,19 @@ class WC_AI_Storefront_Og_Strategies {
 	 */
 	public static function reset(): void {
 		self::$registered = array();
+	}
+
+	/**
+	 * Register already-built strategies. Test-only.
+	 *
+	 * has_taken_over() is an observation, so a test that needs delegation to
+	 * be true has to hand over a strategy whose seam has already run. There
+	 * is no production path that wants this: init_for_slugs() builds its own.
+	 *
+	 * @param WC_AI_Storefront_Og_Strategy[] $strategies Prepared strategies.
+	 */
+	public static function register_for_test( array $strategies ): void {
+		self::$registered = $strategies;
 	}
 
 	/**

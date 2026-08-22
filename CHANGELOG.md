@@ -9,6 +9,17 @@
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
 ### Fixed
+- **Your share previews are unaffected when another SEO plugin is installed but silent (#676).**
+  - Rank Math is active from the moment you install it, but publishes nothing until you finish its setup wizard. Yoast and All in One SEO both have a switch that turns their share tags off, which people use when another plugin is handling them.
+  - In all three cases your store checks that the other plugin actually published something before standing its own tags down, rather than assuming it did because it is installed. If it published nothing, your store publishes its own.
+  - A free product's price is published as 0.00 rather than 0, because both Rank Math and All in One SEO discard a bare zero on the way out and the price would have vanished.
+
+- **Rank Math and All in One SEO both described your product pages to social networks too (#676).**
+  - Same fix as Yoast, through each plugin's own output rather than a second set of tags. Products are labelled as products; category, shop and search pages as ordinary pages.
+  - Rank Math was already close. It gets the price on products with options, which it leaves out, and the stock wording Pinterest reads, which it never emits.
+  - All in One SEO gets price, currency and stock, and its "article" labels are removed from your product and shop pages.
+  - One thing to know about All in One SEO: it publishes no share tags at all on a product category, so on those pages your store keeps publishing its own.
+
 - **Yoast SEO and your store both described your product pages to social networks (#676).**
   - With Yoast active, your product, category and shop pages carried two sets of share tags, and Yoast's called every one of them an article. A product is not an article, and neither is a category listing.
   - Your store now corrects that inside Yoast's own output rather than publishing a second set. Products are labelled as products, and category, shop and search pages as ordinary pages.
@@ -21,7 +32,7 @@
   - Your store now stands SEOPress's social tags down on those pages and publishes its own, which carry the commerce details SEOPress does not: price, stock, and condition.
   - Everything else SEOPress does is untouched. Your titles, canonical links, robots directives, meta descriptions and structured data are all still SEOPress's.
   - Off commerce pages nothing changes. Your posts and pages are still described entirely by SEOPress.
-  - Other SEO plugins are not affected by this change yet. Yoast, Rank Math and All in One SEO still emit their own share tags alongside your store's.
+  - Your posts and pages are untouched. This applies only to product, category, shop and search pages.
 - **Sharing your Shop page or a product category showed a blank preview (#683).**
   - The preview card was set up to display a large photo, but no photo was attached to it, so social networks and messaging apps fell back to showing a plain link.
   - Your Shop page now uses its own featured image, the one on its edit screen in WordPress, and a product category uses the category image you set in WooCommerce.
