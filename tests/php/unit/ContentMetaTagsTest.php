@@ -160,13 +160,16 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		$this->assertFalse( $this->tags->should_emit() );
-	}
-
-	public function test_jetpacks_seo_description_is_suppressed_when_we_write_one(): void {
+	}   public function test_jetpacks_seo_description_is_suppressed_when_we_write_one(): void {
 		// Jetpack's SEO description is a separate module from its Open Graph
 		// and hooks wp_head at 10 regardless. "SEO Tools on, Open Graph off"
 		// is ordinary, and on it we printed a description at 5 and Jetpack
 		// printed a second at 10 (#680 review).
+		//
+		// render() first, because the filter is keyed on what we printed and
+		// wp_head:5 has run by the time Jetpack's filter fires at 10.
+		$this->assertStringContainsString( '<meta name="description"', $this->render() );
+
 		$meta = $this->tags->suppress_jetpack_description(
 			array(
 				'description' => 'Jetpack would have written this.',
@@ -178,9 +181,27 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'kept', $meta['other'], 'Only the description is ours to take.' );
 	}
 
-	public function test_jetpacks_description_is_left_alone_when_we_stand_down(): void {
+	public function test_jetpacks_description_survives_a_post_we_find_no_prose_in(): void {
+		// The gate passes and build_description() still returns '' — neither
+		// the excerpt nor the content is readable prose. Suppressing on
+		// should_emit() alone deleted a description the merchant had typed
+		// into Jetpack and printed nothing in its place (#689 review).
+		Functions\when( 'get_post_field' )->justReturn( '.  ,  -' );
+
+		$this->assertStringNotContainsString( '<meta name="description"', $this->render() );
+
+		$given = array( 'description' => 'The one the merchant wrote.' );
+
+		$this->assertSame(
+			$given,
+			$this->tags->suppress_jetpack_description( $given ),
+			'Taking a description we did not replace leaves the page with none.'
+		);
+	}   public function test_jetpacks_description_is_left_alone_when_we_stand_down(): void {
 		Functions\when( 'is_product' )->justReturn( true );
 		$given = array( 'description' => 'Jetpack\'s.' );
+
+		$this->render();
 
 		$this->assertSame( $given, $this->tags->suppress_jetpack_description( $given ) );
 	}

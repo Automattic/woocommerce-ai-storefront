@@ -40,8 +40,19 @@ class WC_AI_Storefront_Content_Meta_Tags {
 
 	/**
 	 * Soft cap on the generated description, matching the commerce emitter.
+	 */ private const DESCRIPTION_MAX = 155;
+
+	/**
+	 * Whether render() actually printed a meta description this request.
+	 *
+	 * should_emit() is not the same question. It says we are the emitter for
+	 * this page; it does not say we produced a description, and
+	 * build_description() returns '' whenever neither the excerpt nor the
+	 * content is readable prose. Suppressing Jetpack's on should_emit() alone
+	 * therefore deleted a description the merchant had written by hand and
+	 * printed nothing in its place (#689 review).
 	 */
-	private const DESCRIPTION_MAX = 155;
+	private bool $printed_description = false;
 
 	/**
 	 * Register the emitter.
@@ -62,16 +73,23 @@ class WC_AI_Storefront_Content_Meta_Tags {
 		// exclusive by should_emit(). Also after Jetpack's wp_head:1 loader,
 		// so has_action( 'wp_head', 'jetpack_og_tags' ) is answerable by now.
 		add_action( 'wp_head', array( $this, 'render' ), 5 );
-	}
-
-	/**
-	 * Drop Jetpack's meta description when we are writing one.
+	}   /**
+	 * Drop Jetpack's meta description when we have written one.
+	 *
+	 * Keyed on what render() printed rather than on should_emit(), because
+	 * the two can disagree: a post whose excerpt and content are both
+	 * unreadable passes the gate and still yields no description. The filter
+	 * fires at wp_head:10 and render() runs at 5, so the flag has settled.
+	 *
+	 * Recomputing build_description() here would not do either, because the
+	 * tag map passes through `wc_ai_storefront_content_og_tags` before it is
+	 * printed, so what reached the page is the only honest answer.
 	 *
 	 * @param mixed $meta Jetpack's tag map.
-	 * @return mixed Unchanged when we are not emitting.
+	 * @return mixed Unchanged when we printed no description of our own.
 	 */
 	public function suppress_jetpack_description( $meta ) {
-		if ( ! is_array( $meta ) || ! $this->should_emit() ) {
+		if ( ! is_array( $meta ) || ! $this->printed_description ) {
 			return $meta;
 		}
 
@@ -374,9 +392,9 @@ class WC_AI_Storefront_Content_Meta_Tags {
 			$tags['twitter:card'] = 'summary';
 		}
 
-		$description = (string) ( $tags['og:description'] ?? '' );
+		$description = (string) ( $tags['og:description'] ?? '' );      if ( '' !== $description ) {
+			$this->printed_description = true;
 
-		if ( '' !== $description ) {
 			printf(
 				'<meta name="description" content="%s" />' . "\n",
 				esc_attr( $description )
