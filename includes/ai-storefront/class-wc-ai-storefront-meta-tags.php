@@ -91,6 +91,47 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * The canonical URL for page N of an archive.
+	 *
+	 * Derived from the archive's own permalink, never from the request.
+	 * `get_pagenum_link()` builds on `remove_query_arg( 'paged' )`, which with
+	 * no URI reads `$_SERVER['REQUEST_URI']` and carries every OTHER argument
+	 * through — so `/shop/page/2/?orderby=price` published that whole string
+	 * as og:url. That is not stray traffic: `orderby` is WooCommerce's own
+	 * sorting dropdown, and `min_price`, `filter_pa_*` and `utm_*` ride along
+	 * the same way. Page 1 was always clean, because it uses the permalink,
+	 * so one page of the archive was canonical and the rest were
+	 * request-derived — and this plugin emits no `<link rel="canonical">` on
+	 * archives, which makes og:url the only self-referential claim the page
+	 * has (#682 review).
+	 *
+	 * @param string $base Unpaginated archive URL.
+	 * @param int    $page Page number, 2 or greater.
+	 */
+	private function paginated_url( string $base, int $page ): string {
+		if ( '' === $base ) {
+			return $base;
+		}
+
+		// Plain permalinks have no /page/N/ path segment to append to.
+		$structure = function_exists( 'get_option' ) ? (string) get_option( 'permalink_structure' ) : '';
+		if ( '' === $structure ) {
+			return function_exists( 'add_query_arg' ) ? (string) add_query_arg( 'paged', $page, $base ) : $base;
+		}
+
+		// `pagination_base` rather than a literal "page": WordPress lets a
+		// site rename it, and a hardcoded segment would 404 on those stores.
+		global $wp_rewrite;
+		$segment = ( isset( $wp_rewrite->pagination_base ) && '' !== $wp_rewrite->pagination_base )
+			? (string) $wp_rewrite->pagination_base
+			: 'page';
+
+		$paginated = trailingslashit( $base ) . $segment . '/' . $page;
+
+		return function_exists( 'user_trailingslashit' ) ? (string) user_trailingslashit( $paginated ) : $paginated;
+	}
+
+	/**
 	 * Append core's "Page N" suffix, using the merchant's own separator.
 	 *
 	 * @param string $title Base title.
@@ -105,15 +146,16 @@ class WC_AI_Storefront_Meta_Tags {
 		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's own `document_title_separator` filter, so a merchant's separator customization applies here too.
 		$sep = (string) apply_filters( 'document_title_separator', '-' );
 
-		// Known divergence, measured, and not worth chasing: a plugin that
-		// short-circuits `pre_get_document_title` composes the whole <title>
-		// itself, so core's separator filter never runs and this call gets
-		// the unfiltered default. Jetpack SEO does exactly that
-		// (modules/seo-tools/class-jetpack-seo.php), which is why a Jetpack
-		// store renders `Shop – Page 2 – Store` in the title beside our
-		// `Shop - Page 2` here. The page NUMBER agrees, which is what #682
-		// was about; the dash does not. prepare_authored_title() has carried
-		// the same divergence since #668.
+		// Known divergence, measured, and not worth chasing. Core attaches
+		// `wptexturize` to the `document_title` filter
+		// (wp-includes/default-filters.php:163), and its dash rule rewrites a
+		// space-wrapped hyphen to an en dash. So a stock store with no
+		// plugins renders `Shop – Page 2 – Store` in the tab beside our
+		// `Shop - Page 2` here: same separator, texturized there and not
+		// here, because an Open Graph attribute never passes through that
+		// filter. The page NUMBER agrees, which is what #682 was about.
+		// (The two also differ in that <title> carries the site name and
+		// og:title does not, by design — og:site_name carries it.)
 		//
 		// Not passed through number_format_i18n(), matching the <title>
 		// suffix this mirrors — see prepare_authored_title() for why core's
@@ -139,26 +181,44 @@ class WC_AI_Storefront_Meta_Tags {
 	 * yet.
 	 */
 	private function generated_shop_description(): string {
-		$site = (string) get_bloginfo( 'name' );
-		if ( '' === $site ) {
+		$site  = (string) get_bloginfo( 'name' );
+		$names = $this->top_category_names();
+		$list  = array() === $names ? '' : $this->list_in_words( $names );
+
+		// Four cases, not two. Bailing on a missing site name discarded the
+		// category list we already had and put the shop archive straight back
+		// to shipping no description — the defect this exists to fix, on the
+		// page it fixes it for (#682 review). The category branch above makes
+		// the same call the same way: name what you can, drop what you have
+		// not got.
+		if ( '' !== $list && '' !== $site ) {
+			$description = sprintf(
+				/* translators: 1: Comma-separated product category names. 2: Store name. */
+				__( 'Shop %1$s at %2$s.', 'woocommerce-ai-storefront' ),
+				$list,
+				$site
+			);
+		} elseif ( '' !== $list || '' !== $site ) {
+			$description = sprintf(
+				/* translators: %s: Product category names, or the store name when there are none. */
+				__( 'Shop %s.', 'woocommerce-ai-storefront' ),
+				'' !== $list ? $list : $site
+			);
+		} else {
+			// No name and no categories. Nothing truthful to say, and worth a
+			// breadcrumb: a store reaching here has neither a site title nor
+			// a single categorised product.
+			WC_AI_Storefront_Logger::debug(
+				'Meta description: the shop archive has no authored description, no site title and no product categories. Emitting none.'
+			);
+
 			return '';
 		}
 
-		$names = $this->top_category_names();
-		if ( array() === $names ) {
-			return sprintf(
-				/* translators: %s: Store name. */
-				__( 'Shop %s.', 'woocommerce-ai-storefront' ),
-				$site
-			);
-		}
-
-		return sprintf(
-			/* translators: 1: Comma-separated product category names. 2: Store name. */
-			__( 'Shop %1$s at %2$s.', 'woocommerce-ai-storefront' ),
-			$this->list_in_words( $names ),
-			$site
-		);
+		// Cleaned and truncated like every sibling fallback. This is also the
+		// path that builds the LONGEST strings — three category names plus
+		// the store name — so it is the one most likely to exceed the limit.
+		return $this->truncate( $this->clean_text( $description ), self::DESCRIPTION_MAX );
 	}
 
 	/**
@@ -167,12 +227,23 @@ class WC_AI_Storefront_Meta_Tags {
 	 * @return string[]
 	 */
 	private function top_category_names(): array {
-		if ( ! class_exists( 'WC_AI_Storefront_JsonLd' ) ) {
-			return array();
-		}
-
+		// No class_exists() guard: WC_AI_Storefront_JsonLd is in this
+		// plugin's own classmap, so class_exists() would autoload it and a
+		// missing file would fatal inside the guard rather than returning
+		// false. A store running this line has an intact plugin directory by
+		// construction — the same autoloader loaded this class (#682 review).
 		$summary = ( new WC_AI_Storefront_JsonLd() )->get_catalog_summary();
 		if ( ! is_array( $summary ) ) {
+			// An empty catalogue returns array(), not this. A non-array means
+			// the cached value has been mangled — a persistent object cache,
+			// or a `pre_transient_*` filter — and the same read backs
+			// llms.txt's Catalog section and the JSON-LD knowsAbout block, so
+			// all three degrade together with no other signal.
+			WC_AI_Storefront_Logger::debug(
+				'Meta description: catalog summary cache returned %s, not an array. llms.txt and knowsAbout read the same value.',
+				get_debug_type( $summary )
+			);
+
 			return array();
 		}
 
@@ -190,11 +261,22 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * Join names the way a person would read them aloud.
 	 *
-	 * @param string[] $names Two or more names, or one.
+	 * @param string[] $names One or more names; an empty array yields ''.
 	 */
 	private function list_in_words( array $names ): string {
 		if ( count( $names ) < 2 ) {
 			return (string) ( $names[0] ?? '' );
+		}
+
+		// wp_sprintf( '%l' ) rather than our own join. Core's wp_sprintf_l()
+		// exposes the separators as three separately translatable strings —
+		// `between`, `between_last_two`, `between_only_two` — plus a
+		// `wp_sprintf_l` filter. A hardcoded ', ' cannot reach a locale that
+		// joins with a different character, and the separator sitting outside
+		// the translatable string put it beyond a translator's reach
+		// entirely (#682 review).
+		if ( function_exists( 'wp_sprintf' ) ) {
+			return (string) wp_sprintf( '%l', $names );
 		}
 
 		$last = array_pop( $names );
@@ -287,15 +369,16 @@ class WC_AI_Storefront_Meta_Tags {
 		foreach ( $candidates as $raw ) {
 			$raw  = (string) $raw;
 			$text = $this->clean_text( $raw );
-			if ( '' !== $text ) {
+			if ( self::is_readable_prose( $text ) ) {
 				return $this->truncate( $text, self::DESCRIPTION_MAX );
 			}
 			if ( '' !== trim( $raw ) ) {
-				// Merchant content existed and we discarded it: markup or
-				// shortcodes with no readable prose. Worth a breadcrumb when
-				// a merchant asks why their copy is not in the SERP snippet.
+				// Merchant content existed and we discarded it: markup,
+				// shortcodes or whitespace with no readable prose. Worth a
+				// breadcrumb when a merchant asks why their copy is not in
+				// the SERP snippet.
 				WC_AI_Storefront_Logger::debug(
-					'meta description candidate had content but cleaned to empty; trying the next one'
+					'meta description candidate had content but no readable prose; trying the next one'
 				);
 			}
 		}
@@ -303,9 +386,61 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * Whether cleaned text is worth publishing as a description.
+	 *
+	 * Not the same question as "is it non-empty", and the difference ships.
+	 * clean_text() strips tags and collapses ASCII whitespace, but a
+	 * non-breaking space is neither: `&nbsp;` survives as six literal bytes,
+	 * a raw U+00A0 as two, and `trim()`'s default charlist does not include
+	 * either. So the block editor's own empty paragraph — open the Shop page,
+	 * press Enter, leave — cleans to `&nbsp;` and reads as a usable
+	 * description.
+	 *
+	 * strip_shortcodes() has the same shape of hole: it intersects against
+	 * the shortcodes registered AT THAT MOMENT, so a tag left behind by a
+	 * deactivated plugin passes through verbatim and `[some_slider id="3"]`
+	 * ships as the SERP snippet.
+	 *
+	 * Both cases cost more than the tag they produce, because the candidate
+	 * chain stops at the first "usable" entry: a stray non-breaking space on
+	 * the Shop page suppressed the merchant's own tagline AND the generated
+	 * fallback beneath it (#682 review).
+	 *
+	 * The test is one letter or digit, in any script.
+	 *
+	 * @param string $text Cleaned candidate text.
+	 */
+	private static function is_readable_prose( string $text ): bool {
+		if ( '' === $text ) {
+			return false;
+		}
+
+		return 1 === preg_match( '/[\p{L}\p{N}]/u', $text );
+	}
+
+	/**
 	 * Strip shortcodes + HTML and collapse whitespace.
 	 */
 	private function clean_text( string $raw ): string {
+		// Three passes that have to happen before the ASCII whitespace
+		// collapse below, each closing a way for non-prose to read as
+		// content (#682 review).
+		//
+		// 1. Decode entities. The block editor stores its own empty
+		//    paragraph as the literal `&nbsp;`, six ASCII bytes that survive
+		//    tag-stripping and whitespace-collapsing and even carry letters.
+		$raw = html_entity_decode( $raw, ENT_QUOTES | ENT_HTML5, 'UTF-8' );
+
+		// 2. Remove shortcode-shaped tokens. strip_shortcodes() intersects
+		//    against the shortcodes registered AT THAT MOMENT, so a tag left
+		//    behind by a deactivated plugin passes through verbatim and
+		//    `[some_slider id="3"]` ships as the SERP snippet.
+		$raw = (string) preg_replace( '/\[\/?[a-zA-Z0-9_-]+(?:[^\]]*)?\]/', ' ', $raw );
+
+		// 3. Fold Unicode whitespace. `\s` without the `u` flag does not
+		//    match U+00A0, U+200B or U+FEFF, and neither does trim()'s
+		//    default charlist, so they survive every other step.
+		$raw = (string) preg_replace( '/[\x{00A0}\x{200B}\x{FEFF}]+/u', ' ', $raw );
 		$raw = strip_shortcodes( $raw );
 		$raw = wp_strip_all_tags( $raw );
 		return trim( (string) preg_replace( '/\s+/', ' ', $raw ) );
@@ -584,38 +719,14 @@ class WC_AI_Storefront_Meta_Tags {
 		// string plus a separator from `document_title_separator`.) (#668)
 		$authored = esc_html( $authored );
 
-		// Both query vars, like core: `wp_get_document_title()` reads the
-		// `$page` and `$paged` globals and suffixes on `max( $paged, $page )`
-		// (wp-includes/general-template.php, `global $page, $paged;` then
-		// "Add a page number if necessary"). Which of the two carries the
-		// number depends on the request — on a shop-as-front-page it is
-		// `page`, so reading `paged` alone would make `/`, `/page/2/` and
-		// `/page/3/` all emit the same title (#668).
-		$paged_raw = get_query_var( 'paged' );
-		$paged     = $paged_raw ? (int) $paged_raw : 1;
-		$page_raw  = get_query_var( 'page' );
-		$page      = $page_raw ? (int) $page_raw : 1;
-		if ( $paged >= 2 || $page >= 2 ) {
-			/** This filter is documented in wp-includes/general-template.php */
-			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's own `document_title_separator` filter, so a merchant's separator customization (e.g. via a theme) applies here too, the same way it would to core's own page-number suffix.
-			$sep = (string) apply_filters( 'document_title_separator', '-' );
-			// The number is deliberately NOT passed through
-			// `number_format_i18n()`. Core is inconsistent here:
-			// `paginate_links()` (general-template.php:4787, :4804) and
-			// `blocks/breadcrumbs.php:249` both wrap, and breadcrumbs uses
-			// this same `Page %s` string, but `wp_get_document_title()`
-			// (general-template.php:1254) does not. This suffix extends
-			// that last one, on the same pages, so wrapping would give a
-			// locale with non-Western digits one numeral system in the
-			// title of a paginated shop page carrying an authored title
-			// and another in every other paginated title on the site.
-			// Inheriting core's inconsistency beats creating a new one.
-			// If core:1254 is ever brought in line, follow it. (#674 review)
-			$authored .= ' ' . $sep . ' ' . sprintf(
-				/* translators: %s: Page number. */
-				__( 'Page %s', 'woocommerce-ai-storefront' ),
-				max( $paged, $page )
-			);
+		// Same two helpers the archive path uses. This block used to be a
+		// second implementation of both — one that read `paged` without the
+		// function_exists() guard, and a second copy of the separator
+		// comment and its phpcs ignore. The .pot showed the cost: `Page %s`
+		// carried two source references for one string (#682 review).
+		$page = $this->current_page_number();
+		if ( $page >= 2 ) {
+			$authored = $this->with_page_suffix( $authored, $page );
 		}
 
 		return $authored;
@@ -1104,6 +1215,16 @@ class WC_AI_Storefront_Meta_Tags {
 				if ( is_string( $link ) && '' !== $link ) {
 					$og['og:url'] = $link;
 				}
+
+				// Same treatment as the shop archive below: without it every
+				// page of a category listing shares one social identity, and
+				// og:title disagrees with a <title> that does carry the page
+				// number (#682 review).
+				$page = $this->current_page_number();
+				if ( $page >= 2 ) {
+					$og['og:title'] = $this->with_page_suffix( (string) $og['og:title'], $page );
+					$og['og:url']   = $this->paginated_url( (string) $og['og:url'], $page );
+				}
 			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
 			$is_front_page = function_exists( 'is_front_page' ) && is_front_page();
@@ -1122,16 +1243,12 @@ class WC_AI_Storefront_Meta_Tags {
 			// Paginate both, or every page of the shop shares one social
 			// identity: share page 2 and the preview claims to be page 1
 			// (#682). It also left og:title disagreeing with the <title>,
-			// which has carried a "Page N" suffix since #668.
+			// which core has suffixed with "Page N" since 4.4 and which #668
+			// restored on our own authored-title short-circuit path.
 			$page = $this->current_page_number();
 			if ( $page >= 2 ) {
 				$og['og:title'] = $this->with_page_suffix( (string) $og['og:title'], $page );
-				if ( function_exists( 'get_pagenum_link' ) ) {
-					$paged_url = get_pagenum_link( $page );
-					if ( is_string( $paged_url ) && '' !== $paged_url ) {
-						$og['og:url'] = $paged_url;
-					}
-				}
+				$og['og:url']   = $this->paginated_url( (string) $og['og:url'], $page );
 			}
 		}
 

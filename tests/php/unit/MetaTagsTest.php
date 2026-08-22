@@ -1764,15 +1764,35 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
 		Functions\when( 'get_post_meta' )->justReturn( '' );
-		Functions\when( 'get_option' )->justReturn( '' );
+		// Pretty permalinks, which is what WooCommerce effectively requires.
+		Functions\when( 'get_option' )->alias(
+			static function ( $name ) {
+				return 'permalink_structure' === $name ? '/%postname%/' : '';
+			}
+		);
+		Functions\when( 'trailingslashit' )->alias(
+			static function ( $url ) {
+				return rtrim( (string) $url, '/\\' ) . '/';
+			}
+		);
+		Functions\when( 'user_trailingslashit' )->alias(
+			static function ( $url ) {
+				// Mirrors core for a trailing-slashed structure like
+				// '/%postname%/', which is what get_option() answers above.
+				return rtrim( (string) $url, '/' ) . '/';
+			}
+		);
+		Functions\when( 'wp_sprintf' )->alias(
+			static function ( $pattern, $args ) {
+				// Stands in for core's %l list join.
+				$args = (array) $args;
+				$last = array_pop( $args );
+				return array() === $args ? (string) $last : implode( ', ', $args ) . ' and ' . $last;
+			}
+		);
 		Functions\when( 'get_query_var' )->alias(
 			static function ( $var ) use ( $paged ) {
 				return 'paged' === $var ? $paged : '';
-			}
-		);
-		Functions\when( 'get_pagenum_link' )->alias(
-			static function ( $n ) {
-				return 1 === (int) $n ? 'https://shop.test/shop/' : 'https://shop.test/shop/page/' . (int) $n . '/';
 			}
 		);
 	}
@@ -1807,8 +1827,10 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'Saltwarp', $description );
 	}
 
-	public function test_an_authored_shop_description_still_wins(): void {
-		// #668 settled that authored intent beats anything generated.
+	public function test_shop_page_content_beats_the_generated_terminus(): void {
+		// The middle tier, not the authored-SEO one: that path runs through
+		// WC_AI_Storefront_Authored_SEO and needs Jetpack doubles this test
+		// does not set up.
 		$this->stub_bare_shop();
 		Functions\when( 'get_transient' )->justReturn( array( array( 'name' => 'Hoodies' ) ) );
 		Functions\when( 'get_post_field' )->justReturn( 'Everything we make, in one place.' );
@@ -1861,6 +1883,148 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertSame( 'https://shop.test/shop/page/3/', $og['og:url'] );
 		$this->assertStringContainsString( 'Page 3', $og['og:title'] );
+	}
+
+	public function test_paginated_og_url_is_built_from_the_permalink_not_the_request(): void {
+		// get_pagenum_link() derives from $_SERVER['REQUEST_URI'] and carries
+		// every argument except `paged` through, so /shop/page/2/?orderby=price
+		// published that whole string as the canonical social URL. Page 1 was
+		// always clean because it uses the permalink, so one page of the
+		// archive was canonical and the rest were request-derived — and we
+		// emit no <link rel="canonical"> on archives (#682 review).
+		$this->stub_bare_shop( 2 );
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		// A request carrying WooCommerce's own sorting dropdown.
+		$_SERVER['REQUEST_URI'] = '/shop/page/2/?orderby=price&utm_source=x';
+
+		$og = $this->meta->build_archive_og_tags();
+
+		unset( $_SERVER['REQUEST_URI'] );
+		$this->assertSame( 'https://shop.test/shop/page/2/', $og['og:url'] );
+	}
+
+	public function test_a_plain_permalink_store_paginates_with_a_query_arg(): void {
+		// No /page/N/ path segment to append to.
+		$this->stub_bare_shop( 2 );
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'add_query_arg' )->alias(
+			static function ( $key, $value, $url ) {
+				return $url . '?' . $key . '=' . $value;
+			}
+		);
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/shop/?paged=2', $og['og:url'] );
+	}
+
+	public function test_a_paginated_category_is_paginated_too(): void {
+		// The same defect one branch over: category listings shared one
+		// social identity across every page (#682 review).
+		$this->stub_belts_category();
+		Functions\when( 'get_query_var' )->alias(
+			static function ( $var ) {
+				return 'paged' === $var ? 2 : '';
+			}
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $name ) {
+				return 'permalink_structure' === $name ? '/%postname%/' : '';
+			}
+		);
+		Functions\when( 'trailingslashit' )->alias(
+			static function ( $url ) {
+				return rtrim( (string) $url, '/' ) . '/';
+			}
+		);
+		Functions\when( 'user_trailingslashit' )->alias(
+			static function ( $url ) {
+				return rtrim( (string) $url, '/' ) . '/';
+			}
+		);
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/product-category/belts/page/2/', $og['og:url'] );
+		$this->assertStringContainsString( 'Page 2', $og['og:title'] );
+	}
+
+	public function test_a_shop_page_holding_only_a_nonbreaking_space_falls_through(): void {
+		// The block editor's own empty paragraph. It cleaned to a non-empty
+		// `&nbsp;`, which stopped the candidate chain — suppressing the
+		// merchant's tagline AND the generated terminus, and shipping
+		// content="&nbsp;" as the description (#682 review).
+		$this->stub_bare_shop();
+		Functions\when( 'get_post_field' )->justReturn( '<!-- wp:paragraph --><p>&nbsp;</p><!-- /wp:paragraph -->' );
+		Functions\when( 'get_transient' )->justReturn( array( array( 'name' => 'Hoodies' ) ) );
+
+		$description = $this->meta->build_archive_description();
+
+		$this->assertStringNotContainsString( 'nbsp', $description );
+		$this->assertStringContainsString( 'Hoodies', $description );
+	}
+
+	public function test_a_shop_page_of_pure_punctuation_falls_through(): void {
+		// clean_text() handles entities, shortcode remnants and Unicode
+		// whitespace, but a bullet or a rule is none of those and is not
+		// prose either. is_readable_prose() is the gate for that.
+		$this->stub_bare_shop();
+		Functions\when( 'get_post_field' )->justReturn( '••• --- •••' );
+		Functions\when( 'get_transient' )->justReturn( array( array( 'name' => 'Hoodies' ) ) );
+
+		$description = $this->meta->build_archive_description();
+
+		$this->assertStringNotContainsString( '•', $description );
+		$this->assertStringContainsString( 'Hoodies', $description );
+	}
+
+	public function test_a_shortcode_left_by_a_dead_plugin_falls_through(): void {
+		// strip_shortcodes() only removes tags registered at that moment, so
+		// a remnant shipped verbatim as the SERP snippet.
+		$this->stub_bare_shop();
+		Functions\when( 'get_post_field' )->justReturn( '[some_slider id="3"]' );
+		Functions\when( 'get_transient' )->justReturn( array( array( 'name' => 'Hoodies' ) ) );
+
+		$description = $this->meta->build_archive_description();
+
+		$this->assertStringNotContainsString( 'some_slider', $description );
+		$this->assertStringContainsString( 'Hoodies', $description );
+	}
+
+	public function test_a_store_with_no_title_still_names_its_categories(): void {
+		// Bailing here discarded the category list we already had and put the
+		// shop archive back to shipping no description at all (#682 review).
+		$this->stub_bare_shop();
+		Functions\when( 'get_bloginfo' )->justReturn( '' );
+		Functions\when( 'get_transient' )->justReturn(
+			array( array( 'name' => 'Hoodies' ), array( 'name' => 'Tees' ) )
+		);
+
+		$this->assertStringContainsString( 'Hoodies', $this->meta->build_archive_description() );
+	}
+
+	public function test_the_generated_description_is_truncated(): void {
+		// The longest string this class builds: three category names plus the
+		// store name. Every sibling fallback honours the limit; this one did
+		// not (#682 review).
+		$this->stub_bare_shop();
+		Functions\when( 'get_transient' )->justReturn(
+			array(
+				array( 'name' => str_repeat( 'Home, Furniture and DIY ', 6 ) ),
+				array( 'name' => str_repeat( 'Sporting Goods ', 6 ) ),
+				array( 'name' => str_repeat( 'Clothing and Shoes ', 6 ) ),
+			)
+		);
+
+		$this->assertLessThanOrEqual( 155, strlen( $this->meta->build_archive_description() ) );
 	}
 
 	public function test_an_unpaginated_shop_carries_no_page_suffix(): void {
