@@ -114,6 +114,35 @@ class DocsMapTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * The workflow's doc values as written, keyed by path.
+	 *
+	 * workflow_map() reduces these to basenames so the two sources compare
+	 * despite writing docs differently. That reduction must not leak into the
+	 * existence check: `docs/not-a-real-directory/ARCHITECTURE.md` has a
+	 * basename that exists elsewhere, so a basename check calls a path real
+	 * when the workflow would hand the prompt a file nothing can open
+	 * (#691 review).
+	 *
+	 * @return array<string,string[]> Repo-relative paths.
+	 */
+	private static function workflow_doc_paths(): array {
+		$yaml = (string) file_get_contents( self::root() . '/.github/workflows/docs-followup.yml' );
+		$map  = array();
+
+		if ( ! preg_match_all( '/^\s*\["([^"]+)"\]="([^"]*)"/m', $yaml, $matches, PREG_SET_ORDER ) ) {
+			return $map;
+		}
+
+		foreach ( $matches as $m ) {
+			$map[ self::normalise_key( $m[1] ) ] = array_values(
+				array_filter( array_map( 'trim', explode( ' ', $m[2] ) ), 'strlen' )
+			);
+		}
+
+		return $map;
+	}
+
+	/**
 	 * One spelling for a path the two files write differently.
 	 *
 	 * AGENTS.md marks directories `dir/**`; the workflow writes `dir/`.
@@ -192,13 +221,25 @@ class DocsMapTest extends \PHPUnit\Framework\TestCase {
 
 		foreach ( array_keys( self::workflow_map() ) as $path ) {
 			$full = self::root() . '/' . $path;
-			if ( file_exists( $full ) ) {
+
+			// is_file(), not file_exists(): the latter is true for a
+			// directory too, which made the empty-directory branch below
+			// unreachable and let a mapped directory with nothing in it pass
+			// as real (#691 review).
+			if ( is_file( $full ) ) {
 				continue;
 			}
-			// A directory key: real if anything lives under it.
-			if ( is_dir( $full ) && array() !== (array) glob( $full . '/*' ) ) {
+
+			if ( is_dir( $full ) ) {
+				// A directory key matches by prefix, so an empty one matches
+				// no changed file and contributes no docs — the exact silent
+				// failure this whole test exists to catch.
+				if ( array() === (array) glob( $full . '/*' ) ) {
+					$stale[] = $path . '  (directory exists but is empty)';
+				}
 				continue;
 			}
+
 			$stale[] = $path;
 		}
 
@@ -211,12 +252,11 @@ class DocsMapTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_every_referenced_doc_exists(): void {
-		$known   = self::docs_by_basename();
 		$missing = array();
 
-		foreach ( self::workflow_map() as $path => $docs ) {
+		foreach ( self::workflow_doc_paths() as $path => $docs ) {
 			foreach ( $docs as $doc ) {
-				if ( ! isset( $known[ $doc ] ) ) {
+				if ( ! is_file( self::root() . '/' . $doc ) ) {
 					$missing[] = "$path -> $doc";
 				}
 			}
@@ -272,18 +312,40 @@ class DocsMapTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
+	 * Files exempt from coverage, each for its own reason.
+	 *
+	 * Named individually rather than matched by a blanket rule, so adding one
+	 * is a decision someone has to write down. `includes/autoload.php` is a
+	 * generated classmap with no behaviour to document; `phpstan-bootstrap.php`
+	 * is analysis scaffolding that never runs inside WordPress. The vendored
+	 * `includes/lib/` tree is excluded by prefix below, being third-party code
+	 * we do not own.
+	 *
+	 * @var string[]
+	 */
+	private const UNMAPPED_BY_DESIGN = array(
+		'includes/autoload.php',
+		'phpstan-bootstrap.php',
+	);
+
+	/**
 	 * Every PHP file the map is expected to cover.
 	 *
-	 * Excluded, each for its own reason rather than by a blanket rule:
-	 * `includes/autoload.php` is a classmap with no behaviour to document,
-	 * `includes/lib/` is vendored third-party code we do not own, and the
-	 * root bootstrap plus `uninstall.php` are already mapped by name.
+	 * The repo root is walked as well as `includes/`. Scanning `includes/`
+	 * alone left `uninstall.php` mapped but never coverage-checked: its rows
+	 * could be deleted from both sources and every test here would still pass,
+	 * because the symmetric tests only compare the two lists to each other
+	 * (#691 review).
 	 *
 	 * @return string[] Repo-relative paths.
 	 */
 	private static function plugin_php_files(): array {
 		$root  = self::root();
 		$files = array();
+
+		foreach ( (array) glob( $root . '/*.php' ) as $path ) {
+			$files[] = basename( (string) $path );
+		}
 
 		$iterator = new \RecursiveIteratorIterator(
 			new \RecursiveDirectoryIterator( $root . '/includes', \FilesystemIterator::SKIP_DOTS )
@@ -294,12 +356,16 @@ class DocsMapTest extends \PHPUnit\Framework\TestCase {
 			if ( ! str_ends_with( $path, '.php' ) ) {
 				continue;
 			}
-			$relative = ltrim( str_replace( $root, '', $path ), '/' );
-			if ( 'includes/autoload.php' === $relative || str_starts_with( $relative, 'includes/lib/' ) ) {
-				continue;
-			}
-			$files[] = $relative;
+			$files[] = ltrim( str_replace( $root, '', $path ), '/' );
 		}
+
+		$files = array_filter(
+			$files,
+			static function ( $relative ) {
+				return ! in_array( $relative, self::UNMAPPED_BY_DESIGN, true )
+					&& ! str_starts_with( $relative, 'includes/lib/' );
+			}
+		);
 
 		sort( $files );
 

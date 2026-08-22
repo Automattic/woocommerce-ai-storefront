@@ -194,7 +194,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-llms-txt.php` | ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-jsonld.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md, JSON-LD-SCHEMA.md |
 | `includes/ai-storefront/class-wc-ai-storefront-product-facts.php` | ARCHITECTURE.md |
-| `includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php` | ARCHITECTURE.md, DATA-MODEL.md, HOOKS.md, USER-GUIDE.md |
+| `includes/ai-storefront/class-wc-ai-storefront-attribute-seeder.php` | ARCHITECTURE.md, DATA-MODEL.md, HOOKS.md, JSON-LD-SCHEMA.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-products-feed.php` | API-REFERENCE.md, ARCHITECTURE.md, DATA-MODEL.md, KNOWN-GAPS.md, HOOKS.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-handling-time.php` | JSON-LD-SCHEMA.md, USER-GUIDE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-shipping-policy.php` | ARCHITECTURE.md, JSON-LD-SCHEMA.md, SCHEMA-ORG-COVERAGE.md |
@@ -225,6 +225,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/admin/class-wc-ai-storefront-product-meta-box.php` | DATA-MODEL.md, USER-GUIDE.md |
 | `includes/class-wc-ai-storefront.php` | DATA-MODEL.md, ARCHITECTURE.md |
 | `includes/class-wc-ai-storefront-updater.php` | ARCHITECTURE.md, HOOKS.md, USER-GUIDE.md |
+| `woocommerce-ai-storefront.php` | ARCHITECTURE.md, RELEASE.md |
 | `uninstall.php` | DATA-MODEL.md |
 | `client/settings/ai-storefront/**` | UI-CONVENTIONS.md, USER-GUIDE.md |
 | `client/data/ai-storefront/**` | UI-CONVENTIONS.md |
