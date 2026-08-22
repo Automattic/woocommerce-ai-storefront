@@ -6,15 +6,28 @@
  * One SEO, SEOPress) that emit their own human-SERP <head> metadata.
  * Rank Math, All in One SEO, and the paid Yoast WooCommerce SEO addon
  * also emit their own WooCommerce Product schema; free Yoast core and
- * SEOPress do not. Used ONLY by the migration nudge
- * ({@see WC_AI_Storefront_Schema_Conflict_Notice}) to tell the merchant
- * they can deactivate the other plugin — it does NOT gate metadata
- * emission (we always emit on commerce pages; see
- * {@see WC_AI_Storefront_Meta_Tags::should_emit()}).
+ * SEOPress do not.
+ *
+ * Two consumers, wanting different things from the same answer:
+ *
+ * - {@see WC_AI_Storefront_Schema_Conflict_Notice}, the migration nudge that
+ *   tells the merchant they could deactivate the other plugin.
+ * - {@see WC_AI_Storefront_Og_Strategies}, which picks the Open Graph
+ *   coexistence strategy for whichever plugin is present (#676).
  *
  * Presence-based (not option-reading) on purpose: reading each plugin's
  * own "emit schema" toggle would couple us to version-fragile option keys.
- * A false positive here is cheap — a dismissible notice, no output change.
+ *
+ * A false positive is cheap for the notice — it is dismissible and changes
+ * no output. It is NOT cheap for the strategies, and that difference is
+ * load-bearing. Presence does not mean the other plugin is emitting: Rank
+ * Math defines its version constant at load but publishes nothing until its
+ * setup wizard is finished, and both Yoast and All in One SEO ship an Open
+ * Graph switch that merchants turn off precisely when another plugin is
+ * handling social. So presence selects a strategy and nothing more. Whether
+ * we stand our own tags down is decided separately, from observing that the
+ * other plugin actually emitted this request; see
+ * {@see WC_AI_Storefront_Og_Strategies::emission_is_delegated()}.
  *
  * @package WooCommerce_AI_Storefront
  */

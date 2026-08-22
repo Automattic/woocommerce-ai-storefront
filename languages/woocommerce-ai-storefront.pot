@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-21T23:41:14+00:00\n"
+"POT-Creation-Date: 2026-08-22T02:01:18+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -160,70 +160,70 @@ msgid "Products"
 msgstr ""
 
 #. translators: 1: product name, 2: store name.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:97
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:116
 #, php-format
 msgid "%1$s at %2$s."
 msgstr ""
 
 #. translators: 1: product category name, 2: store name.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:205
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:224
 #, php-format
 msgid "Shop %1$s at %2$s."
 msgstr ""
 
 #. translators: %s: product category name.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:211
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:230
 #, php-format
 msgid "Shop %s."
 msgstr ""
 
 #. translators: %s: Page number.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:445
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:464
 #, php-format
 msgid "Page %s"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:726
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:745
 msgid "Price"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:735
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:754
 msgid "Availability"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:760
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:779
 msgid "In stock"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:761
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:780
 msgid "Out of stock"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:762
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:781
 msgid "Available on backorder"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:49
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:62
 msgid "Yoast WooCommerce SEO"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:50
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:63
 msgid "Yoast SEO"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:57
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:70
 msgid "Rank Math SEO"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:64
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:77
 msgid "All in One SEO"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:71
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:84
 msgid "SEOPress"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:82
+#: includes/ai-storefront/class-wc-ai-storefront-seo-plugin-detector.php:95
 msgid "Jetpack"
 msgstr ""
 
@@ -816,17 +816,17 @@ msgstr ""
 msgid "Line item could not be processed."
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:580
-#: includes/class-wc-ai-storefront.php:623
+#: includes/class-wc-ai-storefront.php:588
+#: includes/class-wc-ai-storefront.php:631
 msgid "Woo AI Storefront"
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:585
+#: includes/class-wc-ai-storefront.php:593
 #: client/settings/ai-storefront/settings-page.js:449
 msgid "AI Storefront"
 msgstr ""
 
-#: includes/class-wc-ai-storefront.php:607
+#: includes/class-wc-ai-storefront.php:615
 msgid "Settings"
 msgstr ""
 

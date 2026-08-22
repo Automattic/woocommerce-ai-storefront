@@ -230,6 +230,14 @@ class WC_AI_Storefront {
 		$meta_tags = new WC_AI_Storefront_Meta_Tags();
 		$meta_tags->init();
 
+		// One set of social tags per page, whichever SEO plugin is active
+		// (#676). Selected by detector slug, so a plugin we have not measured
+		// is left alone. Shares Meta_Tags' gate rather than re-deriving it,
+		// and specifically will_emit_open_graph() rather than should_emit():
+		// a strategy must stand down on exactly the pages where we PRINT our
+		// own tags, which excludes product search.
+		WC_AI_Storefront_Og_Strategies::init( array( $meta_tags, 'will_emit_open_graph' ) );
+
 		$robots = new WC_AI_Storefront_Robots();
 		$robots->init();
 
