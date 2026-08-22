@@ -71,6 +71,143 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * The page number of the current request, or 1.
+	 *
+	 * Both query vars, like core: `wp_get_document_title()` reads `$paged`
+	 * and `$page` and suffixes on `max()` of the two. Which one carries the
+	 * number depends on the request — on a shop-as-front-page it is `page`,
+	 * so reading `paged` alone makes `/`, `/page/2/` and `/page/3/` all
+	 * answer 1 (#668).
+	 */
+	private function current_page_number(): int {
+		if ( ! function_exists( 'get_query_var' ) ) {
+			return 1;
+		}
+
+		$paged_raw = get_query_var( 'paged' );
+		$page_raw  = get_query_var( 'page' );
+
+		return max( 1, (int) $paged_raw, (int) $page_raw );
+	}
+
+	/**
+	 * Append core's "Page N" suffix, using the merchant's own separator.
+	 *
+	 * @param string $title Base title.
+	 * @param int    $page  Page number, 2 or greater.
+	 */
+	private function with_page_suffix( string $title, int $page ): string {
+		if ( '' === $title ) {
+			return $title;
+		}
+
+		/** This filter is documented in wp-includes/general-template.php */
+		// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Intentionally re-invoking WP core's own `document_title_separator` filter, so a merchant's separator customization applies here too.
+		$sep = (string) apply_filters( 'document_title_separator', '-' );
+
+		// Known divergence, measured, and not worth chasing: a plugin that
+		// short-circuits `pre_get_document_title` composes the whole <title>
+		// itself, so core's separator filter never runs and this call gets
+		// the unfiltered default. Jetpack SEO does exactly that
+		// (modules/seo-tools/class-jetpack-seo.php), which is why a Jetpack
+		// store renders `Shop – Page 2 – Store` in the title beside our
+		// `Shop - Page 2` here. The page NUMBER agrees, which is what #682
+		// was about; the dash does not. prepare_authored_title() has carried
+		// the same divergence since #668.
+		//
+		// Not passed through number_format_i18n(), matching the <title>
+		// suffix this mirrors — see prepare_authored_title() for why core's
+		// own inconsistency is inherited rather than corrected here.
+		return $title . ' ' . $sep . ' ' . sprintf(
+			/* translators: %s: Page number. */
+			__( 'Page %s', 'woocommerce-ai-storefront' ),
+			$page
+		);
+	}
+
+	/**
+	 * Last-resort description for the shop archive.
+	 *
+	 * Names what the store sells rather than repeating the store name, which
+	 * the title already carries. The category list comes from the same cached
+	 * catalog summary that feeds llms.txt and the JSON-LD `knowsAbout` block,
+	 * so the three surfaces cannot describe the catalogue differently, and
+	 * reading it costs a transient rather than a query.
+	 *
+	 * Falls back to naming the store when the catalogue has no categories —
+	 * a store selling only uncategorised products, or one with nothing in it
+	 * yet.
+	 */
+	private function generated_shop_description(): string {
+		$site = (string) get_bloginfo( 'name' );
+		if ( '' === $site ) {
+			return '';
+		}
+
+		$names = $this->top_category_names();
+		if ( array() === $names ) {
+			return sprintf(
+				/* translators: %s: Store name. */
+				__( 'Shop %s.', 'woocommerce-ai-storefront' ),
+				$site
+			);
+		}
+
+		return sprintf(
+			/* translators: 1: Comma-separated product category names. 2: Store name. */
+			__( 'Shop %1$s at %2$s.', 'woocommerce-ai-storefront' ),
+			$this->list_in_words( $names ),
+			$site
+		);
+	}
+
+	/**
+	 * Up to three top-level category names, from the cached catalog summary.
+	 *
+	 * @return string[]
+	 */
+	private function top_category_names(): array {
+		if ( ! class_exists( 'WC_AI_Storefront_JsonLd' ) ) {
+			return array();
+		}
+
+		$summary = ( new WC_AI_Storefront_JsonLd() )->get_catalog_summary();
+		if ( ! is_array( $summary ) ) {
+			return array();
+		}
+
+		$names = array();
+		foreach ( array_slice( $summary, 0, 3 ) as $entry ) {
+			$name = is_array( $entry ) ? (string) ( $entry['name'] ?? '' ) : '';
+			if ( '' !== $name ) {
+				$names[] = $name;
+			}
+		}
+
+		return $names;
+	}
+
+	/**
+	 * Join names the way a person would read them aloud.
+	 *
+	 * @param string[] $names Two or more names, or one.
+	 */
+	private function list_in_words( array $names ): string {
+		if ( count( $names ) < 2 ) {
+			return (string) ( $names[0] ?? '' );
+		}
+
+		$last = array_pop( $names );
+
+		return sprintf(
+			/* translators: 1: Comma-separated list of all but the last item. 2: The last item. */
+			__( '%1$s and %2$s', 'woocommerce-ai-storefront' ),
+			implode( ', ', $names ),
+			$last
+		);
+	}
+
+	/**
 	 * Build the meta description for a product.
 	 *
 	 * Authored intent wins (#668): the merchant's own Jetpack-authored
@@ -244,9 +381,24 @@ class WC_AI_Storefront_Meta_Tags {
 				$candidates[] = (string) get_post_field( 'post_content', $shop_id );
 			}
 			$candidates[] = (string) get_bloginfo( 'description' ); // store tagline
+			$is_shop      = true;
 		}
 
 		$description = $this->first_usable_candidate( $candidates );
+
+		// Generated terminus, the parallel to the product and category
+		// fallbacks. Without it the shop archive was the one page type that
+		// could ship no description at all, and on a fresh store it does: the
+		// tagline is empty by default and the Shop page's content is empty or
+		// a bare product-collection block (#682).
+		//
+		// Built here rather than appended to $candidates so it costs nothing
+		// on the common path. As a candidate it was computed on every shop
+		// render, including the ones that already had a description, for a
+		// value first_usable_candidate() would then discard.
+		if ( '' === $description && ! empty( $is_shop ) ) {
+			$description = $this->generated_shop_description();
+		}
 
 		/** This filter is documented in build_description(). */
 		return (string) apply_filters( 'wc_ai_storefront_meta_description', $description, $source );
@@ -965,6 +1117,21 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			if ( $shop_id > 0 ) {
 				$og['og:url'] = get_permalink( $shop_id );
+			}
+
+			// Paginate both, or every page of the shop shares one social
+			// identity: share page 2 and the preview claims to be page 1
+			// (#682). It also left og:title disagreeing with the <title>,
+			// which has carried a "Page N" suffix since #668.
+			$page = $this->current_page_number();
+			if ( $page >= 2 ) {
+				$og['og:title'] = $this->with_page_suffix( (string) $og['og:title'], $page );
+				if ( function_exists( 'get_pagenum_link' ) ) {
+					$paged_url = get_pagenum_link( $page );
+					if ( is_string( $paged_url ) && '' !== $paged_url ) {
+						$og['og:url'] = $paged_url;
+					}
+				}
 			}
 		}
 

@@ -58,6 +58,10 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
 		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
 		Functions\when( 'wc_get_products' )->justReturn( array() );
+		// Page number for the archive og:url/og:title suffix (#682). Default
+		// to page 1 so tests that do not care answer the unpaginated shape,
+		// whatever order the suite runs in.
+		Functions\when( 'get_query_var' )->justReturn( '' );
 		// usable_url() reaches esc_url() during resolution now (#684 review), so
 		// it must be defined even for tests that never render. Identity, so a
 		// test asserting rejection has to opt in by overriding it.
@@ -1735,6 +1739,140 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		);
 		$this->assertSame( 'summary_large_image', $tw['twitter:card'] );
 		$this->assertSame( 'https://shop.test/storefront.jpg', $tw['twitter:image'] );
+	}
+
+	// --- Shop archive description and pagination (#682) ---
+
+	/**
+	 * Put the class on the shop archive with every description candidate empty.
+	 *
+	 * The out-of-the-box state of a fresh WooCommerce store: no tagline, and a
+	 * Shop page whose content is empty or a bare product-collection block.
+	 */
+	private function stub_bare_shop( int $paged = 1 ): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		// Name yes, tagline no: a fresh store has an empty tagline, which is
+		// the candidate that used to be the last one standing.
+		Functions\when( 'get_bloginfo' )->alias(
+			static function ( $show = 'name' ) {
+				return 'description' === $show ? '' : 'Saltwarp';
+			}
+		);
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_post_meta' )->justReturn( '' );
+		Functions\when( 'get_option' )->justReturn( '' );
+		Functions\when( 'get_query_var' )->alias(
+			static function ( $var ) use ( $paged ) {
+				return 'paged' === $var ? $paged : '';
+			}
+		);
+		Functions\when( 'get_pagenum_link' )->alias(
+			static function ( $n ) {
+				return 1 === (int) $n ? 'https://shop.test/shop/' : 'https://shop.test/shop/page/' . (int) $n . '/';
+			}
+		);
+	}
+
+	public function test_a_bare_shop_archive_still_gets_a_description(): void {
+		// Every candidate empty is the out-of-the-box state, not a corner
+		// case: a fresh store has no tagline and an empty Shop page. Product
+		// and category pages each have a generated terminus; this one had
+		// none and shipped no description at all (#682).
+		$this->stub_bare_shop();
+		Functions\when( 'get_transient' )->justReturn( array() );
+
+		$this->assertNotSame( '', $this->meta->build_archive_description() );
+	}
+
+	public function test_the_shop_description_names_what_the_store_sells(): void {
+		// Reuses the catalog summary that already feeds knowsAbout and
+		// llms.txt, so the fallback describes the catalogue rather than
+		// repeating the store name the title already carries.
+		$this->stub_bare_shop();
+		Functions\when( 'get_transient' )->justReturn(
+			array(
+				array( 'name' => 'Hoodies' ),
+				array( 'name' => 'Tees' ),
+				array( 'name' => 'Accessories' ),
+			)
+		);
+
+		$description = $this->meta->build_archive_description();
+
+		$this->assertStringContainsString( 'Hoodies', $description );
+		$this->assertStringContainsString( 'Saltwarp', $description );
+	}
+
+	public function test_an_authored_shop_description_still_wins(): void {
+		// #668 settled that authored intent beats anything generated.
+		$this->stub_bare_shop();
+		Functions\when( 'get_transient' )->justReturn( array( array( 'name' => 'Hoodies' ) ) );
+		Functions\when( 'get_post_field' )->justReturn( 'Everything we make, in one place.' );
+
+		$this->assertSame( 'Everything we make, in one place.', $this->meta->build_archive_description() );
+	}
+
+	public function test_paginated_shop_og_url_points_at_the_page_you_are_on(): void {
+		// Every paginated shop page shared one social identity: share page 2
+		// and the preview claimed to be page 1 (#682).
+		$this->stub_bare_shop( 2 );
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/shop/page/2/', $og['og:url'] );
+	}
+
+	public function test_paginated_shop_og_title_agrees_with_the_document_title(): void {
+		// #668 appends "Page N" to <title>. og:title did not, so the two
+		// disagreed on the same page.
+		$this->stub_bare_shop( 2 );
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertStringContainsString( 'Page 2', $og['og:title'] );
+	}
+
+	public function test_a_shop_front_page_paginates_on_the_page_var(): void {
+		// Which query var carries the number depends on the request: when the
+		// shop archive IS the front page it is `page`, not `paged`. Reading
+		// only `paged` made /, /page/2/ and /page/3/ all answer 1 (#668), and
+		// the same trap applies to og:url and og:title (#682).
+		$this->stub_bare_shop();
+		Functions\when( 'get_query_var' )->alias(
+			static function ( $var ) {
+				return 'page' === $var ? 3 : '';
+			}
+		);
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/shop/page/3/', $og['og:url'] );
+		$this->assertStringContainsString( 'Page 3', $og['og:title'] );
+	}
+
+	public function test_an_unpaginated_shop_carries_no_page_suffix(): void {
+		$this->stub_bare_shop();
+		Functions\when( 'get_transient' )->justReturn( array() );
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'https://shop.test/shop/', $og['og:url'] );
+		$this->assertStringNotContainsString( 'Page', $og['og:title'] );
 	}
 
 	public function test_will_emit_open_graph_is_narrower_than_should_emit(): void {
