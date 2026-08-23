@@ -463,6 +463,10 @@ class WC_AI_Storefront_IndexNow {
 		add_action( 'woocommerce_update_product', array( $this, 'on_product_change' ) );
 		add_action( 'woocommerce_new_product', array( $this, 'on_product_change' ) );
 		add_action( 'woocommerce_product_set_stock_status', array( $this, 'on_product_change' ) );
+		// Terms can change without the product ever being saved, so this is
+		// not covered by the three product hooks above. Six args: the handler
+		// needs $old_tt_ids to tell a real change from a no-op.
+		add_action( 'set_object_terms', array( $this, 'on_product_terms_changed' ), 10, 6 );
 		add_action( 'woocommerce_trash_product', array( $this, 'on_product_removed' ) );
 		add_action( 'woocommerce_delete_product', array( $this, 'on_product_removed' ) );
 		add_action( 'created_product_cat', array( $this, 'on_term_change' ) );
@@ -518,6 +522,71 @@ class WC_AI_Storefront_IndexNow {
 			$urls[] = $permalink;
 		}
 		$this->enqueue( $urls );
+		$this->schedule_flush();
+	}
+
+	/**
+	 * Terms changed on a product without the product itself being saved.
+	 *
+	 * `woocommerce_update_product` tracks product SAVES, not product PAGE
+	 * changes, and the two are not the same thing. Measured on a live store
+	 * (#694): assigning a tag with `wp post term add` left `post_modified`
+	 * untouched and fired no product hook, and renaming an attribute term the
+	 * product used did the same while the page went on to render the new
+	 * value. Anything that touches terms without saving a product lands here
+	 * — imports, sync plugins, bulk term tools, direct `wp_set_object_terms()`.
+	 *
+	 * Taxonomy-agnostic on purpose. Any taxonomy on a product can change what
+	 * the page renders, and a hardcoded list would go stale the moment another
+	 * attribute is seeded.
+	 *
+	 * This also fires during ordinary saves, beside `on_product_change()`.
+	 * That costs nothing: `enqueue()` dedupes.
+	 *
+	 * Known and consistent with `on_product_change()`: a product flipped to
+	 * draft or catalog-hidden fails `is_product_indexable()` and is not
+	 * submitted, so engines are never told to drop the now-stale page. Fixing
+	 * that needs a was-indexable-is-not-now transition check and is its own
+	 * issue, not a difference this handler introduces.
+	 *
+	 * @param int    $object_id  Object the terms were set on.
+	 * @param array  $terms      Term IDs or slugs (unused).
+	 * @param array  $tt_ids     Term taxonomy IDs after the change.
+	 * @param string $taxonomy   Taxonomy slug (unused).
+	 * @param bool   $append     Whether terms were appended (unused).
+	 * @param array  $old_tt_ids Term taxonomy IDs before the change.
+	 */
+	public function on_product_terms_changed( $object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids ): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+
+		// Cheapest guard first, and the one that fires most: WordPress and
+		// WooCommerce both call wp_set_object_terms() on saves where the set
+		// did not change. Pure array work, no lookup.
+		$before = array_map( 'intval', (array) $old_tt_ids );
+		$after  = array_map( 'intval', (array) $tt_ids );
+		sort( $before );
+		sort( $after );
+		if ( $before === $after ) {
+			return;
+		}
+
+		if ( ! function_exists( 'get_post_type' ) || 'product' !== get_post_type( (int) $object_id ) ) {
+			return;
+		}
+
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $object_id ) : null;
+		if ( ! $product || ! $this->is_product_indexable( $product ) ) {
+			return;
+		}
+
+		$permalink = get_permalink( $product->get_id() );
+		if ( ! is_string( $permalink ) || '' === $permalink ) {
+			return;
+		}
+
+		$this->enqueue( array_merge( $this->surface_urls(), array( $permalink ) ) );
 		$this->schedule_flush();
 	}
 

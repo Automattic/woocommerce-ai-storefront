@@ -1181,4 +1181,127 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		// explicitly to avoid a "risky test" flag.
 		$this->addToAssertionCount( 3 );
 	}
+
+	// --- #694: terms changed without the product being saved ---
+
+	/**
+	 * Stubs shared by the set_object_terms tests.
+	 *
+	 * @param bool $indexable Whether is_product_indexable() should pass.
+	 */
+	private function stub_term_change_product( bool $indexable = true ): void {
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/hoodie/' );
+		Functions\when( 'get_post_type' )->justReturn( 'product' );
+		Functions\when( 'get_option' )->justReturn( array() );
+		Functions\when( 'update_option' )->justReturn( true );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_id' )->andReturn( 14 );
+		$product->shouldReceive( 'get_status' )->andReturn( $indexable ? 'publish' : 'draft' );
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+		Functions\when( 'wc_get_product' )->justReturn( $product );
+	}
+
+	/**
+	 * The URLs enqueue() was handed, by intercepting the option write.
+	 *
+	 * @return string[]
+	 */
+	private function capture_enqueued( callable $act ): array {
+		$captured = array();
+		Functions\when( 'update_option' )->alias(
+			static function ( $name, $value ) use ( &$captured ) {
+				if ( str_contains( (string) $name, 'indexnow' ) ) {
+					$captured = (array) $value;
+				}
+				return true;
+			}
+		);
+		$act();
+		return $captured;
+	}
+
+	public function test_term_change_without_a_product_save_enqueues_the_product(): void {
+		// Measured on a live store: assigning a term outside a product save
+		// leaves post_modified untouched and fires no product hook, while the
+		// page goes on rendering the new value (#694).
+		$this->stub_term_change_product();
+
+		$urls = $this->capture_enqueued(
+			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22 ), 'pa_color', false, array( 21 ) )
+		);
+
+		$this->assertContains( 'https://shop.test/product/hoodie/', $urls );
+	}
+
+	public function test_no_op_term_assignment_enqueues_nothing(): void {
+		// WordPress and WooCommerce both call wp_set_object_terms() on saves
+		// where the set did not actually change. Order must not matter.
+		$this->stub_term_change_product();
+
+		$urls = $this->capture_enqueued(
+			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22, 23 ), 'pa_color', false, array( 23, 22 ) )
+		);
+
+		$this->assertSame( array(), $urls );
+	}
+
+	public function test_term_change_on_a_non_product_enqueues_nothing(): void {
+		$this->stub_term_change_product();
+		Functions\when( 'get_post_type' )->justReturn( 'post' );
+
+		$urls = $this->capture_enqueued(
+			fn() => $this->indexnow->on_product_terms_changed( 99, array( 'news' ), array( 5 ), 'category', false, array() )
+		);
+
+		$this->assertSame( array(), $urls );
+	}
+
+	public function test_term_change_enqueues_nothing_when_indexnow_is_off(): void {
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'no',
+		);
+		$this->stub_term_change_product();
+
+		$urls = $this->capture_enqueued(
+			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22 ), 'pa_color', false, array() )
+		);
+
+		$this->assertSame( array(), $urls );
+	}
+
+	public function test_term_change_on_a_non_indexable_product_enqueues_nothing(): void {
+		// Same rule on_product_change() applies: never advertise a draft or
+		// catalog-hidden product.
+		$this->stub_term_change_product( false );
+
+		$urls = $this->capture_enqueued(
+			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22 ), 'pa_color', false, array() )
+		);
+
+		$this->assertSame( array(), $urls );
+	}
+
+	public function test_term_change_alongside_a_product_save_does_not_duplicate(): void {
+		// This hook also fires during ordinary saves, beside
+		// woocommerce_update_product. enqueue() dedupes, so the permalink must
+		// appear exactly once.
+		$this->stub_term_change_product();
+
+		$urls = $this->capture_enqueued(
+			function () {
+				$this->indexnow->on_product_change( 14 );
+				$this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22 ), 'pa_color', false, array() );
+			}
+		);
+
+		$this->assertSame(
+			1,
+			count( array_keys( $urls, 'https://shop.test/product/hoodie/', true ) )
+		);
+	}
 }
