@@ -8,6 +8,7 @@
 use Brain\Monkey;
 use Brain\Monkey\Functions;
 use Mockery\Adapter\Phpunit\MockeryPHPUnitIntegration;
+use PHPUnit\Framework\TestCase;
 
 if ( ! class_exists( 'WC_AI_Storefront_IndexNow_Exit' ) ) {
 	// phpcs:ignore Squiz.Commenting.ClassComment.Missing -- test double
@@ -1145,6 +1146,170 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		}
 	}
 
+	public function test_init_registers_the_term_relationship_hook(): void {
+		// The ONLY wiring that makes a term change reach
+		// on_product_terms_changed() in production. Every other test in this
+		// group calls the handler directly, so without this a dropped
+		// add_action line or a typo ships the feature dead with a green suite
+		// (#695 review). Same reasoning as the brand test below.
+		//
+		// The accepted-argument count is asserted, not just the callback, and
+		// that assertion is load-bearing: the handler takes six REQUIRED
+		// parameters, so registering it for fewer would throw an uncaught
+		// ArgumentCountError on every wp_set_object_terms() call site-wide —
+		// a fatal on every product save, every import, every term edit.
+		$indexnow = new WC_AI_Storefront_IndexNow();
+
+		\Brain\Monkey\Actions\expectAdded( 'set_object_terms' )
+			->once()
+			->with(
+				\Mockery::on(
+					static function ( $callback ) use ( $indexnow ): bool {
+						return is_array( $callback )
+							&& $callback[0] === $indexnow
+							&& 'on_product_terms_changed' === $callback[1];
+					}
+				),
+				10,
+				6
+			);
+
+		$indexnow->init();
+
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_seen_marker_is_per_product_not_per_request(): void {
+		// Keying the marker by anything constant would make the FIRST product
+		// in a request suppress every other one. A bulk term assignment across
+		// 50 products would submit one URL and silently drop 49 (#695 review).
+		$this->stub_term_change_product();
+
+		$make = static function ( int $id ) {
+			$product = \Mockery::mock( 'WC_Product' );
+			$product->shouldReceive( 'get_id' )->andReturn( $id );
+			$product->shouldReceive( 'get_status' )->andReturn( 'publish' );
+			$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+			return $product;
+		};
+		Functions\when( 'wc_get_product' )->alias( static fn( $id ) => $make( (int) $id ) );
+		Functions\when( 'get_permalink' )->alias(
+			static function ( $id = 0 ) {
+				if ( 5 === (int) $id ) {
+					return 'https://shop.test/shop/';
+				}
+				return 'https://shop.test/product/p' . (int) $id . '/';
+			}
+		);
+
+		$urls = $this->capture_enqueued(
+			function () {
+				$this->indexnow->on_product_terms_changed( 14, array( 'a' ), array( 22 ), 'product_cat', false, array() );
+				$this->indexnow->on_product_terms_changed( 15, array( 'a' ), array( 22 ), 'product_cat', false, array() );
+			}
+		);
+
+		$this->assertContains( 'https://shop.test/product/p14/', $urls );
+		$this->assertContains( 'https://shop.test/product/p15/', $urls );
+	}
+
+	public function test_a_guard_failure_does_not_mark_the_product_seen(): void {
+		// The marker is set AFTER the guards on purpose. Set it earlier and a
+		// product that fails one guard on its first fire swallows a genuine
+		// change later in the same request — and WooCommerce writes
+		// product_visibility terms during the very save that publishes a
+		// product, so draft-then-publish is a real trigger (#695 review).
+		$this->stub_term_change_product();
+
+		$draft = \Mockery::mock( 'WC_Product' );
+		$draft->shouldReceive( 'get_id' )->andReturn( 14 );
+		$draft->shouldReceive( 'get_status' )->andReturn( 'draft' );
+		$draft->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+
+		$live = \Mockery::mock( 'WC_Product' );
+		$live->shouldReceive( 'get_id' )->andReturn( 14 );
+		$live->shouldReceive( 'get_status' )->andReturn( 'publish' );
+		$live->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+
+		$call = 0;
+		Functions\when( 'wc_get_product' )->alias(
+			static function () use ( &$call, $draft, $live ) {
+				++$call;
+				return 1 === $call ? $draft : $live;
+			}
+		);
+
+		$urls = $this->capture_enqueued(
+			function () {
+				$this->indexnow->on_product_terms_changed( 14, array( 'a' ), array( 22 ), 'product_visibility', false, array() );
+				$this->indexnow->on_product_terms_changed( 14, array( 'b' ), array( 31 ), 'product_cat', false, array() );
+			}
+		);
+
+		$this->assertContains( 'https://shop.test/product/hoodie/', $urls );
+	}
+
+	public function test_enqueue_caps_the_pending_set_and_keeps_the_oldest(): void {
+		// The cap branch never executed in any test, so four separate ways of
+		// breaking it all survived mutation (#695 review) — including
+		// `array_slice( $merged, 0, 1 )`, a plausible typo that would leave
+		// the store submitting one URL per flush while still reporting
+		// success.
+		$store = array();
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default_value = false ) use ( &$store ) {
+				return 'wc_ai_storefront_indexnow_pending' === $name ? $store : array();
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $name, $value ) use ( &$store ) {
+				if ( 'wc_ai_storefront_indexnow_pending' === $name ) {
+					$store = (array) $value;
+				}
+				return true;
+			}
+		);
+
+		$urls = array();
+		for ( $i = 0; $i < 10005; $i++ ) {
+			$urls[] = 'https://shop.test/product/p' . $i . '/';
+		}
+		$this->indexnow->enqueue( $urls );
+
+		$this->assertCount( 10000, $store );
+		// Which end survives is the behaviour, not an accident: keeping the
+		// oldest is what the truncation does today.
+		$this->assertContains( 'https://shop.test/product/p0/', $store );
+		$this->assertNotContains( 'https://shop.test/product/p10004/', $store );
+	}
+
+	public function test_an_empty_permalink_is_dropped_rather_than_submitted(): void {
+		// Nothing expected reaches this branch: the product is published,
+		// visible and syndicated. But a `post_link` filter from a permalink or
+		// multilingual plugin can return '' for products missing its own meta.
+		// Without the guard, false flows into the JSON urlList, IndexNow
+		// answers 422, and flush() drops the WHOLE batch (#695 review).
+		$this->stub_term_change_product();
+		Functions\when( 'get_permalink' )->alias(
+			static function ( $id = 0 ) {
+				return 5 === (int) $id ? 'https://shop.test/shop/' : false;
+			}
+		);
+
+		$urls = $this->capture_enqueued(
+			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'a' ), array( 22 ), 'pa_color', false, array() )
+		);
+
+		$this->assertSame( array(), $urls );
+	}
+
+	public function test_is_product_indexable_rejects_a_non_product(): void {
+		// wc_get_product() returns false, not null, when it cannot load one —
+		// and all_product_urls() passes whatever wc_get_products() returned.
+		// Without the instanceof guard this is a fatal on false->get_status().
+		$this->assertFalse( $this->indexnow->is_product_indexable( false ) );
+	}
+
 	public function test_init_registers_brand_term_hooks(): void {
 		// The three `*_product_brand` term hooks are the ONLY wiring that
 		// makes brand edits reach on_brand_change() in production — every
@@ -1248,11 +1413,35 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		// page goes on rendering the new value (#694).
 		$this->stub_term_change_product();
 
+		$flushed = 0;
+		Functions\when( 'wp_schedule_single_event' )->alias(
+			static function ( $timestamp, $hook ) use ( &$flushed ) {
+				if ( 'wc_ai_storefront_indexnow_flush' === $hook ) {
+					++$flushed;
+					// The debounce is what makes this a batch rather than one
+					// submission per save. A zero delay would defeat it and no
+					// test noticed (#695 review).
+					TestCase::assertGreaterThanOrEqual( time() + 60, $timestamp );
+				}
+				return true;
+			}
+		);
+
 		$urls = $this->capture_enqueued(
 			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22 ), 'pa_color', false, array( 21 ) )
 		);
 
 		$this->assertContains( 'https://shop.test/product/hoodie/', $urls );
+
+		// The surfaces travel with it. A category edit is exactly the kind of
+		// change that alters the shop listing and llms.txt, and every sibling
+		// handler asserts this (#695 review).
+		$this->assertContains( 'https://shop.test/llms.txt', $urls );
+		$this->assertContains( 'https://shop.test/', $urls );
+
+		// Without this, term changes pile into the pending option and sit
+		// there until some unrelated save happens to schedule a flush.
+		$this->assertSame( 1, $flushed, 'the term change must schedule a flush' );
 	}
 
 	public function test_no_op_term_assignment_enqueues_nothing(): void {
@@ -1260,8 +1449,13 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		// where the set did not actually change. Order must not matter.
 		$this->stub_term_change_product();
 
+		// Deliberately mixed types and reversed order. $old_tt_ids comes from
+		// wp_get_object_terms() while $tt_ids is accumulated in core's insert
+		// loop, and the two are not reliably the same type — so the intval
+		// normalisation has to do real work here, not just pass ints through
+		// (#695 review).
 		$urls = $this->capture_enqueued(
-			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22, 23 ), 'pa_color', false, array( 23, 22 ) )
+			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( '22', '23' ), 'pa_color', false, array( 23, 22 ) )
 		);
 
 		$this->assertSame( array(), $urls );
