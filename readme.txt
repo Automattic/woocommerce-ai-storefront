@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 10.9
-Stable tag: 0.38.1
+Stable tag: 0.39.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,32 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.39.0 - 2026-08-22 =
+**New**
+* Product links you share now carry richer previews: stock status, condition, price and stock as readable text on Twitter/X, the photo's size, and its alt text.
+* Your blog posts and pages now get share previews too, on a store with no SEO plugin. Previously they shared as a blank card.
+
+**Fixed**
+* Search results on your store shared as a blank link. They now get a preview headlined with what was searched for, and page two no longer claims to be page one. On a store using Jetpack's social previews this was worse than nothing, because your store removed Jetpack's tags and put none back.
+* Your Shop page could go out with no description at all. It now falls back to naming what you sell, taken from your top product categories.
+* Page two of your Shop listing claimed to be page one when shared. Product category listings get the same fix.
+* A Shop page containing only a stray space published that as your description.
+* Your share previews are unaffected when another SEO plugin is installed but silent, such as a Rank Math that has not finished its setup wizard.
+* Rank Math and All in One SEO both described your product pages to social networks alongside your store. One description now goes out, with your commerce details added to theirs.
+* Yoast SEO and your store both described your product pages to social networks. Same fix, including the paid WooCommerce add-on.
+* SEOPress and your store both described your product pages to social networks.
+* Sharing your Shop page or a product category showed a blank preview. Both now carry an image.
+* Your meta description appeared twice when another SEO plugin was active.
+* The notice about overlapping SEO plugins never fired for free Yoast SEO or SEOPress.
+* SEO titles and descriptions you wrote yourself were being thrown away on products and shop pages.
+* Most AI traffic was recorded as "unknown".
+* Searching by category returned nothing on stores with extensions installed.
+* Out-of-stock products were offered to AI assistants as available.
+* Products with no price were offered to AI assistants as free.
+* The plugin listing said it had no MCP support, while shipping an MCP server that is on by default.
+* AI assistants that follow the commerce standard could not use your MCP connection.
+* Agents could only ever see the first ten products.
 
 = 0.38.1 - 2026-08-18 =
 **Fixed**

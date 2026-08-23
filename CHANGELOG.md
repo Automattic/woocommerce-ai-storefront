@@ -1,5 +1,9 @@
 ## [Unreleased]
 
+---
+
+## [0.39.0] – 2026-08-22
+
 ### Added
 - **Product links you share now carry richer previews (#679).**
   - When a product is shared on social media or in a messaging app, the preview card now shows whether it's in stock, on backorder or sold out, plus its condition when you've set one, new, used or refurbished.
@@ -8,7 +12,6 @@
   - Its description (the featured image's alt text) is included as well, for anyone using a screen reader.
   - Nothing to set up. This is read from what you've already filled in: your product's stock status, its Condition attribute if it has one, and your featured image's alt text.
 
-### Added
 - **Your blog posts and pages now get share previews too (#680).**
   - On a store with no SEO plugin, sharing a post or page gave whoever received it a blank card: no title, no summary, no image. Your product pages have had these for a while; everything else had nothing.
   - Posts and pages now carry a title, a summary taken from your excerpt or the post itself, your featured image, and a description for search results.
