@@ -45,6 +45,7 @@ delete_option( 'wc_ai_storefront_products_feed_version' );
 delete_option( 'wc_ai_storefront_indexnow_key' );
 delete_option( 'wc_ai_storefront_indexnow_pending' );
 delete_option( 'wc_ai_storefront_indexnow_last_result' );
+delete_option( 'wc_ai_storefront_indexnow_dropped' );
 
 /*
  * --------------------------------------------------------------------------
@@ -157,6 +158,7 @@ if ( ! function_exists( 'wc_ai_storefront_uninstall_multisite' ) ) {
 			delete_option( 'wc_ai_storefront_indexnow_key' );
 			delete_option( 'wc_ai_storefront_indexnow_pending' );
 			delete_option( 'wc_ai_storefront_indexnow_last_result' );
+			delete_option( 'wc_ai_storefront_indexnow_dropped' );
 			delete_transient( 'wc_ai_storefront_llms_txt' );
 			delete_transient( 'wc_ai_storefront_ucp' );
 			delete_transient( 'wc_ai_storefront_flush_rewrite' );

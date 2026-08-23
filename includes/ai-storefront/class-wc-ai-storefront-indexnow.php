@@ -43,6 +43,16 @@ class WC_AI_Storefront_IndexNow {
 	private const LAST_RESULT_OPTION = 'wc_ai_storefront_indexnow_last_result';
 
 	/**
+	 * URLs discarded at MAX_PENDING since the last recorded result.
+	 *
+	 * enqueue() and record_result() run in different requests, so the count has
+	 * to survive between them. Without this the Discovery tab reported a
+	 * cheerful "10,000 URLs, HTTP 200, ok" for a submission that had silently
+	 * binned the merchant's actual change (#698).
+	 */
+	private const DROPPED_OPTION = 'wc_ai_storefront_indexnow_dropped';
+
+	/**
 	 * Query var for the virtual {key}.txt route.
 	 */
 	private const KEY_QUERY_VAR = 'wc_ai_storefront_indexnow_key';
@@ -63,9 +73,29 @@ class WC_AI_Storefront_IndexNow {
 	private const FLUSH_DELAY = 60;
 
 	/**
-	 * Max URLs per submission (IndexNow spec limit).
+	 * URLs per POST. The IndexNow spec's per-REQUEST limit.
+	 *
+	 * "You can submit up to 10,000 URLs per post" (indexnow.org documentation);
+	 * the FAQ adds that exceeding it "may cause the request to fail or return
+	 * an HTTP 422". Nothing in the spec limits how much a site may submit in
+	 * total, only how much fits in one payload.
+	 *
+	 * This used to be called MAX_URLS and was applied as a ceiling on the whole
+	 * queue, with the overflow discarded. The name was the bug in one word: it
+	 * reads as a ceiling and the spec means a batch size (#698).
 	 */
-	private const MAX_URLS = 10000;
+	private const BATCH_SIZE = 10000;
+
+	/**
+	 * Runaway guard on the queue. Unrelated to the spec.
+	 *
+	 * A queue is roughly 84 bytes per URL serialized, so this is about 4MB and
+	 * five flushes to drain. Core keeps an option this large out of autoload —
+	 * `wp_filter_default_autoload_value_via_option_size()` turns it off above
+	 * 150,000 bytes, and `update_option()` re-evaluates that when an existing
+	 * option grows — so the cost is storage, not a per-request load.
+	 */
+	private const MAX_PENDING = 50000;
 
 	/**
 	 * Whether IndexNow submission is active: syndication on AND the toggle on.
@@ -279,10 +309,21 @@ class WC_AI_Storefront_IndexNow {
 			$pending = array();
 		}
 		$merged = array_values( array_unique( array_merge( $pending, array_values( $urls ) ) ) );
-		if ( count( $merged ) > self::MAX_URLS ) {
-			WC_AI_Storefront_Logger::debug( 'IndexNow pending set capped at %d URLs (dropped %d)', self::MAX_URLS, count( $merged ) - self::MAX_URLS );
-			$merged = array_slice( $merged, 0, self::MAX_URLS );
+
+		// Capped at the runaway guard, NOT at the per-POST batch size. Anything
+		// above BATCH_SIZE is sent in a further request rather than discarded,
+		// so this branch is now a last resort rather than routine (#698).
+		if ( count( $merged ) > self::MAX_PENDING ) {
+			$dropped = count( $merged ) - self::MAX_PENDING;
+			WC_AI_Storefront_Logger::debug( 'IndexNow pending set capped at %d URLs (dropped %d)', self::MAX_PENDING, $dropped );
+
+			// Newest first out, because the oldest entries are already waiting
+			// on a scheduled flush. Recorded so the merchant sees it: a debug
+			// log defaults to off, which is how this stayed invisible.
+			$merged = array_slice( $merged, 0, self::MAX_PENDING );
+			update_option( self::DROPPED_OPTION, (int) get_option( self::DROPPED_OPTION, 0 ) + $dropped );
 		}
+
 		update_option( self::PENDING_OPTION, $merged );
 	}
 
@@ -295,6 +336,44 @@ class WC_AI_Storefront_IndexNow {
 		$pending = get_option( self::PENDING_OPTION, array() );
 		delete_option( self::PENDING_OPTION );
 		return is_array( $pending ) ? array_values( $pending ) : array();
+	}
+
+	/**
+	 * Remove and return the first $size URLs, leaving the rest queued.
+	 *
+	 * The counterpart to take_pending(), which empties the queue. flush() sends
+	 * ONE batch per invocation and reschedules while anything remains, which is
+	 * what keeps every POST inside the spec's per-request limit without a
+	 * batching loop existing anywhere (#698).
+	 *
+	 * @param int $size Maximum URLs to take.
+	 * @return string[]
+	 */
+	public function take_batch( int $size ): array {
+		$pending = get_option( self::PENDING_OPTION, array() );
+		if ( ! is_array( $pending ) || array() === $pending || $size < 1 ) {
+			delete_option( self::PENDING_OPTION );
+			return array();
+		}
+
+		$batch     = array_slice( $pending, 0, $size );
+		$remaining = array_slice( $pending, $size );
+
+		if ( array() === $remaining ) {
+			delete_option( self::PENDING_OPTION );
+		} else {
+			update_option( self::PENDING_OPTION, array_values( $remaining ) );
+		}
+
+		return array_values( $batch );
+	}
+
+	/**
+	 * Whether any URLs are still queued.
+	 */
+	public function has_pending(): bool {
+		$pending = get_option( self::PENDING_OPTION, array() );
+		return is_array( $pending ) && array() !== $pending;
 	}
 
 	/**
@@ -315,13 +394,21 @@ class WC_AI_Storefront_IndexNow {
 	 * @param bool $ok    Whether the submission was accepted (200/202).
 	 */
 	private function record_result( int $count, int $code, bool $ok ): void {
+		// Consumed and cleared here so a drop is reported exactly once, against
+		// the submission it happened alongside.
+		$dropped = (int) get_option( self::DROPPED_OPTION, 0 );
+		if ( $dropped > 0 ) {
+			delete_option( self::DROPPED_OPTION );
+		}
+
 		update_option(
 			self::LAST_RESULT_OPTION,
 			array(
-				'time'  => time(),
-				'count' => $count,
-				'code'  => $code,
-				'ok'    => $ok,
+				'time'    => time(),
+				'count'   => $count,
+				'code'    => $code,
+				'ok'      => $ok,
+				'dropped' => $dropped,
 			)
 		);
 	}
@@ -330,8 +417,11 @@ class WC_AI_Storefront_IndexNow {
 	 * Gather every indexable product, product-category, and product-brand URL
 	 * plus the discovery surfaces, enqueue them, and flush immediately. Used by
 	 * the admin "Submit entire catalog now" action and the first-enable seed
-	 * (#540). Catalogs larger than MAX_URLS are truncated by enqueue() (which
-	 * logs the drop) before flush() sends the single batch.
+	 * (#540). A catalogue of any size is covered: enqueue() queues the lot and
+	 * flush() sends the first BATCH_SIZE, rescheduling itself until the queue
+	 * drains. It used to truncate at 10,000 and drop the remainder, which left
+	 * a large store with no way to submit its full catalogue at all, manual or
+	 * automatic (#698).
 	 */
 	public function submit_all(): void {
 		if ( ! $this->is_enabled() ) {
@@ -351,12 +441,13 @@ class WC_AI_Storefront_IndexNow {
 	 * Gather all published, indexable product URLs by paginating wc_get_products().
 	 *
 	 * Stops when a page returns fewer than 200 results OR the collected URL
-	 * count reaches MAX_URLS (enqueue() will cap the final set anyway, but
-	 * stopping early avoids iterating an arbitrarily large catalog just to
-	 * pass a truncated list to enqueue()). The MAX_URLS break counts
-	 * ACCEPTED/indexable URLs (post-filter), not raw fetched products, so a
-	 * store with many non-indexable products may paginate beyond MAX_URLS raw
-	 * results before the early-exit triggers.
+	 * count reaches MAX_PENDING. That bound is the queue's runaway guard, not
+	 * the submission limit: the catalogue is sent in BATCH_SIZE chunks, so
+	 * stopping at 10,000 here used to silently decide that a larger store
+	 * simply would not be covered (#698). The break counts ACCEPTED/indexable
+	 * URLs (post-filter), not raw fetched products, so a store with many
+	 * non-indexable products may paginate beyond MAX_PENDING raw results
+	 * before the early-exit triggers.
 	 *
 	 * @return string[]
 	 */
@@ -388,7 +479,7 @@ class WC_AI_Storefront_IndexNow {
 					$urls[] = $permalink;
 				}
 				$url_count = count( $urls );
-				if ( $url_count >= self::MAX_URLS ) {
+				if ( $url_count >= self::MAX_PENDING ) {
 					break 2;
 				}
 			}
@@ -748,7 +839,11 @@ class WC_AI_Storefront_IndexNow {
 			$this->take_pending(); // clear; we are not submitting.
 			return;
 		}
-		$urls = $this->take_pending();
+		// ONE batch per invocation. Everything the issue asked for falls out of
+		// this: chunks spread across cron runs a FLUSH_DELAY apart, and a 429
+		// partway through a large queue cannot cascade, because there is no
+		// loop to carry on with (#698).
+		$urls = $this->take_batch( self::BATCH_SIZE );
 		// Empty queue: nothing was attempted, so leave the last result as-is.
 		if ( empty( $urls ) ) {
 			return;
@@ -784,6 +879,15 @@ class WC_AI_Storefront_IndexNow {
 		if ( 200 === $code || 202 === $code ) {
 			WC_AI_Storefront_Logger::debug( 'IndexNow submitted %d URLs (HTTP %d)', count( $urls ), $code );
 			$this->record_result( count( $urls ), $code, true );
+
+			// Drain the rest on the next run rather than looping here. A large
+			// catalogue therefore goes out as several POSTs a FLUSH_DELAY
+			// apart, which is also what keeps us clear of the engines' own
+			// undisclosed submission thresholds.
+			if ( $this->has_pending() ) {
+				$this->schedule_flush();
+			}
+
 			return;
 		}
 		if ( 429 === $code ) {

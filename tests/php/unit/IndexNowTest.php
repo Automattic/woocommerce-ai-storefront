@@ -374,7 +374,15 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 				return $store[ $n ] ?? $d;
 			}
 		);
-		Functions\when( 'delete_option' )->justReturn( true );
+		// Stateful delete, so take_batch() can actually drain the queue. As a
+		// no-op the store never emptied, has_pending() stayed true and flush()
+		// rescheduled forever (#698).
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
 		Functions\when( 'update_option' )->justReturn( true );
 		$posted = null;
 		Functions\expect( 'wp_remote_post' )->once()->andReturnUsing(
@@ -566,7 +574,15 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 				return true;
 			}
 		);
-		Functions\when( 'delete_option' )->justReturn( true );
+		// Stateful delete, so take_batch() can actually drain the queue. As a
+		// no-op the store never emptied, has_pending() stayed true and flush()
+		// rescheduled forever (#698).
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
 		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 202 ) ) );
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 202 );
 		Functions\expect( 'wp_schedule_single_event' )->never();
@@ -638,7 +654,15 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 				return true;
 			}
 		);
-		Functions\when( 'delete_option' )->justReturn( true );
+		// Stateful delete, so take_batch() can actually drain the queue. As a
+		// no-op the store never emptied, has_pending() stayed true and flush()
+		// rescheduled forever (#698).
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
 		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 200 ) ) );
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
 		// time() is a PHP internal Patchwork can't redefine here, so bracket the
@@ -1249,38 +1273,171 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'https://shop.test/product/hoodie/', $urls );
 	}
 
-	public function test_enqueue_caps_the_pending_set_and_keeps_the_oldest(): void {
-		// The cap branch never executed in any test, so four separate ways of
-		// breaking it all survived mutation (#695 review) — including
-		// `array_slice( $merged, 0, 1 )`, a plausible typo that would leave
-		// the store submitting one URL per flush while still reporting
-		// success.
-		$store = array();
+	/**
+	 * A stateful option store shared by get/update/delete.
+	 *
+	 * Batching is only testable if the queue actually changes between calls.
+	 *
+	 * @param array $initial Seed options.
+	 * @return array A one-element array holding the store, by reference.
+	 */
+	private function stub_option_store( array $initial = array() ): array {
+		$box = new \ArrayObject( $initial );
 		Functions\when( 'get_option' )->alias(
-			static function ( $name, $default_value = false ) use ( &$store ) {
-				return 'wc_ai_storefront_indexnow_pending' === $name ? $store : array();
+			static function ( $n, $d = false ) use ( $box ) {
+				return $box->offsetExists( $n ) ? $box->offsetGet( $n ) : $d;
 			}
 		);
 		Functions\when( 'update_option' )->alias(
-			static function ( $name, $value ) use ( &$store ) {
-				if ( 'wc_ai_storefront_indexnow_pending' === $name ) {
-					$store = (array) $value;
+			static function ( $n, $v ) use ( $box ) {
+				$box->offsetSet( $n, $v );
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( $box ) {
+				if ( $box->offsetExists( $n ) ) {
+					$box->offsetUnset( $n );
 				}
 				return true;
 			}
 		);
+		return array( $box );
+	}
 
+	/**
+	 * @param int $count How many synthetic URLs.
+	 * @return string[]
+	 */
+	private function synthetic_urls( int $count ): array {
 		$urls = array();
-		for ( $i = 0; $i < 10005; $i++ ) {
+		for ( $i = 0; $i < $count; $i++ ) {
 			$urls[] = 'https://shop.test/product/p' . $i . '/';
 		}
-		$this->indexnow->enqueue( $urls );
+		return $urls;
+	}
 
-		$this->assertCount( 10000, $store );
-		// Which end survives is the behaviour, not an accident: keeping the
-		// oldest is what the truncation does today.
-		$this->assertContains( 'https://shop.test/product/p0/', $store );
-		$this->assertNotContains( 'https://shop.test/product/p10004/', $store );
+	public function test_enqueue_no_longer_caps_at_the_per_post_batch_size(): void {
+		// Replaces test_enqueue_caps_the_pending_set_and_keeps_the_oldest, which
+		// pinned the behaviour #698 removes. 10,000 is the spec's limit PER POST,
+		// not a ceiling on the queue, so 25,000 URLs must all survive enqueue and
+		// go out as three requests.
+		list( $box ) = $this->stub_option_store();
+
+		$this->indexnow->enqueue( $this->synthetic_urls( 25000 ) );
+
+		$this->assertCount( 25000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ) );
+	}
+
+	public function test_enqueue_still_caps_at_the_runaway_guard_and_records_the_drop(): void {
+		// The guard survives, at MAX_PENDING rather than BATCH_SIZE, and the
+		// drop is now recorded where a human can see it. A debug log defaults to
+		// off, which is how this stayed invisible.
+		list( $box ) = $this->stub_option_store();
+
+		$this->indexnow->enqueue( $this->synthetic_urls( 50005 ) );
+
+		$this->assertCount( 50000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ) );
+		$this->assertSame( 5, $box->offsetGet( 'wc_ai_storefront_indexnow_dropped' ) );
+	}
+
+	public function test_a_large_queue_drains_in_batches_of_the_spec_limit(): void {
+		// 25,000 queued URLs must leave as three POSTs of at most 10,000, one
+		// per flush, rescheduling between. No batching loop exists anywhere;
+		// this falls out of flush() taking one batch and rescheduling.
+		list( $box ) = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 25000 ),
+				'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+			)
+		);
+		$sizes       = array();
+		Functions\when( 'wp_remote_post' )->alias(
+			static function ( $url, $args ) use ( &$sizes ) {
+				$sizes[] = count( json_decode( $args['body'], true )['urlList'] );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		$scheduled = 0;
+		Functions\when( 'wp_schedule_single_event' )->alias(
+			static function () use ( &$scheduled ) {
+				++$scheduled;
+				return true;
+			}
+		);
+
+		$this->indexnow->flush();
+		$this->assertSame( array( 10000 ), $sizes, 'first flush sends exactly one batch' );
+		$this->assertCount( 15000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ), 'the rest stays queued' );
+		// The reschedule IS the mechanism. Without it a large queue sends one
+		// batch and then stalls until some unrelated change happens to schedule
+		// a flush, which is the whole bug wearing a different hat.
+		$this->assertSame( 1, $scheduled, 'more remains, so another flush must be scheduled' );
+
+		$this->indexnow->flush();
+		$this->assertSame( 2, $scheduled );
+
+		$this->indexnow->flush();
+
+		$this->assertSame( array( 10000, 10000, 5000 ), $sizes );
+		$this->assertFalse( $box->offsetExists( 'wc_ai_storefront_indexnow_pending' ), 'queue drained' );
+		$this->assertSame( 2, $scheduled, 'nothing left, so the chain stops' );
+	}
+
+	public function test_a_429_requeues_its_batch_without_disturbing_the_rest(): void {
+		// The reason no batching loop exists: a 429 partway through a large
+		// queue cannot cascade into the remaining chunks, because there is no
+		// loop to carry on with.
+		list( $box ) = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 25000 ),
+				'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+			)
+		);
+		$posts       = 0;
+		Functions\when( 'wp_remote_post' )->alias(
+			static function () use ( &$posts ) {
+				++$posts;
+				return array( 'response' => array( 'code' => 429 ) );
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 429 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$this->indexnow->flush();
+
+		$this->assertSame( 1, $posts, 'one POST only; a 429 must not roll on into the next chunk' );
+		$this->assertCount( 25000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ), 'nothing lost' );
+	}
+
+	public function test_a_403_drops_its_batch_and_does_not_reschedule(): void {
+		// 403/422 are dropped deliberately: retrying a structurally invalid
+		// request will not help. That must not change just because more work
+		// remains queued.
+		list( $box ) = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 15000 ),
+				'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+			)
+		);
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 403 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 403 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		$scheduled = 0;
+		Functions\when( 'wp_schedule_single_event' )->alias(
+			static function () use ( &$scheduled ) {
+				++$scheduled;
+				return true;
+			}
+		);
+
+		$this->indexnow->flush();
+
+		$this->assertSame( 0, $scheduled, 'a structurally invalid request must not be retried' );
+		$this->assertCount( 5000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ), 'only that batch was dropped' );
 	}
 
 	public function test_an_empty_permalink_is_dropped_rather_than_submitted(): void {
