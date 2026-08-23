@@ -1247,16 +1247,25 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringContainsString( 'twitter:description', $html );
 	}
 
-	public function test_render_emits_noindex_only_for_product_search(): void {
-		$this->stub_escapers();
+	public function test_render_emits_noindex_AND_a_social_block_for_product_search(): void {
+		// Inverted by #692. This asserted `noindex` and nothing else, on the
+		// reasoning that a search page has nothing to describe. The two are
+		// separate questions: `noindex` speaks to a crawler, Open Graph
+		// speaks to Slack and Facebook when someone pastes the link. The
+		// robots directive is unchanged; the silence around it is not.
+		$this->fake_page( 'shop' );
 		Functions\when( 'is_search' )->justReturn( true );
-		Functions\when( 'get_query_var' )->justReturn( 'product' );
-		ob_start();
-		$this->meta->render_head_tags();
-		$html = ob_get_clean();
+		Functions\when( 'get_query_var' )->alias(
+			static fn( $var ) => 'post_type' === $var ? 'product' : 0
+		);
+		Functions\when( 'get_search_query' )->justReturn( 'hoodie' );
+		$this->set_shop_page_id( 5 );
+		$this->stub_add_query_arg();
+
+		$html = $this->render_head();
+
 		$this->assertStringContainsString( '<meta name="robots" content="noindex,follow"', $html );
-		$this->assertStringNotContainsString( 'og:', $html );
-		$this->assertStringNotContainsString( 'name="description"', $html );
+		$this->assertStringContainsString( 'property="og:type" content="website"', $html );
 	}
 
 	// --- Task 1: og:locale (#527) ---
@@ -2225,22 +2234,33 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertStringNotContainsString( 'Page', $og['og:title'] );
 	}
 
-	public function test_will_emit_open_graph_is_narrower_than_should_emit(): void {
-		// Product search is a commerce page we describe with a robots
-		// directive and nothing else. A strategy gated on should_emit() there
-		// removed the other plugin's social tags and we printed nothing back
-		// (#676 review), so the two predicates must not be interchangeable.
-		Functions\when( 'is_search' )->justReturn( true );
-		Functions\when( 'is_shop' )->justReturn( true );
-		Functions\when( 'get_query_var' )->justReturn( 'product' );
+	public function test_search_prints_a_block_so_one_gate_covers_every_commerce_page(): void {
+		// The inverse of what this used to assert. will_emit_open_graph() was
+		// a second, narrower predicate that existed only because product
+		// search printed nothing: a strategy had to stand down on exactly the
+		// pages where we PRINT, not on every page we claim. Since #692 we
+		// print on search too, so the two sets coincide and the narrower
+		// predicate is gone. If search ever stops printing, this fails and
+		// the split has to come back — for BOTH suppression paths, which is
+		// what went wrong the first time.
+		$this->stub_product_search( 'hoodie' );
 
 		$this->assertTrue( $this->meta->should_emit() );
-		$this->assertFalse( $this->meta->will_emit_open_graph() );
+
+		$og = $this->meta->build_archive_og_tags();
+		$this->assertNotSame( '', (string) $og['og:title'] );
+		$this->assertNotSame( '', (string) $og['og:url'] );
 	}
 
-	public function test_will_emit_open_graph_is_true_where_we_actually_print(): void {
-		Functions\when( 'is_product' )->justReturn( true );
-		$this->assertTrue( $this->meta->will_emit_open_graph() );
+	public function test_jetpack_suppression_and_our_emission_agree_on_search(): void {
+		// The bug this closes: suppress_jetpack_open_graph() gates on
+		// should_emit(), which counts product search. So Jetpack's ten tags
+		// were removed there while we printed none, leaving the page barer
+		// than before the plugin was installed. Both sides now answer true.
+		$this->stub_product_search( 'hoodie' );
+
+		$this->assertTrue( $this->meta->should_emit(), 'the Jetpack removal gate' );
+		$this->assertNotSame( '', (string) $this->meta->build_archive_og_tags()['og:type'], 'what replaces it' );
 	}
 
 	public function test_render_stands_our_block_down_when_a_strategy_is_enriching(): void {
@@ -3036,25 +3056,30 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 	// --- Fix 2 (#668 review): product search gets robots only ---
 
-	public function test_product_search_emits_robots_only(): void {
-		// is_shop() is true on ?s=…&post_type=product, so before this fix
-		// the archive branch caught the search request and shipped the Shop
-		// page's authored description plus a full OG/Twitter card on a
-		// noindexed results page.
+	public function test_product_search_describes_the_search_not_the_shop_page(): void {
+		// #668's finding still stands and is still asserted below: is_shop()
+		// is true on ?s=…&post_type=product, so the archive branch catches a
+		// search request and used to ship the Shop page's AUTHORED
+		// description on a page the merchant never wrote it for.
+		//
+		// What changed in #692 is the remedy. Emitting nothing at all also
+		// removed Jetpack's tags and put none back. Now the page gets a card
+		// describing the search, and the authored-copy guard stays exactly
+		// where it was.
 		$this->fake_page( 'shop' );
 		Functions\when( 'is_search' )->justReturn( true );
 		Functions\when( 'get_query_var' )->alias(
 			static fn( $var ) => 'post_type' === $var ? 'product' : 0
 		);
+		Functions\when( 'get_search_query' )->justReturn( 'hoodie' );
 		$this->set_shop_page_id( 5 );
 		$this->set_authored_description( 5, 'Authored shop copy.' );
+		$this->stub_add_query_arg();
 
 		$html = $this->render_head();
 
 		$this->assertStringContainsString( '<meta name="robots" content="noindex,follow"', $html );
-		$this->assertStringNotContainsString( 'name="description"', $html );
-		$this->assertStringNotContainsString( 'property="og:', $html );
-		$this->assertStringNotContainsString( 'name="twitter:', $html );
+		$this->assertStringContainsString( 'hoodie', $html );
 		$this->assertStringNotContainsString( 'Authored shop copy.', $html );
 	}
 
@@ -3267,5 +3292,175 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$html      = $rival_tag . $this->render_head();
 
 		$this->assertSame( 1, substr_count( $html, '<meta name="description"' ) );
+	}
+
+	// --- #692: product search gets its own social block ---
+
+	/**
+	 * Everything a product-search render needs stubbed.
+	 *
+	 * `is_shop()` is deliberately true: WooCommerce reports the product
+	 * archive on a product search too, which is the whole reason the search
+	 * branch has to be tested first.
+	 *
+	 * @param string $query The search term.
+	 * @param int    $page  Page number.
+	 */
+	private function stub_product_search( string $query, int $page = 1 ): void {
+		Functions\when( 'is_shop' )->justReturn( true );
+		Functions\when( 'is_search' )->justReturn( true );
+		Functions\when( 'is_product_category' )->justReturn( false );
+		Functions\when( 'strip_shortcodes' )->returnArg();
+		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
+		Functions\when( 'get_post_field' )->justReturn( '' );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_the_title' )->justReturn( 'Shop' );
+		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		Functions\when( 'get_search_query' )->justReturn( $query );
+		Functions\when( 'home_url' )->alias(
+			static function ( $path = '/' ) {
+				return 'https://shop.test' . $path;
+			}
+		);
+		Functions\when( 'get_query_var' )->alias(
+			static function ( $var ) use ( $page ) {
+				if ( 'paged' === $var ) {
+					return $page;
+				}
+				if ( 'post_type' === $var ) {
+					return 'product';
+				}
+				return '';
+			}
+		);
+		// Pretty permalinks, as the shop-pagination helper above assumes.
+		Functions\when( 'get_option' )->alias(
+			static function ( $name ) {
+				return 'permalink_structure' === $name ? '/%postname%/' : '';
+			}
+		);
+		Functions\when( 'trailingslashit' )->alias(
+			static function ( $url ) {
+				return rtrim( (string) $url, '/\\' ) . '/';
+			}
+		);
+		Functions\when( 'user_trailingslashit' )->alias(
+			static function ( $url ) {
+				return rtrim( (string) $url, '/' ) . '/';
+			}
+		);
+		$this->stub_add_query_arg();
+	}
+
+	/**
+	 * Mirrors core: `urlencode_deep()` over the args, then `build_query()`.
+	 *
+	 * Faithful on purpose — the double-encoding test depends on it. Also
+	 * needed by any test that RENDERS a search page: Brain Monkey throws
+	 * "not defined nor mocked in this test" the moment another test in the
+	 * file has defined the function, so a guard on `function_exists()` alone
+	 * passes in isolation and fails in a full run.
+	 */
+	private function stub_add_query_arg(): void {
+		Functions\when( 'add_query_arg' )->alias(
+			static function ( $args, $url ) {
+				$pairs = array();
+				foreach ( (array) $args as $key => $value ) {
+					$pairs[] = rawurlencode( (string) $key ) . '=' . urlencode( (string) $value );
+				}
+				$glue = false === strpos( (string) $url, '?' ) ? '?' : '&';
+				return (string) $url . $glue . implode( '&', $pairs );
+			}
+		);
+	}
+
+	public function test_product_search_is_a_website_not_an_article(): void {
+		$this->stub_product_search( 'hoodie' );
+		$og = $this->meta->build_archive_og_tags();
+
+		// Every rival but AIOSEO and Jetpack calls this an article or an
+		// object (#676 captures). It is a collection: ogp.me says website.
+		$this->assertSame( 'website', $og['og:type'] );
+	}
+
+	public function test_product_search_title_carries_the_query_not_the_shop_page(): void {
+		$this->stub_product_search( 'hoodie' );
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertStringContainsString( 'hoodie', $og['og:title'] );
+		$this->assertNotSame( 'Shop', $og['og:title'] );
+	}
+
+	public function test_product_search_url_is_the_search_not_the_shop_page(): void {
+		$this->stub_product_search( 'hoodie' );
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertStringContainsString( 's=hoodie', $og['og:url'] );
+		$this->assertStringContainsString( 'post_type=product', $og['og:url'] );
+		$this->assertStringNotContainsString( '/shop/', $og['og:url'] );
+	}
+
+	public function test_product_search_url_encodes_the_query_exactly_once(): void {
+		// add_query_arg() runs urlencode_deep() on its arguments
+		// (wp-includes/functions.php:1188), so a pre-encoded value would ship
+		// double-encoded. The stub below encodes the same way core does.
+		$this->stub_product_search( 'blue & grey' );
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertStringContainsString( 'blue+%26+grey', $og['og:url'] );
+		$this->assertStringNotContainsString( '%2526', $og['og:url'] );
+	}
+
+	public function test_product_search_page_two_does_not_advertise_page_one(): void {
+		$this->stub_product_search( 'hoodie', 2 );
+		$og = $this->meta->build_archive_og_tags();
+
+		// Same defect #682 fixed for the shop archive: without this, sharing
+		// page 2 renders a card claiming to be page 1.
+		$this->assertStringContainsString( 'page/2', $og['og:url'] );
+		$this->assertStringContainsString( 's=hoodie', $og['og:url'] );
+		$this->assertStringContainsString( '2', $og['og:title'] );
+	}
+
+	public function test_empty_search_query_falls_back_to_the_shop_identity(): void {
+		// /?s=&post_type=product is a real request. A card headlined
+		// 'Search Results for ""' is worse than the shop's own.
+		$this->stub_product_search( '' );
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'Shop', $og['og:title'] );
+		$this->assertSame( 'https://shop.test/shop/', $og['og:url'] );
+	}
+
+	public function test_a_plain_blog_search_does_not_get_the_product_search_branch(): void {
+		// build_archive_og_tags() is public, so it is reachable on a request
+		// should_emit() would have rejected. Without its own post_type test,
+		// search_query() answered on an ordinary blog search and the branch
+		// published a headline announcing product results plus an og:url
+		// carrying post_type=product (#693 review).
+		$this->stub_product_search( 'hoodie' );
+		Functions\when( 'get_query_var' )->alias(
+			// is_search() is still true; the search was simply never scoped
+			// to products.
+			static fn( $var ) => 'paged' === $var ? 1 : ''
+		);
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'Shop', $og['og:title'] );
+		$this->assertStringNotContainsString( 'post_type=product', $og['og:url'] );
+	}
+
+	public function test_product_search_still_carries_a_description_and_image_source(): void {
+		$this->stub_product_search( 'hoodie' );
+		$og = $this->meta->build_archive_og_tags();
+
+		// is_shop() is true here, so the shop branches of the description and
+		// image resolvers already apply. This pins that the search branch did
+		// not accidentally bypass them.
+		$this->assertArrayHasKey( 'og:description', $og );
+		$this->assertSame( 'Saltwarp', $og['og:site_name'] );
+		$this->assertSame( 'en_US', $og['og:locale'] );
 	}
 }

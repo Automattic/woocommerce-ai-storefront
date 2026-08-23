@@ -24,6 +24,15 @@ class WC_AI_Storefront_Meta_Tags {
 	private const DESCRIPTION_MAX = 155;
 
 	/**
+	 * Longest search term published in `og:title`.
+	 *
+	 * The term is whatever the visitor typed, so it arrives unbounded and
+	 * attacker-supplied. Capping it keeps a crafted 2,000-character query
+	 * from becoming the whole share card.
+	 */
+	private const SEARCH_QUERY_MAX = 70;
+
+	/**
 	 * Whether to emit metadata for the current request.
 	 *
 	 * NOT gated on SEO-plugin presence — per the assert-and-warn design we
@@ -49,25 +58,6 @@ class WC_AI_Storefront_Meta_Tags {
 			|| ( function_exists( 'is_product_category' ) && is_product_category() )
 			|| ( function_exists( 'is_shop' ) && is_shop() )
 			|| ( function_exists( 'is_search' ) && is_search() && 'product' === get_query_var( 'post_type' ) );
-	}
-
-	/**
-	 * Whether this request will actually print an Open Graph block.
-	 *
-	 * NOT the same question as should_emit(), which is "is this a commerce
-	 * page" and is a strict superset. Product search is a commerce page we
-	 * deliberately describe with nothing but a robots directive: there is no
-	 * single product or term to describe, and the result set differs per
-	 * visitor (#668 review).
-	 *
-	 * A strategy must stand down on exactly the pages where we print our own
-	 * tags, not on every page we consider ours. Gated on the wider predicate,
-	 * a suppression strategy removed the other plugin's social tags from a
-	 * product-search page and we printed nothing in their place, leaving the
-	 * page barer than before this plugin was installed (#676 review).
-	 */
-	public function will_emit_open_graph(): bool {
-		return $this->should_emit() && ! $this->is_product_search();
 	}
 
 	/**
@@ -129,6 +119,47 @@ class WC_AI_Storefront_Meta_Tags {
 		$paginated = trailingslashit( $base ) . $segment . '/' . $page;
 
 		return function_exists( 'user_trailingslashit' ) ? (string) user_trailingslashit( $paginated ) : $paginated;
+	}
+
+	/**
+	 * The canonical URL for a product search, page N.
+	 *
+	 * Built from the query vars, never from `$_SERVER['REQUEST_URI']` — the
+	 * trap paginated_url() documents, where every other argument on the
+	 * request (`orderby`, `utm_*`) rides along into the published URL.
+	 *
+	 * Order matters: paginated_url() appends a `/page/N` PATH segment, so it
+	 * has to run on the bare home URL before any query string exists. That
+	 * also happens to be right for plain permalinks, where it returns
+	 * `?paged=N` instead and the arguments below merge into it cleanly.
+	 *
+	 * @param string $query The raw search term.
+	 * @param int    $page  Page number, 1 or greater.
+	 */
+	private function search_og_url( string $query, int $page ): string {
+		if ( ! function_exists( 'home_url' ) ) {
+			return '';
+		}
+
+		$base = (string) home_url( '/' );
+		if ( $page >= 2 ) {
+			$base = $this->paginated_url( $base, $page );
+		}
+
+		if ( ! function_exists( 'add_query_arg' ) ) {
+			return $base;
+		}
+
+		// Raw values, deliberately. `add_query_arg()` runs `urlencode_deep()`
+		// on its arguments (wp-includes/functions.php), so pre-encoding here
+		// would publish `blue %26 grey` as `blue%2B%2526%2Bgrey`.
+		return (string) add_query_arg(
+			array(
+				's'         => $query,
+				'post_type' => 'product',
+			),
+			$base
+		);
 	}
 
 	/**
@@ -1144,6 +1175,28 @@ class WC_AI_Storefront_Meta_Tags {
 					$og['og:url']   = $this->paginated_url( (string) $og['og:url'], $page );
 				}
 			}
+		} elseif ( '' !== $this->search_query() ) {
+			// Ahead of the is_shop() branch on purpose: WooCommerce reports
+			// is_shop() as true on a product search, so testing shop first
+			// makes this dead code and the page keeps advertising the Shop
+			// page's title and URL instead of the search it is (#692).
+			//
+			// An EMPTY query deliberately falls through to that branch. A card
+			// headlined 'Search Results for ""' is worse than the shop's own,
+			// and `/?s=&post_type=product` is a real request.
+			$query = WC_AI_Storefront_Meta_Text::truncate( $this->search_query(), self::SEARCH_QUERY_MAX );
+
+			$og['og:title'] = sprintf(
+				/* translators: %s: the term the visitor searched for. */
+				__( 'Search Results for “%s”', 'woocommerce-ai-storefront' ),
+				$query
+			);
+
+			$page         = $this->current_page_number();
+			$og['og:url'] = $this->search_og_url( $this->search_query(), $page );
+			if ( $page >= 2 ) {
+				$og['og:title'] = $this->with_page_suffix( (string) $og['og:title'], $page );
+			}
 		} elseif ( function_exists( 'is_shop' ) && is_shop() ) {
 			$is_front_page = function_exists( 'is_front_page' ) && is_front_page();
 			$shop_id       = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
@@ -1311,6 +1364,36 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
+	 * The search term as typed, or '' when this is not a product search.
+	 *
+	 * Tests the `post_type` query var as well as `is_search()`, which
+	 * is_product_search() deliberately does not. That helper documents itself
+	 * as safe on the strength of every caller sitting behind should_emit(),
+	 * which has already narrowed the request to a commerce page. This method
+	 * cannot borrow that: build_archive_og_tags() is public, so a theme or
+	 * plugin calling it during an ordinary blog search would otherwise get a
+	 * headline announcing product results and an og:url carrying
+	 * `post_type=product` for a search that was never scoped to products
+	 * (#693 review). The narrowing is one condition; the invariant it relies
+	 * on otherwise lives in a different class.
+	 *
+	 * `get_search_query()` escapes with `esc_attr` unless told not to. This
+	 * value is escaped once at output by print_meta(), and is used unescaped
+	 * to build a URL, so it has to come back raw.
+	 */
+	private function search_query(): string {
+		if ( ! $this->is_product_search() || ! function_exists( 'get_search_query' ) ) {
+			return '';
+		}
+
+		if ( ! function_exists( 'get_query_var' ) || 'product' !== get_query_var( 'post_type' ) ) {
+			return '';
+		}
+
+		return trim( (string) get_search_query( false ) );
+	}
+
+	/**
 	 * Drop Jetpack SEO Tools' meta description on commerce pages where we emit
 	 * our own. Only the `description` key is removed; any other entry Jetpack
 	 * puts in this map (e.g. `robots` => `noindex`) is left untouched. Jetpack's
@@ -1369,18 +1452,27 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			$description = $this->build_description( $product );
 			$og          = $this->build_og_tags( $product, $description );
-		} elseif ( ! $this->is_product_search()
-			&& ( ( function_exists( 'is_product_category' ) && is_product_category() )
-				|| ( function_exists( 'is_shop' ) && is_shop() ) ) ) {
+		} elseif ( ( function_exists( 'is_product_category' ) && is_product_category() )
+			|| ( function_exists( 'is_shop' ) && is_shop() )
+			|| $this->is_product_search() ) {
+			// Product search included since #692. It used to return here with
+			// nothing but the robots directive, on the reasoning that there is
+			// no single product or term to describe. That conflated two
+			// questions: `noindex` tells a crawler not to index the page,
+			// while Open Graph tells Slack and Facebook how to draw a card
+			// when someone pastes the link. A noindexed page still gets
+			// shared. build_archive_og_tags() branches on the query.
+			//
+			// is_product_search() is named explicitly rather than left to
+			// is_shop(), which WooCommerce also reports as true here. Relying
+			// on that quirk would make this silently stop covering search if
+			// it ever changed.
 			$description = $this->build_archive_description();
 			$og          = $this->build_archive_og_tags( $description );
 		} else {
-			// Product-search results: robots noindex only (emitted above);
-			// there is no single product or term to describe. Reachable only
-			// because of the is_product_search() guard above: `is_shop()` is
-			// true on a product search too, so without it this branch was
-			// dead code and a search page shipped the Shop page's authored
-			// description plus a full OG/Twitter card (#668 review).
+			// should_emit() admits exactly four page types and the three
+			// branches above cover all of them, so this is unreachable. A
+			// bare return rather than an assumption that it is.
 			return;
 		}
 

@@ -232,11 +232,18 @@ class WC_AI_Storefront {
 
 		// One set of social tags per page, whichever SEO plugin is active
 		// (#676). Selected by detector slug, so a plugin we have not measured
-		// is left alone. Shares Meta_Tags' gate rather than re-deriving it,
-		// and specifically will_emit_open_graph() rather than should_emit():
-		// a strategy must stand down on exactly the pages where we PRINT our
-		// own tags, which excludes product search.
-		WC_AI_Storefront_Og_Strategies::init( array( $meta_tags, 'will_emit_open_graph' ) );
+		// is left alone. Shares Meta_Tags' gate rather than re-deriving it.
+		//
+		// This used to pass will_emit_open_graph(), a narrower predicate that
+		// existed solely because product search printed nothing: a strategy
+		// must stand down on exactly the pages where we PRINT our own tags,
+		// not on every page we consider ours. Since #692 those two sets are
+		// the same set again, so the narrower predicate is gone and both
+		// suppression paths — these strategies and the older Jetpack removal
+		// in Meta_Tags — read one gate. They disagreed until then, which is
+		// how a product-search page ended up with Jetpack's tags stripped and
+		// none of ours in their place.
+		WC_AI_Storefront_Og_Strategies::init( array( $meta_tags, 'should_emit' ) );
 
 		// Social metadata for posts and pages, but ONLY on a store where
 		// nothing else provides any (#680). Meta_Tags is scoped to commerce
