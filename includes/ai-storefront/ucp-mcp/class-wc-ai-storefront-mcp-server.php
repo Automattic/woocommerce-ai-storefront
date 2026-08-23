@@ -113,7 +113,7 @@ class WC_AI_Storefront_MCP_Server {
 		return new WP_REST_Response(
 			array(
 				'error' => __(
-					'This is an MCP (Model Context Protocol) JSON-RPC endpoint. Send a POST request with a JSON-RPC body — e.g. {"jsonrpc":"2.0","id":1,"method":"initialize"}. GET is reserved for SSE streams, which this endpoint does not provide.',
+					'This is an MCP (Model Context Protocol) JSON-RPC endpoint. Send a POST request with a JSON-RPC body, e.g. {"jsonrpc":"2.0","id":1,"method":"initialize"}. GET is reserved for SSE streams, which this endpoint does not provide.',
 					'woocommerce-ai-storefront'
 				),
 			),

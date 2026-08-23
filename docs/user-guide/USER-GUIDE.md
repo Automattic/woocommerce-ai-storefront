@@ -76,7 +76,7 @@ You may want to wait if any of these apply:
 
 ### Known compatibility notes
 
-**Works alongside Google Merchant Center — and stacks with it.** Since January 2026, Google's Gemini agentic shopping uses two layers: the Shopping Graph (product retrieval, populated by GMC feeds and product-page Schema.org markup) and UCP (the agentic checkout handoff, the protocol Google and Shopify jointly launched). If you push to GMC, you feed the retrieval layer. If you publish via this plugin, you feed the checkout-handoff layer. You want both: GMC alone gets your products into Gemini's index, but doesn't tell Gemini how to hand the shopper off to your checkout; UCP alone doesn't help if the agent can't discover your products to begin with. Together they form the path from "shopper asks Gemini" to "shopper checks out on your store." The enhanced JSON-LD on product pages also reads as legitimate Schema.org structured data to both Google and AI agents. Orders attributed to GMC appear in GMC's dashboard; orders attributed to AI agents appear in this plugin's Overview tab.
+**Works alongside Google Merchant Center, and stacks with it.** Since January 2026, Google's Gemini agentic shopping uses two layers: the Shopping Graph (product retrieval, populated by GMC feeds and product-page Schema.org markup) and UCP (the agentic checkout handoff, the protocol Google and Shopify jointly launched). If you push to GMC, you feed the retrieval layer. If you publish via this plugin, you feed the checkout-handoff layer. You want both: GMC alone gets your products into Gemini's index, but doesn't tell Gemini how to hand the shopper off to your checkout; UCP alone doesn't help if the agent can't discover your products to begin with. Together they form the path from "shopper asks Gemini" to "shopper checks out on your store." The enhanced JSON-LD on product pages also reads as legitimate Schema.org structured data to both Google and AI agents. Orders attributed to GMC appear in GMC's dashboard; orders attributed to AI agents appear in this plugin's Overview tab.
 
 **Plugins worth checking before you enable:**
 
@@ -88,9 +88,9 @@ You may want to wait if any of these apply:
 
 When your store uses WooPayments' multi-currency feature, the AI Storefront plugin honors every per-currency setting the merchant configures:
 
-- **Exchange rate** — manual or auto, applied to every price an AI agent sees.
-- **Rounding precision** — agents see prices rounded the same way human buyers see them.
-- **Charm pricing** — `-0.01` / `-0.05` offsets are applied to converted prices, so what the agent quotes matches what the buyer sees on the storefront.
+- **Exchange rate.** Manual or auto, applied to every price an AI agent sees.
+- **Rounding precision.** Agents see prices rounded the same way human buyers see them.
+- **Charm pricing.** `-0.01` / `-0.05` offsets are applied to converted prices, so what the agent quotes matches what the buyer sees on the storefront.
 
 No additional configuration is required. AI agents that send `context.currency: EUR` in their UCP requests receive prices, search-result filter bounds, and checkout `expected_unit_price` comparisons all in EUR. When an agent requests a currency the store does not accept, prices fall back to the store base and the response carries a clear `currency_conversion_unsupported` warning.
 
@@ -175,13 +175,13 @@ If something returns 404 or shows your homepage, jump to [Troubleshooting](#10-t
 
 While the plugin is enabled, `/llms.txt` is advertised to AI tools in two ways shoppers never see: an HTTP response header on every page and a hidden `<link rel="alternate" type="text/markdown">` in each page's `<head>`. These give header-inspecting clients and HTML crawlers a way in: once they open `/llms.txt` it points them to all of your other endpoints. Nothing visible is added to your pages, so don't expect to see a link on the page itself.
 
-**Verify your setup in three layers, most reliable first.** AI engines are non-deterministic — a single chat query is not a reliable signal of whether your store is correctly published. Use layered verification to separate "is the plugin working" from "did the AI engine cooperate."
+**Verify your setup in three layers, most reliable first.** AI engines are non-deterministic, and a single chat query is not a reliable signal of whether your store is correctly published. Use layered verification to separate "is the plugin working" from "did the AI engine cooperate."
 
-**Layer 1 — Direct endpoint check (deterministic).** Visit `/llms.txt` and `/.well-known/ucp` on your store in a browser. If they return your store identity and protocol manifest, the plugin is working server-side, regardless of how AI engines behave. This is the load-bearing check.
+**Layer 1: Direct endpoint check (deterministic).** Visit `/llms.txt` and `/.well-known/ucp` on your store in a browser. If they return your store identity and protocol manifest, the plugin is working server-side, regardless of how AI engines behave. This is the load-bearing check.
 
-**Layer 2 — Independent validation tools (recommended).** Run your domain through [UCPPlayground](https://ucpplayground.com/) or [UCPChecker](https://ucpchecker.com/). They fetch your endpoints directly and report what they see, with no AI-side caching or fetch-versus-fabricate variability. See [section 4a](#4a-independent-validation-tools).
+**Layer 2: Independent validation tools (recommended).** Run your domain through [UCPPlayground](https://ucpplayground.com/) or [UCPChecker](https://ucpchecker.com/). They fetch your endpoints directly and report what they see, with no AI-side caching or fetch-versus-fabricate variability. See [section 4a](#4a-independent-validation-tools).
 
-**Layer 3 — Live AI assistant query (variable results).** Ask an assistant with live web browsing:
+**Layer 3: Live AI assistant query (variable results).** Ask an assistant with live web browsing:
 
 > *"Find products at \[your-store.com\] that match \[some attribute, e.g. 'red running shoes under $100'\]."*
 
@@ -211,7 +211,7 @@ These tools are not officially affiliated with Automattic. URLs and capabilities
 
 Your homepage now publishes your store's brand details (name, logo, address, contact) in a format that AI agents understand. AI shopping assistants use this info to confirm they're recommending the right store.
 
-If your homepage *is* your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list that `/shop/` does — each product's name and a link to its product page — so an agent that fetches only your root URL still sees your full product lineup and where to find each one. (Prices and full details live on the product pages themselves and in your machine-readable product feed, which the homepage points to.) If your homepage is a separate landing page, only the brand details above are published there.
+If your homepage *is* your shop page (the default WooCommerce layout where the storefront lists products on the root URL), the homepage also publishes the same product list that `/shop/` does (each product's name and a link to its product page), so an agent that fetches only your root URL still sees your full product lineup and where to find each one. (Prices and full details live on the product pages themselves and in your machine-readable product feed, which the homepage points to.) If your homepage is a separate landing page, only the brand details above are published there.
 
 | Field | Source | Notes |
 |-------|--------|-------|
@@ -234,7 +234,7 @@ If your homepage *is* your shop page (the default WooCommerce layout where the s
 
 The plugin never publishes your WordPress admin email as a public contact. If neither address works, the email contact is omitted entirely.
 
-**Phone and social profile links** are not part of this homepage business block. (This is separate from the Open Graph and Twitter social-share *cards* the plugin emits on product, category, and shop pages, which create the link preview when a page is shared — see [§4c](#4c-search-engine-and-social-metadata).) If you want to publish profile links, plugins like Jetpack or Yoast can help.
+**Phone and social profile links** are not part of this homepage business block. (This is separate from the Open Graph and Twitter social-share *cards* the plugin emits on product, category, and shop pages, which create the link preview when a page is shared. See [§4c](#4c-search-engine-and-social-metadata).) If you want to publish profile links, plugins like Jetpack or Yoast can help.
 
 ### 4c. Search-engine and social metadata
 
@@ -242,7 +242,7 @@ The plugin writes the everyday metadata search engines and social platforms read
 
 | Tag | What it is | Built from |
 |-----|-----------|-----------|
-| Page title (`<title>`) | The clickable headline in Google results and the browser tab | Product name, with your product brand appended when it adds information. The brand is left off when it would just repeat — when it matches your store name, or the product name already contains it — so an in-house label reads "Camp Shirt – Saltwarp", not "Camp Shirt \| Saltwarp – Saltwarp" |
+| Page title (`<title>`) | The clickable headline in Google results and the browser tab | Product name, with your product brand appended when it adds information. The brand is left off when it would just repeat, either because it matches your store name or because the product name already contains it, so an in-house label reads "Camp Shirt – Saltwarp", not "Camp Shirt \| Saltwarp – Saltwarp" |
 | Meta description | The gray summary under the headline in search results | Product short description, then long description; category description; shop page content, then your store tagline |
 | Open Graph + Twitter tags | The image-and-title "link preview" when a page is shared on social or in chat | Product title, description, price, and featured image |
 
@@ -250,14 +250,14 @@ It also keeps two kinds of page out of search results automatically: products yo
 
 **If you run Yoast WooCommerce SEO, Rank Math, All in One SEO, or SEOPress**, the plugin shows a dismissible admin notice letting you know it now provides this metadata and that you can deactivate that plugin for these pages. (The free Yoast SEO plugin triggers this too, not just the paid WooCommerce SEO addon; when both are active, the notice names the more specific addon.) The notice is per user: dismiss it and it stays dismissed for you. Before deactivating your SEO plugin, check this short list (it's also in the notice):
 
-- **Breadcrumbs.** Your breadcrumb *structured data* is already provided by WooCommerce core, so the search-result breadcrumb is safe. The visible breadcrumb *trail* is only at risk if your theme hard-codes the SEO plugin's breadcrumb function — switch that template call to `woocommerce_breadcrumb()`.
+- **Breadcrumbs.** Your breadcrumb *structured data* is already provided by WooCommerce core, so the search-result breadcrumb is safe. The visible breadcrumb *trail* is only at risk if your theme hard-codes the SEO plugin's breadcrumb function. Switch that template call to `woocommerce_breadcrumb()`.
 - **Redirects.** Any 301/410 redirects you configured in the SEO plugin stop working when it's deactivated. Keep a dedicated redirect plugin, or move the redirects into one, first.
 - **Custom noindex rules.** Pages you manually told the SEO plugin to hide from search become indexable again (beyond the plugin's hidden-product and search-results defaults above).
 - **Sitemap.** WordPress core serves a sitemap at `/wp-sitemap.xml`. If you had submitted the SEO plugin's `/sitemap_index.xml` to Google Search Console, resubmit the core one.
 
-Keeping your SEO plugin is fine too — dismiss the notice and both keep working, with the minor duplicate-tag caveat noted in [§1](#known-compatibility-notes). The full side-by-side comparison is in the engineering doc [`YOAST-COEXISTENCE.md`](../engineering/YOAST-COEXISTENCE.md).
+Keeping your SEO plugin is fine too: dismiss the notice and both keep working, with the minor duplicate-tag caveat noted in [§1](#known-compatibility-notes). The full side-by-side comparison is in the engineering doc [`YOAST-COEXISTENCE.md`](../engineering/YOAST-COEXISTENCE.md).
 
-**If you run Jetpack, turn off its Sitemaps feature and let WordPress core serve the sitemap.** Jetpack's sitemap does not include your **brand, tag, and category archive pages** — exactly the taxonomy pages that help search engines and AI crawlers discover your catalog by the way shoppers actually browse it. WordPress core's `/wp-sitemap.xml` includes them. When Jetpack's sitemap is active it takes over from core, so those pages silently drop out of the sitemap crawlers read. Disable **Jetpack → Settings → Traffic → Generate XML sitemaps** (keep the rest of Jetpack — this only turns off its sitemap). If you had submitted Jetpack's `/sitemap.xml` to Google Search Console, resubmit the core `/wp-sitemap.xml`.
+**If you run Jetpack, turn off its Sitemaps feature and let WordPress core serve the sitemap.** Jetpack's sitemap does not include your **brand, tag, and category archive pages**, exactly the taxonomy pages that help search engines and AI crawlers discover your catalog by the way shoppers actually browse it. WordPress core's `/wp-sitemap.xml` includes them. When Jetpack's sitemap is active it takes over from core, so those pages silently drop out of the sitemap crawlers read. Disable **Jetpack → Settings → Traffic → Generate XML sitemaps** (keep the rest of Jetpack; this only turns off its sitemap). If you had submitted Jetpack's `/sitemap.xml` to Google Search Console, resubmit the core `/wp-sitemap.xml`.
 
 **Check your structured data and metadata with free tools.** Once the plugin is live, confirm what search engines and AI assistants actually read from your pages. A single URL is enough to start: paste your shop or a product page into the first tool. If you also run another SEO plugin, these validators are where duplicate social tags and Product structured data show up.
 
@@ -606,9 +606,9 @@ This feature is **opt-in** and is disabled by default. To enable it, open the **
 
 ![Instant indexing (IndexNow) card](screenshots/06c-indexnow.png)
 
-**Verification key.** IndexNow requires each site to prove ownership before engines trust its submissions. The plugin auto-generates a verification key and serves it at `https://your-store.com/{key}.txt`. The card shows the current key and offers a **Regenerate** button. The key is public-by-design (engines fetch it to confirm ownership), so you only need to regenerate it if a key was somehow leaked and you want to invalidate it — routine rotation is unnecessary.
+**Verification key.** IndexNow requires each site to prove ownership before engines trust its submissions. The plugin auto-generates a verification key and serves it at `https://your-store.com/{key}.txt`. The card shows the current key and offers a **Regenerate** button. The key is public-by-design (engines fetch it to confirm ownership), so you only need to regenerate it if a key was somehow leaked and you want to invalidate it. Routine rotation is unnecessary.
 
-**Submit entire catalog now.** The card includes a **Submit entire catalog now** button that pushes every published product, category, and brand URL — plus your discovery surfaces — in one go. The first time you enable IndexNow, the same seed happens automatically. Use this after importing a large batch of products or setting up a new store, so engines pick up your full catalog right away instead of waiting for individual changes to come through the change feed.
+**Submit entire catalog now.** The card includes a **Submit entire catalog now** button that pushes every published product, category, and brand URL, plus your discovery surfaces, in one go. The first time you enable IndexNow, the same seed happens automatically. Use this after importing a large batch of products or setting up a new store, so engines pick up your full catalog right away instead of waiting for individual changes to come through the change feed.
 
 **Status line.** Below the controls, a status line shows the outcome of the last submission, for example: "Last submitted: 62 URL(s) · HTTP 200 · 2m ago". An HTTP 200 means the submission was accepted and the key validated. An HTTP 202 means accepted but key validation is still pending (see [Troubleshooting](#10-troubleshooting) below).
 
@@ -753,9 +753,9 @@ A security plugin is blocking `/.well-known/`. Add `/.well-known/ucp` to its all
 
 Most often this is deliberate. The plugin omits the buy link (`BuyAction` and `checkoutPageURLTemplate`) whenever WooCommerce's cart would refuse the product anyway, so AI agents and search crawlers are never handed a link that lands on an error. Check these first:
 
-1. **Is the product out of stock?** Out-of-stock products keep their name, price, image and `availability` in the JSON-LD, but drop the buy link. Restock it — or, if you accept backorders, set **Backorders** to "Allow" on the product's Inventory tab. Backordered products *do* keep their buy link, because WooCommerce still accepts them at checkout.
+1. **Is the product out of stock?** Out-of-stock products keep their name, price, image and `availability` in the JSON-LD, but drop the buy link. Restock it, or if you accept backorders set **Backorders** to "Allow" on the product's Inventory tab. Backordered products *do* keep their buy link, because WooCommerce still accepts them at checkout.
 2. **Does the product have a price?** A product with no price set is "unpurchasable" to WooCommerce, and gets the same treatment. This also covers drafts and catalog-hidden products.
-3. **For variable products**, each variation is judged on its own — an out-of-stock size loses its buy link while the in-stock sizes keep theirs. That's expected.
+3. **For variable products**, each variation is judged on its own: an out-of-stock size loses its buy link while the in-stock sizes keep theirs. That's expected.
 
 If the product is in stock and priced and the buy link is still missing, your theme or page builder may be overriding WooCommerce's product details. Try switching to the Storefront theme temporarily to confirm. If that works, contact your theme developer or try a different theme.
 
@@ -767,7 +767,7 @@ If you see two *meta descriptions*, that is worth reporting: it should no longer
 
 ### The "you can deactivate your SEO plugin" notice keeps coming back
 
-It's dismissed per user — each admin sees it until they dismiss it. If it reappears for the *same* user after dismissing, the dismissal didn't save: check the browser console for an error when you click the notice's ✕, and confirm your login session hasn't expired.
+It's dismissed per user: each admin sees it until they dismiss it. If it reappears for the *same* user after dismissing, the dismissal didn't save: check the browser console for an error when you click the notice's ✕, and confirm your login session hasn't expired.
 
 ### AI agents say they can't find your store
 
@@ -780,7 +780,7 @@ Check these in order:
 
 ### `/llms.txt` doesn't list a sitemap
 
-If your site only recently started publishing a sitemap (a fresh WordPress install, or you just enabled an SEO plugin that emits one), `/llms.txt` caches the "no sitemap found" result for 24 hours so it doesn't re-probe the same paths on every request. To force a refresh now, open **WooCommerce → AI Storefront**, change any setting and save (or save without changing anything on the Visibility / Discovery / Policies tab — the save itself busts the sitemap cache). The next `/llms.txt` fetch re-probes and picks up the sitemap.
+If your site only recently started publishing a sitemap (a fresh WordPress install, or you just enabled an SEO plugin that emits one), `/llms.txt` caches the "no sitemap found" result for 24 hours so it doesn't re-probe the same paths on every request. To force a refresh now, open **WooCommerce → AI Storefront**, change any setting and save (or save without changing anything on the Visibility / Discovery / Policies tab; the save itself busts the sitemap cache). The next `/llms.txt` fetch re-probes and picks up the sitemap.
 
 ### Stats are zero after a week
 
@@ -794,9 +794,9 @@ If all are okay, AI traffic may still be building. AI agents cache your catalog,
 
 ### IndexNow submissions don't appear in Bing Webmaster Tools
 
-Check the status line on the Discovery tab's **Instant indexing** card. **HTTP 202** means "accepted, key validation pending" — the engine received the URLs but hasn't yet fetched your ownership file to confirm you control the site. **HTTP 200** means fully validated.
+Check the status line on the Discovery tab's **Instant indexing** card. **HTTP 202** means "accepted, key validation pending". The engine received the URLs but hasn't yet fetched your ownership file to confirm you control the site. **HTTP 200** means fully validated.
 
-To confirm key validation works, open `https://your-store.com/{key}.txt` directly in a browser (replace `{key}` with the value shown on the card). It must return the key text with a **200 status and no redirect**. A 404 means Permalinks need flushing — go to **Settings → Permalinks** and click Save Changes, then try the URL again. A redirect (e.g. 301 to `/{key}.txt/`) or a blocked response means the engine can't reach the file and validation will never complete.
+To confirm key validation works, open `https://your-store.com/{key}.txt` directly in a browser (replace `{key}` with the value shown on the card). It must return the key text with a **200 status and no redirect**. A 404 means Permalinks need flushing. Go to **Settings → Permalinks** and click Save Changes, then try the URL again. A redirect (e.g. 301 to `/{key}.txt/`) or a blocked response means the engine can't reach the file and validation will never complete.
 
 Even after a 200, Bing Webmaster Tools reflects URL coverage with a delay and depends on Bing being able to crawl your pages. Submissions get indexed faster, but they don't guarantee immediate coverage report updates.
 

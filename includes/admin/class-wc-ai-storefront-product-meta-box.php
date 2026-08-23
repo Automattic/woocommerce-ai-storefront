@@ -162,7 +162,7 @@ class WC_AI_Storefront_Product_Meta_Box {
 				'id'          => self::META_KEY,
 				'label'       => __( 'Final sale', 'woocommerce-ai-storefront' ),
 				'description' => __(
-					'Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged — add a notice in your theme or product description if you want shoppers to see it before purchase.',
+					'Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged, so add a notice in your theme or product description if you want shoppers to see it before purchase.',
 					'woocommerce-ai-storefront'
 				),
 				'desc_tip'    => true,
