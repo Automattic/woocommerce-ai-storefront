@@ -21,6 +21,46 @@ describe( 'formatRelativeAge', () => {
 
 describe( 'formatIndexNowStatus', () => {
 	const now = 1750003600; // 1h after the timestamps below.
+	it( 'reports dropped URLs alongside a successful submission', () => {
+		// Without this the card printed an unqualified success for a
+		// submission that had discarded part of the queue, which is the
+		// cheerful line the drop counter exists to replace (#699 review).
+		expect(
+			formatIndexNowStatus(
+				{
+					time: 1750000000,
+					count: 10000,
+					code: 200,
+					ok: true,
+					dropped: 412,
+				},
+				now
+			)
+		).toBe(
+			'Last submitted: 10000 URL(s), 412 dropped (queue full) · HTTP 200 · 1h ago'
+		);
+	} );
+	it( 'omits the dropped clause when nothing was dropped', () => {
+		expect(
+			formatIndexNowStatus(
+				{
+					time: 1750000000,
+					count: 10,
+					code: 200,
+					ok: true,
+					dropped: 0,
+				},
+				now
+			)
+		).toBe( 'Last submitted: 10 URL(s) · HTTP 200 · 1h ago' );
+		// Older stored results predate the key entirely.
+		expect(
+			formatIndexNowStatus(
+				{ time: 1750000000, count: 10, code: 200, ok: true },
+				now
+			)
+		).toBe( 'Last submitted: 10 URL(s) · HTTP 200 · 1h ago' );
+	} );
 	it( 'reports no submissions when empty', () => {
 		expect( formatIndexNowStatus( {}, now ) ).toBe( 'No submissions yet.' );
 		expect( formatIndexNowStatus( undefined, now ) ).toBe(

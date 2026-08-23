@@ -172,11 +172,22 @@ This lives in its own option rather than inside `wc_ai_storefront_settings` for 
 
 The deduplicated queue of URLs awaiting submission. Writes accumulate here and a debounced cron drains them, so a bulk product import produces one submission rather than hundreds.
 
-- **Type:** `string[]` — a list of absolute URLs, capped at `MAX_URLS` (10,000); the overflow is dropped with a debug log rather than growing without bound
+- **Type:** `string[]` — a list of absolute URLs, capped at `MAX_PENDING` (25,000); the overflow is dropped rather than growing without bound, and the dropped count is recorded so the Discovery tab can show it. Note this is NOT the submission limit: IndexNow accepts 10,000 URLs per POST (`BATCH_SIZE`), and a queue larger than that is sent as several requests a minute apart, not truncated
 - **Autoload:** normally `auto`, but **not fixed** — no explicit `$autoload` argument is passed, and on WP 6.6+ `update_option()` *re-evaluates* the stored value on every write when the current setting is one of the `auto*` family. `wp_filter_default_autoload_value_via_option_size()` returns `auto-off` once the serialized value exceeds 150,000 bytes (filterable via `wp_max_autoloaded_option_size`), which a large catalogue's queue passes at roughly 1,500–2,000 URLs. So this option autoloads while the queue is small and stops when it is large, flipping back as it drains. This is the one option here whose autoload state is a function of store size rather than a constant
 - **Defined in:** `WC_AI_Storefront_IndexNow::PENDING_OPTION`
 - **Written by:** `::enqueue()`, from product save/delete, category and brand term changes, and settings updates
-- **Read by:** `::take_pending()`, which reads and then `delete_option()`s in one step — so between flushes the option is **absent**, not an empty array. Code checking for queued work should use the default-`array()` read rather than testing for existence
+- **Read by:** `::take_batch()`, which removes the first `BATCH_SIZE` URLs and writes the remainder back. The option is therefore **present between flushes whenever more than one batch is queued**, and absent only once the queue drains. (It was absent between every flush before batching, when `::take_pending()` emptied it in one step; `take_pending()` is still used on the disabled-mid-flight path.) Code checking for queued work should use the default-`array()` read rather than testing for existence
+- **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
+
+### `wc_ai_storefront_indexnow_dropped`
+
+A running count of URLs discarded at `MAX_PENDING` since the last completed drain.
+
+- **Type:** `int`
+- **Autoload:** `auto`, and always small
+- **Defined in:** `WC_AI_Storefront_IndexNow::DROPPED_OPTION`
+- **Written by:** `::enqueue()`, when the queue would exceed `MAX_PENDING`
+- **Read by:** `::record_result()`, which copies it into `last_result` without consuming it, so the count survives every attempt of a multi-batch submission. `::clear_dropped()` releases it once the queue has fully drained, and on the disabled-mid-flight path where the queue is discarded
 - **Uninstall:** deleted by `uninstall.php` (single-site and per-blog multisite paths)
 
 ### `wc_ai_storefront_indexnow_last_result`

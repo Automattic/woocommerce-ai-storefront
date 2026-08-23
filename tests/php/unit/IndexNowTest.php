@@ -375,8 +375,8 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		// Stateful delete, so take_batch() can actually drain the queue. As a
-		// no-op the store never emptied, has_pending() stayed true and flush()
-		// rescheduled forever (#698).
+		// no-op the store never emptied and flush() then reached the unstubbed
+		// wp_next_scheduled() (#698).
 		Functions\when( 'delete_option' )->alias(
 			static function ( $n ) use ( &$store ) {
 				unset( $store[ $n ] );
@@ -575,8 +575,8 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		// Stateful delete, so take_batch() can actually drain the queue. As a
-		// no-op the store never emptied, has_pending() stayed true and flush()
-		// rescheduled forever (#698).
+		// no-op the store never emptied and flush() then reached the unstubbed
+		// wp_next_scheduled() (#698).
 		Functions\when( 'delete_option' )->alias(
 			static function ( $n ) use ( &$store ) {
 				unset( $store[ $n ] );
@@ -655,8 +655,8 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		// Stateful delete, so take_batch() can actually drain the queue. As a
-		// no-op the store never emptied, has_pending() stayed true and flush()
-		// rescheduled forever (#698).
+		// no-op the store never emptied and flush() then reached the unstubbed
+		// wp_next_scheduled() (#698).
 		Functions\when( 'delete_option' )->alias(
 			static function ( $n ) use ( &$store ) {
 				unset( $store[ $n ] );
@@ -1279,7 +1279,10 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	 * Batching is only testable if the queue actually changes between calls.
 	 *
 	 * @param array $initial Seed options.
-	 * @return array A one-element array holding the store, by reference.
+	 * @return array{0:\ArrayObject} The shared store, held by object handle
+	 *                               rather than by reference, which is what
+	 *                               lets this drop the `use ( &$store )`
+	 *                               pattern the older stubs still need.
 	 */
 	private function stub_option_store( array $initial = array() ): array {
 		$box = new \ArrayObject( $initial );
@@ -1335,10 +1338,18 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		// off, which is how this stayed invisible.
 		list( $box ) = $this->stub_option_store();
 
-		$this->indexnow->enqueue( $this->synthetic_urls( 50005 ) );
+		$this->indexnow->enqueue( $this->synthetic_urls( 25005 ) );
 
-		$this->assertCount( 50000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ) );
+		$pending = $box->offsetGet( 'wc_ai_storefront_indexnow_pending' );
+		$this->assertCount( 25000, $pending );
 		$this->assertSame( 5, $box->offsetGet( 'wc_ai_storefront_indexnow_dropped' ) );
+
+		// WHICH end is cut is behaviour, not an accident, and the test this
+		// replaced was the only thing pinning it. Without these two the
+		// direction could flip to keep-newest and stay green, leaving a code
+		// comment as the sole statement of it (#699 review).
+		$this->assertContains( 'https://shop.test/product/p0/', $pending, 'oldest kept' );
+		$this->assertNotContains( 'https://shop.test/product/p25004/', $pending, 'newest dropped' );
 	}
 
 	public function test_a_large_queue_drains_in_batches_of_the_spec_limit(): void {
@@ -1405,18 +1416,33 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		);
 		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 429 );
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
-		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+		$scheduled = 0;
+		Functions\when( 'wp_schedule_single_event' )->alias(
+			static function () use ( &$scheduled ) {
+				++$scheduled;
+				return true;
+			}
+		);
 
 		$this->indexnow->flush();
 
-		$this->assertSame( 1, $posts, 'one POST only; a 429 must not roll on into the next chunk' );
+		// The re-queue and the retry are what this test is for. The POST count
+		// was the old headline assertion and proved nothing: flush() makes
+		// exactly one POST for any status code, so it passed with the stub set
+		// to 200 (#699 review). No-cascade is pinned by the drain test's size
+		// sequence instead.
 		$this->assertCount( 25000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ), 'nothing lost' );
+		$this->assertSame( 1, $scheduled, 'the re-queued batch must actually get retried' );
+		$this->assertSame( 1, $posts );
 	}
 
-	public function test_a_403_drops_its_batch_and_does_not_reschedule(): void {
-		// 403/422 are dropped deliberately: retrying a structurally invalid
-		// request will not help. That must not change just because more work
-		// remains queued.
+	public function test_a_403_clears_the_whole_queue_rather_than_orphaning_it(): void {
+		// 403 and 422 are conditions of the SITE, so the next batch fails the
+		// same way: retrying is pointless. But the earlier version of this test
+		// asserted the remainder simply STAYED queued with nothing scheduled,
+		// and called that success. Before batching that state could not exist,
+		// because take_pending() emptied the queue; take_batch() made it
+		// reachable and this test codified it (#699 review).
 		list( $box ) = $this->stub_option_store(
 			array(
 				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 15000 ),
@@ -1437,7 +1463,61 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->indexnow->flush();
 
 		$this->assertSame( 0, $scheduled, 'a structurally invalid request must not be retried' );
-		$this->assertCount( 5000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ), 'only that batch was dropped' );
+		$this->assertFalse(
+			$box->offsetExists( 'wc_ai_storefront_indexnow_pending' ),
+			'the remainder must be cleared, not left queued with nothing scheduled to send it'
+		);
+	}
+
+	public function test_take_batch_of_zero_leaves_the_queue_alone(): void {
+		// A caller asking for nothing says nothing about the queue. Grouped
+		// with the unusable-queue conditions, $size < 1 deleted every queued
+		// URL and returned an empty batch indistinguishable from a drained one.
+		// Unreachable today, and one `apply_filters` on the batch size away
+		// from a merchant snippet returning 0 to "pause submissions" wiping
+		// 25,000 URLs instead (#699 review).
+		list( $box ) = $this->stub_option_store(
+			array( 'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 5 ) )
+		);
+
+		// No setAccessible(): it has been a no-op since PHP 8.1 and calling it
+		// raises a deprecation on 8.5.
+		$method = new \ReflectionMethod( $this->indexnow, 'take_batch' );
+
+		$this->assertSame( array(), $method->invoke( $this->indexnow, 0 ) );
+		$this->assertCount(
+			5,
+			$box->offsetGet( 'wc_ai_storefront_indexnow_pending' ),
+			'asking for no URLs must not destroy the ones that are queued'
+		);
+	}
+
+	public function test_a_5xx_requeues_and_reschedules_instead_of_stranding_the_queue(): void {
+		// This used to fall into the same branch as 403, which caught every
+		// non-200/202/429 code. A transient 503 on the first batch of a large
+		// drain therefore dropped that batch and left the rest with no cron
+		// event pointing at it (#699 review).
+		list( $box ) = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 15000 ),
+				'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+			)
+		);
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 503 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 503 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		$scheduled = 0;
+		Functions\when( 'wp_schedule_single_event' )->alias(
+			static function () use ( &$scheduled ) {
+				++$scheduled;
+				return true;
+			}
+		);
+
+		$this->indexnow->flush();
+
+		$this->assertSame( 1, $scheduled, 'a transient failure must be retried' );
+		$this->assertCount( 15000, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ), 'nothing lost' );
 	}
 
 	public function test_an_empty_permalink_is_dropped_rather_than_submitted(): void {

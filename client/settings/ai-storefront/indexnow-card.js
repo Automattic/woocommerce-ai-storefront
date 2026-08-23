@@ -54,7 +54,7 @@ export function formatRelativeAge( seconds ) {
 /**
  * Human status line from the stored last_result.
  *
- * @param {Object} lastResult { time, count, code, ok } or {}.
+ * @param {Object} lastResult { time, count, code, ok, dropped } or {}.
  * @param {number} nowSeconds Current unix time in seconds.
  * @return {string} Status text.
  */
@@ -63,6 +63,23 @@ export function formatIndexNowStatus( lastResult, nowSeconds ) {
 		return __( 'No submissions yet.', 'woocommerce-ai-storefront' );
 	}
 	const ago = formatRelativeAge( nowSeconds - lastResult.time );
+	// A queue that overflowed had URLs discarded. Reporting only the submitted
+	// count reads as an unqualified success, which is exactly the cheerful
+	// "10,000 URL(s) · HTTP 200" line that hid the problem before (#699 review).
+	const dropped = Number( lastResult.dropped ) || 0;
+	if ( lastResult.ok && dropped > 0 ) {
+		return sprintf(
+			/* translators: 1: URL count, 2: dropped count, 3: HTTP code, 4: relative time. */
+			__(
+				'Last submitted: %1$d URL(s), %2$d dropped (queue full) · HTTP %3$d · %4$s',
+				'woocommerce-ai-storefront'
+			),
+			lastResult.count,
+			dropped,
+			lastResult.code,
+			ago
+		);
+	}
 	if ( lastResult.ok ) {
 		return sprintf(
 			/* translators: 1: URL count, 2: HTTP code, 3: relative time. */

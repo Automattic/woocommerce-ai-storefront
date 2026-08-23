@@ -925,6 +925,7 @@ The work runs **in-request**, not on cron: the handler calls `WC_AI_Storefront_I
 | `count` | int | Number of URLs included in the submission batch. |
 | `code` | int | HTTP response code returned by the IndexNow endpoint. `200` = accepted and key validated; `202` = accepted, key validation pending; `4xx`/`5xx` = error. |
 | `ok` | bool | `true` when `code` is 200 or 202 (submission reached the engine); `false` on network or server error. |
+| `dropped` | int | URLs discarded because the queue exceeded `MAX_PENDING` (25,000) since the last completed drain. `0` normally. Not a submission failure: these URLs were never sent. |
 
 ### `GET /{key}.txt` (public key file)
 
