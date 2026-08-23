@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-23T21:24:12+00:00\n"
+"POT-Creation-Date: 2026-08-23T23:02:59+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -1247,69 +1247,75 @@ msgstr ""
 msgid "No submissions yet."
 msgstr ""
 
+#. translators: 1: URL count, 2: dropped count, 3: HTTP code, 4: relative time.
+#: client/settings/ai-storefront/indexnow-card.js:73
+#, js-format
+msgid "Last submitted: %1$d URL(s), %2$d dropped (queue full) · HTTP %3$d · %4$s"
+msgstr ""
+
 #. translators: 1: URL count, 2: HTTP code, 3: relative time.
-#: client/settings/ai-storefront/indexnow-card.js:69
+#: client/settings/ai-storefront/indexnow-card.js:86
 #, js-format
 msgid "Last submitted: %1$d URL(s) · HTTP %2$d · %3$s"
 msgstr ""
 
 #. translators: %s: relative time.
-#: client/settings/ai-storefront/indexnow-card.js:81
+#: client/settings/ai-storefront/indexnow-card.js:98
 #, js-format
 msgid "Last attempt failed: connection error · %s"
 msgstr ""
 
 #. translators: 1: HTTP code, 2: relative time.
-#: client/settings/ai-storefront/indexnow-card.js:90
+#: client/settings/ai-storefront/indexnow-card.js:107
 #, js-format
 msgid "Last attempt failed: HTTP %1$d · %2$s"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:121
+#: client/settings/ai-storefront/indexnow-card.js:138
 msgid "Regenerate the IndexNow key? Pending verifications for the old key will be invalidated."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:139
+#: client/settings/ai-storefront/indexnow-card.js:156
 msgid "Could not regenerate the key. Please try again."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:160
+#: client/settings/ai-storefront/indexnow-card.js:177
 msgid "Could not submit the catalog. Please try again."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:181
+#: client/settings/ai-storefront/indexnow-card.js:198
 msgid "Instant indexing (IndexNow)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:187
+#: client/settings/ai-storefront/indexnow-card.js:204
 msgid "Tell IndexNow-supported engines (Bing, Yandex, Seznam, Naver, Yep) the moment your catalog changes, so they re-crawl promptly instead of waiting days or weeks for their next visit, keeping your products current in AI-powered search results. Only public URLs are sent; Google does not use IndexNow."
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:193
+#: client/settings/ai-storefront/indexnow-card.js:210
 msgid "Notify search engines instantly (IndexNow)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:212
+#: client/settings/ai-storefront/indexnow-card.js:229
 msgid "Verification key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:219
+#: client/settings/ai-storefront/indexnow-card.js:236
 msgid "(not generated yet)"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:227
+#: client/settings/ai-storefront/indexnow-card.js:244
 msgid "View key file"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:242
+#: client/settings/ai-storefront/indexnow-card.js:259
 msgid "Regenerate key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:246
+#: client/settings/ai-storefront/indexnow-card.js:263
 msgid "Generate key"
 msgstr ""
 
-#: client/settings/ai-storefront/indexnow-card.js:277
+#: client/settings/ai-storefront/indexnow-card.js:294
 msgid "Submit entire catalog now"
 msgstr ""
 
