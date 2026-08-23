@@ -206,7 +206,7 @@ When you change a code file, update the corresponding doc(s) in the same PR. The
 | `includes/ai-storefront/class-wc-ai-storefront-logger.php` | HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-multi-currency.php` | HOOKS.md, ARCHITECTURE.md, API-REFERENCE.md, JSON-LD-SCHEMA.md |
 | `includes/ai-storefront/class-wc-ai-storefront-return-policy.php` | DATA-MODEL.md, USER-GUIDE.md |
-| `includes/ai-storefront/class-wc-ai-storefront-meta-tags.php` | YOAST-COEXISTENCE.md, ARCHITECTURE.md, HOOKS.md |
+| `includes/ai-storefront/class-wc-ai-storefront-meta-tags.php` | YOAST-COEXISTENCE.md, ARCHITECTURE.md, HOOKS.md, SEO-EMISSION-MATRIX.md |
 | `includes/ai-storefront/class-wc-ai-storefront-content-meta-tags.php` | YOAST-COEXISTENCE.md, ARCHITECTURE.md, HOOKS.md |
 | `includes/ai-storefront/class-wc-ai-storefront-meta-text.php` | ARCHITECTURE.md |
 | `includes/ai-storefront/class-wc-ai-storefront-meta-image.php` | ARCHITECTURE.md |

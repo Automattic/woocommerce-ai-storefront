@@ -72,7 +72,7 @@ jobs:
             ["includes/ai-storefront/class-wc-ai-storefront-logger.php"]="docs/engineering/HOOKS.md"
             ["includes/ai-storefront/class-wc-ai-storefront-multi-currency.php"]="docs/engineering/HOOKS.md docs/engineering/ARCHITECTURE.md docs/engineering/API-REFERENCE.md docs/engineering/JSON-LD-SCHEMA.md"
             ["includes/ai-storefront/class-wc-ai-storefront-return-policy.php"]="docs/engineering/DATA-MODEL.md docs/user-guide/USER-GUIDE.md"
-            ["includes/ai-storefront/class-wc-ai-storefront-meta-tags.php"]="docs/engineering/YOAST-COEXISTENCE.md docs/engineering/ARCHITECTURE.md docs/engineering/HOOKS.md"
+            ["includes/ai-storefront/class-wc-ai-storefront-meta-tags.php"]="docs/engineering/YOAST-COEXISTENCE.md docs/engineering/ARCHITECTURE.md docs/engineering/HOOKS.md docs/engineering/SEO-EMISSION-MATRIX.md"
             ["includes/ai-storefront/class-wc-ai-storefront-content-meta-tags.php"]="docs/engineering/YOAST-COEXISTENCE.md docs/engineering/ARCHITECTURE.md docs/engineering/HOOKS.md"
             ["includes/ai-storefront/class-wc-ai-storefront-meta-text.php"]="docs/engineering/ARCHITECTURE.md"
             ["includes/ai-storefront/class-wc-ai-storefront-meta-image.php"]="docs/engineering/ARCHITECTURE.md"
