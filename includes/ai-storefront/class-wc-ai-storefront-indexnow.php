@@ -77,6 +77,23 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
+	 * Products already enqueued this request, keyed by ID.
+	 *
+	 * `set_object_terms` fires several times per product save — WooCommerce
+	 * rewrites `product_type` and `product_visibility` every time, plus one
+	 * taxonomy per `pa_*` attribute. `enqueue()` dedupes the URL but not the
+	 * work behind it, and that work is a `wc_get_product()` read plus an
+	 * option read-modify-write each time (#695 review).
+	 *
+	 * An instance property rather than a `static`: the plugin builds one
+	 * instance per request, so the scope is the same in production, and a
+	 * static would leak between tests sharing a process.
+	 *
+	 * @var array<int,true>
+	 */
+	private array $seen_this_request = array();
+
+	/**
 	 * The IndexNow key, generating and persisting one on first use.
 	 *
 	 * Reads from the dedicated KEY_OPTION (not from SETTINGS_OPTION) so a
@@ -187,12 +204,38 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
-	 * The AI-discovery surface URLs submitted on any catalog change.
+	 * The surface URLs submitted on any catalog change.
+	 *
+	 * Pages meant for organic search, and only those. IndexNow exists to tell
+	 * engines a page they might INDEX has changed, so a machine surface has no
+	 * business here even though its content really did change.
+	 *
+	 * `/products.json` used to be in this list and was removed for two
+	 * independent reasons (#694). When the feed is enabled it serves
+	 * `X-Robots-Tag: noindex` — deliberately, see
+	 * WC_AI_Storefront_Products_Feed::send_feed_headers() — so submitting it
+	 * asked engines to re-crawl a URL we then told them not to index. And when
+	 * the merchant switches the feed off, `serve_products_feed()` answers a
+	 * hard 404, which this method never checked, so a store with the feed
+	 * disabled submitted a known-dead URL on every single catalog change.
+	 *
+	 * `/.well-known/ucp` and `/collections/all/products.json` are absent for
+	 * the same reason and were never added: both answer with `noindex` too.
+	 *
+	 * `/agents.md` is absent for a DIFFERENT reason, and grouping it with
+	 * those two was wrong (#695 review). It carries no `noindex` at all — it
+	 * is a byte-identical mirror of `/llms.txt` with the same headers bar
+	 * `Content-Type`. It is out because it is a runtime file agents fetch on
+	 * demand rather than a page competing in organic search, and because
+	 * submitting both it and `/llms.txt` would advertise the same bytes twice.
+	 *
+	 * `/llms.txt` stays: it carries no `noindex`, it is human-readable, and
+	 * being crawlable is the point of it.
 	 *
 	 * @return string[]
 	 */
 	public function surface_urls(): array {
-		$urls    = array( home_url( '/' ), home_url( '/llms.txt' ), home_url( '/products.json' ) );
+		$urls    = array( home_url( '/' ), home_url( '/llms.txt' ) );
 		$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
 		if ( $shop_id > 0 ) {
 			$shop = get_permalink( $shop_id );
@@ -445,6 +488,10 @@ class WC_AI_Storefront_IndexNow {
 		add_action( 'woocommerce_update_product', array( $this, 'on_product_change' ) );
 		add_action( 'woocommerce_new_product', array( $this, 'on_product_change' ) );
 		add_action( 'woocommerce_product_set_stock_status', array( $this, 'on_product_change' ) );
+		// Terms can change without the product ever being saved, so this is
+		// not covered by the three product hooks above. Six args: the handler
+		// needs $old_tt_ids to tell a real change from a no-op.
+		add_action( 'set_object_terms', array( $this, 'on_product_terms_changed' ), 10, 6 );
 		add_action( 'woocommerce_trash_product', array( $this, 'on_product_removed' ) );
 		add_action( 'woocommerce_delete_product', array( $this, 'on_product_removed' ) );
 		add_action( 'created_product_cat', array( $this, 'on_term_change' ) );
@@ -500,6 +547,138 @@ class WC_AI_Storefront_IndexNow {
 			$urls[] = $permalink;
 		}
 		$this->enqueue( $urls );
+		$this->schedule_flush();
+	}
+
+	/**
+	 * Terms changed on a product without the product itself being saved.
+	 *
+	 * `woocommerce_update_product` tracks product SAVES, not product PAGE
+	 * changes, and the two are not the same thing. Measured on a live store
+	 * (#694): assigning a tag with `wp post term add` left `post_modified`
+	 * untouched and fired no product hook while the page rendered the new
+	 * value.
+	 *
+	 * WHAT THIS COVERS: any `wp_set_object_terms()` call — imports, sync
+	 * plugins, bulk assignment tools, `wp post term add`.
+	 *
+	 * WHAT IT DOES NOT, despite an earlier version of this docblock implying
+	 * otherwise (#695 review). Two sibling cases go through different core
+	 * functions that never reach this action, and both were checked in
+	 * wp-includes/taxonomy.php rather than assumed:
+	 *
+	 * - **Term renames.** `wp_update_term()` fires `edit_term`, `edited_term`,
+	 *   `edited_{$taxonomy}` and `saved_term`, and never calls
+	 *   `wp_set_object_terms()` — the relationships are untouched, only the
+	 *   term's name changed. So renaming `pa_color` "Blue" to "Navy" re-renders
+	 *   every product using it and submits nothing. That is the second half of
+	 *   #694's measured repro and it remains UNCOVERED; #694 records the
+	 *   decision not to fan out from a term to its products.
+	 * - **Term removal.** `wp_remove_object_terms()` fires only
+	 *   `delete_term_relationships` / `deleted_term_relationships`.
+	 *
+	 * Taxonomy-agnostic on purpose. Any taxonomy on a product can change what
+	 * the page renders, and a hardcoded list would go stale the moment another
+	 * attribute is seeded. Product post type only: variations keep their
+	 * attributes in post meta, and `woocommerce_update_product` does not fire
+	 * for them either, so excluding them matches existing behaviour.
+	 *
+	 * This also fires several times during an ordinary save — WooCommerce
+	 * rewrites `product_type` and `product_visibility` on every save and one
+	 * taxonomy per `pa_*` attribute. `enqueue()` dedupes the URL, but not the
+	 * WORK, so `$this->seen_this_request` bounds it to one pass per product.
+	 *
+	 * Differs from `on_product_change()` in one way worth knowing: that
+	 * handler builds `surface_urls()` BEFORE its indexable check and enqueues
+	 * them unconditionally, so a draft product still refreshes the surfaces
+	 * there. This one returns having enqueued nothing. The narrow behaviour is
+	 * shared — neither submits the product URL for a draft or catalog-hidden
+	 * product, so engines are never told to drop the now-stale page. Fixing
+	 * that needs a was-indexable-is-not-now transition check and is its own
+	 * issue.
+	 *
+	 * @param int    $object_id  Object the terms were set on.
+	 * @param array  $terms      Term IDs or slugs (unused).
+	 * @param array  $tt_ids     An array of term taxonomy IDs. On an append
+	 *                           this is only what THIS call passed, not the
+	 *                           resulting set.
+	 * @param string $taxonomy   Taxonomy slug (unused).
+	 * @param bool   $append     Whether terms were appended. Not read, but it
+	 *                           determines what the two arrays above mean.
+	 * @param array  $old_tt_ids Old array of term taxonomy IDs. Core hardcodes
+	 *                           this to `array()` on an append.
+	 */
+	public function on_product_terms_changed( $object_id, $terms, $tt_ids, $taxonomy, $append, $old_tt_ids ): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+
+		// Cheapest guard first: pure array work, no lookup. This catches
+		// no-op REPLACEMENTS, which is the hot path — `wp_insert_post()`
+		// rewrites every taxonomy in `tax_input` with no change check
+		// (wp-includes/post.php), and WooCommerce rewrites `product_type` and
+		// `product_visibility` on every save
+		// (class-wc-product-data-store-cpt.php).
+		//
+		// It CANNOT catch a no-op append. Core hardcodes `$old_tt_ids =
+		// array()` in the append branch (wp-includes/taxonomy.php), so
+		// $before is empty rather than data and the comparison is vacuous
+		// there. That is a false positive, not a miss: an extra enqueue that
+		// enqueue() then dedupes. Worth knowing because `wp post term add`
+		// takes the append path (#695 review).
+		$before = array_map( 'intval', (array) $old_tt_ids );
+		$after  = array_map( 'intval', (array) $tt_ids );
+		sort( $before );
+		sort( $after );
+		if ( $before === $after ) {
+			return;
+		}
+
+		if ( ! function_exists( 'get_post_type' ) || 'product' !== get_post_type( (int) $object_id ) ) {
+			return;
+		}
+
+		// One pass per product per request. See $seen_this_request.
+		if ( isset( $this->seen_this_request[ (int) $object_id ] ) ) {
+			return;
+		}
+
+		$product = function_exists( 'wc_get_product' ) ? wc_get_product( (int) $object_id ) : null;
+		if ( ! $product ) {
+			// get_post_type() already proved this IS a product, so a false
+			// here means WooCommerce could not load one of its own.
+			// WC_Product_Factory::get_product() catches every exception and
+			// returns a bare false, discarding the message, so this is the
+			// only place the failure can be seen at all (#695 review).
+			WC_AI_Storefront_Logger::debug(
+				'IndexNow: wc_get_product(%d) returned false for a confirmed product post; term change not submitted',
+				(int) $object_id
+			);
+			return;
+		}
+
+		if ( ! $this->is_product_indexable( $product ) ) {
+			// Draft, catalog-hidden or out of syndication scope. Expected, and
+			// stays silent.
+			return;
+		}
+
+		$permalink = get_permalink( $product->get_id() );
+		if ( ! is_string( $permalink ) || '' === $permalink ) {
+			// Nothing expected reaches here: the product is published, visible
+			// and syndicated, so it has a permalink. An empty one means a
+			// `post_link` filter returned nothing, which is a fault worth
+			// seeing rather than swallowing (#695 review).
+			WC_AI_Storefront_Logger::debug(
+				'IndexNow: get_permalink(%d) returned no URL for a published, indexable product; term change not submitted',
+				$product->get_id()
+			);
+			return;
+		}
+
+		$this->seen_this_request[ (int) $object_id ] = true;
+
+		$this->enqueue( array_merge( $this->surface_urls(), array( $permalink ) ) );
 		$this->schedule_flush();
 	}
 

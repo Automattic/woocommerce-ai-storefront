@@ -898,7 +898,7 @@ Generates a new IndexNow ownership key and persists it, replacing the existing o
 
 ### `POST /indexnow-submit-all`
 
-Submits every published product URL, every non-empty product-category URL, every non-empty product-brand (`product_brand`) URL, and the discovery surfaces (homepage, `/shop/`, `/llms.txt`, `/products.json`) to IndexNow, then returns the stored result of that submission.
+Submits every published product URL, every non-empty product-category URL, every non-empty product-brand (`product_brand`) URL, and the discovery surfaces (homepage, `/shop/`, `/llms.txt`) to IndexNow, then returns the stored result of that submission.
 
 The work runs **in-request**, not on cron: the handler calls `WC_AI_Storefront_IndexNow::submit_all()` directly, so the response reflects a submission that has already happened. This route backs the "Submit entire catalog now" button on the Discovery tab. The automatic first-enable seed performs the same submission but reaches it differently — through the one-shot [`wc_ai_storefront_indexnow_submit_all`](DATA-MODEL.md#wc_ai_storefront_indexnow_submit_all) cron, so that it runs after the settings save commits.
 
