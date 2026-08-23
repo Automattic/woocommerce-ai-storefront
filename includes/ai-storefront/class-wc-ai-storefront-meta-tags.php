@@ -1366,12 +1366,27 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * The search term as typed, or '' when this is not a product search.
 	 *
+	 * Tests the `post_type` query var as well as `is_search()`, which
+	 * is_product_search() deliberately does not. That helper documents itself
+	 * as safe on the strength of every caller sitting behind should_emit(),
+	 * which has already narrowed the request to a commerce page. This method
+	 * cannot borrow that: build_archive_og_tags() is public, so a theme or
+	 * plugin calling it during an ordinary blog search would otherwise get a
+	 * headline announcing product results and an og:url carrying
+	 * `post_type=product` for a search that was never scoped to products
+	 * (#693 review). The narrowing is one condition; the invariant it relies
+	 * on otherwise lives in a different class.
+	 *
 	 * `get_search_query()` escapes with `esc_attr` unless told not to. This
 	 * value is escaped once at output by print_meta(), and is used unescaped
 	 * to build a URL, so it has to come back raw.
 	 */
 	private function search_query(): string {
 		if ( ! $this->is_product_search() || ! function_exists( 'get_search_query' ) ) {
+			return '';
+		}
+
+		if ( ! function_exists( 'get_query_var' ) || 'product' !== get_query_var( 'post_type' ) ) {
 			return '';
 		}
 

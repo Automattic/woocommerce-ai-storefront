@@ -3433,6 +3433,25 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 'https://shop.test/shop/', $og['og:url'] );
 	}
 
+	public function test_a_plain_blog_search_does_not_get_the_product_search_branch(): void {
+		// build_archive_og_tags() is public, so it is reachable on a request
+		// should_emit() would have rejected. Without its own post_type test,
+		// search_query() answered on an ordinary blog search and the branch
+		// published a headline announcing product results plus an og:url
+		// carrying post_type=product (#693 review).
+		$this->stub_product_search( 'hoodie' );
+		Functions\when( 'get_query_var' )->alias(
+			// is_search() is still true; the search was simply never scoped
+			// to products.
+			static fn( $var ) => 'paged' === $var ? 1 : ''
+		);
+
+		$og = $this->meta->build_archive_og_tags();
+
+		$this->assertSame( 'Shop', $og['og:title'] );
+		$this->assertStringNotContainsString( 'post_type=product', $og['og:url'] );
+	}
+
 	public function test_product_search_still_carries_a_description_and_image_source(): void {
 		$this->stub_product_search( 'hoodie' );
 		$og = $this->meta->build_archive_og_tags();
