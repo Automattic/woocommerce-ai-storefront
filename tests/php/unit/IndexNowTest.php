@@ -165,14 +165,21 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->addToAssertionCount( 1 );
 	}
 
-	public function test_surface_urls_includes_home_shop_llms_and_feed(): void {
+	public function test_surface_urls_are_pages_meant_for_organic_search(): void {
 		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
 		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/shop/' );
 		$urls = $this->indexnow->surface_urls();
 		$this->assertContains( 'https://shop.test/', $urls );
 		$this->assertContains( 'https://shop.test/shop/', $urls );
 		$this->assertContains( 'https://shop.test/llms.txt', $urls );
-		$this->assertContains( 'https://shop.test/products.json', $urls );
+
+		// products.json is deliberately absent, and putting it back is a
+		// regression rather than a fix. The feed serves
+		// `X-Robots-Tag: noindex` when it is enabled, so submitting it asks
+		// engines to re-crawl a URL we then tell them not to index; and when
+		// the merchant switches the feed off it is a hard 404, so we would be
+		// submitting a known-dead URL on every catalog change (#694).
+		$this->assertNotContains( 'https://shop.test/products.json', $urls );
 	}
 
 	public function test_is_product_indexable_true_for_published_visible_syndicated(): void {
@@ -878,7 +885,7 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->indexnow->submit_all();
 		// POST fires with surfaces only (WP_Error contributes no category URLs).
 		$this->assertNotNull( $posted );
-		// Verify no category URL leaked in (only surface URLs: home, llms.txt, products.json).
+		// Verify no category URL leaked in (only surface URLs: home, shop, llms.txt).
 		foreach ( $posted['urlList'] as $url ) {
 			$this->assertStringNotContainsString( 'product-category', $url );
 		}

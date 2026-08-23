@@ -187,12 +187,30 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
-	 * The AI-discovery surface URLs submitted on any catalog change.
+	 * The surface URLs submitted on any catalog change.
+	 *
+	 * Pages meant for organic search, and only those. IndexNow exists to tell
+	 * engines a page they might INDEX has changed, so a machine surface has no
+	 * business here even though its content really did change.
+	 *
+	 * `/products.json` used to be in this list and was removed for two
+	 * independent reasons (#694). When the feed is enabled it serves
+	 * `X-Robots-Tag: noindex` — deliberately, see
+	 * WC_AI_Storefront_Products_Feed::send_feed_headers() — so submitting it
+	 * asked engines to re-crawl a URL we then told them not to index. And when
+	 * the merchant switches the feed off, `serve_products_feed()` answers a
+	 * hard 404, which this method never checked, so a store with the feed
+	 * disabled submitted a known-dead URL on every single catalog change.
+	 *
+	 * `/.well-known/ucp`, `/agents.md` and `/collections/all/products.json`
+	 * are absent for the same reason and were never added. `/llms.txt` stays:
+	 * it carries no `noindex`, it is human-readable, and being crawlable is
+	 * the point of it.
 	 *
 	 * @return string[]
 	 */
 	public function surface_urls(): array {
-		$urls    = array( home_url( '/' ), home_url( '/llms.txt' ), home_url( '/products.json' ) );
+		$urls    = array( home_url( '/' ), home_url( '/llms.txt' ) );
 		$shop_id = function_exists( 'wc_get_page_id' ) ? (int) wc_get_page_id( 'shop' ) : 0;
 		if ( $shop_id > 0 ) {
 			$shop = get_permalink( $shop_id );
