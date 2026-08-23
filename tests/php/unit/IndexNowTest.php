@@ -1658,6 +1658,46 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 1, $scheduled, 'one URL left is still work to do' );
 	}
 
+	public function test_every_path_that_destroys_a_queue_clears_the_drop_counter(): void {
+		// The counter goes with the queue it described. Two paths destroy a
+		// queue without being the drain: a corrupt (non-array) option, and a
+		// 403/422 that clears the orphaned remainder. Both left the count
+		// behind, where it would attach to the next unrelated submission — and
+		// on the 403 path it was reported twice, once for a queue that no
+		// longer existed (#699 review).
+		$corrupt = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => 'not-an-array',
+				'wc_ai_storefront_indexnow_dropped' => 700,
+			)
+		)[0];
+		$method  = new \ReflectionMethod( $this->indexnow, 'take_batch' );
+		$method->invoke( $this->indexnow, 10000 );
+		$this->assertFalse(
+			$corrupt->offsetExists( 'wc_ai_storefront_indexnow_dropped' ),
+			'a discarded corrupt queue takes its drop count with it'
+		);
+
+		$refused = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 15000 ),
+				'wc_ai_storefront_indexnow_dropped' => 900,
+				'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+			)
+		)[0];
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 403 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 403 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$this->indexnow->flush();
+
+		// Reported on this result, so the merchant still sees it...
+		$this->assertSame( 900, $this->indexnow->last_result()['dropped'] );
+		// ...and then released, so it cannot be counted again.
+		$this->assertFalse( $refused->offsetExists( 'wc_ai_storefront_indexnow_dropped' ) );
+	}
+
 	public function test_disabling_mid_flight_clears_the_drop_counter_with_the_queue(): void {
 		// The counter goes with the queue it described. Left behind, it lands on
 		// the first unrelated submission after the feature is switched back on

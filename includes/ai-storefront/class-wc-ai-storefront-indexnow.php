@@ -401,6 +401,11 @@ class WC_AI_Storefront_IndexNow {
 			// same here, because this path destroys whatever was queued.
 			WC_AI_Storefront_Logger::debug( 'IndexNow: pending queue was not an array; discarding it.' );
 			delete_option( self::PENDING_OPTION );
+			// The counter goes with the queue it described. Every path that
+			// destroys a queue clears it; leaving it here would attach a count
+			// about discarded URLs to the next unrelated submission (#699
+			// review).
+			$this->clear_dropped();
 			return array();
 		}
 
@@ -994,7 +999,12 @@ class WC_AI_Storefront_IndexNow {
 				count( $urls ),
 				count( $orphaned )
 			);
+			// Recorded BEFORE clearing, so the merchant still sees the count on
+			// this result; cleared after, because the queue it described is
+			// gone. Without the clear it would be reported again against the
+			// next successful drain (#699 review).
 			$this->record_result( count( $urls ), $code, false );
+			$this->clear_dropped();
 
 			return;
 		}
