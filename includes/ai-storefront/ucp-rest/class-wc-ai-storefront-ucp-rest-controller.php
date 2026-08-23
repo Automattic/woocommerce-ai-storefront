@@ -1422,7 +1422,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			'path'    => '$',
 			'content' => sprintf(
 				/* translators: %s is a comma-separated list of unrecognized request parameter names. */
-				__( 'Unrecognized request parameters were ignored: %s. Check the tool schema for the supported field names — filtering, sorting or paging sent under a name this store does not read has no effect on the results.', 'woocommerce-ai-storefront' ),
+				__( 'Unrecognized request parameters were ignored: %s. Check the tool schema for the supported field names. Filtering, sorting or paging sent under a name this store does not read has no effect on the results.', 'woocommerce-ai-storefront' ),
 				$joined
 			),
 		);
@@ -3505,7 +3505,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'requires_buyer_input',
 					'path'     => '$.line_items[' . $grouped_request_indices[0] . ']',
-					'content'  => __( 'This grouped product contains items that cannot be added directly via the API — they may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site.', 'woocommerce-ai-storefront' ),
+					'content'  => __( 'This grouped product contains items that cannot be added directly via the API. They may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site.', 'woocommerce-ai-storefront' ),
 				);
 			} elseif ( ! $is_deterministic ) {
 				$messages[]      = array(
@@ -3569,7 +3569,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 					'code'     => WC_AI_Storefront_UCP_Error_Codes::FIELD_REQUIRED,
 					'severity' => 'recoverable',
 					'path'     => '$.line_items[' . $req_idx . ']',
-					'content'  => __( 'Variable product line items must be sent in their own /checkout-sessions request, separate from other items — the permalink fallback can only redirect the buyer to a single product page.', 'woocommerce-ai-storefront' ),
+					'content'  => __( 'Variable product line items must be sent in their own /checkout-sessions request, separate from other items, because the permalink fallback can only redirect the buyer to a single product page.', 'woocommerce-ai-storefront' ),
 				);
 			}
 			$should_redirect = false;
@@ -7212,7 +7212,7 @@ class WC_AI_Storefront_UCP_REST_Controller {
 			case WC_AI_Storefront_UCP_Error_Codes::VARIATION_REQUIRED:
 				// Caller overrides with the more specific message; default
 				// here matches in case the override is ever dropped.
-				return __( 'Product is variable — specify a variation ID instead of the parent product ID.', 'woocommerce-ai-storefront' );
+				return __( 'Product is variable: specify a variation ID instead of the parent product ID.', 'woocommerce-ai-storefront' );
 			default:
 				return __( 'Line item could not be processed.', 'woocommerce-ai-storefront' );
 		}

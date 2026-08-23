@@ -183,7 +183,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 **Fixed**
 * Products without variations were missing a piece of information some assistants require, and the ones that require it would stop reading your catalog rather than skip the product. Most affected are stores selling single-version products, where every product was affected.
 * Variations of the same product could be published with duplicate positions, so an assistant sorting them could show them in the wrong order.
-* Attribute setup no longer runs on every page load after an update. A store updating the plugin could briefly create a second copy of an attribute — the cause of the duplicate "Gender" attribute some stores saw. If you have duplicates from a previous version, delete the extra one in Products → Attributes; nothing recreates it.
+* Attribute setup no longer runs on every page load after an update. A store updating the plugin could briefly create a second copy of an attribute, which is the cause of the duplicate "Gender" attribute some stores saw. If you have duplicates from a previous version, delete the extra one in Products → Attributes; nothing recreates it.
 
 = 0.35.0 - 2026-08-14 =
 **New**
@@ -197,11 +197,11 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.34.3 - 2026-07-29 =
 **Fixed**
-* Out-of-stock products no longer publish a "buy" link that fails. An out-of-stock product used to advertise a checkout link to AI shopping assistants and search engines even though WooCommerce refuses it at the cart — following that link landed on an empty cart with an "out of stock" error. Out-of-stock products now keep their name, price, image and availability in the published data, but drop the buy link. Products on backorder are unaffected and keep their buy links, since WooCommerce still accepts those at checkout.
+* Out-of-stock products no longer publish a "buy" link that fails. An out-of-stock product used to advertise a checkout link to AI shopping assistants and search engines even though WooCommerce refuses it at the cart. Following that link landed on an empty cart with an "out of stock" error. Out-of-stock products now keep their name, price, image and availability in the published data, but drop the buy link. Products on backorder are unaffected and keep their buy links, since WooCommerce still accepts those at checkout.
 
 = 0.34.2 - 2026-07-29 =
 **Fixed**
-* Products on backorder are now described correctly to AI shopping assistants. A variation you have oversold (stock below zero, with backorders allowed) used to be published as "in stock" while also reporting a negative stock number — two contradictory signals on the same product. It is now published as "on backorder", which still tells assistants the item is orderable, and the stock number is reported as 0 rather than a negative figure. Only variations of variable products were affected; simple products were always correct.
+* Products on backorder are now described correctly to AI shopping assistants. A variation you have oversold (stock below zero, with backorders allowed) used to be published as "in stock" while also reporting a negative stock number: two contradictory signals on the same product. It is now published as "on backorder", which still tells assistants the item is orderable, and the stock number is reported as 0 rather than a negative figure. Only variations of variable products were affected; simple products were always correct.
 
 = 0.34.1 - 2026-07-21 =
 **Fixed**
@@ -213,7 +213,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.33.0 - 2026-07-04 =
 **Fixed**
-* Search engines could report your AI checkout links as "Blocked by robots.txt." The buy links in your product data send shoppers through the cart and checkout pages, which the crawler rules were blocking — so Google flagged the links even though the pages work. Those pages (and the account/login page) are now left open to the AI crawlers you welcome, so the links resolve and shoppers can reach sign-in. Your cart is still protected from crawler-triggered changes, and blocked crawlers stay fully blocked.
+* Search engines could report your AI checkout links as "Blocked by robots.txt." The buy links in your product data send shoppers through the cart and checkout pages, which the crawler rules were blocking, so Google flagged the links even though the pages work. Those pages (and the account/login page) are now left open to the AI crawlers you welcome, so the links resolve and shoppers can reach sign-in. Your cart is still protected from crawler-triggered changes, and blocked crawlers stay fully blocked.
 
 = 0.32.0 - 2026-07-03 =
 **Changed**
@@ -273,7 +273,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.26.0 - 2026-06-22 =
 **Added**
-* When an AI shopping assistant asks for prices in a specific currency, your catalog, product lookups, and agent checkout now return prices in that currency — using your store's full WooCommerce Payments conversion (exchange rate, rounding, and charm pricing), so the price matches what a shopper sees on the product page. Requires WooCommerce Payments 10.9 or later; on earlier versions prices stay in your store's base currency, exactly as before. If a currency your store doesn't accept is requested, prices stay in your base currency and the assistant is told the conversion wasn't applied, so it never quotes a base-currency price as if it had been converted.
+* When an AI shopping assistant asks for prices in a specific currency, your catalog, product lookups, and agent checkout now return prices in that currency, using your store's full WooCommerce Payments conversion (exchange rate, rounding, and charm pricing), so the price matches what a shopper sees on the product page. Requires WooCommerce Payments 10.9 or later; on earlier versions prices stay in your store's base currency, exactly as before. If a currency your store doesn't accept is requested, prices stay in your base currency and the assistant is told the conversion wasn't applied, so it never quotes a base-currency price as if it had been converted.
 
 = 0.25.0 - 2026-06-21 =
 **Changed**
@@ -333,7 +333,7 @@ Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being
 
 = 0.22.0 - 2026-06-17 =
 **New**
-* AI assistants can now grab a working checkout link straight from your product pages. Assistants that only read the visible page text — and skip the hidden structured data where the buy link normally lives — now see a small "Agent checkout" link at the bottom of each product page: the same deterministic checkout link, so they can hand your buyer a ready-to-use link. Simple products show one link; variable products show a per-option link template, a link to the product's full variation list, and ready-made links for each option when there are four or fewer. On by default; respects your Discovery and Visibility settings.
+* AI assistants can now grab a working checkout link straight from your product pages. Assistants that only read the visible page text, and skip the hidden structured data where the buy link normally lives, now see a small "Agent checkout" link at the bottom of each product page: the same deterministic checkout link, so they can hand your buyer a ready-to-use link. Simple products show one link; variable products show a per-option link template, a link to the product's full variation list, and ready-made links for each option when there are four or fewer. On by default; respects your Discovery and Visibility settings.
 
 = 0.21.0 - 2026-06-17 =
 **New**

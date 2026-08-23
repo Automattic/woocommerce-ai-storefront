@@ -52,13 +52,13 @@ class WC_AI_Storefront_MCP_Tools {
 		return array(
 			array(
 				'name'        => 'search_catalog',
-				'description' => __( 'Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse — at least one is recommended.', 'woocommerce-ai-storefront' ),
+				'description' => __( 'Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse. At least one is recommended.', 'woocommerce-ai-storefront' ),
 				'inputSchema' => array(
 					'type'       => 'object',
 					'properties' => array(
 						'query'      => array(
 							'type'        => 'string',
-							'description' => __( "Keyword search, e.g. 'blue hoodie'. Optional — you may browse with filters alone — but provide it for text search.", 'woocommerce-ai-storefront' ),
+							'description' => __( "Keyword search, e.g. 'blue hoodie'. Optional (you may browse with filters alone), but provide it for text search.", 'woocommerce-ai-storefront' ),
 						),
 						'filters'    => array(
 							'type'        => 'object',

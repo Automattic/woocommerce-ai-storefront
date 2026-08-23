@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-23T19:17:05+00:00\n"
+"POT-Creation-Date: 2026-08-23T21:24:12+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -64,7 +64,7 @@ msgid "Final sale"
 msgstr ""
 
 #: includes/admin/class-wc-ai-storefront-product-meta-box.php:164
-msgid "Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged — add a notice in your theme or product description if you want shoppers to see it before purchase."
+msgid "Mark this product as final sale (no returns). Overrides your store-wide return policy in the structured data sent to AI agents and search crawlers. The customer-facing product page is unchanged, so add a notice in your theme or product description if you want shoppers to see it before purchase."
 msgstr ""
 
 #: includes/admin/class-wc-ai-storefront-product-meta-box.php:175
@@ -253,7 +253,7 @@ msgid "This store uses requires_escalation checkout: agents do not place orders 
 msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-server.php:115
-msgid "This is an MCP (Model Context Protocol) JSON-RPC endpoint. Send a POST request with a JSON-RPC body — e.g. {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}. GET is reserved for SSE streams, which this endpoint does not provide."
+msgid "This is an MCP (Model Context Protocol) JSON-RPC endpoint. Send a POST request with a JSON-RPC body, e.g. {\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"initialize\"}. GET is reserved for SSE streams, which this endpoint does not provide."
 msgstr ""
 
 #. translators: 1: unsupported MCP protocol version, 2: comma-separated list of supported versions.
@@ -283,11 +283,11 @@ msgid "This agent is not allowed."
 msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:55
-msgid "Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse — at least one is recommended."
+msgid "Search the store catalog by keyword and/or structured filters; returns matching UCP products. Provide `query` for keyword search and/or `filters` to browse. At least one is recommended."
 msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:61
-msgid "Keyword search, e.g. 'blue hoodie'. Optional — you may browse with filters alone — but provide it for text search."
+msgid "Keyword search, e.g. 'blue hoodie'. Optional (you may browse with filters alone), but provide it for text search."
 msgstr ""
 
 #: includes/ai-storefront/ucp-mcp/class-wc-ai-storefront-mcp-tools.php:65
@@ -570,7 +570,7 @@ msgstr ""
 #. translators: %s is a comma-separated list of unrecognized request parameter names.
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1425
 #, php-format
-msgid "Unrecognized request parameters were ignored: %s. Check the tool schema for the supported field names — filtering, sorting or paging sent under a name this store does not read has no effect on the results."
+msgid "Unrecognized request parameters were ignored: %s. Check the tool schema for the supported field names. Filtering, sorting or paging sent under a name this store does not read has no effect on the results."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:1569
@@ -635,7 +635,7 @@ msgid "Grouped product line items must be sent in their own /checkout-sessions r
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3508
-msgid "This grouped product contains items that cannot be added directly via the API — they may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site."
+msgid "This grouped product contains items that cannot be added directly via the API. They may require buyer configuration, be currently out of stock, or be a product type unsupported in checkout-link flows. Open continue_url to complete the purchase on the merchant site."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3516
@@ -643,7 +643,7 @@ msgid "This grouped product cannot be added through the standard checkout flow b
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3572
-msgid "Variable product line items must be sent in their own /checkout-sessions request, separate from other items — the permalink fallback can only redirect the buyer to a single product page."
+msgid "Variable product line items must be sent in their own /checkout-sessions request, separate from other items, because the permalink fallback can only redirect the buyer to a single product page."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:3590
@@ -819,7 +819,7 @@ msgid "Product is not available for purchase."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:7215
-msgid "Product is variable — specify a variation ID instead of the parent product ID."
+msgid "Product is variable: specify a variation ID instead of the parent product ID."
 msgstr ""
 
 #: includes/ai-storefront/ucp-rest/class-wc-ai-storefront-ucp-rest-controller.php:7217
