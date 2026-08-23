@@ -1484,12 +1484,199 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		// raises a deprecation on 8.5.
 		$method = new \ReflectionMethod( $this->indexnow, 'take_batch' );
 
-		$this->assertSame( array(), $method->invoke( $this->indexnow, 0 ) );
-		$this->assertCount(
-			5,
-			$box->offsetGet( 'wc_ai_storefront_indexnow_pending' ),
-			'asking for no URLs must not destroy the ones that are queued'
+		foreach ( array( 0, -1 ) as $size ) {
+			$this->assertSame( array(), $method->invoke( $this->indexnow, $size ) );
+			$this->assertCount(
+				5,
+				$box->offsetGet( 'wc_ai_storefront_indexnow_pending' ),
+				"asking for $size URLs must not destroy the ones that are queued"
+			);
+		}
+	}
+
+	public function test_the_drop_count_survives_every_batch_and_clears_only_on_drain(): void {
+		// The counter was written and then never checked again. Six ways of
+		// breaking everything downstream of enqueue() survived mutation,
+		// including deleting `dropped` from the recorded result entirely, which
+		// would leave the card showing the cheerful line this exists to replace
+		// (#699 review).
+		list( $box ) = $this->stub_option_store(
+			array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' )
 		);
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 200 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$this->indexnow->enqueue( $this->synthetic_urls( 25005 ) );
+		$this->assertSame( 5, $box->offsetGet( 'wc_ai_storefront_indexnow_dropped' ) );
+
+		// Three batches. The count must ride through all of them, not be
+		// swallowed by whichever finishes first.
+		$this->indexnow->flush();
+		$this->assertSame( 5, $this->indexnow->last_result()['dropped'], 'after batch 1' );
+		$this->assertTrue( $box->offsetExists( 'wc_ai_storefront_indexnow_dropped' ) );
+
+		$this->indexnow->flush();
+		$this->assertSame( 5, $this->indexnow->last_result()['dropped'], 'after batch 2' );
+
+		$this->indexnow->flush();
+		$this->assertSame( 5, $this->indexnow->last_result()['dropped'], 'after the final batch' );
+		$this->assertFalse(
+			$box->offsetExists( 'wc_ai_storefront_indexnow_dropped' ),
+			'released only once the queue has drained'
+		);
+	}
+
+	public function test_repeated_overflows_accumulate_rather_than_overwrite(): void {
+		// A bare assignment instead of read-add-write survived: only one
+		// overflowing enqueue() ever ran in a test. submit_all() overflowing and
+		// then an ordinary product save overflowing again is an ordinary
+		// sequence (#699 review).
+		list( $box ) = $this->stub_option_store();
+
+		$this->indexnow->enqueue( $this->synthetic_urls( 25003 ) );
+		$this->indexnow->enqueue( array( 'https://shop.test/extra-a/', 'https://shop.test/extra-b/' ) );
+
+		$this->assertSame( 5, $box->offsetGet( 'wc_ai_storefront_indexnow_dropped' ) );
+	}
+
+	public function test_a_422_clears_the_queue_like_a_403_and_a_500_does_not(): void {
+		// Only 403 was exercised, so narrowing the branch to `403 === $code`
+		// survived — a 422 would then be retried every 60 seconds forever. And
+		// widening it to catch 500 survived too, which would wipe the queue on
+		// exactly the transient failure the 5xx tail exists to retry (#699
+		// review).
+		foreach ( array(
+			422 => true,
+			500 => false,
+		) as $code => $should_clear ) {
+			list( $box ) = $this->stub_option_store(
+				array(
+					'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 15000 ),
+					'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+				)
+			);
+			Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => $code ) ) );
+			Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( $code );
+			Functions\when( 'wp_next_scheduled' )->justReturn( false );
+			Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+			$this->indexnow->flush();
+
+			$this->assertSame(
+				! $should_clear,
+				$box->offsetExists( 'wc_ai_storefront_indexnow_pending' ),
+				"HTTP $code queue handling"
+			);
+		}
+	}
+
+	public function test_a_failed_shrink_write_does_not_resend_the_batch(): void {
+		// update_option() answers false BEFORE touching the object cache, so a
+		// failed write leaves the whole queue readable. Ignoring the return
+		// meant take_batch() handed back a batch it had not dequeued and flush()
+		// POSTed the identical payload every 60 seconds forever. No test stubbed
+		// a failing write (#699 review).
+		$store = array(
+			'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 25000 ),
+			'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+		);
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store ) {
+				if ( 'wc_ai_storefront_indexnow_pending' === $n ) {
+					return false; // the shrink fails; the queue is untouched.
+				}
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		$posts = 0;
+		Functions\when( 'wp_remote_post' )->alias(
+			static function () use ( &$posts ) {
+				++$posts;
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+
+		$this->indexnow->flush();
+		$this->indexnow->flush();
+
+		$this->assertSame( 0, $posts, 'a batch that could not be dequeued must not be sent' );
+		$this->assertCount( 25000, $store['wc_ai_storefront_indexnow_pending'], 'queue intact' );
+	}
+
+	public function test_a_corrupt_queue_is_discarded_rather_than_fatal(): void {
+		// Removing the recovery block survived, and array_slice() on a string is
+		// a TypeError inside a cron callback. Reachable exactly where the
+		// max_allowed_packet reasoning points: a truncated write leaves an
+		// unserializable blob that get_option() hands back as a raw string
+		// (#699 review).
+		list( $box ) = $this->stub_option_store(
+			array( 'wc_ai_storefront_indexnow_pending' => 'not-an-array' )
+		);
+
+		$method = new \ReflectionMethod( $this->indexnow, 'take_batch' );
+
+		$this->assertSame( array(), $method->invoke( $this->indexnow, 10000 ) );
+		$this->assertFalse( $box->offsetExists( 'wc_ai_storefront_indexnow_pending' ) );
+	}
+
+	public function test_a_remainder_of_one_url_still_gets_scheduled(): void {
+		// `> 0` narrowed to `> 1` survived: the drain test uses three clean
+		// batches, so the boundary was never approached. A 10,001-URL queue
+		// would strand its last URL (#699 review).
+		list( $box ) = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 10001 ),
+				'wc_ai_storefront_indexnow_key'     => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0',
+			)
+		);
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 200 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		$scheduled = 0;
+		Functions\when( 'wp_schedule_single_event' )->alias(
+			static function () use ( &$scheduled ) {
+				++$scheduled;
+				return true;
+			}
+		);
+
+		$this->indexnow->flush();
+
+		$this->assertCount( 1, $box->offsetGet( 'wc_ai_storefront_indexnow_pending' ) );
+		$this->assertSame( 1, $scheduled, 'one URL left is still work to do' );
+	}
+
+	public function test_disabling_mid_flight_clears_the_drop_counter_with_the_queue(): void {
+		// The counter goes with the queue it described. Left behind, it lands on
+		// the first unrelated submission after the feature is switched back on
+		// (#699 review).
+		list( $box )                     = $this->stub_option_store(
+			array(
+				'wc_ai_storefront_indexnow_pending' => $this->synthetic_urls( 3 ),
+				'wc_ai_storefront_indexnow_dropped' => 800,
+			)
+		);
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'yes',
+			'indexnow_enabled' => 'no',
+		);
+
+		$this->indexnow->flush();
+
+		$this->assertFalse( $box->offsetExists( 'wc_ai_storefront_indexnow_pending' ) );
+		$this->assertFalse( $box->offsetExists( 'wc_ai_storefront_indexnow_dropped' ) );
 	}
 
 	public function test_a_5xx_requeues_and_reschedules_instead_of_stranding_the_queue(): void {

@@ -136,7 +136,12 @@ class WC_AI_Storefront_IndexNow {
 	private array $seen_this_request = array();
 
 	/**
-	 * URLs still queued after the last take_batch(), or -1 when it failed.
+	 * URLs still queued after the last take_batch().
+	 *
+	 * Zero on every path that does not leave work behind, including a failed
+	 * shrink — take_batch() returns an empty batch there, so flush() exits at
+	 * its `empty( $urls )` check before this is read. An earlier version
+	 * promised -1 for that case and nothing ever read it (#699 review).
 	 *
 	 * take_batch() already computes the remainder, so flush() reads it from
 	 * here rather than re-fetching and unserializing a multi-megabyte option to
@@ -422,7 +427,6 @@ class WC_AI_Storefront_IndexNow {
 				'IndexNow: could not shrink the pending queue (%d URLs); skipping this flush rather than resending.',
 				count( $pending )
 			);
-			$this->remaining_after_batch = -1;
 			return array();
 		}
 

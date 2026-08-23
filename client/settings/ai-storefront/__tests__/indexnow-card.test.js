@@ -40,6 +40,41 @@ describe( 'formatIndexNowStatus', () => {
 			'Last submitted: 10000 URL(s), 412 dropped (queue full) · HTTP 200 · 1h ago'
 		);
 	} );
+	it( 'never shows a drop clause on a failed submission', () => {
+		// Dropping the `lastResult.ok &&` conjunct survived mutation: a failed
+		// submission carrying drops rendered as "Last submitted", reporting a
+		// failure as a success (#699 review).
+		expect(
+			formatIndexNowStatus(
+				{
+					time: 1750000000,
+					count: 3,
+					code: 403,
+					ok: false,
+					dropped: 5,
+				},
+				now
+			)
+		).toBe( 'Last attempt failed: HTTP 403 · 1h ago' );
+	} );
+	it( 'shows even a single dropped URL', () => {
+		// The threshold was only pinned at 412, so `dropped > 1` and
+		// `dropped > 100` both survived (#699 review).
+		expect(
+			formatIndexNowStatus(
+				{
+					time: 1750000000,
+					count: 9,
+					code: 200,
+					ok: true,
+					dropped: 1,
+				},
+				now
+			)
+		).toBe(
+			'Last submitted: 9 URL(s), 1 dropped (queue full) · HTTP 200 · 1h ago'
+		);
+	} );
 	it( 'omits the dropped clause when nothing was dropped', () => {
 		expect(
 			formatIndexNowStatus(
