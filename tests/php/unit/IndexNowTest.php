@@ -885,7 +885,8 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->indexnow->submit_all();
 		// POST fires with surfaces only (WP_Error contributes no category URLs).
 		$this->assertNotNull( $posted );
-		// Verify no category URL leaked in (only surface URLs: home, shop, llms.txt).
+		// Verify no category URL leaked in. wc_get_page_id is 0 in this test,
+		// so surface_urls() skips the shop branch: home and llms.txt only.
 		foreach ( $posted['urlList'] as $url ) {
 			$this->assertStringNotContainsString( 'product-category', $url );
 		}
@@ -1191,10 +1192,16 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	 */
 	private function stub_term_change_product( bool $indexable = true ): void {
 		Functions\when( 'wc_get_page_id' )->justReturn( 5 );
-		Functions\when( 'get_permalink' )->justReturn( 'https://shop.test/product/hoodie/' );
+		// ID-aware, and that matters. surface_urls() calls get_permalink() for
+		// the shop page too, so a single-value stub made the shop URL and the
+		// product URL the same string — and every assertion below passed
+		// whether or not the handler appended anything (#695 review).
+		Functions\when( 'get_permalink' )->alias(
+			static function ( $id = 0 ) {
+				return 5 === (int) $id ? 'https://shop.test/shop/' : 'https://shop.test/product/hoodie/';
+			}
+		);
 		Functions\when( 'get_post_type' )->justReturn( 'product' );
-		Functions\when( 'get_option' )->justReturn( array() );
-		Functions\when( 'update_option' )->justReturn( true );
 		Functions\when( 'wp_next_scheduled' )->justReturn( false );
 		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
 
@@ -1206,22 +1213,33 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	/**
-	 * The URLs enqueue() was handed, by intercepting the option write.
+	 * The pending set after running $act, with option state that persists.
 	 *
-	 * @return string[]
+	 * get_option and update_option share one backing array, so a second call
+	 * sees what the first wrote. Stubbing get_option to a flat `array()` made
+	 * every call start from empty, which stubbed cross-call dedupe out of
+	 * existence and left the dedupe test asserting nothing (#695 review).
+	 *
+	 * @param callable $act Runs the handler(s) under test.
+	 * @return string[] The pending URL set.
 	 */
 	private function capture_enqueued( callable $act ): array {
-		$captured = array();
+		$store = array();
+		Functions\when( 'get_option' )->alias(
+			static function ( $name, $default_value = false ) use ( &$store ) {
+				return 'wc_ai_storefront_indexnow_pending' === $name ? $store : array();
+			}
+		);
 		Functions\when( 'update_option' )->alias(
-			static function ( $name, $value ) use ( &$captured ) {
-				if ( str_contains( (string) $name, 'indexnow' ) ) {
-					$captured = (array) $value;
+			static function ( $name, $value ) use ( &$store ) {
+				if ( 'wc_ai_storefront_indexnow_pending' === $name ) {
+					$store = (array) $value;
 				}
 				return true;
 			}
 		);
 		$act();
-		return $captured;
+		return $store;
 	}
 
 	public function test_term_change_without_a_product_save_enqueues_the_product(): void {
@@ -1284,6 +1302,58 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		);
 
 		$this->assertSame( array(), $urls );
+	}
+
+	public function test_a_no_op_append_still_enqueues_because_core_hides_the_old_set(): void {
+		// Documents a real limitation rather than pretending it away. Core
+		// hardcodes `$old_tt_ids = array()` in the append branch of
+		// wp_set_object_terms(), so the no-op guard has nothing to compare
+		// against and always falls through on an append. That is the path
+		// `wp post term add` takes.
+		//
+		// The direction is safe — a false positive, deduped downstream, never
+		// a missed submission. If core ever starts passing the real prior set
+		// on appends this test will fail, which is the moment to tighten the
+		// guard.
+		$this->stub_term_change_product();
+
+		$urls = $this->capture_enqueued(
+			fn() => $this->indexnow->on_product_terms_changed( 14, array( 'blue' ), array( 22 ), 'pa_color', true, array() )
+		);
+
+		$this->assertContains( 'https://shop.test/product/hoodie/', $urls );
+	}
+
+	public function test_repeat_fires_for_one_product_do_the_work_once(): void {
+		// set_object_terms fires several times per product save: WooCommerce
+		// rewrites product_type and product_visibility every time, plus one
+		// taxonomy per pa_* attribute. enqueue() dedupes the URL but not the
+		// work behind it, and that work is a full wc_get_product() read plus
+		// an option read-modify-write each time (#695 review).
+		$this->stub_term_change_product();
+
+		$product = \Mockery::mock( 'WC_Product' );
+		$product->shouldReceive( 'get_id' )->andReturn( 14 );
+		$product->shouldReceive( 'get_status' )->andReturn( 'publish' );
+		$product->shouldReceive( 'get_catalog_visibility' )->andReturn( 'visible' );
+
+		$loads = 0;
+		Functions\when( 'wc_get_product' )->alias(
+			static function () use ( &$loads, $product ) {
+				++$loads;
+				return $product;
+			}
+		);
+
+		$urls = $this->capture_enqueued(
+			function () {
+				$this->indexnow->on_product_terms_changed( 14, array( 'a' ), array( 22 ), 'product_cat', false, array() );
+				$this->indexnow->on_product_terms_changed( 14, array( 'b' ), array( 31 ), 'pa_color', false, array() );
+			}
+		);
+
+		$this->assertSame( 1, $loads, 'the product should be loaded once per request, not once per taxonomy' );
+		$this->assertContains( 'https://shop.test/product/hoodie/', $urls );
 	}
 
 	public function test_term_change_alongside_a_product_save_does_not_duplicate(): void {
