@@ -1414,14 +1414,18 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->stub_term_change_product();
 
 		$flushed = 0;
+		// Captured BEFORE the handler runs. Calling time() inside the stub
+		// races the time() inside schedule_flush(): cross a second boundary
+		// between the two and the assertion fails on correct code.
+		$before = time();
 		Functions\when( 'wp_schedule_single_event' )->alias(
-			static function ( $timestamp, $hook ) use ( &$flushed ) {
+			static function ( $timestamp, $hook ) use ( &$flushed, $before ) {
 				if ( 'wc_ai_storefront_indexnow_flush' === $hook ) {
 					++$flushed;
 					// The debounce is what makes this a batch rather than one
 					// submission per save. A zero delay would defeat it and no
 					// test noticed (#695 review).
-					TestCase::assertGreaterThanOrEqual( time() + 60, $timestamp );
+					TestCase::assertGreaterThanOrEqual( $before + 60, $timestamp );
 				}
 				return true;
 			}
