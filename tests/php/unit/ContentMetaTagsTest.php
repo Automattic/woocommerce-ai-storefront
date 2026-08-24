@@ -144,7 +144,14 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		// Yoast only runs this filter when it is rendering its own head, so
 		// this stands in for Yoast having emitted.
-		$strategies[0]->filter_presenters( array( new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter() ) );
+		$strategies[0]->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 
 		$this->assertTrue( $strategies[0]->is_emitting() );
 		$this->assertFalse( $this->tags->should_emit() );
@@ -169,7 +176,14 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 		$strategies = WC_AI_Storefront_Og_Strategies::registered();
-		$strategies[0]->filter_presenters( array( new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter() ) );
+		$strategies[0]->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 		$this->assertFalse( $this->tags->should_emit(), 'latched: we stand down' );
 
 		// The next request starts here.

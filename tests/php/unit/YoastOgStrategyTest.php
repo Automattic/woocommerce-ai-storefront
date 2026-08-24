@@ -493,7 +493,14 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertFalse( $strategy->has_taken_over(), 'Nothing observed yet.' );
 
-		$strategy->filter_presenters( array( new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter() ) );
+		$strategy->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 
 		$this->assertTrue( $strategy->has_taken_over() );
 	}
@@ -513,8 +520,22 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_shop' )->justReturn( true );
 		$strategy = $this->strategy();
 
-		// Yoast's head, minus the Open Graph presenters the option removed.
-		$strategy->filter_presenters( $this->presenters( array( 'description', 'canonical' ) ) );
+		// Yoast's head with the Open Graph presenters the option removed, built
+		// from REAL namespaces. The globally-scoped doubles this used to pass
+		// could not distinguish "is a Yoast presenter" from "is an Open Graph
+		// presenter" — get_class() on them has no separator at all — so a
+		// matcher keyed on `\Presenters\` or `Yoast` passed this test while
+		// latching on the OG-off page in production (#701 review).
+		//
+		// Twitter is deliberately present: Yoast emits twitter tags with Open
+		// Graph off, which is what the live measurement showed.
+		$strategy->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 
 		$this->assertFalse( $strategy->has_taken_over(), 'no Open Graph presenter means no Open Graph' );
 		$this->assertFalse( $strategy->is_emitting() );
@@ -534,7 +555,15 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$given = $this->presenters( array( 'og:title' ) );
+		// A REAL Open Graph presenter, so the latch would fire if the base
+		// check were removed. With a globally-scoped double here this test
+		// went vacuous the moment the latch narrowed: nothing latched, so
+		// has_taken_over() answered false for the wrong reason and the guard
+		// it exists to protect stopped being protected (#701 review).
+		$given = array(
+			new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+			new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+		);
 		$this->assertSame( $given, $strategy->filter_presenters( $given ), 'Adds nothing.' );
 		$this->assertFalse( $strategy->has_taken_over(), 'So it must not stand our block down either.' );
 	}

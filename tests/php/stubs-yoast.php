@@ -100,3 +100,34 @@ class Type_Presenter {
 	 */
 	public $key = 'og:type';
 }
+
+namespace Yoast\WP\SEO\Presenters;
+
+/**
+ * A non-Open-Graph presenter, correctly namespaced.
+ *
+ * The namespace is the point. `carries_open_graph()` has to tell "is a Yoast
+ * presenter" from "is an Open Graph presenter", and a globally-scoped double
+ * cannot: `get_class()` returns a bare name with no separator, so a matcher
+ * keyed on `\Presenters\` or `Yoast` passes a test built from doubles while
+ * latching on an Open-Graph-off head in production (#701 review).
+ */
+class Title_Presenter {
+}
+
+/**
+ * As above. Yoast puts these AHEAD of the Open Graph block in a real head,
+ * which is why fixtures must not put the OG presenter first.
+ */
+class Canonical_Presenter {
+}
+
+namespace Yoast\WP\SEO\Presenters\Twitter;
+
+/**
+ * Twitter presenters are a separate namespace from Open Graph, and Yoast emits
+ * them with Open Graph switched off. Measured: OG off left five twitter tags
+ * and zero og:* tags (#701 review).
+ */
+class Card_Presenter {
+}

@@ -2279,7 +2279,14 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 				return true;
 			}
 		);
-		$strategy->filter_presenters( array( new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter() ) );
+		$strategy->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 		WC_AI_Storefront_Og_Strategies::register_for_test( array( $strategy ) );
 
 		ob_start();
