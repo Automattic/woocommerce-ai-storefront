@@ -107,13 +107,17 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	 * pages, and blocking_source() states which observer covers which
 	 * provider.
 	 *
-	 * The two failure directions are still not symmetric, and that is why the
-	 * gate errs toward silence when it cannot tell: a false negative leaves a
-	 * post with a blank card, a false positive puts a second set of social
-	 * tags on a page that already has one.
+	 * The posture is fail-OPEN, and #690 inverted it. Presence-based, the gate
+	 * stayed silent for any plugin the detector named; observation-based, it
+	 * emits unless an observer reports someone else already did. Silence needs
+	 * evidence now, where it used to be the default.
 	 *
-	 * KNOWN LIMIT, unchanged by #690 and stated once, in blocking_source():
-	 * a provider nobody has measured is invisible to both observers.
+	 * That is the right way round for the bug this exists to fix — a blank
+	 * card is what a merchant installed the plugin to remove — but it is a
+	 * trade, not a free win, and the KNOWN LIMIT below is the same fact seen
+	 * from the other side: a provider nobody has measured reports nothing, so
+	 * the gate opens and the page gets duplicate tags. Stated once, in
+	 * blocking_source().
 	 */
 	public function should_emit(): bool {
 		/** This filter is documented in WC_AI_Storefront_Meta_Tags::should_emit(). */
