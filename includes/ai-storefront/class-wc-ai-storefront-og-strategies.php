@@ -81,6 +81,34 @@ class WC_AI_Storefront_Og_Strategies {
 	}
 
 	/**
+	 * The strategies registered for this request.
+	 *
+	 * @return WC_AI_Storefront_Og_Strategy[]
+	 */
+	public static function registered(): array {
+		return self::$registered;
+	}
+
+	/**
+	 * Whether any registered provider rendered its own head this request.
+	 *
+	 * Page-agnostic, and it includes suppression strategies for completeness
+	 * even though they always answer false. The commerce emitter wants
+	 * emission_is_delegated() instead; this one exists for the non-commerce
+	 * emitter, which is not asking "will someone enrich" but "is this page
+	 * already described" (#690).
+	 */
+	public static function any_provider_emitting(): bool {
+		foreach ( self::$registered as $strategy ) {
+			if ( $strategy->is_emitting() ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Whether another plugin is rendering our social tags for us this request.
 	 *
 	 * True when a registered strategy both enriches AND has observed its own

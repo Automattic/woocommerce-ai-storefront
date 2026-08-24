@@ -119,6 +119,13 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	}
 
 	/**
+	 * Whether this provider rendered its own head at all this request.
+	 */
+	public function is_emitting(): bool {
+		return $this->observed;
+	}
+
+	/**
 	 * Whether this request is one we describe. The hooks' own gate.
 	 *
 	 * Separate from has_taken_over() because the hooks run BEFORE the latch
@@ -224,7 +231,7 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	 * @param mixed $og RankMath\OpenGraph\Facebook.
 	 */
 	public function add_missing_tags( $og ): void {
-		if ( ! $this->should_enrich() || ! is_object( $og ) ) {
+		if ( ! is_object( $og ) ) {
 			return;
 		}
 
@@ -242,9 +249,15 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 			return;
 		}
 
-		// Reaching here means Rank Math is rendering Open Graph for a page we
-		// describe. That is the fact has_taken_over() reports.
+		// Latched BEFORE the commerce check (#690). This action fires only
+		// when Rank Math is rendering Open Graph, so reaching here proves
+		// emission on any page type — including a post, where Rank Math with
+		// an unfinished setup wizard emits nothing at all and never gets here.
 		$this->observed = true;
+
+		if ( ! $this->should_enrich() ) {
+			return;
+		}
 
 		foreach ( $this->facts->properties() as $property => $value ) {
 			if ( isset( $this->seen[ $property ] ) ) {

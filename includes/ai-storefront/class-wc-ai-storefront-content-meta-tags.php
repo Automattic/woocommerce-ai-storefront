@@ -192,24 +192,42 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	 * @param string[] $slugs Detected SEO plugin slugs.
 	 */
 	private function blocking_source( array $slugs ): string {
-		foreach ( $slugs as $slug ) {
-			if ( 'jetpack' !== $slug ) {
-				return $slug;
-			}
-
-			// Jetpack is the one entry where presence is not the question.
-			// It is active on a large share of WooCommerce stores with its
-			// Open Graph feature off, and the store that demonstrated this
-			// bug was exactly that. Treating presence as disqualifying would
-			// mean the fix never fires where it is needed most (#680).
-			//
-			// This is the same signal suppress_jetpack_open_graph() keys on,
-			// registered by Jetpack's own wp_head:1 loader and therefore
-			// settled before this runs at wp_head:5.
-			if ( function_exists( 'has_action' ) && false !== has_action( 'wp_head', 'jetpack_og_tags' ) ) {
-				return 'jetpack (Open Graph)';
-			}
+		// Jetpack was always observed rather than assumed, and the rest have
+		// caught up (#690). This is the same signal
+		// suppress_jetpack_open_graph() keys on, registered by Jetpack's own
+		// wp_head:1 loader and settled before this runs at wp_head:5.
+		if ( function_exists( 'has_action' ) && false !== has_action( 'wp_head', 'jetpack_og_tags' ) ) {
+			return 'jetpack (Open Graph)';
 		}
+
+		// The four SEO plugins, by evidence that they rendered rather than by
+		// the fact that they are installed. Two observers, because neither
+		// covers all four on its own (measured on posts and pages, #690):
+		//
+		// - The Open Graph latches see Yoast, Rank Math and AIOSEO. Yoast with
+		//   nothing authored emits a full Open Graph block and NO meta
+		//   description at all, so the description observer alone would call
+		//   it silent and we would duplicate its tags.
+		// - The description observer sees Rank Math, AIOSEO and SEOPress.
+		//   SEOPress has no filter seam to latch, only sixteen wp_head
+		//   actions, and off commerce pages this plugin removes none of them.
+		//
+		// Their union covers all four. What neither reports is a provider we
+		// have never measured: The SEO Framework, Slim SEO, SmartCrawl,
+		// Squirrly, or a theme with built-in Open Graph. Those still produce
+		// duplicates, and widening the detector's list would not change that,
+		// which is why #690 ruled it out.
+		if ( class_exists( 'WC_AI_Storefront_Og_Strategies' )
+			&& WC_AI_Storefront_Og_Strategies::any_provider_emitting() ) {
+			return 'an SEO plugin (Open Graph)';
+		}
+
+		if ( class_exists( 'WC_AI_Storefront_Rival_Seo_Description' )
+			&& WC_AI_Storefront_Rival_Seo_Description::is_emitting() ) {
+			return 'an SEO plugin (description)';
+		}
+
+		unset( $slugs );
 
 		return '';
 	}

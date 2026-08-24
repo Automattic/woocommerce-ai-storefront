@@ -160,6 +160,13 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	}
 
 	/**
+	 * Whether this provider rendered its own head at all this request.
+	 */
+	public function is_emitting(): bool {
+		return $this->observed;
+	}
+
+	/**
 	 * Whether this request is one we describe.
 	 *
 	 * Guards the null: `for_slugs()` is public and hands out strategies that
@@ -203,13 +210,20 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	 *               base is missing.
 	 */
 	public function filter_presenters( $presenters ) {
-		if ( ! is_array( $presenters ) || ! $this->on_commerce_page() ) {
+		if ( ! is_array( $presenters ) ) {
 			return $presenters;
 		}
 
-		// Reaching here means Yoast is rendering its head for a page we
-		// describe. That is the fact has_taken_over() reports.
+		// Latched BEFORE the commerce check, deliberately. Yoast only runs
+		// this filter when it is rendering its own head, so reaching here is
+		// proof of emission on ANY page type — which is what the non-commerce
+		// emitter needs to know (#690). has_taken_over() still ANDs the page
+		// check, so the commerce behaviour is unchanged.
 		$this->observed = true;
+
+		if ( ! $this->on_commerce_page() ) {
+			return $presenters;
+		}
 
 		if ( ! $this->presenter_base_exists() ) {
 			// Yoast reported present but its presenter pipeline is not what we

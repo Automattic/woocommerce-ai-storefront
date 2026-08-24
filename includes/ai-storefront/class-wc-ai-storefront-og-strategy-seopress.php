@@ -112,6 +112,21 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 	}
 
 	/**
+	 * Never, and not because SEOPress is silent.
+	 *
+	 * Off commerce pages this strategy removes nothing, so SEOPress emits
+	 * normally there. That IS worth standing down for, but this class cannot
+	 * see it: SEOPress has no filter seam to latch, only sixteen `wp_head`
+	 * actions. What sees it instead is WC_AI_Storefront_Rival_Seo_Description,
+	 * whose `seopress_titles_desc` observer fires with a real value on posts
+	 * and pages (#690, measured). The union of the two is what covers all four
+	 * providers; neither does it alone.
+	 */
+	public function is_emitting(): bool {
+		return false;
+	}
+
+	/**
 	 * Register the removal, at the one timing that works.
 	 *
 	 * SEOPress does NOT register the sixteen callbacks at plugin load.

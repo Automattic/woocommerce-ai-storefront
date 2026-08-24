@@ -98,12 +98,60 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		$this->assertFalse( $this->tags->should_emit() );
 	}
 
-	public function test_stays_silent_when_an_seo_plugin_is_present(): void {
-		// Presence-based and deliberately coarse: a false negative leaves a
-		// blank card, a false positive puts duplicate tags on a page this
-		// plugin has never touched. Err toward silence (#680).
-		$this->assertFalse( $this->tags->should_emit( array( 'yoast' ) ) );
-		$this->assertFalse( $this->tags->should_emit( array( 'seopress' ) ) );
+	public function test_an_installed_but_silent_seo_plugin_no_longer_blocks_us(): void {
+		// This replaces test_stays_silent_when_an_seo_plugin_is_present, which
+		// asserted exactly the behaviour #690 removes.
+		//
+		// Presence was the wrong question and it was wrong in the direction
+		// that hurts: measured on a live store, a post on a site with Rank
+		// Math installed and its setup wizard unfinished shipped ZERO meta
+		// tags. Rank Math registers no wp_head callback at all in that state,
+		// and we stood down because the gate saw it in the plugin list. A
+		// blank share card, which is the thing #680 exists to prevent.
+		//
+		// Nothing has latched in this test, so nothing is emitting, so we do.
+		$this->assertTrue( $this->tags->should_emit( array( 'yoast' ) ) );
+		$this->assertTrue( $this->tags->should_emit( array( 'seopress' ) ) );
+	}
+
+	public function test_stands_down_when_a_provider_emitted_open_graph_only(): void {
+		// The case the description observer alone cannot see, and the reason
+		// the gate reads two signals rather than one. Yoast with nothing
+		// authored emits a full Open Graph block and NO meta description at
+		// all — `wpseo_metadesc` fires empty (#690, measured on a post). So
+		// the description latch stays false while Yoast IS emitting, and
+		// without the Open Graph half we would print a duplicate set.
+		WC_AI_Storefront_Og_Strategies::init_for_slugs(
+			array( 'yoast' ),
+			static function () {
+				return false; // not a commerce page
+			}
+		);
+
+		$strategies = WC_AI_Storefront_Og_Strategies::registered();
+		$this->assertCount( 1, $strategies );
+
+		// Yoast only runs this filter when it is rendering its own head, so
+		// this stands in for Yoast having emitted.
+		$strategies[0]->filter_presenters( array( 'a-presenter' ) );
+
+		$this->assertTrue( $strategies[0]->is_emitting() );
+		$this->assertFalse( $this->tags->should_emit( array() ) );
+
+		WC_AI_Storefront_Og_Strategies::init_for_slugs( array(), static fn() => false );
+	}
+
+	public function test_stands_down_when_a_provider_actually_emitted(): void {
+		// The other direction. WC_AI_Storefront_Rival_Seo_Description is
+		// already running on posts unconditionally, so its latch is the signal
+		// for the three providers that emit a description; the Open Graph
+		// latches cover Yoast, which with nothing authored emits a full OG
+		// block and no description at all (#690, measured).
+		WC_AI_Storefront_Rival_Seo_Description::observe( 'A rival description.' );
+
+		$this->assertFalse( $this->tags->should_emit( array() ) );
+
+		WC_AI_Storefront_Rival_Seo_Description::reset();
 	}
 
 	public function test_jetpack_being_active_is_not_enough_to_silence_us(): void {

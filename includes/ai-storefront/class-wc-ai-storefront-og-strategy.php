@@ -75,6 +75,20 @@ interface WC_AI_Storefront_Og_Strategy {
 	public function has_taken_over(): bool;
 
 	/**
+	 * Whether this provider rendered its own head at all this request.
+	 *
+	 * Page-agnostic, which is the whole difference from has_taken_over(): that
+	 * one ANDs a commerce-page check because it answers "should the commerce
+	 * emitter stand down". This one answers "did anything emit here", which is
+	 * what the non-commerce emitter needs on a post or a page (#690).
+	 *
+	 * A suppression strategy answers false, as with has_taken_over(): it does
+	 * not suppress off commerce pages, so a provider it would have removed is
+	 * still emitting, and the description observer is what sees that.
+	 */
+	public function is_emitting(): bool;
+
+	/**
 	 * The detector slug this strategy answers for.
 	 *
 	 * Must match a `slug` that WC_AI_Storefront_Seo_Plugin_Detector::detect()
