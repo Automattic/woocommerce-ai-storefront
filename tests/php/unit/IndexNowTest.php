@@ -876,6 +876,36 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'https://shop.test/', $posted['urlList'] );
 	}
 
+	public function test_both_term_queries_are_bounded(): void {
+		// Unbounded, get_terms() hydrates every non-empty term into a full
+		// WP_Term just to read a permalink from each. The product walk has
+		// been bounded since it was written; these two never were (#702).
+		$args = array();
+		Functions\when( 'get_terms' )->alias(
+			static function ( $a ) use ( &$args ) {
+				$args[] = $a;
+				return array();
+			}
+		);
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		Functions\when( 'get_option' )->justReturn( array() );
+		Functions\when( 'update_option' )->justReturn( true );
+		Functions\when( 'delete_option' )->justReturn( true );
+		Functions\when( 'wp_next_scheduled' )->justReturn( false );
+		Functions\when( 'wp_schedule_single_event' )->justReturn( true );
+		Functions\when( 'wp_remote_post' )->justReturn( array( 'response' => array( 'code' => 200 ) ) );
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+
+		$this->indexnow->submit_all();
+
+		$this->assertCount( 2, $args, 'one query per taxonomy' );
+		foreach ( $args as $a ) {
+			$this->assertArrayHasKey( 'number', $a, $a['taxonomy'] . ' must be bounded' );
+			$this->assertSame( 25000, $a['number'] );
+		}
+	}
+
 	// B2d — all_category_urls(): get_terms returns WP_Error — contributes nothing, no crash.
 	public function test_submit_all_handles_wp_error_from_get_terms(): void {
 		Functions\when( 'wc_get_products' )->justReturn( array() );

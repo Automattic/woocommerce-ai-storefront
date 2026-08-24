@@ -581,6 +581,12 @@ class WC_AI_Storefront_IndexNow {
 			array(
 				'taxonomy'   => 'product_cat',
 				'hide_empty' => true,
+				// Bounded, like the product walk above. Without a number every
+				// non-empty term comes back as a full WP_Term, so a store with
+				// thousands of them hydrates all of them to read a permalink
+				// from each. MAX_PENDING because a term URL past the queue's
+				// own ceiling could not be submitted anyway (#702).
+				'number'     => self::MAX_PENDING,
 			)
 		);
 		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
@@ -619,6 +625,12 @@ class WC_AI_Storefront_IndexNow {
 			array(
 				'taxonomy'   => 'product_brand',
 				'hide_empty' => true,
+				// Bounded, like the product walk above. Without a number every
+				// non-empty term comes back as a full WP_Term, so a store with
+				// thousands of them hydrates all of them to read a permalink
+				// from each. MAX_PENDING because a term URL past the queue's
+				// own ceiling could not be submitted anyway (#702).
+				'number'     => self::MAX_PENDING,
 			)
 		);
 		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
