@@ -80,29 +80,6 @@ abstract class Abstract_Indexable_Tag_Presenter {
 	}
 }
 
-namespace Yoast\WP\SEO\Presenters\Open_Graph;
-
-/**
- * Stand-in for one of Yoast's Open Graph presenters.
- *
- * Only the NAMESPACE matters. `WC_AI_Storefront_Og_Strategy_Yoast` latches its
- * observation on the presence of a `\Open_Graph\` presenter in the list rather
- * than on `wpseo_frontend_presenters` merely firing, because that filter runs
- * for Yoast's whole head and fires even with Open Graph switched off. Measured
- * in the #701 review: OG off leaves zero `og:*` tags and the filter still runs.
- */
-class Type_Presenter {
-
-	/**
-	 * The tag this presenter would render.
-	 *
-	 * @var string
-	 */
-	public $key = 'og:type';
-}
-
-namespace Yoast\WP\SEO\Presenters;
-
 /**
  * A non-Open-Graph presenter, correctly namespaced.
  *
@@ -120,14 +97,4 @@ class Title_Presenter {
  * which is why fixtures must not put the OG presenter first.
  */
 class Canonical_Presenter {
-}
-
-namespace Yoast\WP\SEO\Presenters\Twitter;
-
-/**
- * Twitter presenters are a separate namespace from Open Graph, and Yoast emits
- * them with Open Graph switched off. Measured: OG off left five twitter tags
- * and zero og:* tags (#701 review).
- */
-class Card_Presenter {
 }

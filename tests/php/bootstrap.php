@@ -23,6 +23,8 @@ require_once __DIR__ . '/stubs.php';
 // post ID.
 require_once __DIR__ . '/stubs-jetpack.php';
 require_once __DIR__ . '/stubs-yoast.php';
+require_once __DIR__ . '/stubs-yoast-open-graph.php';
+require_once __DIR__ . '/stubs-yoast-twitter.php';
 
 // WooCommerce version the suite pretends to run against. The shipping-policy
 // and JSON-LD zone readers gate on this because
