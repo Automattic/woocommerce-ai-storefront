@@ -57,9 +57,20 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
 
 		$this->tags = new WC_AI_Storefront_Content_Meta_Tags();
+
+		// Both observers hold process-lifetime state, and this class now reads
+		// both. Cleaning up on the last line of a test body does not run when
+		// an assertion above it fails, which would leak a latched strategy or
+		// a recorded description into every later test in the process
+		// (#701 review). Rival_Seo_Description's own docblock says to do this
+		// in any test that touches it.
+		WC_AI_Storefront_Og_Strategies::reset();
+		WC_AI_Storefront_Rival_Seo_Description::reset();
 	}
 
 	protected function tearDown(): void {
+		WC_AI_Storefront_Og_Strategies::reset();
+		WC_AI_Storefront_Rival_Seo_Description::reset();
 		Monkey\tearDown();
 		parent::tearDown();
 	}
@@ -110,8 +121,8 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// blank share card, which is the thing #680 exists to prevent.
 		//
 		// Nothing has latched in this test, so nothing is emitting, so we do.
-		$this->assertTrue( $this->tags->should_emit( array( 'yoast' ) ) );
-		$this->assertTrue( $this->tags->should_emit( array( 'seopress' ) ) );
+		$this->assertTrue( $this->tags->should_emit() );
+		$this->assertTrue( $this->tags->should_emit() );
 	}
 
 	public function test_stands_down_when_a_provider_emitted_open_graph_only(): void {
@@ -133,12 +144,39 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 
 		// Yoast only runs this filter when it is rendering its own head, so
 		// this stands in for Yoast having emitted.
-		$strategies[0]->filter_presenters( array( 'a-presenter' ) );
+		$strategies[0]->filter_presenters( array( new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter() ) );
 
 		$this->assertTrue( $strategies[0]->is_emitting() );
-		$this->assertFalse( $this->tags->should_emit( array() ) );
+		$this->assertFalse( $this->tags->should_emit() );
+	}
 
-		WC_AI_Storefront_Og_Strategies::init_for_slugs( array(), static fn() => false );
+	public function test_a_latch_from_an_earlier_request_does_not_silence_this_one(): void {
+		// The strategy registry is built once per PROCESS, not once per
+		// request: the plugin instance is a singleton, so on a persistent
+		// worker (FrankenPHP, RoadRunner) init() runs on the first request and
+		// the same strategy objects answer every later one. $observed only
+		// goes false to true, so one product view would latch a strategy and
+		// silence the fallback on every post that worker went on to serve
+		// (#701 review).
+		//
+		// has_taken_over() was masking it by ANDing a commerce-page check.
+		// is_emitting() is page-agnostic, which removes that term, so the
+		// wp_head:0 reset is what keeps the latch honest.
+		WC_AI_Storefront_Og_Strategies::init_for_slugs(
+			array( 'yoast' ),
+			static function () {
+				return false;
+			}
+		);
+		$strategies = WC_AI_Storefront_Og_Strategies::registered();
+		$strategies[0]->filter_presenters( array( new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter() ) );
+		$this->assertFalse( $this->tags->should_emit(), 'latched: we stand down' );
+
+		// The next request starts here.
+		WC_AI_Storefront_Og_Strategies::reset_latches();
+
+		$this->assertFalse( $strategies[0]->is_emitting(), 'the latch must not survive the reset' );
+		$this->assertTrue( $this->tags->should_emit(), 'a stale latch must not silence a fresh request' );
 	}
 
 	public function test_stands_down_when_a_provider_actually_emitted(): void {
@@ -149,16 +187,14 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// block and no description at all (#690, measured).
 		WC_AI_Storefront_Rival_Seo_Description::observe( 'A rival description.' );
 
-		$this->assertFalse( $this->tags->should_emit( array() ) );
-
-		WC_AI_Storefront_Rival_Seo_Description::reset();
+		$this->assertFalse( $this->tags->should_emit() );
 	}
 
 	public function test_jetpack_being_active_is_not_enough_to_silence_us(): void {
 		// The issue's own repro is a store with Jetpack active and its Open
 		// Graph OFF. Treating presence as disqualifying would mean the fix
 		// never fires on the store that demonstrated the bug (#680).
-		$this->assertTrue( $this->tags->should_emit( array( 'jetpack' ) ) );
+		$this->assertTrue( $this->tags->should_emit() );
 	}
 
 	public function test_jetpack_open_graph_being_on_does_silence_us(): void {
@@ -169,7 +205,7 @@ class ContentMetaTagsTest extends \PHPUnit\Framework\TestCase {
 				return 'wp_head' === $hook && 'jetpack_og_tags' === $callback;
 			}
 		);
-		$this->assertFalse( $this->tags->should_emit( array( 'jetpack' ) ) );
+		$this->assertFalse( $this->tags->should_emit() );
 	}
 
 	public function test_the_master_filter_still_wins(): void {

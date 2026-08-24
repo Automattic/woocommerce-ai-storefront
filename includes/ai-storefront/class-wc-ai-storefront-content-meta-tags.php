@@ -101,27 +101,21 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	/**
 	 * Whether to emit for the current request.
 	 *
-	 * Presence-based and deliberately coarser than the observe-the-filter
-	 * approach #669 uses for commerce descriptions. That is the right trade
-	 * here, because the two failure directions are not symmetric: a false
-	 * negative leaves a post with the blank card it has today, while a false
-	 * positive puts a second set of social tags on a page that already has
-	 * one. Err toward silence.
+	 * Observation-based since #690. This docblock described a presence-based
+	 * gate and named that work as pending, eight lines above the code that
+	 * does it; the ground truth it was waiting on is now measured on posts and
+	 * pages, and blocking_source() states which observer covers which
+	 * provider.
 	 *
-	 * KNOWN LIMIT, and it is the direction this cannot cover: the detector
-	 * knows five plugins, so The SEO Framework, Slim SEO, Squirrly and any
-	 * theme with built-in Open Graph open the gate and get duplicates. Only
-	 * observing what actually reached the page closes that, the way
-	 * WC_AI_Storefront_Og_Strategies does for commerce — but that ground
-	 * truth was measured on commerce pages and has to be re-measured on posts
-	 * before it can be leaned on here. Tracked as #690.
+	 * The two failure directions are still not symmetric, and that is why the
+	 * gate errs toward silence when it cannot tell: a false negative leaves a
+	 * post with a blank card, a false positive puts a second set of social
+	 * tags on a page that already has one.
 	 *
-	 * @param string[]|null $slugs Detected SEO plugin slugs; resolved from
-	 *                             the detector when null. Injectable because
-	 *                             detection reads version constants, which a
-	 *                             shared-process test cannot undefine.
+	 * KNOWN LIMIT, unchanged by #690 and stated once, in blocking_source():
+	 * a provider nobody has measured is invisible to both observers.
 	 */
-	public function should_emit( ?array $slugs = null ): bool {
+	public function should_emit(): bool {
 		/** This filter is documented in WC_AI_Storefront_Meta_Tags::should_emit(). */
 		if ( ! (bool) apply_filters( 'wc_ai_storefront_emit_meta_tags', true ) ) {
 			return false;
@@ -155,8 +149,7 @@ class WC_AI_Storefront_Content_Meta_Tags {
 			return false;
 		}
 
-		$present = null === $slugs ? $this->detected_slugs() : $slugs;
-		$blocker = $this->blocking_source( $present );
+		$blocker = $this->blocking_source();
 
 		if ( '' !== $blocker ) {
 			// The only failure mode of this feature is silence, and a
@@ -189,9 +182,8 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	/**
 	 * Whether anything else on this store is already describing pages.
 	 *
-	 * @param string[] $slugs Detected SEO plugin slugs.
 	 */
-	private function blocking_source( array $slugs ): string {
+	private function blocking_source(): string {
 		// Jetpack was always observed rather than assumed, and the rest have
 		// caught up (#690). This is the same signal
 		// suppress_jetpack_open_graph() keys on, registered by Jetpack's own
@@ -217,28 +209,16 @@ class WC_AI_Storefront_Content_Meta_Tags {
 		// Squirrly, or a theme with built-in Open Graph. Those still produce
 		// duplicates, and widening the detector's list would not change that,
 		// which is why #690 ruled it out.
-		if ( class_exists( 'WC_AI_Storefront_Og_Strategies' )
-			&& WC_AI_Storefront_Og_Strategies::any_provider_emitting() ) {
-			return 'an SEO plugin (Open Graph)';
+		$emitting = WC_AI_Storefront_Og_Strategies::emitting_slug();
+		if ( '' !== $emitting ) {
+			return $emitting . ' (Open Graph)';
 		}
 
-		if ( class_exists( 'WC_AI_Storefront_Rival_Seo_Description' )
-			&& WC_AI_Storefront_Rival_Seo_Description::is_emitting() ) {
+		if ( WC_AI_Storefront_Rival_Seo_Description::is_emitting() ) {
 			return 'an SEO plugin (description)';
 		}
 
-		unset( $slugs );
-
 		return '';
-	}
-
-	/**
-	 * Slugs for every SEO plugin the detector reports.
-	 *
-	 * @return string[]
-	 */
-	private function detected_slugs(): array {
-		return array_column( WC_AI_Storefront_Seo_Plugin_Detector::detect(), 'slug' );
 	}
 
 	/**

@@ -102,6 +102,13 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	}
 
 	/**
+	 * Clear this request's observation. See the interface for why.
+	 */
+	public function reset_observation(): void {
+		$this->observed = false;
+	}
+
+	/**
 	 * Whether this provider rendered its own head at all this request.
 	 */
 	public function is_emitting(): bool {

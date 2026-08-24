@@ -119,6 +119,18 @@ class WC_AI_Storefront_Og_Strategy_Rankmath implements WC_AI_Storefront_Og_Strat
 	}
 
 	/**
+	 * Clear this request's observation. See the interface for why.
+	 *
+	 * `$seen` goes with it: it records which properties Rank Math emitted this
+	 * request, and a stale entry would make add_missing_tags() skip a property
+	 * Rank Math has not actually emitted yet.
+	 */
+	public function reset_observation(): void {
+		$this->observed = false;
+		$this->seen     = array();
+	}
+
+	/**
 	 * Whether this provider rendered its own head at all this request.
 	 */
 	public function is_emitting(): bool {

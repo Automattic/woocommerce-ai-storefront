@@ -11,7 +11,7 @@ defined( 'ABSPATH' ) || exit;
  * Stand SEOPress's social metadata down on commerce pages.
  *
  * SEOPress does expose per-tag filters — `seopress_social_og_type`,
- * `seopress_social_fb_title` and fourteen more, each receiving the rendered
+ * `seopress_social_og_title` and fourteen more, each receiving the rendered
  * `<meta …>` string. But they fire only for tags SEOPress already emits, so
  * there is no seam through which to ADD a property it never emits, and the
  * commerce facts are exactly what it never emits. Removal is the only route
@@ -115,15 +115,32 @@ class WC_AI_Storefront_Og_Strategy_Seopress implements WC_AI_Storefront_Og_Strat
 	 * Never, and not because SEOPress is silent.
 	 *
 	 * Off commerce pages this strategy removes nothing, so SEOPress emits
-	 * normally there. That IS worth standing down for, but this class cannot
-	 * see it: SEOPress has no filter seam to latch, only sixteen `wp_head`
-	 * actions. What sees it instead is WC_AI_Storefront_Rival_Seo_Description,
-	 * whose `seopress_titles_desc` observer fires with a real value on posts
-	 * and pages (#690, measured). The union of the two is what covers all four
-	 * providers; neither does it alone.
+	 * normally there. That IS worth standing down for, and this class does not
+	 * report it.
+	 *
+	 * Not because it could not. SEOPress guards each of its sixteen
+	 * `seopress_social_*` filters with `has_filter()` and applies it
+	 * immediately before the echo, so hooking one would latch on emission
+	 * exactly as the other three strategies do. An earlier version of this
+	 * docblock claimed no filter seam existed, which contradicted the class
+	 * docblock above it (#701 review).
+	 *
+	 * We do not, because WC_AI_Storefront_Rival_Seo_Description already sees
+	 * SEOPress: its `seopress_titles_desc` observer fires with a real value on
+	 * posts and pages (#690, measured), and a second seam is a second thing to
+	 * keep measured. The known cost is that SEOPress ships descriptions and
+	 * social as independent toggles, so a store with descriptions off and
+	 * social on is a case neither observer sees. Latching one of the sixteen
+	 * filters is the fix if that turns out to matter.
 	 */
 	public function is_emitting(): bool {
 		return false;
+	}
+
+	/**
+	 * Nothing to clear: this strategy holds no observation.
+	 */
+	public function reset_observation(): void {
 	}
 
 	/**
