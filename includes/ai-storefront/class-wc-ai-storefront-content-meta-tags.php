@@ -101,27 +101,25 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	/**
 	 * Whether to emit for the current request.
 	 *
-	 * Presence-based and deliberately coarser than the observe-the-filter
-	 * approach #669 uses for commerce descriptions. That is the right trade
-	 * here, because the two failure directions are not symmetric: a false
-	 * negative leaves a post with the blank card it has today, while a false
-	 * positive puts a second set of social tags on a page that already has
-	 * one. Err toward silence.
+	 * Observation-based since #690. This docblock described a presence-based
+	 * gate and named that work as pending, eight lines above the code that
+	 * does it; the ground truth it was waiting on is now measured on posts and
+	 * pages, and blocking_source() states which observer covers which
+	 * provider.
 	 *
-	 * KNOWN LIMIT, and it is the direction this cannot cover: the detector
-	 * knows five plugins, so The SEO Framework, Slim SEO, Squirrly and any
-	 * theme with built-in Open Graph open the gate and get duplicates. Only
-	 * observing what actually reached the page closes that, the way
-	 * WC_AI_Storefront_Og_Strategies does for commerce — but that ground
-	 * truth was measured on commerce pages and has to be re-measured on posts
-	 * before it can be leaned on here. Tracked as #690.
+	 * The posture is fail-OPEN, and #690 inverted it. Presence-based, the gate
+	 * stayed silent for any plugin the detector named; observation-based, it
+	 * emits unless an observer reports someone else already did. Silence needs
+	 * evidence now, where it used to be the default.
 	 *
-	 * @param string[]|null $slugs Detected SEO plugin slugs; resolved from
-	 *                             the detector when null. Injectable because
-	 *                             detection reads version constants, which a
-	 *                             shared-process test cannot undefine.
+	 * That is the right way round for the bug this exists to fix — a blank
+	 * card is what a merchant installed the plugin to remove — but it is a
+	 * trade, not a free win, and the KNOWN LIMIT below is the same fact seen
+	 * from the other side: a provider nobody has measured reports nothing, so
+	 * the gate opens and the page gets duplicate tags. Stated once, in
+	 * blocking_source().
 	 */
-	public function should_emit( ?array $slugs = null ): bool {
+	public function should_emit(): bool {
 		/** This filter is documented in WC_AI_Storefront_Meta_Tags::should_emit(). */
 		if ( ! (bool) apply_filters( 'wc_ai_storefront_emit_meta_tags', true ) ) {
 			return false;
@@ -155,8 +153,7 @@ class WC_AI_Storefront_Content_Meta_Tags {
 			return false;
 		}
 
-		$present = null === $slugs ? $this->detected_slugs() : $slugs;
-		$blocker = $this->blocking_source( $present );
+		$blocker = $this->blocking_source();
 
 		if ( '' !== $blocker ) {
 			// The only failure mode of this feature is silence, and a
@@ -189,38 +186,43 @@ class WC_AI_Storefront_Content_Meta_Tags {
 	/**
 	 * Whether anything else on this store is already describing pages.
 	 *
-	 * @param string[] $slugs Detected SEO plugin slugs.
 	 */
-	private function blocking_source( array $slugs ): string {
-		foreach ( $slugs as $slug ) {
-			if ( 'jetpack' !== $slug ) {
-				return $slug;
-			}
+	private function blocking_source(): string {
+		// Jetpack was always observed rather than assumed, and the rest have
+		// caught up (#690). This is the same signal
+		// suppress_jetpack_open_graph() keys on, registered by Jetpack's own
+		// wp_head:1 loader and settled before this runs at wp_head:5.
+		if ( function_exists( 'has_action' ) && false !== has_action( 'wp_head', 'jetpack_og_tags' ) ) {
+			return 'jetpack (Open Graph)';
+		}
 
-			// Jetpack is the one entry where presence is not the question.
-			// It is active on a large share of WooCommerce stores with its
-			// Open Graph feature off, and the store that demonstrated this
-			// bug was exactly that. Treating presence as disqualifying would
-			// mean the fix never fires where it is needed most (#680).
-			//
-			// This is the same signal suppress_jetpack_open_graph() keys on,
-			// registered by Jetpack's own wp_head:1 loader and therefore
-			// settled before this runs at wp_head:5.
-			if ( function_exists( 'has_action' ) && false !== has_action( 'wp_head', 'jetpack_og_tags' ) ) {
-				return 'jetpack (Open Graph)';
-			}
+		// The four SEO plugins, by evidence that they rendered rather than by
+		// the fact that they are installed. Two observers, because neither
+		// covers all four on its own (measured on posts and pages, #690):
+		//
+		// - The Open Graph latches see Yoast, Rank Math and AIOSEO. Yoast with
+		//   nothing authored emits a full Open Graph block and NO meta
+		//   description at all, so the description observer alone would call
+		//   it silent and we would duplicate its tags.
+		// - The description observer sees Rank Math, AIOSEO and SEOPress.
+		//   SEOPress has no filter seam to latch, only sixteen wp_head
+		//   actions, and off commerce pages this plugin removes none of them.
+		//
+		// Their union covers all four. What neither reports is a provider we
+		// have never measured: The SEO Framework, Slim SEO, SmartCrawl,
+		// Squirrly, or a theme with built-in Open Graph. Those still produce
+		// duplicates, and widening the detector's list would not change that,
+		// which is why #690 ruled it out.
+		$emitting = WC_AI_Storefront_Og_Strategies::emitting_slug();
+		if ( '' !== $emitting ) {
+			return $emitting . ' (Open Graph)';
+		}
+
+		if ( WC_AI_Storefront_Rival_Seo_Description::is_emitting() ) {
+			return 'an SEO plugin (description)';
 		}
 
 		return '';
-	}
-
-	/**
-	 * Slugs for every SEO plugin the detector reports.
-	 *
-	 * @return string[]
-	 */
-	private function detected_slugs(): array {
-		return array_column( WC_AI_Storefront_Seo_Plugin_Detector::detect(), 'slug' );
 	}
 
 	/**

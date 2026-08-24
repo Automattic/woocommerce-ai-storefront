@@ -121,6 +121,77 @@ class AioseoRankmathOgStrategyTest extends \PHPUnit\Framework\TestCase {
 		return $strategy;
 	}
 
+	// --- #690/#701: page-agnostic observation ---
+
+	public function test_aioseo_latches_on_a_non_commerce_page_too(): void {
+		// The PR's headline change, and it was pinned for Yoast only. With the
+		// latch back below the commerce gate it sets only on commerce pages,
+		// so is_emitting() is permanently false on posts and the non-commerce
+		// fallback duplicates AIOSEO's whole Open Graph block (#701 review).
+		$this->on_commerce_page = false;
+
+		$strategy = $this->aioseo();
+		$this->assertFalse( $strategy->is_emitting(), 'nothing yet' );
+
+		$strategy->filter_facebook_tags( array( 'og:type' => 'article' ) );
+
+		$this->assertTrue( $strategy->is_emitting(), 'AIOSEO rendered, on a post' );
+		$this->assertFalse( $strategy->has_taken_over(), 'but it has not taken over a commerce page' );
+	}
+
+	public function test_rankmath_latches_on_a_non_commerce_page_too(): void {
+		$this->on_commerce_page = false;
+
+		$strategy = $this->rankmath();
+		$this->assertFalse( $strategy->is_emitting() );
+
+		$strategy->add_missing_tags( new WC_AI_Storefront_Rankmath_Og_Double() );
+
+		$this->assertTrue( $strategy->is_emitting() );
+		$this->assertFalse( $strategy->has_taken_over() );
+	}
+
+	public function test_aioseo_observation_does_not_survive_a_reset(): void {
+		// The registry is built once per PROCESS, so on a persistent worker a
+		// latch from one request would silence the fallback on every later one.
+		$strategy = $this->aioseo();
+		$strategy->filter_facebook_tags( array( 'og:type' => 'article' ) );
+		$this->assertTrue( $strategy->is_emitting() );
+
+		$strategy->reset_observation();
+
+		$this->assertFalse( $strategy->is_emitting() );
+	}
+
+	public function test_rankmath_observation_does_not_survive_a_reset(): void {
+		$strategy = $this->rankmath();
+		$strategy->add_missing_tags( new WC_AI_Storefront_Rankmath_Og_Double() );
+		$this->assertTrue( $strategy->is_emitting() );
+
+		$strategy->reset_observation();
+
+		$this->assertFalse( $strategy->is_emitting() );
+	}
+
+	public function test_rankmath_reset_clears_the_seen_list_as_well(): void {
+		// $seen records which properties Rank Math emitted this request. A
+		// stale entry makes add_missing_tags() SKIP a property Rank Math has
+		// not emitted yet, so the page loses product:price:amount rather than
+		// gaining a duplicate — a different failure shape from the latch, and
+		// invisible without this (#701 review).
+		$strategy = $this->rankmath();
+
+		// Seeded directly: driving filter_property() to record needs a live
+		// product behind the facts object, and the property under test here is
+		// the reset, not the recording.
+		$seen = new \ReflectionProperty( $strategy, 'seen' );
+		$seen->setValue( $strategy, array( 'product:price:amount' => true ) );
+
+		$strategy->reset_observation();
+
+		$this->assertSame( array(), $seen->getValue( $strategy ), 'released with the latch' );
+	}
+
 	// --- Identity ---
 
 	public function test_both_declare_the_slugs_the_detector_reports(): void {

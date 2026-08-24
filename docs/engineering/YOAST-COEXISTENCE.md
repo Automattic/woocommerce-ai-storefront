@@ -116,7 +116,20 @@ So Open Graph got its own mechanism, one strategy per plugin, because five measu
 
 `WC_AI_Storefront_Content_Meta_Tags` fills that, and only that. Singular posts and pages, six `og:*` properties, three `twitter:*`, a description, and an image when the post has one. Not `article:published_time`, `article:modified_time`, `article:author` or `profile:*` — the smallest thing that fixes a blank card is the right size for a fallback, and authorship and timestamps are where a real SEO plugin starts.
 
-**The gate is presence-based, and asymmetric on purpose.** A false negative leaves a post with the blank card it already had; a false positive puts a second set of tags on a page that has one. So any plugin the detector reports means silence.
+**The gate observes emission, and fails open.** It emits unless an observer reports that someone else already did, so silence needs evidence. That is the opposite of the presence-based gate it replaced, where any plugin the detector named meant silence, and it is the right way round for the bug this exists to fix: a blank card is what a merchant installed the plugin to remove. The cost is the known limit at the end of this section, which is the same fact from the other side.
+
+It used to ask which plugins were *installed*, and that was wrong in the direction that hurts. Measured on a real install (#690): a post on a site with Rank Math installed and its setup wizard unfinished shipped **zero** social tags. Rank Math registers no `wp_head` callback in that state, and we stood down because the gate saw it in the plugin list. The same site with no SEO plugin shipped ten.
+
+Two observers now answer it, because neither covers all four providers alone:
+
+| Observer | Sees | Why the other misses it |
+|---|---|---|
+| `Og_Strategies::emitting_slug()` | Yoast, Rank Math, AIOSEO | Yoast with nothing authored emits a full Open Graph block and **no** description at all |
+| `Rival_Seo_Description::is_emitting()` | Rank Math, AIOSEO, SEOPress | SEOPress's seam is sixteen `wp_head` actions, and off commerce pages we remove none of them |
+
+Yoast's latch tests the presenter list for an Open Graph presenter rather than merely for `wpseo_frontend_presenters` firing. That filter is Yoast's whole head and runs even with Open Graph switched off; measured in the #701 review, that configuration leaves a post with zero `og:*` while the filter still fires. Latching on the bare filter would have stood us down on exactly the page that needed us.
+
+**Known limit.** A provider nobody has measured — The SEO Framework, Slim SEO, SmartCrawl, Squirrly, or a theme with built-in Open Graph — is invisible to both observers and still produces duplicates. Widening the detector's plugin list does not fix that, which is why #690 ruled it out.
 
 Jetpack is the exception, because it has two independent emitters:
 
@@ -128,7 +141,7 @@ Jetpack is the exception, because it has two independent emitters:
 
 Treating Jetpack's mere presence as disqualifying would mean this never fires on a WordPress.com store, which is where the bug was found.
 
-**Known limit.** The detector knows five plugins. The SEO Framework, Slim SEO, Squirrly and themes with built-in Open Graph are not among them, so on those stores the gate opens and the page gets duplicate tags. Closing that needs observing what actually reached the page, the way `WC_AI_Storefront_Og_Strategies` does for commerce — and that ground truth was measured on commerce pages, so it has to be re-measured on posts first. Tracked as #690.
+**Known limit.** Both observers watch named seams, so a provider nobody has measured is invisible to them. The SEO Framework, Slim SEO, SmartCrawl, Squirrly and themes with built-in Open Graph still open the gate and get duplicate tags. Widening the detector's plugin list would trade one guess for a longer guess and still miss themes, which is why #690 ruled it out.
 
 ## Divergence: Jetpack's fields are reprinted; the other SEO plugins are stood down for
 

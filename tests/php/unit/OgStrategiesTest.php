@@ -84,6 +84,44 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 		WC_AI_Storefront_Og_Strategies::init_for_slugs( array(), $this->gate() );
 	}
 
+	public function test_init_registers_the_per_request_latch_reset(): void {
+		// The reset is the only thing keeping $observed honest across requests
+		// on a persistent worker, and every other test calls reset_latches()
+		// directly — so a dropped add_action line would ship the ratchet with
+		// a green suite (#701 review). Assert the hook, the priority, and the
+		// callback.
+		\Brain\Monkey\Actions\expectAdded( 'wp_head' )
+			->once()
+			->with(
+				\Mockery::on(
+					static function ( $callback ): bool {
+						return is_array( $callback )
+							&& WC_AI_Storefront_Og_Strategies::class === $callback[0]
+							&& 'reset_latches' === $callback[1];
+					}
+				),
+				0
+			);
+
+		WC_AI_Storefront_Og_Strategies::init_for_slugs( array(), static fn() => false );
+
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_a_suppression_strategy_never_reports_itself_emitting(): void {
+		// Hardcoded false, and nothing checked it. Flipped to true,
+		// emitting_slug() answers 'seopress' on every SEOPress store, so the
+		// non-commerce fallback stays silent on every post and page forever
+		// and the log names SEOPress as the provider even with its social
+		// module switched off (#701 review).
+		$strategies = WC_AI_Storefront_Og_Strategies::for_slugs( array( 'seopress' ) );
+
+		$this->assertFalse( $strategies[0]->is_emitting() );
+
+		WC_AI_Storefront_Og_Strategies::register_for_test( $strategies );
+		$this->assertSame( '', WC_AI_Storefront_Og_Strategies::emitting_slug() );
+	}
+
 	public function test_yoast_yields_its_own_strategy(): void {
 		$strategies = WC_AI_Storefront_Og_Strategies::for_slugs( array( 'yoast' ) );
 		$this->assertCount( 1, $strategies );
@@ -120,7 +158,14 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product' )->justReturn( false );
 		$strategy = new WC_AI_Storefront_Og_Strategy_Yoast();
 		$strategy->init( $this->gate() );
-		$strategy->filter_presenters( array() );
+		$strategy->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 
 		WC_AI_Storefront_Og_Strategies::register_for_test( array( $strategy ) );
 
@@ -136,7 +181,14 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product' )->justReturn( false );
 		$observed = new WC_AI_Storefront_Og_Strategy_Yoast();
 		$observed->init( $this->gate() );
-		$observed->filter_presenters( array() );
+		$observed->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 		WC_AI_Storefront_Og_Strategies::register_for_test( array( $observed ) );
 
 		WC_AI_Storefront_Og_Strategies::init_for_slugs( array( 'seopress' ), $this->gate() );
@@ -165,7 +217,14 @@ class OgStrategiesTest extends \PHPUnit\Framework\TestCase {
 
 		$taken = new WC_AI_Storefront_Og_Strategy_Yoast();
 		$taken->init( $this->gate() );
-		$taken->filter_presenters( array() );
+		$taken->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 
 		$silent = new WC_AI_Storefront_Og_Strategy_Aioseo();
 		$silent->init( $this->gate() );

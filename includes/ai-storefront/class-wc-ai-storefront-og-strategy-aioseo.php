@@ -102,6 +102,20 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	}
 
 	/**
+	 * Clear this request's observation. See the interface for why.
+	 */
+	public function reset_observation(): void {
+		$this->observed = false;
+	}
+
+	/**
+	 * Whether this provider rendered its own head at all this request.
+	 */
+	public function is_emitting(): bool {
+		return $this->observed;
+	}
+
+	/**
 	 * Whether this request is one we describe. The filters' own gate.
 	 *
 	 * Separate from has_taken_over() because the filters run BEFORE the latch
@@ -132,13 +146,20 @@ class WC_AI_Storefront_Og_Strategy_Aioseo implements WC_AI_Storefront_Og_Strateg
 	 * @return mixed Unchanged when this is not ours to touch.
 	 */
 	public function filter_facebook_tags( $tags ) {
-		if ( ! is_array( $tags ) || ! $this->should_enrich() ) {
+		if ( ! is_array( $tags ) ) {
 			return $tags;
 		}
 
-		// Reaching here means AIOSEO is rendering Open Graph for a page we
-		// describe. That is the fact has_taken_over() reports.
+		// Latched BEFORE the commerce check (#690). This filter fires only
+		// when AIOSEO is rendering Open Graph, so reaching here proves
+		// emission on any page type. The product-category carve-out survives
+		// untouched: AIOSEO's filters simply do not fire there, so the latch
+		// stays false by construction rather than by a page-type exception.
 		$this->observed = true;
+
+		if ( ! $this->should_enrich() ) {
+			return $tags;
+		}
 
 		$tags['og:type'] = ( function_exists( 'is_product' ) && is_product() ) ? 'product' : 'website';
 

@@ -79,3 +79,22 @@ abstract class Abstract_Indexable_Tag_Presenter {
 		return \sprintf( $this->tag_format, $value, $this->key, '' );
 	}
 }
+
+/**
+ * A non-Open-Graph presenter, correctly namespaced.
+ *
+ * The namespace is the point. `carries_open_graph()` has to tell "is a Yoast
+ * presenter" from "is an Open Graph presenter", and a globally-scoped double
+ * cannot: `get_class()` returns a bare name with no separator, so a matcher
+ * keyed on `\Presenters\` or `Yoast` passes a test built from doubles while
+ * latching on an Open-Graph-off head in production (#701 review).
+ */
+class Title_Presenter {
+}
+
+/**
+ * As above. Yoast puts these AHEAD of the Open Graph block in a real head,
+ * which is why fixtures must not put the OG presenter first.
+ */
+class Canonical_Presenter {
+}

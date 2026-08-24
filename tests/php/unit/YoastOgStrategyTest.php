@@ -484,18 +484,61 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_yoast_takes_over_only_once_its_pipeline_has_run(): void {
-		// Yoast ships an Open Graph switch, and a third party can unhook its
-		// head integration. Either way the presenter filter never fires, and
-		// answering from page type alone would stand our block down against a
-		// plugin publishing nothing (#676 review).
+		// A third party can unhook Yoast's head integration, and then the
+		// presenter filter never fires at all. Answering from page type alone
+		// would stand our block down against a plugin publishing nothing
+		// (#676 review).
 		Functions\when( 'is_shop' )->justReturn( true );
 		$strategy = $this->strategy();
 
 		$this->assertFalse( $strategy->has_taken_over(), 'Nothing observed yet.' );
 
-		$strategy->filter_presenters( $this->presenters( array( 'og:title' ) ) );
+		$strategy->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
 
 		$this->assertTrue( $strategy->has_taken_over() );
+	}
+
+	public function test_yoast_with_open_graph_switched_off_does_not_count_as_emitting(): void {
+		// This docblock used to say the presenter filter "never fires" with
+		// Yoast's Open Graph switch off. It does. Measured in the #701 review:
+		// switching it off left a post with zero og:* tags while
+		// `wpseo_frontend_presenters` still ran with a full presenter list.
+		// The option is checked upstream of the filter, in get_all_presenters(),
+		// and decides what goes INTO the array.
+		//
+		// Latching on the bare filter therefore stood our block down against a
+		// page Yoast had left with no Open Graph at all — the blank card #680
+		// exists to remove. The latch now tests the list for an Open Graph
+		// presenter, so this case answers false in both consumers.
+		Functions\when( 'is_shop' )->justReturn( true );
+		$strategy = $this->strategy();
+
+		// Yoast's head with the Open Graph presenters the option removed, built
+		// from REAL namespaces. The globally-scoped doubles this used to pass
+		// could not distinguish "is a Yoast presenter" from "is an Open Graph
+		// presenter" — get_class() on them has no separator at all — so a
+		// matcher keyed on `\Presenters\` or `Yoast` passed this test while
+		// latching on the OG-off page in production (#701 review).
+		//
+		// Twitter is deliberately present: Yoast emits twitter tags with Open
+		// Graph off, which is what the live measurement showed.
+		$strategy->filter_presenters(
+			array(
+				new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Canonical_Presenter(),
+				new \Yoast\WP\SEO\Presenters\Twitter\Card_Presenter(),
+			)
+		);
+
+		$this->assertFalse( $strategy->has_taken_over(), 'no Open Graph presenter means no Open Graph' );
+		$this->assertFalse( $strategy->is_emitting() );
 	}
 
 	public function test_yoast_does_not_take_over_without_its_presenter_base(): void {
@@ -512,7 +555,15 @@ class YoastOgStrategyTest extends \PHPUnit\Framework\TestCase {
 			}
 		);
 
-		$given = $this->presenters( array( 'og:title' ) );
+		// A REAL Open Graph presenter, so the latch would fire if the base
+		// check were removed. With a globally-scoped double here this test
+		// went vacuous the moment the latch narrowed: nothing latched, so
+		// has_taken_over() answered false for the wrong reason and the guard
+		// it exists to protect stopped being protected (#701 review).
+		$given = array(
+			new \Yoast\WP\SEO\Presenters\Title_Presenter(),
+			new \Yoast\WP\SEO\Presenters\Open_Graph\Type_Presenter(),
+		);
 		$this->assertSame( $given, $strategy->filter_presenters( $given ), 'Adds nothing.' );
 		$this->assertFalse( $strategy->has_taken_over(), 'So it must not stand our block down either.' );
 	}

@@ -41,10 +41,14 @@ class WC_AI_Storefront_Og_Strategies {
 	/**
 	 * Strategies registered for THIS request.
 	 *
-	 * Replaced wholesale on every init(), never appended to. Static state on a
-	 * class that outlives a request is the shape #669 had to be careful about,
-	 * and WC_AI_Storefront_Rival_Seo_Description guards its own with a
-	 * `wp_head:0` reset for that reason.
+	 * Replaced wholesale on every init(), never appended to — but init() runs
+	 * once per PROCESS, not once per request, because the plugin instance is a
+	 * singleton. Static state on a class that outlives a request is the shape
+	 * #669 had to be careful about, and this one named the risk while not
+	 * guarding it: the strategies' own `$observed` latches survived into the
+	 * next request on a persistent worker. init_for_slugs() now registers a
+	 * `wp_head:0` reset, the same guard
+	 * WC_AI_Storefront_Rival_Seo_Description has had since #669 (#701 review).
 	 *
 	 * @var WC_AI_Storefront_Og_Strategy[]
 	 */
@@ -78,6 +82,57 @@ class WC_AI_Storefront_Og_Strategies {
 		foreach ( self::$registered as $strategy ) {
 			$strategy->init( $on_commerce_page );
 		}
+
+		// Per REQUEST, which this method is not. It runs from the plugin's
+		// singleton constructor, so under a persistent worker it runs on the
+		// first request that worker serves and never again while the same
+		// strategy objects answer every later one. Priority 0 puts this before
+		// any provider's seam at wp_head:1 and before both readers at
+		// wp_head:5, the placement Rival_Seo_Description settled on for the
+		// same reason (#701 review).
+		if ( function_exists( 'add_action' ) ) {
+			add_action( 'wp_head', array( __CLASS__, 'reset_latches' ), 0 );
+		}
+	}
+
+	/**
+	 * Clear every strategy's observation at the start of a request.
+	 */
+	public static function reset_latches(): void {
+		foreach ( self::$registered as $strategy ) {
+			$strategy->reset_observation();
+		}
+	}
+
+	/**
+	 * Test-only. The strategies registered for this request.
+	 *
+	 * No production caller. Sits beside reset() and register_for_test(), which
+	 * label themselves the same way, because a class that mixes API and test
+	 * seams has to say which is which (#701 review).
+	 *
+	 * @return WC_AI_Storefront_Og_Strategy[]
+	 */
+	public static function registered(): array {
+		return self::$registered;
+	}
+
+	/**
+	 * The detector slug of the first provider observed emitting, or ''.
+	 *
+	 * The registry knows exactly which strategy latched, and answering only
+	 * bool threw that away: the gate's debug line went from naming a plugin a
+	 * merchant could check on the Plugins screen to "an SEO plugin", which is
+	 * an assertion about one request that nobody can reproduce (#701 review).
+	 */
+	public static function emitting_slug(): string {
+		foreach ( self::$registered as $strategy ) {
+			if ( $strategy->is_emitting() ) {
+				return $strategy::slug();
+			}
+		}
+
+		return '';
 	}
 
 	/**

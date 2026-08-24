@@ -101,9 +101,12 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	public function has_taken_over(): bool {
 		// Observed, not predicted. `wpseo_frontend_presenters` fires at
 		// wp_head:1 and Meta_Tags asks this at wp_head:5, so by now the
-		// answer is a fact. Yoast with its Open Graph switch off, or with a
-		// third party unhooking its head integration, never reaches the
-		// filter — and answering true there would leave the page with no
+		// answer is a fact. Yoast with its Open Graph switch off DOES still
+		// reach the filter — that claim stood here from #676 and was wrong,
+		// measured in the #701 review — so the latch tests the presenter list
+		// for an Open Graph presenter instead. A third party unhooking the
+		// head integration never reaches it at all, and answering true in
+		// either case would leave the page with no
 		// social tags at all.
 		//
 		// class_exists() as well, because filter_presenters() bails on a
@@ -160,6 +163,40 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	}
 
 	/**
+	 * Whether Yoast's presenter list actually carries Open Graph.
+	 *
+	 * Yoast's Open Graph presenters live under the `Open_Graph` namespace, and
+	 * `get_all_presenters()` merges them in only when the `opengraph` option is
+	 * true. Testing the class names is therefore testing the option, without
+	 * reading Yoast's settings ourselves.
+	 *
+	 * @param array $presenters Yoast's presenter list.
+	 */
+	private static function carries_open_graph( array $presenters ): bool {
+		foreach ( $presenters as $presenter ) {
+			if ( is_object( $presenter ) && false !== strpos( get_class( $presenter ), '\\Open_Graph\\' ) ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
+	 * Clear this request's observation. See the interface for why.
+	 */
+	public function reset_observation(): void {
+		$this->observed = false;
+	}
+
+	/**
+	 * Whether this provider rendered its own head at all this request.
+	 */
+	public function is_emitting(): bool {
+		return $this->observed;
+	}
+
+	/**
 	 * Whether this request is one we describe.
 	 *
 	 * Guards the null: `for_slugs()` is public and hands out strategies that
@@ -203,13 +240,33 @@ class WC_AI_Storefront_Og_Strategy_Yoast implements WC_AI_Storefront_Og_Strategy
 	 *               base is missing.
 	 */
 	public function filter_presenters( $presenters ) {
-		if ( ! is_array( $presenters ) || ! $this->on_commerce_page() ) {
+		if ( ! is_array( $presenters ) ) {
 			return $presenters;
 		}
 
-		// Reaching here means Yoast is rendering its head for a page we
-		// describe. That is the fact has_taken_over() reports.
-		$this->observed = true;
+		// Latched BEFORE the commerce check, deliberately, so the latch means
+		// the same thing on a post as on a product (#690).
+		//
+		// But latch on the PRESENCE OF AN OPEN GRAPH PRESENTER, not merely on
+		// this filter running. `wpseo_frontend_presenters` is Yoast's whole
+		// head — title, canonical, robots, schema — and it fires whether or
+		// not Open Graph is switched on; the option decides what goes INTO the
+		// array, upstream of the filter. Measured: with Yoast's Open Graph
+		// switch off, a post kept five twitter tags, emitted ZERO og:* tags,
+		// and this filter still fired with a full presenter list (#701 review).
+		//
+		// Latching on the bare filter would therefore stand the non-commerce
+		// fallback down on a page Yoast left with no Open Graph at all, which
+		// is the #680 blank card returning through the fix for #690. It also
+		// corrects has_taken_over(), whose docblock has claimed since #676
+		// that the OG-off case "never reaches the filter" — it does.
+		if ( self::carries_open_graph( $presenters ) ) {
+			$this->observed = true;
+		}
+
+		if ( ! $this->on_commerce_page() ) {
+			return $presenters;
+		}
 
 		if ( ! $this->presenter_base_exists() ) {
 			// Yoast reported present but its presenter pipeline is not what we

@@ -75,6 +75,43 @@ interface WC_AI_Storefront_Og_Strategy {
 	public function has_taken_over(): bool;
 
 	/**
+	 * Whether this provider rendered its own head at all this request.
+	 *
+	 * Page-agnostic, which is the whole difference from has_taken_over(): that
+	 * one ANDs a commerce-page check because it answers "should the commerce
+	 * emitter stand down". This one answers "did anything emit here", which is
+	 * what the non-commerce emitter needs on a post or a page (#690).
+	 *
+	 * A suppression strategy answers false, as with has_taken_over(): it does
+	 * not suppress off commerce pages, so a provider it would have removed is
+	 * still emitting, and the description observer is what sees that.
+	 */
+	public function is_emitting(): bool;
+
+	/**
+	 * Clear this request's observation.
+	 *
+	 * Called from `wp_head:0`, before any provider's seam can fire and before
+	 * either reader at `wp_head:5`. WC_AI_Storefront_Rival_Seo_Description has
+	 * done this since #669 and its docblock explains why; the strategies did
+	 * not, and could not get away with it once is_emitting() existed.
+	 *
+	 * `$observed` only ever goes false to true, and the strategy objects live
+	 * in a static registry built once per PROCESS, not once per request:
+	 * WC_AI_Storefront::get_instance() is a singleton, so init_components()
+	 * and therefore Og_Strategies::init() run on a worker's first request and
+	 * never again. Under FrankenPHP or RoadRunner one product view would
+	 * otherwise latch a strategy and silence the non-commerce fallback on
+	 * every later post that worker served (#701 review).
+	 *
+	 * has_taken_over() was masking this: it ANDs a commerce-page check, so a
+	 * stale latch only mattered on another commerce page, where the seam
+	 * re-fired and re-latched honestly. is_emitting() is page-agnostic by
+	 * design, which removes exactly the term that made the gap survivable.
+	 */
+	public function reset_observation(): void;
+
+	/**
 	 * The detector slug this strategy answers for.
 	 *
 	 * Must match a `slug` that WC_AI_Storefront_Seo_Plugin_Detector::detect()
