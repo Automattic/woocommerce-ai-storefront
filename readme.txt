@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 10.9
-Stable tag: 0.39.0
+Stable tag: 0.39.1
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,13 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.39.1 - 2026-08-24 =
+**Fixed**
+* Your posts and pages no longer lose their share preview when an SEO plugin is installed but not set up. The plugin used to check which SEO plugins were installed; it now checks whether anything actually put tags on the page. A site with Rank Math installed but its wizard unfinished used to get no preview at all.
+* Large catalogs are now fully submitted to instant indexing instead of being cut off at 10,000 URLs. IndexNow accepts 10,000 per request, so bigger catalogs go out as several requests a minute apart. If the queue does overflow, the Discovery tab now tells you how many URLs were dropped.
+* Instant indexing stopped telling search engines to re-crawl your products.json feed, which is deliberately kept out of search results, and which returns "not found" when the feed is switched off.
+* Assigning categories, tags or attributes to a product now counts as a change worth reporting to instant indexing. Editing in the admin always did; imports, bulk edits and sync plugins did not.
 
 = 0.39.0 - 2026-08-22 =
 **New**

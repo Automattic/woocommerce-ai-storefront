@@ -2,6 +2,25 @@
 
 ---
 
+## [0.39.1] – 2026-08-24
+
+### Fixed
+- **Your posts and pages no longer lose their share preview when an SEO plugin is installed but not set up (#690).**
+  - The plugin used to check which SEO plugins were *installed* before deciding whether to add a share preview to a post or page. Installed is not the same as working: a site with Rank Math installed but its setup wizard unfinished got no preview from Rank Math and none from us either, so shared links showed a blank card.
+  - It now checks whether anything actually put tags on the page. If nothing did, you get the preview; if something did, we stay out of the way.
+  - Same fix helps if you switch an SEO plugin's social settings off but leave the plugin active.
+  - One limit worth knowing: this recognises the five SEO plugins we test against. A store using something else, or a theme with its own share tags, can still end up with two sets.
+- **Large catalogs are now fully submitted to instant indexing instead of being cut off (#698).**
+  - IndexNow accepts up to 10,000 URLs per request. The plugin treated that as a limit on your whole catalog and discarded anything beyond it, so a store with more than 10,000 URLs had no way to submit all of them, not even with the "Submit entire catalog now" button.
+  - Larger catalogs now go out as several requests a minute apart.
+  - If the queue does overflow, the Discovery tab now tells you how many URLs were dropped instead of reporting plain success.
+- **Instant indexing stopped telling search engines to re-crawl a page it also tells them to ignore (#692).**
+  - Your `/products.json` feed is deliberately kept out of search results, and the plugin was submitting it to IndexNow anyway. On stores with the feed turned off it was submitting a URL that returns "not found".
+- **Assigning categories, tags or attributes to a product now counts as a change worth reporting (#694).**
+  - Editing a product in the admin always did. Doing it through an import, a bulk edit, or a sync plugin did not, because those change the product's terms without re-saving the product itself.
+
+---
+
 ## [0.39.0] – 2026-08-22
 
 ### Added
