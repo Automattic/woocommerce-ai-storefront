@@ -157,7 +157,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_should_emit_true_on_category(): void {
-		Functions\when( 'is_product_category' )->justReturn( true );
+		// should_emit() now routes through covered_term() (#705), which gates
+		// on is_tax() and reads $term->taxonomy rather than calling
+		// is_product_category() directly.
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'  => 9,
+				'taxonomy' => 'product_cat',
+			)
+		);
 		$this->assertTrue( $this->meta->should_emit() );
 	}
 
@@ -175,6 +184,28 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_should_emit_false_for_non_product_search(): void {
 		Functions\when( 'is_search' )->justReturn( true );
 		Functions\when( 'get_query_var' )->justReturn( '' );
+		$this->assertFalse( $this->meta->should_emit() );
+	}
+
+	public function test_should_emit_true_on_a_brand_archive(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'  => 7,
+				'taxonomy' => 'product_brand',
+			)
+		);
+		$this->assertTrue( $this->meta->should_emit() );
+	}
+
+	public function test_should_emit_false_on_an_attribute_archive(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'  => 7,
+				'taxonomy' => 'pa_color',
+			)
+		);
 		$this->assertFalse( $this->meta->should_emit() );
 	}
 

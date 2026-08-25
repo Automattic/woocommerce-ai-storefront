@@ -95,7 +95,7 @@ class WC_AI_Storefront_Meta_Tags {
 		}
 
 		return ( function_exists( 'is_product' ) && is_product() )
-			|| ( function_exists( 'is_product_category' ) && is_product_category() )
+			|| null !== $this->covered_term()
 			|| ( function_exists( 'is_shop' ) && is_shop() )
 			|| ( function_exists( 'is_search' ) && is_search() && 'product' === get_query_var( 'post_type' ) );
 	}
@@ -451,12 +451,12 @@ class WC_AI_Storefront_Meta_Tags {
 
 
 	/**
-	 * Build the meta description for the current archive (category or shop).
+	 * Build the meta description for the current archive (term or shop).
 	 *
-	 * Category → the term's description, falling back to a generated
-	 * "Shop {category} at {store}". Shop → the authored description, then the
-	 * shop page content, falling back to the store tagline. Cleaned/truncated
-	 * like the product path.
+	 * Category, tag or brand → the term's description, falling back to a
+	 * generated "Shop {term} at {store}". Shop → the authored description,
+	 * then the shop page content, falling back to the store tagline.
+	 * Cleaned/truncated like the product path.
 	 *
 	 * Every candidate is judged after cleaning, not before — see
 	 * first_usable_candidate() for why that distinction is load-bearing.
@@ -1494,7 +1494,7 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			$description = $this->build_description( $product );
 			$og          = $this->build_og_tags( $product, $description );
-		} elseif ( ( function_exists( 'is_product_category' ) && is_product_category() )
+		} elseif ( null !== $this->covered_term()
 			|| ( function_exists( 'is_shop' ) && is_shop() )
 			|| $this->is_product_search() ) {
 			// Product search included since #692. It used to return here with
