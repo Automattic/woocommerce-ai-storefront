@@ -116,6 +116,20 @@ class WC_AI_Storefront_Cache_Invalidator {
 		add_action( 'edited_product_cat', array( $this, 'invalidate' ) );
 		add_action( 'delete_product_cat', array( $this, 'invalidate' ) );
 
+		// Product tag and brand taxonomy changes. The archive ItemList caches
+		// the term's own name/url, and a tag or brand rename fires no product
+		// hook, so without these the cached list stays stale up to the TTL.
+		// #705 caches brand ItemLists and pings IndexNow on tag edits, so both
+		// must purge the same way product_cat does. invalidate()'s wildcard
+		// delete already covers cat/tag/brand transients; this only adds the
+		// missing triggers.
+		add_action( 'created_product_tag', array( $this, 'invalidate' ) );
+		add_action( 'edited_product_tag', array( $this, 'invalidate' ) );
+		add_action( 'delete_product_tag', array( $this, 'invalidate' ) );
+		add_action( 'created_product_brand', array( $this, 'invalidate' ) );
+		add_action( 'edited_product_brand', array( $this, 'invalidate' ) );
+		add_action( 'delete_product_brand', array( $this, 'invalidate' ) );
+
 		// Syndication settings changed (catches any code path that writes the option).
 		add_action( 'update_option_' . WC_AI_Storefront::SETTINGS_OPTION, array( $this, 'invalidate' ) );
 
