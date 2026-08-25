@@ -1685,17 +1685,19 @@ class WC_AI_Storefront_Meta_Tags {
 	 * The image belonging to this archive itself, if the merchant set one.
 	 *
 	 * A product category or brand carries one in `thumbnail_id` term meta. A
-	 * tag does not, so that branch falls through to `no_image()` below and
-	 * archive_image()'s filter and curated-product chain takes over (#705).
-	 * The shop archive is backed by a real page (`wc_get_page_id( 'shop' )`),
-	 * so it carries one as that page's featured image.
+	 * tag has none, so get_term_meta() returns empty and attachment_image( 0 )
+	 * resolves to the same empty result as `no_image()` — archive_image()'s
+	 * filter and curated-product chain then takes over (#705). The shop archive
+	 * is backed by a real page (`wc_get_page_id( 'shop' )`), so it carries one
+	 * as that page's featured image.
 	 *
 	 * @return array{url:string,width:int,height:int}
 	 */
 	private function archive_own_image(): array {
-		// Categories and brands can carry a `thumbnail_id`; tags cannot, so a
-		// tag archive falls through to the filter and curated-product chain
-		// below. That is the intended path, not a gap (#705).
+		// Categories and brands can carry a `thumbnail_id`; a tag has none, so
+		// get_term_meta() returns empty and attachment_image( 0 ) resolves to
+		// the same empty image as no_image(), handing the caller to the filter
+		// and curated-product chain. That is the intended path, not a gap (#705).
 		$covered = $this->covered_term();
 		if ( null !== $covered ) {
 			$term_id = (int) $covered->term_id;
