@@ -1908,6 +1908,35 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->addToAssertionCount( 3 );
 	}
 
+	public function test_init_registers_tag_term_hooks(): void {
+		// The three `*_product_tag` term hooks are the ONLY wiring that makes a
+		// tag edit reach on_tag_change() in production — every other tag test
+		// calls on_tag_change() directly, so without this a dropped add_action
+		// or a plural typo (e.g. `edited_product_tags`) would leave the per-edit
+		// tag ping silently dead while the whole suite stays green (#705). The
+		// submit_all cron still sweeps tags, so only the immediate ping is at
+		// risk. A REAL instance is used, not the setUp() anonymous subclass, so
+		// Brain Monkey's get_class()-based callback matcher resolves the bind
+		// (see test_init_registers_brand_term_hooks).
+		$indexnow = new WC_AI_Storefront_IndexNow();
+
+		$binds_to_on_tag_change = static function ( $callback ) use ( $indexnow ): bool {
+			return is_array( $callback )
+				&& $callback[0] === $indexnow
+				&& 'on_tag_change' === $callback[1];
+		};
+
+		foreach ( array( 'created_product_tag', 'edited_product_tag', 'delete_product_tag' ) as $hook ) {
+			\Brain\Monkey\Actions\expectAdded( $hook )
+				->once()
+				->with( \Mockery::on( $binds_to_on_tag_change ) );
+		}
+
+		$indexnow->init();
+
+		$this->addToAssertionCount( 3 );
+	}
+
 	// --- #694: terms changed without the product being saved ---
 
 	/**
