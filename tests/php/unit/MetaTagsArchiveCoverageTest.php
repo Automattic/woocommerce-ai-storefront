@@ -184,15 +184,36 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_tax' )->justReturn( true );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_brand' ) );
-		Functions\when( 'get_term_meta' )->justReturn( 42 );
+
+		// Captures the term_id get_term_meta() is called with, rather than
+		// just justReturn()-ing a value: proves term_id 7 (the brand's own
+		// id) is what flowed out of covered_term(), not merely that some
+		// value came back regardless of which id (or none) was asked for.
+		$meta_term_ids = array();
+		Functions\when( 'get_term_meta' )->alias(
+			static function ( $term_id = 0, $key = '', $single = false ) use ( &$meta_term_ids ) {
+				$meta_term_ids[] = $term_id;
+				return 42;
+			}
+		);
+		// setUp() defaults this to false ("no image"); overridden here with
+		// real dimensions so a correct brand flow can actually surface a
+		// non-empty url. Review round 1 (#705): assertIsArray() alone held
+		// for any `: array` return, including the pre-fix no_image() default,
+		// and this stub's prior `false` meant even a correct flow could never
+		// produce a non-empty url to tell them apart.
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn(
+			array( 'https://saltwarp.shop/brand/thornwick.jpg', 800, 600, false )
+		);
 
 		$tags = new WC_AI_Storefront_Meta_Tags();
 		$ref  = new ReflectionMethod( $tags, 'archive_own_image' );
 		$ref->setAccessible( true );
+		$image = $ref->invoke( $tags );
 
-		// attachment_image() is exercised in MetaImageTest; here we only assert
-		// that the brand branch reached it with the term's thumbnail id.
-		$this->assertIsArray( $ref->invoke( $tags ) );
+		$this->assertSame( array( 7 ), $meta_term_ids );
+		$this->assertSame( 'https://saltwarp.shop/brand/thornwick.jpg', $image['url'] );
+		$this->assertSame( 800, $image['width'] );
 	}
 
 	public function test_tag_archive_falls_through_when_no_thumbnail_meta_exists(): void {
@@ -207,5 +228,34 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 		$image = $ref->invoke( $tags );
 
 		$this->assertSame( '', $image['url'] );
+	}
+
+	public function test_tag_archive_product_image_query_is_filtered_by_the_tag_slug(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_tag' ) );
+
+		// archive_own_image() itself does not discriminate here (see the
+		// test above): a tag carries no thumbnail_id either way, so that
+		// method's return is identical pre- and post-#705 (review round 1).
+		// The actual regression was one level down: queried_category_slug()
+		// (queried_term_slug()'s predecessor) gated on is_product_category(),
+		// so a tag's slug was always '' and this query never filtered by it.
+		// Captures every wc_get_products() call's args to assert on that.
+		$calls = array();
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$calls ) {
+				$calls[] = $args;
+				return array();
+			}
+		);
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+		$ref  = new ReflectionMethod( $tags, 'archive_product_image' );
+		$ref->setAccessible( true );
+		$ref->invoke( $tags );
+
+		$this->assertNotEmpty( $calls );
+		$this->assertSame( array( 'thornwick' ), $calls[0]['category'] );
 	}
 }
