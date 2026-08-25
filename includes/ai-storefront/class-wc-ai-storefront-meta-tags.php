@@ -33,6 +33,46 @@ class WC_AI_Storefront_Meta_Tags {
 	private const SEARCH_QUERY_MAX = 70;
 
 	/**
+	 * Product taxonomies whose term archives carry full commerce metadata.
+	 *
+	 * An explicit allow-list, deliberately not `is_product_taxonomy()`. That
+	 * helper is `is_tax( get_object_taxonomies( 'product' ) )`, which sweeps
+	 * in every `pa_*` attribute archive. Attribute archives are off by
+	 * default in WooCommerce (`has_archives` is false), so on most stores
+	 * there is no page there to describe, and on stores that enable them the
+	 * pages are thin and near-duplicate. Adding a taxonomy here is a decision
+	 * about crawl surface, so it should be a visible edit rather than a
+	 * side effect of WooCommerce registering something new (#705).
+	 *
+	 * @var string[]
+	 */
+	private const COVERED_TERM_TAXONOMIES = array( 'product_cat', 'product_tag', 'product_brand' );
+
+	/**
+	 * The queried term when this request is a covered product term archive.
+	 *
+	 * One predicate for every branch that used to restate
+	 * `is_product_category()` and then call `get_queried_object()` itself.
+	 * Six of those restatements existed before #705 and they had drifted:
+	 * the JSON-LD ItemList covered tags, IndexNow covered brands, and the
+	 * head metadata covered neither.
+	 *
+	 * @return object|null The queried term, or null when this is not one.
+	 */
+	public function covered_term() {
+		if ( ! function_exists( 'is_tax' ) || ! is_tax( self::COVERED_TERM_TAXONOMIES ) ) {
+			return null;
+		}
+
+		$term = function_exists( 'get_queried_object' ) ? get_queried_object() : null;
+		if ( ! is_object( $term ) || ! isset( $term->taxonomy, $term->term_id ) ) {
+			return null;
+		}
+
+		return in_array( (string) $term->taxonomy, self::COVERED_TERM_TAXONOMIES, true ) ? $term : null;
+	}
+
+	/**
 	 * Whether to emit metadata for the current request.
 	 *
 	 * NOT gated on SEO-plugin presence — per the assert-and-warn design we

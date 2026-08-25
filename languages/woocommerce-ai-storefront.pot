@@ -9,7 +9,7 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"POT-Creation-Date: 2026-08-24T02:07:31+00:00\n"
+"POT-Creation-Date: 2026-08-25T18:17:11+00:00\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "X-Generator: WP-CLI 2.12.0\n"
 "X-Domain: woocommerce-ai-storefront\n"
@@ -160,55 +160,55 @@ msgid "Products"
 msgstr ""
 
 #. translators: %s: Page number.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:196
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:236
 #, php-format
 msgid "Page %s"
 msgstr ""
 
 #. translators: 1: Comma-separated product category names. 2: Store name.
 #. translators: 1: product category name, 2: store name.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:228
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:445
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:268
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:485
 #, php-format
 msgid "Shop %1$s at %2$s."
 msgstr ""
 
 #. translators: %s: Product category names, or the store name when there are none.
 #. translators: %s: product category name.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:235
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:451
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:275
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:491
 #, php-format
 msgid "Shop %s."
 msgstr ""
 
 #. translators: 1: product name, 2: store name.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:357
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:397
 #, php-format
 msgid "%1$s at %2$s."
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:957
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:997
 msgid "Price"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:966
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:1006
 msgid "Availability"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:991
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:1031
 msgid "In stock"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:992
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:1032
 msgid "Out of stock"
 msgstr ""
 
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:993
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:1033
 msgid "Available on backorder"
 msgstr ""
 
 #. translators: %s: the term the visitor searched for.
-#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:1191
+#: includes/ai-storefront/class-wc-ai-storefront-meta-tags.php:1231
 #, php-format
 msgid "Search Results for “%s”"
 msgstr ""
