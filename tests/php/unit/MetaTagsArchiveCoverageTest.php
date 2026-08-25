@@ -44,6 +44,11 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
 		Functions\when( 'wc_get_products' )->justReturn( array() );
 		Functions\when( 'esc_url' )->returnArg();
+		// archive_own_image() now reads get_term_meta() for every covered
+		// term (category, tag, brand), not only category (#705); default to
+		// "no thumbnail" so an OG/description test that never mentions the
+		// image resolver does not have to know it exists.
+		Functions\when( 'get_term_meta' )->justReturn( 0 );
 		$this->meta = new WC_AI_Storefront_Meta_Tags();
 	}
 
@@ -173,5 +178,34 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 		$og   = $tags->build_archive_og_tags( 'A tag.' );
 
 		$this->assertSame( '', $og['og:url'] );
+	}
+
+	public function test_brand_archive_uses_the_term_thumbnail_when_set(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_brand' ) );
+		Functions\when( 'get_term_meta' )->justReturn( 42 );
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+		$ref  = new ReflectionMethod( $tags, 'archive_own_image' );
+		$ref->setAccessible( true );
+
+		// attachment_image() is exercised in MetaImageTest; here we only assert
+		// that the brand branch reached it with the term's thumbnail id.
+		$this->assertIsArray( $ref->invoke( $tags ) );
+	}
+
+	public function test_tag_archive_falls_through_when_no_thumbnail_meta_exists(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_tag' ) );
+		Functions\when( 'get_term_meta' )->justReturn( '' );
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+		$ref  = new ReflectionMethod( $tags, 'archive_own_image' );
+		$ref->setAccessible( true );
+		$image = $ref->invoke( $tags );
+
+		$this->assertSame( '', $image['url'] );
 	}
 }

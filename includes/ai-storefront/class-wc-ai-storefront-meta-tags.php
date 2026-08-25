@@ -1684,16 +1684,21 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * The image belonging to this archive itself, if the merchant set one.
 	 *
-	 * A product category carries one in `thumbnail_id` term meta. The shop
-	 * archive is backed by a real page (`wc_get_page_id( 'shop' )`), so it
-	 * carries one as that page's featured image.
+	 * A product category or brand carries one in `thumbnail_id` term meta. A
+	 * tag does not, so that branch falls through to `no_image()` below and
+	 * archive_image()'s filter and curated-product chain takes over (#705).
+	 * The shop archive is backed by a real page (`wc_get_page_id( 'shop' )`),
+	 * so it carries one as that page's featured image.
 	 *
 	 * @return array{url:string,width:int,height:int}
 	 */
 	private function archive_own_image(): array {
-		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
-			$term    = get_queried_object();
-			$term_id = is_object( $term ) && isset( $term->term_id ) ? (int) $term->term_id : 0;
+		// Categories and brands can carry a `thumbnail_id`; tags cannot, so a
+		// tag archive falls through to the filter and curated-product chain
+		// below. That is the intended path, not a gap (#705).
+		$covered = $this->covered_term();
+		if ( null !== $covered ) {
+			$term_id = (int) $covered->term_id;
 			if ( $term_id > 0 ) {
 				return WC_AI_Storefront_Meta_Image::attachment_image( (int) get_term_meta( $term_id, 'thumbnail_id', true ) );
 			}
@@ -1750,7 +1755,7 @@ class WC_AI_Storefront_Meta_Tags {
 			'featured'   => true,
 		);
 
-		$slug = $this->queried_category_slug();
+		$slug = $this->queried_term_slug();
 		if ( '' !== $slug ) {
 			$args['category'] = array( $slug );
 		}
@@ -1808,15 +1813,15 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
-	 * The queried product category's slug, or '' when this is not one.
+	 * The queried term's slug, or '' when this is not a covered term archive.
+	 *
+	 * Was named queried_category_slug(); renamed because the value it
+	 * returns is no longer always a category (#705).
 	 */
-	private function queried_category_slug(): string {
-		if ( ! function_exists( 'is_product_category' ) || ! is_product_category() ) {
-			return '';
-		}
-		$term = get_queried_object();
+	private function queried_term_slug(): string {
+		$term = $this->covered_term();
 
-		return is_object( $term ) && isset( $term->slug ) ? (string) $term->slug : '';
+		return ( null !== $term && isset( $term->slug ) ) ? (string) $term->slug : '';
 	}
 
 
