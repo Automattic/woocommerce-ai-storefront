@@ -51,6 +51,9 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_front_page' )->justReturn( false );
 		Functions\when( 'is_product_category' )->justReturn( false );
 		Functions\when( 'is_product_tag' )->justReturn( false );
+		// The brand branch reads is_tax( 'product_brand' ); default false so
+		// the whole suite stays on the non-brand path unless a test opts in.
+		Functions\when( 'is_tax' )->justReturn( false );
 		Functions\when( 'is_search' )->justReturn( false );
 		Functions\when( 'is_woocommerce' )->justReturn( false );
 	}
@@ -616,6 +619,45 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 18, $data['numberOfItems'] );
 		$this->assertSame( 'Sale', $data['name'] );
 		$this->assertSame( 'https://example.com/product-tag/sale/', $data['url'] );
+	}
+
+	public function test_itemlist_emitted_on_product_brand_page(): void {
+		// Brand archives have no is_product_brand() conditional in WooCommerce;
+		// they are detected with is_tax( 'product_brand' ), the same way
+		// is_product_tag() wraps is_tax( 'product_tag' ). #705: a brand archive
+		// is submitted to IndexNow, so it must also carry the ItemList a tag
+		// archive already gets.
+		$term          = new stdClass();
+		$term->term_id = 12;
+		$term->slug    = 'thornwick';
+		$term->name    = 'Thornwick';
+		$term->count   = 7; // total products with this brand (stored in term row).
+
+		Functions\when( 'is_tax' )->alias(
+			static fn( $taxonomy = '' ) => 'product_brand' === $taxonomy
+		);
+		Functions\when( 'get_queried_object' )->justReturn( $term );
+		Functions\when( 'get_term_link' )->justReturn( 'https://example.com/brand/thornwick/' );
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'product_selection_mode' => 'all',
+		);
+
+		$product = $this->make_product( 5, 'Thornwick Jacket' );
+		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
+
+		$output = $this->capture();
+		$this->assertStringContainsString( 'ItemList', $output );
+
+		$data  = $this->decode_output( $output );
+		$entry = $data['itemListElement'][0];
+		$this->assertSame( 'ListItem', $entry['@type'] );
+		$this->assertSame( 'Thornwick Jacket', $entry['name'] );
+		$this->assertSame( 'https://example.com/?p=5', $entry['url'] );
+		$this->assertArrayNotHasKey( 'item', $entry );
+		$this->assertSame( 7, $data['numberOfItems'] );
+		$this->assertSame( 'Thornwick', $data['name'] );
+		$this->assertSame( 'https://example.com/brand/thornwick/', $data['url'] );
 	}
 
 	// -------------------------------------------------------------------------

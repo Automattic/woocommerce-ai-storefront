@@ -4603,6 +4603,7 @@ class WC_AI_Storefront_JsonLd {
 	 *   - Shop front          is_shop() (incl. when the shop is the front page)
 	 *   - Category archives   is_product_category()
 	 *   - Tag archives        is_product_tag()
+	 *   - Brand archives      is_tax( 'product_brand' )
 	 *   - Search results      is_search() && 'product' === get_query_var( 'post_type' )
 	 *
 	 * Each itemListElement is a summary-page ListItem: `position`, `name`, and
@@ -4625,6 +4626,12 @@ class WC_AI_Storefront_JsonLd {
 		$on_shop     = function_exists( 'is_shop' ) && is_shop();
 		$on_category = function_exists( 'is_product_category' ) && is_product_category();
 		$on_tag      = function_exists( 'is_product_tag' ) && is_product_tag();
+		// Brand archives have no is_product_brand() conditional in WooCommerce,
+		// so they are detected with is_tax( 'product_brand' ) — the same call
+		// is_product_tag() makes for its own taxonomy. #705: IndexNow already
+		// submits brand archives, so without this the crawler is sent to a page
+		// carrying no ItemList.
+		$on_brand = function_exists( 'is_tax' ) && is_tax( 'product_brand' );
 		// A product search is `/?s=foo&post_type=product`. is_woocommerce() is
 		// is_shop() || is_product_taxonomy() || is_product() — all false on a
 		// search results page — so gating on it would make this branch dead.
@@ -4632,7 +4639,7 @@ class WC_AI_Storefront_JsonLd {
 		// distinguishes a product search from a blog/post search.
 		$on_search = is_search() && 'product' === get_query_var( 'post_type' );
 
-		if ( ! $on_shop && ! $on_category && ! $on_tag && ! $on_search ) {
+		if ( ! $on_shop && ! $on_category && ! $on_tag && ! $on_brand && ! $on_search ) {
 			return;
 		}
 
@@ -4650,10 +4657,11 @@ class WC_AI_Storefront_JsonLd {
 		$paged         = $paged_raw ? (int) $paged_raw : 1;
 		$term          = null;
 		$cache_key     = '';
-		if ( $on_category || $on_tag ) {
+		if ( $on_category || $on_tag || $on_brand ) {
 			$term      = get_queried_object();
 			$term_id   = ( $term && isset( $term->term_id ) ) ? (int) $term->term_id : 0;
-			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . ( $on_category ? 'cat' : 'tag' ) . '_' . $term_id . '_' . $paged;
+			$term_kind = $on_category ? 'cat' : ( $on_tag ? 'tag' : 'brand' );
+			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . $term_kind . '_' . $term_id . '_' . $paged;
 		} elseif ( ! $on_search ) {
 			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . 'shop_' . $paged;
 		}
@@ -4709,6 +4717,20 @@ class WC_AI_Storefront_JsonLd {
 			$list_name         = $term->name ?? '';
 			$list_url          = get_term_link( $term );
 			$list_url          = is_wp_error( $list_url ) ? '' : $list_url;
+		} elseif ( $on_brand && $term ) {
+			// wc_get_products() has no first-class `brand` key the way it maps
+			// `category`/`tag`, so the fallback direct query filters on the
+			// taxonomy name; WooCommerce 9.6+ core brands honour it, older
+			// stores ignore it harmlessly. It only matters when the main query
+			// yields nothing — on a real brand archive the rendered products
+			// below are the source, and $term->count gives the total without a
+			// query either way.
+			$query_args['product_brand'] = array( $term->slug );
+			$count_args['product_brand'] = array( $term->slug );
+			$total_products              = isset( $term->count ) ? (int) $term->count : null;
+			$list_name                   = $term->name ?? '';
+			$list_url                    = get_term_link( $term );
+			$list_url                    = is_wp_error( $list_url ) ? '' : $list_url;
 		} elseif ( $on_search ) {
 			$search_query    = get_search_query();
 			$query_args['s'] = $search_query;
