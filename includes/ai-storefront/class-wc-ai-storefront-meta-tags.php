@@ -1195,8 +1195,9 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:locale'      => WC_AI_Storefront_Meta_Text::og_locale(),
 		);
 
-		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
-			$term = get_queried_object();
+		$covered = $this->covered_term();
+		if ( null !== $covered ) {
+			$term = $covered;
 			if ( is_object( $term ) ) {
 				if ( isset( $term->name ) ) {
 					$og['og:title'] = (string) $term->name;

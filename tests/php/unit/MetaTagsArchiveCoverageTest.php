@@ -30,6 +30,20 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 		// covered_term() reads is_tax() first; default false so suite
 		// order cannot change a result (#705). Tests opt in.
 		Functions\when( 'is_tax' )->justReturn( false );
+		// build_archive_og_tags() computes og:locale unconditionally via
+		// WC_AI_Storefront_Meta_Text::og_locale() before any branch runs;
+		// default it so tests that don't care about locale need not stub it.
+		Functions\when( 'get_locale' )->justReturn( 'en_US' );
+		// build_archive_og_tags() also runs archive_image() unconditionally
+		// after every branch. Same defaults as MetaTagsTest.php's setUp(): a
+		// test that doesn't care about the image resolver gets "nothing
+		// found" from each source, whatever order the suite runs in.
+		Functions\when( 'get_theme_mod' )->justReturn( 0 );
+		Functions\when( 'get_site_icon_url' )->justReturn( '' );
+		Functions\when( 'get_post_thumbnail_id' )->justReturn( 0 );
+		Functions\when( 'wp_get_attachment_image_src' )->justReturn( false );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+		Functions\when( 'esc_url' )->returnArg();
 		$this->meta = new WC_AI_Storefront_Meta_Tags();
 	}
 
@@ -118,5 +132,46 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 		$tags = new WC_AI_Storefront_Meta_Tags();
 
 		$this->assertSame( 'Everything fleece.', $tags->build_archive_description() );
+	}
+
+	public function test_brand_archive_og_tags_carry_the_term_name_and_link(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'is_search' )->justReturn( false );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_query_var' )->justReturn( '' );
+		Functions\when( 'get_term_link' )->justReturn( 'https://saltwarp.shop/brand/thornwick/' );
+		Functions\when( '__' )->returnArg();
+		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_brand' ) );
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+		$og   = $tags->build_archive_og_tags( 'A brand.' );
+
+		$this->assertSame( 'Thornwick', $og['og:title'] );
+		$this->assertSame( 'https://saltwarp.shop/brand/thornwick/', $og['og:url'] );
+	}
+
+	public function test_term_archive_og_url_is_empty_when_the_link_errors(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'is_search' )->justReturn( false );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( 'get_query_var' )->justReturn( '' );
+		Functions\when( '__' )->returnArg();
+		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_tag' ) );
+		// get_term_link() returns WP_Error on an unregistered taxonomy.
+		Functions\when( 'get_term_link' )->justReturn( new WP_Error( 'invalid_taxonomy', 'nope' ) );
+		// build_archive_og_tags() falls back to home_url() when og:url is
+		// still empty; some other test file in this shared process stubs
+		// home_url() too, which makes function_exists( 'home_url' ) true
+		// here even without this line, so an unstubbed call would error
+		// rather than silently no-op (see MetaTagsTest.php for the same
+		// note). Stubbed to '' so the fallback cannot mask the assertion.
+		Functions\when( 'home_url' )->justReturn( '' );
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+		$og   = $tags->build_archive_og_tags( 'A tag.' );
+
+		$this->assertSame( '', $og['og:url'] );
 	}
 }
