@@ -499,8 +499,8 @@ class WC_AI_Storefront_IndexNow {
 	 * queue drains. It used to stop at BATCH_SIZE and drop the remainder, so a
 	 * store larger than one request had no way to submit its catalogue at all
 	 * (#698). Beyond MAX_PENDING the tail is still dropped, and because the
-	 * merge order below is surfaces, products, categories, brands, the URLs
-	 * discarded first are the brand and category archives (#699 review).
+	 * merge order below is surfaces, products, categories, tags, brands, the
+	 * URLs discarded first are the brand and tag archives (#699 review).
 	 */
 	public function submit_all(): void {
 		if ( ! $this->is_enabled() ) {
@@ -510,6 +510,7 @@ class WC_AI_Storefront_IndexNow {
 			$this->surface_urls(),
 			$this->all_product_urls(),
 			$this->all_category_urls(),
+			$this->all_tag_urls(),
 			$this->all_brand_urls()
 		);
 		$this->enqueue( $urls );
@@ -597,6 +598,39 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
+	 * Gather all non-empty product-tag (`product_tag`) archive URLs.
+	 *
+	 * Mirrors all_category_urls(): a tag archive is the same kind of indexable
+	 * taxonomy-term page as a category. It already carries a JSON-LD ItemList,
+	 * so submitting it here closes the #705 gap where the page was described
+	 * for a parser but never advertised to a crawler.
+	 *
+	 * @return string[]
+	 */
+	private function all_tag_urls(): array {
+		if ( ! function_exists( 'get_terms' ) ) {
+			return array();
+		}
+		$terms = get_terms(
+			array(
+				'taxonomy'   => 'product_tag',
+				'hide_empty' => true,
+			)
+		);
+		if ( is_wp_error( $terms ) || ! is_array( $terms ) ) {
+			return array();
+		}
+		$urls = array();
+		foreach ( $terms as $term ) {
+			$link = get_term_link( $term );
+			if ( is_string( $link ) && '' !== $link ) {
+				$urls[] = $link;
+			}
+		}
+		return $urls;
+	}
+
+	/**
 	 * Gather all non-empty product-brand (`product_brand`) archive URLs.
 	 *
 	 * Mirrors all_category_urls(): brand archives are the same kind of
@@ -667,6 +701,11 @@ class WC_AI_Storefront_IndexNow {
 		add_action( 'created_product_cat', array( $this, 'on_term_change' ) );
 		add_action( 'edited_product_cat', array( $this, 'on_term_change' ) );
 		add_action( 'delete_product_cat', array( $this, 'on_term_change' ) );
+		// Tag (product_tag) archives — parallel to product_cat above. The tag
+		// archive already carries an ItemList, so it must be advertised too (#705).
+		add_action( 'created_product_tag', array( $this, 'on_tag_change' ) );
+		add_action( 'edited_product_tag', array( $this, 'on_tag_change' ) );
+		add_action( 'delete_product_tag', array( $this, 'on_tag_change' ) );
 		// Brand (product_brand) archives — parallel to product_cat above.
 		// Registered unconditionally: on a store without the brand taxonomy
 		// these hooks simply never fire (no taxonomy_exists() gate, which
@@ -888,6 +927,28 @@ class WC_AI_Storefront_IndexNow {
 		}
 		$urls = $this->surface_urls();
 		$link = get_term_link( (int) $term_id, 'product_brand' );
+		if ( is_string( $link ) && '' !== $link ) {
+			$urls[] = $link;
+		}
+		$this->enqueue( $urls );
+		$this->schedule_flush();
+	}
+
+	/**
+	 * A product-tag term changed: submit its archive URL plus the AI surfaces.
+	 *
+	 * Parallel to on_term_change()/on_brand_change(), differing only in the
+	 * taxonomy passed to get_term_link(). Tag archives already emit an ItemList,
+	 * so this makes the two surfaces agree (#705).
+	 *
+	 * @param int $term_id Tag term ID.
+	 */
+	public function on_tag_change( $term_id ): void {
+		if ( ! $this->is_enabled() ) {
+			return;
+		}
+		$urls = $this->surface_urls();
+		$link = get_term_link( (int) $term_id, 'product_tag' );
 		if ( is_string( $link ) && '' !== $link ) {
 			$urls[] = $link;
 		}
