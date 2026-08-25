@@ -643,8 +643,19 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 			'product_selection_mode' => 'all',
 		);
 
-		$product = $this->make_product( 5, 'Thornwick Jacket' );
-		Functions\when( 'wc_get_products' )->justReturn( array( $product ) );
+		// Capture the args the fallback product query receives. Brand is not
+		// a first-class wc_get_products() filter (unlike category/tag), so the
+		// list must be scoped with an explicit tax_query on product_brand. A
+		// bare `product_brand` key is silently ignored and would return the
+		// whole catalog under this brand's name (#705 review).
+		$captured_args = null;
+		$product       = $this->make_product( 5, 'Thornwick Jacket' );
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$captured_args, $product ) {
+				$captured_args = $args;
+				return array( $product );
+			}
+		);
 
 		$output = $this->capture();
 		$this->assertStringContainsString( 'ItemList', $output );
@@ -658,6 +669,13 @@ class JsonLdArchiveItemListTest extends \PHPUnit\Framework\TestCase {
 		$this->assertSame( 7, $data['numberOfItems'] );
 		$this->assertSame( 'Thornwick', $data['name'] );
 		$this->assertSame( 'https://example.com/brand/thornwick/', $data['url'] );
+
+		// The fallback query is scoped to this brand, not left catalog-wide.
+		$this->assertIsArray( $captured_args );
+		$this->assertArrayNotHasKey( 'product_brand', $captured_args, 'bare taxonomy key is silently ignored by wc_get_products()' );
+		$this->assertArrayHasKey( 'tax_query', $captured_args );
+		$this->assertSame( 'product_brand', $captured_args['tax_query'][0]['taxonomy'] );
+		$this->assertSame( array( 'thornwick' ), $captured_args['tax_query'][0]['terms'] );
 	}
 
 	// -------------------------------------------------------------------------

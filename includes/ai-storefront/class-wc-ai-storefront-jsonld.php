@@ -4626,8 +4626,9 @@ class WC_AI_Storefront_JsonLd {
 		$on_shop     = function_exists( 'is_shop' ) && is_shop();
 		$on_category = function_exists( 'is_product_category' ) && is_product_category();
 		$on_tag      = function_exists( 'is_product_tag' ) && is_product_tag();
-		// Brand archives have no is_product_brand() conditional in WooCommerce,
-		// so they are detected with is_tax( 'product_brand' ) — the same call
+		// Brand archives have no is_product_brand() conditional in WooCommerce
+		// core (the legacy standalone Brands plugin did define one), so they
+		// are detected with is_tax( 'product_brand' ) — the same call
 		// is_product_tag() makes for its own taxonomy. #705: IndexNow already
 		// submits brand archives, so without this the crawler is sent to a page
 		// carrying no ItemList.
@@ -4719,18 +4720,27 @@ class WC_AI_Storefront_JsonLd {
 			$list_url          = is_wp_error( $list_url ) ? '' : $list_url;
 		} elseif ( $on_brand && $term ) {
 			// wc_get_products() has no first-class `brand` key the way it maps
-			// `category`/`tag`, so the fallback direct query filters on the
-			// taxonomy name; WooCommerce 9.6+ core brands honour it, older
-			// stores ignore it harmlessly. It only matters when the main query
-			// yields nothing — on a real brand archive the rendered products
-			// below are the source, and $term->count gives the total without a
-			// query either way.
-			$query_args['product_brand'] = array( $term->slug );
-			$count_args['product_brand'] = array( $term->slug );
-			$total_products              = isset( $term->count ) ? (int) $term->count : null;
-			$list_name                   = $term->name ?? '';
-			$list_url                    = get_term_link( $term );
-			$list_url                    = is_wp_error( $list_url ) ? '' : $list_url;
+			// `category`/`tag`, so the fallback query is scoped with an explicit
+			// tax_query — the robust form the meta-tags class settled on for the
+			// same problem in term_query_constraint(). A bare `product_brand`
+			// key is silently dropped and the fallback then returns the whole
+			// catalog under this brand's name. The fallback only fires when the
+			// main query yields nothing (an empty brand archive or a custom
+			// non-inherited block query); on a normal archive the rendered
+			// products below are the source and $term->count gives the total.
+			$brand_tax_query         = array(
+				array(
+					'taxonomy' => 'product_brand',
+					'field'    => 'slug',
+					'terms'    => array( $term->slug ),
+				),
+			);
+			$query_args['tax_query'] = $brand_tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+			$count_args['tax_query'] = $brand_tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+			$total_products          = isset( $term->count ) ? (int) $term->count : null;
+			$list_name               = $term->name ?? '';
+			$list_url                = get_term_link( $term );
+			$list_url                = is_wp_error( $list_url ) ? '' : $list_url;
 		} elseif ( $on_search ) {
 			$search_query    = get_search_query();
 			$query_args['s'] = $search_query;
