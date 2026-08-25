@@ -256,6 +256,76 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 		$ref->invoke( $tags );
 
 		$this->assertNotEmpty( $calls );
+		// 'category' is wc_get_products()'s product_cat-only arg
+		// (WC_Product_Data_Store_CPT::get_wp_query_args(), WC 11.0.1); a tag
+		// slug under that key matches nothing. Caught on live-store
+		// verification for #705: should_emit() opening the gate was the
+		// first time this query ever ran for a real tag archive, and the
+		// pre-fix assertion here (on 'category') had encoded the bug as the
+		// expected result.
+		$this->assertArrayNotHasKey( 'category', $calls[0] );
+		$this->assertSame( array( 'thornwick' ), $calls[0]['tag'] );
+	}
+
+	public function test_brand_archive_product_image_query_is_filtered_by_a_tax_query(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_brand' ) );
+
+		// product_brand has no native wc_get_products() arg (unlike
+		// 'category' and 'tag'), so the brand's slug has to reach the query
+		// as a raw tax_query clause instead (#705).
+		$calls = array();
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$calls ) {
+				$calls[] = $args;
+				return array();
+			}
+		);
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+		$ref  = new ReflectionMethod( $tags, 'archive_product_image' );
+		$ref->setAccessible( true );
+		$ref->invoke( $tags );
+
+		$this->assertNotEmpty( $calls );
+		$this->assertArrayNotHasKey( 'category', $calls[0] );
+		$this->assertArrayNotHasKey( 'tag', $calls[0] );
+		$this->assertSame(
+			array(
+				array(
+					'taxonomy' => 'product_brand',
+					'field'    => 'slug',
+					'terms'    => array( 'thornwick' ),
+				),
+			),
+			$calls[0]['tax_query']
+		);
+	}
+
+	public function test_category_archive_product_image_query_is_still_filtered_by_category(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_queried_object' )->justReturn( $this->term( 'product_cat' ) );
+
+		// Regression guard: the category path already worked before #705
+		// (it is the one taxonomy 'category' actually matches); this pins
+		// that behaviour while term_query_constraint() adds the tag/brand
+		// branches alongside it.
+		$calls = array();
+		Functions\when( 'wc_get_products' )->alias(
+			static function ( $args ) use ( &$calls ) {
+				$calls[] = $args;
+				return array();
+			}
+		);
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+		$ref  = new ReflectionMethod( $tags, 'archive_product_image' );
+		$ref->setAccessible( true );
+		$ref->invoke( $tags );
+
+		$this->assertNotEmpty( $calls );
 		$this->assertSame( array( 'thornwick' ), $calls[0]['category'] );
 	}
 }

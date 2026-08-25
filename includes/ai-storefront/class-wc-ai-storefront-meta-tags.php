@@ -1757,7 +1757,7 @@ class WC_AI_Storefront_Meta_Tags {
 
 		$slug = $this->queried_term_slug();
 		if ( '' !== $slug ) {
-			$args['category'] = array( $slug );
+			$args = array_merge( $args, $this->term_query_constraint( $slug ) );
 		}
 
 		$image = $this->first_product_image( wc_get_products( $args ) );
@@ -1777,6 +1777,55 @@ class WC_AI_Storefront_Meta_Tags {
 		unset( $args['featured'] );
 
 		return $this->first_product_image( wc_get_products( $args ) );
+	}
+
+	/**
+	 * The wc_get_products() arg that narrows a query to the queried term.
+	 *
+	 * `category` and `tag` are native wc_get_products() args, but each is
+	 * hard-wired to one taxonomy by
+	 * `WC_Product_Data_Store_CPT::get_wp_query_args()` (`product_cat` and
+	 * `product_tag` respectively, verified against WooCommerce 11.0.1
+	 * core). Passing a brand's slug under either key matches nothing, so
+	 * before this a brand archive with no term thumbnail always fell
+	 * through to "no image", silently (#705). `product_brand` has no
+	 * native arg, so it goes through as a `tax_query` clause instead:
+	 * `WC_Object_Query::__construct()` merges unrecognized keys straight
+	 * into `$query_vars`, and `WC_Data_Store_WP::get_wp_query_args()`
+	 * carries a key it does not recognize through unchanged, so this
+	 * clause survives alongside the `product_type` clause the query
+	 * always adds.
+	 *
+	 * @param string $slug The queried term's slug, already confirmed non-empty.
+	 * @return array wc_get_products() args to merge in, or empty when the
+	 *               current request is not a covered term archive.
+	 */
+	private function term_query_constraint( string $slug ): array {
+		$term = $this->covered_term();
+		if ( null === $term ) {
+			return array();
+		}
+
+		switch ( (string) $term->taxonomy ) {
+			case 'product_cat':
+				return array( 'category' => array( $slug ) );
+			case 'product_tag':
+				return array( 'tag' => array( $slug ) );
+			case 'product_brand':
+				return array(
+					'tax_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+						array(
+							'taxonomy' => 'product_brand',
+							'field'    => 'slug',
+							'terms'    => array( $slug ),
+						),
+					),
+				);
+			default:
+				// Unreachable: covered_term() only ever returns a term whose
+				// taxonomy is one of the three cases above.
+				return array();
+		}
 	}
 
 	/**
