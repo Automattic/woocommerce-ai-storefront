@@ -467,17 +467,18 @@ class WC_AI_Storefront_Meta_Tags {
 		$candidates = array();
 		$source     = null;
 
-		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
-			$term   = get_queried_object();
+		$covered = $this->covered_term();
+		if ( null !== $covered ) {
+			$term   = $covered;
 			$source = $term;
 			if ( is_object( $term ) && isset( $term->description ) ) {
 				$candidates[] = (string) $term->description;
 			}
 			if ( is_object( $term ) && isset( $term->name ) ) {
-				// Category-specific fallback so the page always carries a
-				// description. Required because we suppress Jetpack's on
-				// commerce pages (see suppress_jetpack_description()) and
-				// would otherwise leave none.
+				// Term fallback so the page always carries a description.
+				// Required because we suppress Jetpack's on commerce pages
+				// (see suppress_jetpack_description()) and would otherwise
+				// leave none. Covers category, tag and brand since #705.
 				$store        = (string) get_bloginfo( 'name' );
 				$candidates[] = '' !== $store
 					? sprintf(

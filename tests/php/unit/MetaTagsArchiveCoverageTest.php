@@ -83,4 +83,40 @@ class MetaTagsArchiveCoverageTest extends \PHPUnit\Framework\TestCase {
 
 		$this->assertNull( $this->meta->covered_term() );
 	}
+
+	public function test_brand_archive_description_falls_back_to_the_term_name(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( '__' )->returnArg();
+		// clean_text() runs on every candidate, including the empty
+		// description; strip_shortcodes() only removes registered
+		// shortcodes, so identity mirrors a site with none (see MetaTextTest).
+		Functions\when( 'strip_shortcodes' )->returnArg();
+
+		$term              = $this->term( 'product_brand' );
+		$term->description = '';
+		Functions\when( 'get_queried_object' )->justReturn( $term );
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+
+		$this->assertStringContainsString( 'Thornwick', $tags->build_archive_description() );
+		$this->assertStringContainsString( 'Saltwarp', $tags->build_archive_description() );
+	}
+
+	public function test_tag_archive_description_prefers_the_term_description(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'is_shop' )->justReturn( false );
+		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
+		Functions\when( '__' )->returnArg();
+		Functions\when( 'strip_shortcodes' )->returnArg();
+
+		$term              = $this->term( 'product_tag' );
+		$term->description = 'Everything fleece.';
+		Functions\when( 'get_queried_object' )->justReturn( $term );
+
+		$tags = new WC_AI_Storefront_Meta_Tags();
+
+		$this->assertSame( 'Everything fleece.', $tags->build_archive_description() );
+	}
 }
