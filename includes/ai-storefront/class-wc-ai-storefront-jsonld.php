@@ -4614,7 +4614,7 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * Results are cached per [page_type]_[term_id|search_query]_[page_num]
 	 * (1-hour TTL). Cache is purged by WC_AI_Storefront_Cache_Invalidator on
-	 * any product or category change.
+	 * any product change or product-category, tag, or brand term edit.
 	 */
 	public function output_archive_itemlist_jsonld(): void {
 		$settings = WC_AI_Storefront::get_settings();

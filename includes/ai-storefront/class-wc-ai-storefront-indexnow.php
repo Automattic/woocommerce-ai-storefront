@@ -491,8 +491,9 @@ class WC_AI_Storefront_IndexNow {
 	}
 
 	/**
-	 * Gather every indexable product, product-category, and product-brand URL
-	 * plus the discovery surfaces, enqueue them, and flush immediately. Used by
+	 * Gather every indexable product, product-category, product-tag, and
+	 * product-brand URL plus the discovery surfaces, enqueue them, and flush
+	 * immediately. Used by
 	 * the admin "Submit entire catalog now" action and the first-enable seed
 	 * (#540). A catalogue up to MAX_PENDING is covered: enqueue() queues the lot
 	 * and flush() sends the first BATCH_SIZE, rescheduling itself until the
