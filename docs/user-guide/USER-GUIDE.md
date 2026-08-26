@@ -20,7 +20,7 @@ This plugin makes your store speak three of those formats at the same time, all 
 
 You can think of these as three doors into the same store: agents that close the sale walk through door 1, search engines that cite you walk through door 2, conversational tools that talk about you walk through door 3. You don't need to choose; the plugin opens all three.
 
-On top of those three, the plugin also writes the everyday search-engine and social metadata for your product, category, and shop pages: the page title, the meta description, and the Open Graph / Twitter "link preview" tags, all built automatically from data you've already entered. This is the same metadata a traditional SEO plugin manages, so a lean store can let AI Storefront handle it for those pages instead of running a separate SEO plugin. See [§1 Known compatibility notes](#known-compatibility-notes) and [§4c Search-engine and social metadata](#4c-search-engine-and-social-metadata).
+On top of those three, the plugin also writes the everyday search-engine and social metadata for your product, category, tag, brand, and shop pages: the page title, the meta description, and the Open Graph / Twitter "link preview" tags, all built automatically from data you've already entered. This is the same metadata a traditional SEO plugin manages, so a lean store can let AI Storefront handle it for those pages instead of running a separate SEO plugin. See [§1 Known compatibility notes](#known-compatibility-notes) and [§4c Search-engine and social metadata](#4c-search-engine-and-social-metadata).
 
 You do not need an AI account, an API key, or a developer.
 
@@ -81,7 +81,7 @@ You may want to wait if any of these apply:
 **Plugins worth checking before you enable:**
 
 - **AI-bot blocking plugins.** Some security plugins explicitly block GPTBot, ChatGPT-User, Claude, and similar to prevent training-data scraping. If active, they will defeat the discovery layer entirely. Allowlist AI crawlers in your security plugin, or disable AI-bot blocking on this site.
-- **Other SEO plugins** (Yoast SEO, Rank Math, All in One SEO, Schema App, etc.). AI Storefront emits its own page titles, meta descriptions, social-share tags, and Product structured data on commerce pages. With another SEO plugin also active, the overlap is narrower than it used to be. With **Yoast SEO, Rank Math, SEOPress, or All in One SEO**, your meta description stays single: AI Storefront checks whether that plugin is already supplying one and steps aside when it is, so the page doesn't carry two. With a different SEO plugin, the description can still be duplicated. The page title stays single as well, and it is usually the other SEO plugin that fills it. What can still appear twice is the social-share tags, until you deactivate one plugin. Search engines tolerate that, though structured-data validators may flag it. When **Yoast WooCommerce SEO, Rank Math, All in One SEO, or SEOPress** is detected, AI Storefront shows a dismissible admin notice explaining that you can deactivate it and let AI Storefront cover your product, category, and shop pages. This is optional and reversible. See the hand-off checklist in [§4c Search-engine and social metadata](#4c-search-engine-and-social-metadata). (This includes the free Yoast SEO plugin, not just the paid WooCommerce SEO addon; when both are active, the notice uses the addon's more specific name.)
+- **Other SEO plugins** (Yoast SEO, Rank Math, All in One SEO, Schema App, etc.). AI Storefront emits its own page titles, meta descriptions, social-share tags, and Product structured data on commerce pages. With another SEO plugin also active, the overlap is narrower than it used to be. With **Yoast SEO, Rank Math, SEOPress, or All in One SEO**, your meta description stays single: AI Storefront checks whether that plugin is already supplying one and steps aside when it is, so the page doesn't carry two. With a different SEO plugin, the description can still be duplicated. The page title stays single as well, and it is usually the other SEO plugin that fills it. What can still appear twice is the social-share tags, until you deactivate one plugin. Search engines tolerate that, though structured-data validators may flag it. When **Yoast WooCommerce SEO, Rank Math, All in One SEO, or SEOPress** is detected, AI Storefront shows a dismissible admin notice explaining that you can deactivate it and let AI Storefront cover your product, category, tag, brand, and shop pages. This is optional and reversible. See the hand-off checklist in [§4c Search-engine and social metadata](#4c-search-engine-and-social-metadata). (This includes the free Yoast SEO plugin, not just the paid WooCommerce SEO addon; when both are active, the notice uses the addon's more specific name.)
 - **Custom robots.txt managers.** This plugin appends AI-crawler rules to WordPress's virtual robots.txt. If a plugin produces its own robots.txt (overriding WP's virtual one), the rules may not appear. After enabling, visit `/robots.txt` and confirm AI crawler rules are present.
 
 ### Full WooPayments multi-currency support
@@ -126,7 +126,7 @@ Enabling does six things:
 - Publishes a text guide of your store at `/llms.txt` (visible to AI agents), and advertises it to AI tools two ways shoppers never see: an HTTP response header and a hidden link in each page's `<head>`.
 - Publishes your store's business details at `/.well-known/ucp` (visible to AI agents).
 - Adds product details (prices, return policies, etc.) in a format AI agents understand.
-- Writes the search-engine and social metadata (page title, meta description, Open Graph / Twitter tags) for your product, category, and shop pages. See [§4c](#4c-search-engine-and-social-metadata).
+- Writes the search-engine and social metadata (page title, meta description, Open Graph / Twitter tags) for your product, category, tag, brand, and shop pages. See [§4c](#4c-search-engine-and-social-metadata).
 - Starts tracking which orders came from AI shopping assistants so you can see the results.
 
 To pause, click **Disable AI Storefront** at the bottom of the page. AI agents will no longer be able to see your catalog endpoints, but existing order tracking remains in place.
@@ -234,17 +234,19 @@ If your homepage *is* your shop page (the default WooCommerce layout where the s
 
 The plugin never publishes your WordPress admin email as a public contact. If neither address works, the email contact is omitted entirely.
 
-**Phone and social profile links** are not part of this homepage business block. (This is separate from the Open Graph and Twitter social-share *cards* the plugin emits on product, category, and shop pages, which create the link preview when a page is shared. See [§4c](#4c-search-engine-and-social-metadata).) If you want to publish profile links, plugins like Jetpack or Yoast can help.
+**Phone and social profile links** are not part of this homepage business block. (This is separate from the Open Graph and Twitter social-share *cards* the plugin emits on product, category, tag, brand, and shop pages, which create the link preview when a page is shared. See [§4c](#4c-search-engine-and-social-metadata).) If you want to publish profile links, plugins like Jetpack or Yoast can help.
 
 ### 4c. Search-engine and social metadata
 
-The plugin writes the everyday metadata search engines and social platforms read for your **product, category, and shop pages**, automatically, from data you've already entered. There is nothing to configure.
+The plugin writes the everyday metadata search engines and social platforms read for your **product, category, tag, brand, and shop pages**, automatically, from data you've already entered. There is nothing to configure.
 
 | Tag | What it is | Built from |
 |-----|-----------|-----------|
 | Page title (`<title>`) | The clickable headline in Google results and the browser tab | Product name, with your product brand appended when it adds information. The brand is left off when it would just repeat, either because it matches your store name or because the product name already contains it, so an in-house label reads "Camp Shirt – Saltwarp", not "Camp Shirt \| Saltwarp – Saltwarp" |
 | Meta description | The gray summary under the headline in search results | Product short description, then long description; category description; shop page content, then your store tagline |
 | Open Graph + Twitter tags | The image-and-title "link preview" when a page is shared on social or in chat | Product title, description, price, and featured image |
+
+On a category, tag, or brand archive, the title, description, and share card are built from that term's own name, description, and image, and the page also carries a product list (a JSON-LD ItemList) of what it shows, so search engines and AI agents can read the archive as a browsable set. Category archives already worked this way; tag and brand archives now match them.
 
 It also keeps two kinds of page out of search results automatically: products you've set to **Hidden** in WooCommerce (catalog visibility), and your internal product-search results pages (thin, duplicate content). Everything else stays indexable. (Developers who need to override any of these values can use the plugin's filters; see the engineering docs.)
 
