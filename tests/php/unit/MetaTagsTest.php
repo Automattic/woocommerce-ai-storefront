@@ -44,6 +44,9 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		// Default all commerce conditionals to false; tests opt in.
 		Functions\when( 'is_product' )->justReturn( false );
 		Functions\when( 'is_product_category' )->justReturn( false );
+		// covered_term() reads is_tax() first (#705); default false so a test
+		// that never simulates a term archive does not have to know it exists.
+		Functions\when( 'is_tax' )->justReturn( false );
 		Functions\when( 'is_shop' )->justReturn( false );
 		Functions\when( 'is_search' )->justReturn( false );
 		// Defaults for tags added in the Jetpack-coexistence work; falsy so
@@ -154,7 +157,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	}
 
 	public function test_should_emit_true_on_category(): void {
-		Functions\when( 'is_product_category' )->justReturn( true );
+		// should_emit() now routes through covered_term() (#705), which gates
+		// on is_tax() and reads $term->taxonomy rather than calling
+		// is_product_category() directly.
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'  => 9,
+				'taxonomy' => 'product_cat',
+			)
+		);
 		$this->assertTrue( $this->meta->should_emit() );
 	}
 
@@ -172,6 +184,28 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_should_emit_false_for_non_product_search(): void {
 		Functions\when( 'is_search' )->justReturn( true );
 		Functions\when( 'get_query_var' )->justReturn( '' );
+		$this->assertFalse( $this->meta->should_emit() );
+	}
+
+	public function test_should_emit_true_on_a_brand_archive(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'  => 7,
+				'taxonomy' => 'product_brand',
+			)
+		);
+		$this->assertTrue( $this->meta->should_emit() );
+	}
+
+	public function test_should_emit_false_on_an_attribute_archive(): void {
+		Functions\when( 'is_tax' )->justReturn( true );
+		Functions\when( 'get_queried_object' )->justReturn(
+			(object) array(
+				'term_id'  => 7,
+				'taxonomy' => 'pa_color',
+			)
+		);
 		$this->assertFalse( $this->meta->should_emit() );
 	}
 
@@ -284,12 +318,16 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_archive_description_from_category_term(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'is_product_category' )->justReturn( true );
+		// build_archive_description() now routes through covered_term()
+		// (#705), which gates on is_tax() and reads $term->taxonomy.
+		Functions\when( 'is_tax' )->justReturn( true );
 		// Every candidate is built up front now, including the generated
 		// "Shop {category} at {store}" fallback this test never reaches.
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		Functions\when( 'get_queried_object' )->justReturn(
 			(object) array(
 				'term_id'     => 9,
+				'taxonomy'    => 'product_cat',
 				'name'        => 'Belts',
 				'description' => 'All our leather belts.',
 			)
@@ -1038,9 +1076,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_archive_og_tags_for_category(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'is_product_category' )->justReturn( true );
+		// build_archive_description() now routes through covered_term()
+		// (#705), which gates on is_tax() and reads $term->taxonomy.
+		Functions\when( 'is_tax' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
 			(object) array(
 				'term_id'     => 9,
+				'taxonomy'    => 'product_cat',
 				'name'        => 'Belts',
 				'description' => 'Leather belts.',
 			)
@@ -1199,9 +1241,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_render_emits_archive_metadata_for_category(): void {
 		$this->stub_escapers();
 		Functions\when( 'is_product_category' )->justReturn( true );
+		// build_archive_description() now routes through covered_term()
+		// (#705), which gates on is_tax() and reads $term->taxonomy.
+		Functions\when( 'is_tax' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
 			(object) array(
 				'term_id'     => 9,
+				'taxonomy'    => 'product_cat',
 				'name'        => 'Belts',
 				'description' => 'Leather belts.',
 			)
@@ -1417,9 +1463,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	private function stub_belts_category( int $thumbnail_id = 0 ): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'is_product_category' )->justReturn( true );
+		// build_archive_description() now routes through covered_term()
+		// (#705), which gates on is_tax() and reads $term->taxonomy.
+		Functions\when( 'is_tax' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
 			(object) array(
 				'term_id'     => 9,
+				'taxonomy'    => 'product_cat',
 				'slug'        => 'belts',
 				'name'        => 'Belts',
 				'description' => 'Leather belts.',
@@ -2478,9 +2528,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_archive_description_category_falls_back_when_term_has_no_description(): void {
 		Functions\when( 'strip_shortcodes' )->returnArg();
 		Functions\when( 'is_product_category' )->justReturn( true );
+		// build_archive_description() now routes through covered_term()
+		// (#705), which gates on is_tax() and reads $term->taxonomy.
+		Functions\when( 'is_tax' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
 			(object) array(
 				'term_id'     => 9,
+				'taxonomy'    => 'product_cat',
 				'name'        => 'Belts',
 				'description' => '',
 			)
@@ -2530,6 +2584,9 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 		Functions\when( 'is_product' )->justReturn( 'product' === $type );
 		Functions\when( 'is_shop' )->justReturn( 'shop' === $type );
 		Functions\when( 'is_product_category' )->justReturn( 'product_category' === $type );
+		// build_archive_description() now routes through covered_term()
+		// (#705), which gates on is_tax() rather than is_product_category().
+		Functions\when( 'is_tax' )->justReturn( 'product_category' === $type );
 		Functions\when( 'get_bloginfo' )->justReturn( 'Saltwarp' );
 		// Not paginated by default; filter_document_title() reads this on
 		// every page type it handles to decide whether to append a page
@@ -2572,6 +2629,7 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 			Functions\when( 'get_queried_object' )->justReturn(
 				(object) array(
 					'term_id'     => 9,
+					'taxonomy'    => 'product_cat',
 					'name'        => 'Belts',
 					'description' => 'Leather belts.',
 				)
@@ -3045,9 +3103,13 @@ class MetaTagsTest extends \PHPUnit\Framework\TestCase {
 	public function test_category_description_that_cleans_to_nothing_falls_back_to_the_generated_one(): void {
 		$this->stub_escapers();
 		Functions\when( 'is_product_category' )->justReturn( true );
+		// build_archive_description() now routes through covered_term()
+		// (#705), which gates on is_tax() and reads $term->taxonomy.
+		Functions\when( 'is_tax' )->justReturn( true );
 		Functions\when( 'get_queried_object' )->justReturn(
 			(object) array(
 				'term_id'     => 9,
+				'taxonomy'    => 'product_cat',
 				'name'        => 'Belts',
 				'description' => '<!-- wp:paragraph --><p></p><!-- /wp:paragraph -->',
 			)

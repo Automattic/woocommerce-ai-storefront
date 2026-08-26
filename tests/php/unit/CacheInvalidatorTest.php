@@ -385,7 +385,7 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 
 	public function test_init_registers_all_expected_hooks(): void {
 		Functions\expect( 'add_action' )
-			->times( 18 ); // 4 product + 1 stock + 3 category + 1 settings + 1 sitemap-settings + 1 cron + 7 products-feed-version (4 product/settings + 3 product_cat term events) = 18.
+			->times( 24 ); // 4 product + 1 stock + 3 category + 3 tag + 3 brand + 1 settings + 1 sitemap-settings + 1 cron + 7 products-feed-version (4 product/settings + 3 product_cat term events) = 24.
 
 		$this->invalidator->init();
 	}
@@ -602,6 +602,32 @@ class CacheInvalidatorTest extends \PHPUnit\Framework\TestCase {
 		$this->assertContains( 'created_product_cat', $hooked );
 		$this->assertContains( 'edited_product_cat', $hooked );
 		$this->assertContains( 'delete_product_cat', $hooked );
+	}
+
+	public function test_init_registers_itemlist_invalidation_for_tag_and_brand_terms(): void {
+		// The ItemList JSON-LD transient caches the archive's own name/url, so a
+		// tag or brand term rename with no product touch leaves a stale list up
+		// to the 1h TTL. #705 newly caches brand ItemLists and re-invites the
+		// crawler to tag pages via IndexNow, so both taxonomies must purge the
+		// cache the way product_cat already does. Capture every hook bound to
+		// invalidate() and assert the six term events are wired.
+		$hooked = array();
+		Functions\when( 'add_action' )->alias(
+			static function ( $hook, $callback ) use ( &$hooked ) {
+				if ( is_array( $callback ) && isset( $callback[1] ) && 'invalidate' === $callback[1] ) {
+					$hooked[] = $hook;
+				}
+				return true;
+			}
+		);
+
+		$this->invalidator->init();
+
+		foreach ( array( 'product_tag', 'product_brand' ) as $taxonomy ) {
+			$this->assertContains( 'created_' . $taxonomy, $hooked );
+			$this->assertContains( 'edited_' . $taxonomy, $hooked );
+			$this->assertContains( 'delete_' . $taxonomy, $hooked );
+		}
 	}
 
 	public function test_bump_cache_version_increments_feed_version_option(): void {

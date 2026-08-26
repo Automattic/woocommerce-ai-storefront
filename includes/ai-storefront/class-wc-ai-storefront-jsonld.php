@@ -4603,6 +4603,7 @@ class WC_AI_Storefront_JsonLd {
 	 *   - Shop front          is_shop() (incl. when the shop is the front page)
 	 *   - Category archives   is_product_category()
 	 *   - Tag archives        is_product_tag()
+	 *   - Brand archives      is_tax( 'product_brand' )
 	 *   - Search results      is_search() && 'product' === get_query_var( 'post_type' )
 	 *
 	 * Each itemListElement is a summary-page ListItem: `position`, `name`, and
@@ -4613,7 +4614,7 @@ class WC_AI_Storefront_JsonLd {
 	 *
 	 * Results are cached per [page_type]_[term_id|search_query]_[page_num]
 	 * (1-hour TTL). Cache is purged by WC_AI_Storefront_Cache_Invalidator on
-	 * any product or category change.
+	 * any product change or product-category, tag, or brand term edit.
 	 */
 	public function output_archive_itemlist_jsonld(): void {
 		$settings = WC_AI_Storefront::get_settings();
@@ -4625,6 +4626,13 @@ class WC_AI_Storefront_JsonLd {
 		$on_shop     = function_exists( 'is_shop' ) && is_shop();
 		$on_category = function_exists( 'is_product_category' ) && is_product_category();
 		$on_tag      = function_exists( 'is_product_tag' ) && is_product_tag();
+		// Brand archives have no is_product_brand() conditional in WooCommerce
+		// core (the legacy standalone Brands plugin did define one), so they
+		// are detected with is_tax( 'product_brand' ) — the same call
+		// is_product_tag() makes for its own taxonomy. #705: IndexNow already
+		// submits brand archives, so without this the crawler is sent to a page
+		// carrying no ItemList.
+		$on_brand = function_exists( 'is_tax' ) && is_tax( 'product_brand' );
 		// A product search is `/?s=foo&post_type=product`. is_woocommerce() is
 		// is_shop() || is_product_taxonomy() || is_product() — all false on a
 		// search results page — so gating on it would make this branch dead.
@@ -4632,7 +4640,7 @@ class WC_AI_Storefront_JsonLd {
 		// distinguishes a product search from a blog/post search.
 		$on_search = is_search() && 'product' === get_query_var( 'post_type' );
 
-		if ( ! $on_shop && ! $on_category && ! $on_tag && ! $on_search ) {
+		if ( ! $on_shop && ! $on_category && ! $on_tag && ! $on_brand && ! $on_search ) {
 			return;
 		}
 
@@ -4650,10 +4658,11 @@ class WC_AI_Storefront_JsonLd {
 		$paged         = $paged_raw ? (int) $paged_raw : 1;
 		$term          = null;
 		$cache_key     = '';
-		if ( $on_category || $on_tag ) {
+		if ( $on_category || $on_tag || $on_brand ) {
 			$term      = get_queried_object();
 			$term_id   = ( $term && isset( $term->term_id ) ) ? (int) $term->term_id : 0;
-			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . ( $on_category ? 'cat' : 'tag' ) . '_' . $term_id . '_' . $paged;
+			$term_kind = $on_category ? 'cat' : ( $on_tag ? 'tag' : 'brand' );
+			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . $term_kind . '_' . $term_id . '_' . $paged;
 		} elseif ( ! $on_search ) {
 			$cache_key = self::ITEMLIST_JSONLD_CACHE_PREFIX . 'shop_' . $paged;
 		}
@@ -4709,6 +4718,29 @@ class WC_AI_Storefront_JsonLd {
 			$list_name         = $term->name ?? '';
 			$list_url          = get_term_link( $term );
 			$list_url          = is_wp_error( $list_url ) ? '' : $list_url;
+		} elseif ( $on_brand && $term ) {
+			// wc_get_products() has no first-class `brand` key the way it maps
+			// `category`/`tag`, so the fallback query is scoped with an explicit
+			// tax_query — the robust form the meta-tags class settled on for the
+			// same problem in term_query_constraint(). A bare `product_brand`
+			// key is silently dropped and the fallback then returns the whole
+			// catalog under this brand's name. The fallback only fires when the
+			// main query yields nothing (an empty brand archive or a custom
+			// non-inherited block query); on a normal archive the rendered
+			// products below are the source and $term->count gives the total.
+			$brand_tax_query         = array(
+				array(
+					'taxonomy' => 'product_brand',
+					'field'    => 'slug',
+					'terms'    => array( $term->slug ),
+				),
+			);
+			$query_args['tax_query'] = $brand_tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+			$count_args['tax_query'] = $brand_tax_query; // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+			$total_products          = isset( $term->count ) ? (int) $term->count : null;
+			$list_name               = $term->name ?? '';
+			$list_url                = get_term_link( $term );
+			$list_url                = is_wp_error( $list_url ) ? '' : $list_url;
 		} elseif ( $on_search ) {
 			$search_query    = get_search_query();
 			$query_args['s'] = $search_query;

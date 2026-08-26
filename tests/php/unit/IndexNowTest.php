@@ -364,6 +364,102 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		$this->addToAssertionCount( 1 );
 	}
 
+	public function test_on_tag_change_enqueues_term_link_and_surfaces(): void {
+		// #705: a tag archive already carries an ItemList; a tag change must
+		// also ping IndexNow, the way a category or brand change does.
+		$captured = array();
+		$store    = array();
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store, &$captured ) {
+				$store[ $n ] = $v;
+				$captured    = $v;
+				return true;
+			}
+		);
+		Functions\when( 'wp_next_scheduled' )->justReturn( time() + 30 );
+		Functions\when( 'get_term_link' )->justReturn( 'https://shop.test/product-tag/fleece/' );
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		$this->indexnow->on_tag_change( 9 );
+		$this->assertContains( 'https://shop.test/product-tag/fleece/', $captured );
+		$this->assertContains( 'https://shop.test/llms.txt', $captured );
+	}
+
+	public function test_on_tag_change_noop_when_disabled(): void {
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'          => 'no',
+			'indexnow_enabled' => 'yes',
+		);
+		Functions\expect( 'update_option' )->never();
+		Functions\expect( 'wp_schedule_single_event' )->never();
+		$this->indexnow->on_tag_change( 9 );
+		$this->addToAssertionCount( 1 );
+	}
+
+	public function test_submit_all_includes_tag_archive_urls(): void {
+		WC_AI_Storefront::$test_settings = array(
+			'enabled'                => 'yes',
+			'indexnow_enabled'       => 'yes',
+			'product_selection_mode' => 'all',
+		);
+		$store                           = array( 'wc_ai_storefront_indexnow_key' => 'k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0k0' );
+		Functions\when( 'get_option' )->alias(
+			static function ( $n, $d = false ) use ( &$store ) {
+				return $store[ $n ] ?? $d;
+			}
+		);
+		Functions\when( 'update_option' )->alias(
+			static function ( $n, $v ) use ( &$store ) {
+				$store[ $n ] = $v;
+				return true;
+			}
+		);
+		Functions\when( 'delete_option' )->alias(
+			static function ( $n ) use ( &$store ) {
+				unset( $store[ $n ] );
+				return true;
+			}
+		);
+		Functions\when( 'wc_get_page_id' )->justReturn( 0 );
+		Functions\when( 'wc_get_products' )->justReturn( array() );
+
+		// One term per taxonomy queried, each tagged with its taxonomy, so the
+		// three archive kinds produce three distinct URLs. This proves tags are
+		// gathered in their own right rather than folded into categories or
+		// brands.
+		Functions\when( 'get_terms' )->alias(
+			static function ( array $args ) {
+				$term           = new stdClass();
+				$term->term_id  = 1;
+				$term->slug     = 'sample';
+				$term->taxonomy = $args['taxonomy'];
+				return array( $term );
+			}
+		);
+		Functions\when( 'get_term_link' )->alias(
+			static fn( $term ) => 'https://shop.test/' . $term->taxonomy . '/' . $term->slug . '/'
+		);
+
+		$posted = null;
+		Functions\when( 'wp_remote_post' )->alias(
+			function ( $url, $args ) use ( &$posted ) {
+				$posted = json_decode( $args['body'], true );
+				return array( 'response' => array( 'code' => 200 ) );
+			}
+		);
+		Functions\when( 'wp_remote_retrieve_response_code' )->justReturn( 200 );
+
+		$this->indexnow->submit_all();
+
+		$this->assertNotNull( $posted, 'wp_remote_post should have been called' );
+		$url_list = $posted['urlList'] ?? array();
+		$this->assertContains( 'https://shop.test/product_tag/sample/', $url_list, 'tag archive URL should be submitted' );
+	}
+
 	public function test_flush_posts_payload_with_host_key_and_urls(): void {
 		$store = array(
 			'wc_ai_storefront_indexnow_pending' => array( 'https://shop.test/a' ),
@@ -1809,6 +1905,35 @@ class IndexNowTest extends \PHPUnit\Framework\TestCase {
 		// Brain Monkey verifies expectations during tearDown; PHPUnit
 		// doesn't count those as native assertions, so acknowledge them
 		// explicitly to avoid a "risky test" flag.
+		$this->addToAssertionCount( 3 );
+	}
+
+	public function test_init_registers_tag_term_hooks(): void {
+		// The three `*_product_tag` term hooks are the ONLY wiring that makes a
+		// tag edit reach on_tag_change() in production — every other tag test
+		// calls on_tag_change() directly, so without this a dropped add_action
+		// or a plural typo (e.g. `edited_product_tags`) would leave the per-edit
+		// tag ping silently dead while the whole suite stays green (#705). The
+		// submit_all cron still sweeps tags, so only the immediate ping is at
+		// risk. A REAL instance is used, not the setUp() anonymous subclass, so
+		// Brain Monkey's get_class()-based callback matcher resolves the bind
+		// (see test_init_registers_brand_term_hooks).
+		$indexnow = new WC_AI_Storefront_IndexNow();
+
+		$binds_to_on_tag_change = static function ( $callback ) use ( $indexnow ): bool {
+			return is_array( $callback )
+				&& $callback[0] === $indexnow
+				&& 'on_tag_change' === $callback[1];
+		};
+
+		foreach ( array( 'created_product_tag', 'edited_product_tag', 'delete_product_tag' ) as $hook ) {
+			\Brain\Monkey\Actions\expectAdded( $hook )
+				->once()
+				->with( \Mockery::on( $binds_to_on_tag_change ) );
+		}
+
+		$indexnow->init();
+
 		$this->addToAssertionCount( 3 );
 	}
 

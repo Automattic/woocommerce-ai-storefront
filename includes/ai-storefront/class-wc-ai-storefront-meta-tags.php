@@ -33,6 +33,46 @@ class WC_AI_Storefront_Meta_Tags {
 	private const SEARCH_QUERY_MAX = 70;
 
 	/**
+	 * Product taxonomies whose term archives carry full commerce metadata.
+	 *
+	 * An explicit allow-list, deliberately not `is_product_taxonomy()`. That
+	 * helper is `is_tax( get_object_taxonomies( 'product' ) )`, which sweeps
+	 * in every `pa_*` attribute archive. Attribute archives are off by
+	 * default in WooCommerce (`has_archives` is false), so on most stores
+	 * there is no page there to describe, and on stores that enable them the
+	 * pages are thin and near-duplicate. Adding a taxonomy here is a decision
+	 * about crawl surface, so it should be a visible edit rather than a
+	 * side effect of WooCommerce registering something new (#705).
+	 *
+	 * @var string[]
+	 */
+	private const COVERED_TERM_TAXONOMIES = array( 'product_cat', 'product_tag', 'product_brand' );
+
+	/**
+	 * The queried term when this request is a covered product term archive.
+	 *
+	 * One predicate for every branch that used to restate
+	 * `is_product_category()` and then call `get_queried_object()` itself.
+	 * Six of those restatements existed before #705 and they had drifted:
+	 * the JSON-LD ItemList covered tags, IndexNow covered brands, and the
+	 * head metadata covered neither.
+	 *
+	 * @return object|null The queried term, or null when this is not one.
+	 */
+	public function covered_term() {
+		if ( ! function_exists( 'is_tax' ) || ! is_tax( self::COVERED_TERM_TAXONOMIES ) ) {
+			return null;
+		}
+
+		$term = function_exists( 'get_queried_object' ) ? get_queried_object() : null;
+		if ( ! is_object( $term ) || ! isset( $term->taxonomy, $term->term_id ) ) {
+			return null;
+		}
+
+		return in_array( (string) $term->taxonomy, self::COVERED_TERM_TAXONOMIES, true ) ? $term : null;
+	}
+
+	/**
 	 * Whether to emit metadata for the current request.
 	 *
 	 * NOT gated on SEO-plugin presence — per the assert-and-warn design we
@@ -55,7 +95,7 @@ class WC_AI_Storefront_Meta_Tags {
 		}
 
 		return ( function_exists( 'is_product' ) && is_product() )
-			|| ( function_exists( 'is_product_category' ) && is_product_category() )
+			|| null !== $this->covered_term()
 			|| ( function_exists( 'is_shop' ) && is_shop() )
 			|| ( function_exists( 'is_search' ) && is_search() && 'product' === get_query_var( 'post_type' ) );
 	}
@@ -411,12 +451,12 @@ class WC_AI_Storefront_Meta_Tags {
 
 
 	/**
-	 * Build the meta description for the current archive (category or shop).
+	 * Build the meta description for the current archive (term or shop).
 	 *
-	 * Category → the term's description, falling back to a generated
-	 * "Shop {category} at {store}". Shop → the authored description, then the
-	 * shop page content, falling back to the store tagline. Cleaned/truncated
-	 * like the product path.
+	 * Category, tag or brand → the term's description, falling back to a
+	 * generated "Shop {term} at {store}". Shop → the authored description,
+	 * then the shop page content, falling back to the store tagline.
+	 * Cleaned/truncated like the product path.
 	 *
 	 * Every candidate is judged after cleaning, not before — see
 	 * first_usable_candidate() for why that distinction is load-bearing.
@@ -427,17 +467,18 @@ class WC_AI_Storefront_Meta_Tags {
 		$candidates = array();
 		$source     = null;
 
-		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
-			$term   = get_queried_object();
+		$covered = $this->covered_term();
+		if ( null !== $covered ) {
+			$term   = $covered;
 			$source = $term;
 			if ( is_object( $term ) && isset( $term->description ) ) {
 				$candidates[] = (string) $term->description;
 			}
 			if ( is_object( $term ) && isset( $term->name ) ) {
-				// Category-specific fallback so the page always carries a
-				// description. Required because we suppress Jetpack's on
-				// commerce pages (see suppress_jetpack_description()) and
-				// would otherwise leave none.
+				// Term fallback so the page always carries a description.
+				// Required because we suppress Jetpack's on commerce pages
+				// (see suppress_jetpack_description()) and would otherwise
+				// leave none. Covers category, tag and brand since #705.
 				$store        = (string) get_bloginfo( 'name' );
 				$candidates[] = '' !== $store
 					? sprintf(
@@ -1154,8 +1195,9 @@ class WC_AI_Storefront_Meta_Tags {
 			'og:locale'      => WC_AI_Storefront_Meta_Text::og_locale(),
 		);
 
-		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
-			$term = get_queried_object();
+		$covered = $this->covered_term();
+		if ( null !== $covered ) {
+			$term = $covered;
 			if ( is_object( $term ) ) {
 				if ( isset( $term->name ) ) {
 					$og['og:title'] = (string) $term->name;
@@ -1452,7 +1494,7 @@ class WC_AI_Storefront_Meta_Tags {
 			}
 			$description = $this->build_description( $product );
 			$og          = $this->build_og_tags( $product, $description );
-		} elseif ( ( function_exists( 'is_product_category' ) && is_product_category() )
+		} elseif ( null !== $this->covered_term()
 			|| ( function_exists( 'is_shop' ) && is_shop() )
 			|| $this->is_product_search() ) {
 			// Product search included since #692. It used to return here with
@@ -1642,16 +1684,23 @@ class WC_AI_Storefront_Meta_Tags {
 	/**
 	 * The image belonging to this archive itself, if the merchant set one.
 	 *
-	 * A product category carries one in `thumbnail_id` term meta. The shop
-	 * archive is backed by a real page (`wc_get_page_id( 'shop' )`), so it
-	 * carries one as that page's featured image.
+	 * A product category or brand carries one in `thumbnail_id` term meta. A
+	 * tag has none, so get_term_meta() returns empty and attachment_image( 0 )
+	 * resolves to the same empty result as `no_image()` — archive_image()'s
+	 * filter and curated-product chain then takes over (#705). The shop archive
+	 * is backed by a real page (`wc_get_page_id( 'shop' )`), so it carries one
+	 * as that page's featured image.
 	 *
 	 * @return array{url:string,width:int,height:int}
 	 */
 	private function archive_own_image(): array {
-		if ( function_exists( 'is_product_category' ) && is_product_category() ) {
-			$term    = get_queried_object();
-			$term_id = is_object( $term ) && isset( $term->term_id ) ? (int) $term->term_id : 0;
+		// Categories and brands can carry a `thumbnail_id`; a tag has none, so
+		// get_term_meta() returns empty and attachment_image( 0 ) resolves to
+		// the same empty image as no_image(), handing the caller to the filter
+		// and curated-product chain. That is the intended path, not a gap (#705).
+		$covered = $this->covered_term();
+		if ( null !== $covered ) {
+			$term_id = (int) $covered->term_id;
 			if ( $term_id > 0 ) {
 				return WC_AI_Storefront_Meta_Image::attachment_image( (int) get_term_meta( $term_id, 'thumbnail_id', true ) );
 			}
@@ -1708,9 +1757,9 @@ class WC_AI_Storefront_Meta_Tags {
 			'featured'   => true,
 		);
 
-		$slug = $this->queried_category_slug();
+		$slug = $this->queried_term_slug();
 		if ( '' !== $slug ) {
-			$args['category'] = array( $slug );
+			$args = array_merge( $args, $this->term_query_constraint( $slug ) );
 		}
 
 		$image = $this->first_product_image( wc_get_products( $args ) );
@@ -1730,6 +1779,55 @@ class WC_AI_Storefront_Meta_Tags {
 		unset( $args['featured'] );
 
 		return $this->first_product_image( wc_get_products( $args ) );
+	}
+
+	/**
+	 * The wc_get_products() arg that narrows a query to the queried term.
+	 *
+	 * `category` and `tag` are native wc_get_products() args, but each is
+	 * hard-wired to one taxonomy by
+	 * `WC_Product_Data_Store_CPT::get_wp_query_args()` (`product_cat` and
+	 * `product_tag` respectively, verified against WooCommerce 11.0.1
+	 * core). Passing a brand's slug under either key matches nothing, so
+	 * before this a brand archive with no term thumbnail always fell
+	 * through to "no image", silently (#705). `product_brand` has no
+	 * native arg, so it goes through as a `tax_query` clause instead:
+	 * `WC_Object_Query::__construct()` merges unrecognized keys straight
+	 * into `$query_vars`, and `WC_Data_Store_WP::get_wp_query_args()`
+	 * carries a key it does not recognize through unchanged, so this
+	 * clause survives alongside the `product_type` clause the query
+	 * always adds.
+	 *
+	 * @param string $slug The queried term's slug, already confirmed non-empty.
+	 * @return array wc_get_products() args to merge in, or empty when the
+	 *               current request is not a covered term archive.
+	 */
+	private function term_query_constraint( string $slug ): array {
+		$term = $this->covered_term();
+		if ( null === $term ) {
+			return array();
+		}
+
+		switch ( (string) $term->taxonomy ) {
+			case 'product_cat':
+				return array( 'category' => array( $slug ) );
+			case 'product_tag':
+				return array( 'tag' => array( $slug ) );
+			case 'product_brand':
+				return array(
+					'tax_query' => array( // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_tax_query
+						array(
+							'taxonomy' => 'product_brand',
+							'field'    => 'slug',
+							'terms'    => array( $slug ),
+						),
+					),
+				);
+			default:
+				// Unreachable: covered_term() only ever returns a term whose
+				// taxonomy is one of the three cases above.
+				return array();
+		}
 	}
 
 	/**
@@ -1766,15 +1864,15 @@ class WC_AI_Storefront_Meta_Tags {
 	}
 
 	/**
-	 * The queried product category's slug, or '' when this is not one.
+	 * The queried term's slug, or '' when this is not a covered term archive.
+	 *
+	 * Was named queried_category_slug(); renamed because the value it
+	 * returns is no longer always a category (#705).
 	 */
-	private function queried_category_slug(): string {
-		if ( ! function_exists( 'is_product_category' ) || ! is_product_category() ) {
-			return '';
-		}
-		$term = get_queried_object();
+	private function queried_term_slug(): string {
+		$term = $this->covered_term();
 
-		return is_object( $term ) && isset( $term->slug ) ? (string) $term->slug : '';
+		return ( null !== $term && isset( $term->slug ) ) ? (string) $term->slug : '';
 	}
 
 
