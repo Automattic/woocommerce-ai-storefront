@@ -1,6 +1,10 @@
 ## [Unreleased]
 
-### Fixed
+---
+
+## [0.40.0] – 2026-08-25
+
+### Added
 - **Your tag and brand archive pages now get the same link previews and structured data as your category pages (#705).**
   - Three parts of the plugin each decided on their own which archive pages to cover, and they disagreed. Category archives were fully covered. A tag archive carried a machine-readable product list but no share card, so pasting its link showed a blank preview. A brand archive was submitted to instant indexing but had no title, description, share card, or product list, so crawlers were sent to a page the plugin had chosen not to describe.
   - A tag or brand archive now gets the page title, meta description, and Open Graph and Twitter share card, the product list (a JSON-LD ItemList) of what is on the page, and an instant-indexing ping when the term changes, matching how a category archive already behaved.

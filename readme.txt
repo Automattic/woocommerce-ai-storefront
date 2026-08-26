@@ -6,7 +6,7 @@ Tested up to: 6.8
 Requires PHP: 8.1
 WC requires at least: 9.9
 WC tested up to: 10.9
-Stable tag: 0.39.1
+Stable tag: 0.40.0
 License: GPL-3.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-3.0.html
 
@@ -128,6 +128,10 @@ No. Customer data stays on your store. AI agents see the public catalog (the sam
 Discovery endpoints (`/llms.txt`, `/.well-known/ucp`, JSON-LD markup) stop being served. The `robots.txt` additions are removed. Order attribution already captured on completed orders remains in the database; new orders stop getting AI attribution stamps. No product data is deleted.
 
 == Changelog ==
+
+= 0.40.0 - 2026-08-25 =
+**New**
+* Your tag and brand archive pages now get the same link previews and structured data as your category pages. A tag or brand archive gains the page title, meta description, Open Graph and Twitter share card, the product list (a JSON-LD ItemList) of what is on the page, and an instant-indexing ping when the term changes. Editing or renaming a tag or brand now refreshes that archive's cached product list right away. Brand pages apply only if your store has a brand taxonomy.
 
 = 0.39.1 - 2026-08-24 =
 **Fixed**
