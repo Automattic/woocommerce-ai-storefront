@@ -59,7 +59,7 @@
 		"@wp-playground/tools": {
 			"ajv": "^8.17.1"
 		},
-		"basic-ftp": "^6.0.0",
+		"basic-ftp": "^6.2.6",
 		"cross-spawn": "^7.0.6",
 		"js-yaml": "^4.2.0",
 		"markdown-it": "^14.2.0",
